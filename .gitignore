@@ -2,27 +2,23 @@
 __pycache__/
 *.py[cod]
 *.pyo
-
+*.egg-info/
+.eggs/
+build/
+dist/
 # Virtual environment
 .venv/
-
 # VS Code
 .vscode/
-
-# Local data
-data/*.db
-data/*.sqlite
-data/*.sqlite3
-
+# Local data (saidas de coleta: jobs.json / jobs.csv / logs)
+data/
+*.log
 # Reports
 reports/*
-
 # Environment
 .env
-
 # Cache
 .pytest_cache/
 .mypy_cache/
-
 # macOS
 .DS_Store

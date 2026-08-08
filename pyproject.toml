@@ -1,18 +1,21 @@
-[project]
-name = "internship-finder"
-version = "0.1.0"
-description = "International internship search engine"
-readme = "README.md"
-requires-python = ">=3.13"
-
-dependencies = []
-
-[project.scripts]
-internship-finder = "internship_finder.main:main"
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[project]
+name = "internship-finder"
+version = "0.1.0"
+description = "Buscador de estagios (internship / working student / Praktikum / Werkstudent) orientado a empresas, foco em Supply Chain, Procurement, BI, Analytics e Automacao (prioridade Alemanha)."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ats-scrapers>=0.2.0",
+    "requests>=2.31",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+internship-finder = "internship_finder.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/internship_finder"]
