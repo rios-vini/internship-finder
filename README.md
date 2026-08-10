@@ -31,9 +31,10 @@ O CLI tem dois modos: **filtro** (default) e **coleta** (`--companies`).
 `data/relevant_jobs.json` + `.csv`:
 
 ```bash
-.venv/bin/internship-finder                              # data/jobs.json -> data/relevant_jobs.json (186 vagas)
+.venv/bin/internship-finder                              # data/jobs.json -> data/relevant_jobs.json (173 vagas, sem duplicatas)
 .venv/bin/internship-finder --country europe             # Europa inteira em vez de so Alemanha
 .venv/bin/internship-finder --no-area                    # qualquer area, desde que estudante + Alemanha
+.venv/bin/internship-finder --no-dedup                   # mantem duplicatas (186 vagas)
 .venv/bin/internship-finder --all                        # copia tudo, sem filtros
 ```
 
@@ -50,12 +51,16 @@ python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 
 Resultado do ultimo run completo (13 empresas candidatas, 13.482 vagas brutas):
 `total 13.482 -> tipo estudante 2.159 -> area-alvo 541 -> Alemanha 186` (SAP 104,
-Bosch 49, BASF 21, Henkel 4, ZF 3, Bayer 2, Infineon 2, Continental 1).
-Siemens foi testada e excluida (tenant `teamtailor` inativo). A coleta total
-leva alguns minutos — cada tenant usa timeout proprio (`--timeout 60`).
+Bosch 49, BASF 21, Henkel 4, ZF 3, Bayer 2, Infineon 2, Continental 1). Com
+dedup, as 186 relevantes viram **173** (13 duplicatas removidas: 10 SAP, 3
+Bosch — versoes EN/DE do mesmo cargo e repostagens). Siemens foi testada e
+excluida (tenant `teamtailor` inativo). A coleta total leva alguns minutos —
+cada tenant usa timeout proprio (`--timeout 60`).
 
 Saida: contagens em cascata (`total -> tipo estudante -> area-alvo -> pais`),
-exemplos (titulo, empresa, local, URL) e os arquivos gravados.
+linha de dedup (`removidas N: X por external_id, Y por URL, Z por
+company+title+location`), exemplos (titulo, empresa, local, URL) e os arquivos
+gravados.
 
 Flags do CLI:
 
@@ -69,10 +74,33 @@ Flags do CLI:
 | `--area` / `--no-area` | filtra areas-alvo do dono (Supply Chain, Procurement, BI, Analytics, Automacao; default: ligado) |
 | `--country`/`--countries` | pais/localizacao: ISO alpha-2 (`de`, `de,at,ch`), `europe`, `remote` ou `all` (default: `de`) |
 | `--all` | desliga os tres filtros de uma vez (copia o conjunto inteiro) |
+| `--dedup` / `--no-dedup` | remove duplicatas da saida (default: ligado) |
 | `--timeout` | teto de segundos por scraper (defensivo: uma empresa que trava nao derruba o resto) |
 | `--limit N` | maximo de vagas por tenant (0 = sem limite) |
 | `--include-descriptions` | busca a descricao por vaga (mais lento em ATS que exigem uma chamada por vaga, ex. SmartRecruiters) |
 | `--verbose` | log DEBUG |
+
+### Deduplicacao
+
+A saida filtrada passa por dedup por padrao (`--no-dedup` desliga), usando
+chaves em ordem de confiabilidade — a primeira que bater decide (`src/internship_finder/dedup.py`):
+
+1. `external_id`/`id` do ATS (identidade oficial da vaga na origem);
+2. URL normalizada (sem fragmento, sem barra final, casefold; a query e
+   mantida — eightfold carrega o id da vaga nela);
+3. `company + titulo normalizado + localizacao normalizada` — pega versoes
+   EN/DE do mesmo cargo e repostagens: o titulo e normalizado (casefold, sem
+   acentos, sem sufixos de genero `m/w/d`/`f/m/d`/`w/m/div.`, `Werkstudent`
+   tratado como `Working Student`, sem palavras funcionais EN/DE e comparado
+   como saco de palavras — ordem indiferente).
+
+Quando duas versoes da mesma vaga existem, o "vencedor" e deterministico:
+a com `description` preenchida; senao a com `employment_type`; senao a que
+veio primeiro. O CLI reporta quantas foram removidas e por qual chave.
+Titulos que sao traducao real (conteudo diferente, ex.: "Marketing
+Deutschland" vs "Marketing Germany") NAO sao fundidos — exigiria dicionario
+de traducao/fuzzy, fora do escopo do MVP. No conjunto atual: relevantes
+186 -> 173 (13 removidas, todas pela chave 3; 10 SAP + 3 Bosch).
 
 ## Runbook
 

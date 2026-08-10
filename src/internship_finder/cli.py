@@ -29,6 +29,7 @@ import logging
 from pathlib import Path
 
 from internship_finder.collectors.ats_scraper import collect_company
+from internship_finder.dedup import deduplicate
 from internship_finder.filters import select_relevant
 from internship_finder.models.job import Job
 
@@ -84,6 +85,19 @@ def print_examples(jobs: list[dict] | list[Job], limit: int = 15) -> None:
         print(f"  ... +{len(jobs) - limit} vagas (lista completa no JSON/CSV)")
 
 
+def print_dedup_report(dedup_stats: dict[str, int]) -> None:
+    """Linha do relatorio de dedup: quantas removidas e por qual chave."""
+    total = sum(dedup_stats.values())
+    if not total:
+        return
+    print(
+        f"dedup: removidas {total} "
+        f"({dedup_stats.get('external_id', 0)} por external_id, "
+        f"{dedup_stats.get('url', 0)} por URL, "
+        f"{dedup_stats.get('company+title+location', 0)} por company+title+location)"
+    )
+
+
 def run_filter_pipeline(
     jobs: list[Job] | list[dict],
     *,
@@ -91,8 +105,13 @@ def run_filter_pipeline(
     area: bool,
     country: str,
     output: Path,
+    dedup: bool = True,
 ) -> int:
-    """Aplica a cascata, imprime contagens + exemplos e grava o resultado."""
+    """Aplica a cascata, remove duplicatas, imprime contagens + exemplos e grava.
+
+    A deduplicacao roda sobre o conjunto ja filtrado (a saida relevante nao
+    tem duplicatas); ``dedup=False`` (--no-dedup) a desliga.
+    """
     selected, counts = select_relevant(
         [j.to_dict() if hasattr(j, "to_dict") else j for j in jobs],
         student=student,
@@ -100,7 +119,10 @@ def run_filter_pipeline(
         country=country,
     )
     print_cascade(counts, country)
-    print(f"\n=== {counts['pais']} vagas candidataveis ===")
+    if dedup:
+        selected, dedup_stats, _ = deduplicate(selected)
+        print_dedup_report(dedup_stats)
+    print(f"\n=== {len(selected)} vagas candidataveis ===")
     print_examples(selected)
     save_outputs(selected, output)
     return 0 if selected else 1
@@ -175,6 +197,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Desliga os tres filtros (tipo, area, pais): copia o conjunto inteiro",
     )
+    parser.add_argument(
+        "--dedup",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Remove duplicatas da saida (default: ligado; --no-dedup desliga)",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -234,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
             area=args.area,
             country=args.country,
             output=Path(args.filter_output),
+            dedup=args.dedup,
         )
 
     # Modo filtro (default): le vagas ja coletadas e filtra.
@@ -249,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         area=args.area,
         country=args.country,
         output=output,
+        dedup=args.dedup,
     )
 
 
