@@ -19,7 +19,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from internship_finder.filters import is_internship
+from internship_finder.filters import is_student_role
 from internship_finder.models.company import Company
 from internship_finder.models.job import Job
 
@@ -104,7 +104,7 @@ class AtsJobAdapter:
             country=country_iso,
             url=url,
             description=description,
-            internship=is_internship(title, description),
+            internship=is_student_role(title, description, employment_type),
             posted_at=posted_at,
             collected_at=datetime.now(UTC),
             external_id=external_id,
