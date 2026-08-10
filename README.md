@@ -31,20 +31,28 @@ O CLI tem dois modos: **filtro** (default) e **coleta** (`--companies`).
 `data/relevant_jobs.json` + `.csv`:
 
 ```bash
-.venv/bin/internship-finder                              # data/jobs.json -> data/relevant_jobs.json (154 vagas)
+.venv/bin/internship-finder                              # data/jobs.json -> data/relevant_jobs.json (186 vagas)
 .venv/bin/internship-finder --country europe             # Europa inteira em vez de so Alemanha
 .venv/bin/internship-finder --no-area                    # qualquer area, desde que estudante + Alemanha
 .venv/bin/internship-finder --all                        # copia tudo, sem filtros
 ```
 
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
-mesma cascata, gravando o resultado em `data/relevant_jobs.json`:
+mesma cascata, gravando o resultado em `data/relevant_jobs.json`. Lista-alvo
+atual (12 empresas com dados, validada em 2026-08-10; ver
+`docs/empresas_verificacao.md`):
 
 ```bash
-.venv/bin/internship-finder --companies "Bosch,SAP,Continental" --output data/jobs.json
+.venv/bin/internship-finder --companies "Bosch,SAP,Continental,ZF,Bayer,BASF,Henkel,Infineon,Zalando,Delivery Hero,Covestro,Evonik" --timeout 60
 # ou, sem instalar:
 python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 ```
+
+Resultado do ultimo run completo (13 empresas candidatas, 13.482 vagas brutas):
+`total 13.482 -> tipo estudante 2.159 -> area-alvo 541 -> Alemanha 186` (SAP 104,
+Bosch 49, BASF 21, Henkel 4, ZF 3, Bayer 2, Infineon 2, Continental 1).
+Siemens foi testada e excluida (tenant `teamtailor` inativo). A coleta total
+leva alguns minutos — cada tenant usa timeout proprio (`--timeout 60`).
 
 Saida: contagens em cascata (`total -> tipo estudante -> area-alvo -> pais`),
 exemplos (titulo, empresa, local, URL) e os arquivos gravados.
@@ -65,6 +73,56 @@ Flags do CLI:
 | `--limit N` | maximo de vagas por tenant (0 = sem limite) |
 | `--include-descriptions` | busca a descricao por vaga (mais lento em ATS que exigem uma chamada por vaga, ex. SmartRecruiters) |
 | `--verbose` | log DEBUG |
+
+## Runbook
+
+### Como adicionar empresas
+
+Toda empresa-alvo entra pela base do `ats-scrapers` (match exato — o CLI
+ignora com aviso qualquer nome que nao bata na base, para nao pegar empresa
+parecida errada). Passos:
+
+1. **Verifique o tenant exato, o ATS e o slug/URL** (baixa o manifest ~1–2 min):
+   ```bash
+   .venv/bin/python scripts/verify_companies.py "ZF,Bayer,BASF"
+   ```
+   Mostra, por empresa: tenant (`ats:slug`), o slug efetivo e se ha scraper
+   registrado para o ATS. **Cuidado com falso positivo**: o match por token
+   pode achar empresa parecida (ex.: `BMW` → `join_com:bmw-kuehnert`, que NAO
+   e a BMW AG) — confira o nome retornado antes de incluir.
+
+2. **Atencao a ATS que exigem a URL como slug**: `successfactors`, `workday`,
+   `taleo` e `icims` — o slug da base (`jobs`) nao e usavel sozinho; o
+   collector ja troca pelo `company.url` automaticamente (ex.: ZF →
+   `https://jobs.zf.com`, BASF → `https://basf.jobs`, Zalando →
+   `https://zalando.wd3.myworkdayjobs.com/zalandositewd`).
+
+3. **Teste o status real do tenant** (alguns existem na base mas estao
+   inativos/devolvem 0 vagas — ex.: Siemens/teamtailor → erro, Adidas/moka →
+   sem scraper no pacote):
+   ```bash
+   .venv/bin/python scripts/verify_companies.py "ZF,Bayer" --fetch --timeout 60
+   ```
+   Reporta por tenant: `OK` com N vagas / `FAIL` (inativo) / `SKIP` (sem
+   scraper) / `NONE` (sem match). So inclua na lista final empresas com `OK`.
+   A tabela de verificacao atual (incl. excluidas e motivos) esta em
+   `docs/empresas_verificacao.md`.
+
+### Como rodar
+
+**Coleta** (grava o bruto em `data/jobs.json` e ja aplica a cascata, gravando
+as candidataveis em `data/relevant_jobs.json` + `.csv`):
+```bash
+.venv/bin/internship-finder --companies "Bosch,SAP,Continental,ZF,Bayer,BASF,Henkel,Infineon,Zalando,Delivery Hero,Covestro,Evonik" --timeout 60
+```
+**Filtro** (re-aplica a cascata sobre o bruto ja coletado, sem rede):
+```bash
+.venv/bin/internship-finder --country de          # Alemanha (default)
+.venv/bin/internship-finder --country europe      # Europa inteira
+.venv/bin/internship-finder --no-area             # qualquer area, desde que estudante
+```
+Saida: contagens em cascata (`total → tipo estudante → area-alvo → pais`),
+exemplos (titulo, empresa, local, URL) e os arquivos gravados.
 
 ## Modelo `Job` (canonico, pydantic)
 
