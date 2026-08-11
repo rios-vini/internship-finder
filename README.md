@@ -27,14 +27,16 @@ Requer Python **>= 3.12** (testado em 3.12; vale para 3.13/3.14).
 O CLI tem dois modos: **filtro** (default) e **coleta** (`--companies`).
 
 **Filtro** — le vagas ja coletadas e retorna apenas as CANDIDATAVEIS
-(estudante/estagio + area-alvo + pais), gravando em
-`data/relevant_jobs.json` + `.csv`:
+(estudante/estagio + area-alvo + pais), **ranqueadas por perfil** (score +
+TOP 20), gravando em `data/relevant_jobs.json` + `.csv` (com campo `score`;
+`--no-rank` desliga o ranking):
 
 ```bash
-.venv/bin/internship-finder                              # data/jobs.json -> data/relevant_jobs.json (173 vagas, sem duplicatas)
+.venv/bin/internship-finder                              # data/jobs.json -> data/relevant_jobs.json (173 vagas ranqueadas, sem duplicatas)
 .venv/bin/internship-finder --country europe             # Europa inteira em vez de so Alemanha
 .venv/bin/internship-finder --no-area                    # qualquer area, desde que estudante + Alemanha
 .venv/bin/internship-finder --no-dedup                   # mantem duplicatas (186 vagas)
+.venv/bin/internship-finder --no-rank                    # sem ranking: ordem original + exemplos
 .venv/bin/internship-finder --all                        # copia tudo, sem filtros
 ```
 
@@ -59,8 +61,9 @@ cada tenant usa timeout proprio (`--timeout 60`).
 
 Saida: contagens em cascata (`total -> tipo estudante -> area-alvo -> pais`),
 linha de dedup (`removidas N: X por external_id, Y por URL, Z por
-company+title+location`), exemplos (titulo, empresa, local, URL) e os arquivos
-gravados.
+company+title+location`), **TOP 20 ranqueado por perfil** (score + breakdown
+curto; `--no-rank` desliga e mostra exemplos como antes) e os arquivos
+gravados com o campo `score`.
 
 Flags do CLI:
 
@@ -75,6 +78,7 @@ Flags do CLI:
 | `--country`/`--countries` | pais/localizacao: ISO alpha-2 (`de`, `de,at,ch`), `europe`, `remote` ou `all` (default: `de`) |
 | `--all` | desliga os tres filtros de uma vez (copia o conjunto inteiro) |
 | `--dedup` / `--no-dedup` | remove duplicatas da saida (default: ligado) |
+| `--rank` / `--no-rank` | rankeia por compatibilidade com o perfil: score + TOP 20 (default: ligado; `--no-rank` mantem a ordem original) |
 | `--timeout` | teto de segundos por scraper (defensivo: uma empresa que trava nao derruba o resto) |
 | `--limit N` | maximo de vagas por tenant (0 = sem limite) |
 | `--include-descriptions` | busca a descricao por vaga (mais lento em ATS que exigem uma chamada por vaga, ex. SmartRecruiters) |
@@ -101,6 +105,34 @@ Titulos que sao traducao real (conteudo diferente, ex.: "Marketing
 Deutschland" vs "Marketing Germany") NAO sao fundidos — exigiria dicionario
 de traducao/fuzzy, fora do escopo do MVP. No conjunto atual: relevantes
 186 -> 173 (13 removidas, todas pela chave 3; 10 SAP + 3 Bosch).
+
+### Ranking por perfil
+
+Depois de filtrar e deduplicar, o CLI **ranqueia as vagas por compatibilidade
+com o perfil do dono** (`src/internship_finder/ranking.py`) — heuristica
+deterministica, sem ML — e mostra as melhores primeiro (TOP 20). Cada vaga
+ganha `score` (total) e `score_breakdown` (por componente) no JSON/CSV; o
+desempate e deterministico (score desc -> titulo -> empresa -> id).
+
+Score = `area + skills + language + type + location + penalties`:
+
+| Componente | Peso | Fonte |
+| --- | --- | --- |
+| `area` | titulo x2.0; descricao x0.0 | reusa `filters.area_score` (PRIMARY 3 / RELATED 2 / WEAK 1 no titulo). A area da descricao e **zerada** por calibracao no conjunto real: templates genericos (ex.: SAP) citam `data`/`sap`/`reporting` em vagas de Marketing e inflavam a area; o valor da descricao entra por skills e idioma |
+| `skills` | +0.75 por competencia (descricao) | Inventory Management, Supplier Relationships/Management, Process Automation, System Integration, Python, APIs, Cloud, Reporting, Continuous Improvement |
+| `language` | ingles +1.5, alemao +0.5 | detectados no titulo+descricao (`english`/`englisch`; `german`/`deutsch` como palavra — "Deutschland" nao conta) |
+| `type` | +1.0 | marcador forte de tipo no TITULO (Praktikum, Werkstudent, Internship, Trainee/JMP, iXp... — reusa `filters.STUDENT_TYPE_PATTERNS`) |
+| `location` | DE explicito +1.0; Berlin +0.5 | ISO alpha-2 via `filters.infer_country_iso`; remoto neutro |
+| `penalties` | senior/director/head/principal -3.0; manager -1.0; FULL_TIME -0.5 | senioridade e "manager" SO valem sem marcador forte de tipo no titulo (JMP/Trainee protegidos); FULL_TIME e suave (Werkstudent/Praktikum vêm marcados FULL_TIME no conjunto e nao zeram) |
+
+Sem descricao (49 das 173), age-se com graca: skills/idioma contribuem 0 e o
+score vem do titulo. Exemplo real do conjunto atual (2026-08-10, 173
+candidataveis): scores `min 1.00 | mediana 6.75 | max 14.00`; TOP 1 =
+"Praktikum in der Logistik - Data & Analytics" (13.50); "Praktikum im Bereich
+Logistik und Supply Chain Design" em 6o (11.50); "Junior Managers Program
+Purchasing" em 34o (top 20%, 7.50); "Working Student - Marketing" nao chega
+ao quartil superior; nenhuma vaga senior no TOP 10. Ver
+`scripts/test_ranking.py` (sintetico + run real + sanity checks).
 
 ## Runbook
 
@@ -148,9 +180,11 @@ as candidataveis em `data/relevant_jobs.json` + `.csv`):
 .venv/bin/internship-finder --country de          # Alemanha (default)
 .venv/bin/internship-finder --country europe      # Europa inteira
 .venv/bin/internship-finder --no-area             # qualquer area, desde que estudante
+.venv/bin/internship-finder --no-rank             # sem ranking (ordem original)
 ```
 Saida: contagens em cascata (`total → tipo estudante → area-alvo → pais`),
-exemplos (titulo, empresa, local, URL) e os arquivos gravados.
+linha de dedup, **TOP 20 ranqueado por perfil** com score + breakdown, e os
+arquivos gravados (`data/relevant_jobs.json`/`.csv` com campo `score`).
 
 ## Modelo `Job` (canonico, pydantic)
 
@@ -175,6 +209,7 @@ src/internship_finder/
 ├── adapters/       # AtsJobAdapter: normaliza schema de cada ATS para Job
 ├── resolver/       # CompanyResolver (fachada sobre o matching exato)
 ├── filters.py      # filtros de utilidade: is_student_role, area-alvo, pais, cascata
+├── ranking.py      # ranking por perfil: score_job (score + breakdown) e rank_jobs
 └── cli.py          # entry point `internship-finder` (filtro default + coleta)
 scripts/collect_jobs.py   # atalho p/ rodar sem instalar
 ```
