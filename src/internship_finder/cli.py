@@ -3,9 +3,11 @@
 Dois modos:
 
 - **Filtro (default):** le vagas coletadas (``--input``), aplica a cascata de
-  filtros de utilidade e grava apenas as CANDIDATAVEIS (``--output``)::
+  filtros de utilidade, remove duplicatas, RANQUEIA por compatibilidade com o
+  perfil (score + TOP 20; ``--no-rank`` desliga) e grava as CANDIDATAVEIS em
+  ``--output`` com ``score``/``score_breakdown``::
 
-      internship-finder                                  # data/jobs.json -> data/relevant_jobs.json
+      internship-finder                                  # data/jobs.json -> data/relevant_jobs.json (ranqueado)
       internship-finder --country europe --no-area       # Europa, qualquer area
       internship-finder --all                            # copia tudo, sem filtros
 
@@ -32,6 +34,7 @@ from internship_finder.collectors.ats_scraper import collect_company
 from internship_finder.dedup import deduplicate
 from internship_finder.filters import select_relevant
 from internship_finder.models.job import Job
+from internship_finder.ranking import rank_jobs
 
 log = logging.getLogger("internship_finder")
 
@@ -49,6 +52,7 @@ CSV_COLUMNS = [
     "internship",
     "posted_at",
     "collected_at",
+    "score",
 ]
 
 
@@ -98,6 +102,21 @@ def print_dedup_report(dedup_stats: dict[str, int]) -> None:
     )
 
 
+def print_ranking(jobs: list[dict], top: int = 20) -> None:
+    """TOP N ranqueados com score e breakdown curto (area/skills/lang/tipo/loc/pen)."""
+    n = min(top, len(jobs))
+    print(f"\n=== TOP {n} (ranking por perfil) ===")
+    for i, j in enumerate(jobs[:n], 1):
+        b = j.get("score_breakdown") or {}
+        parts = " ".join(f"{k} {v:+.1f}" for k, v in b.items())
+        print(
+            f"  {i:>2}. {j['score']:6.2f} | {j['title'][:60]} | "
+            f"{j.get('company')} | {parts}"
+        )
+    if len(jobs) > n:
+        print(f"  ... +{len(jobs) - n} vagas (score completo no JSON/CSV)")
+
+
 def run_filter_pipeline(
     jobs: list[Job] | list[dict],
     *,
@@ -106,11 +125,15 @@ def run_filter_pipeline(
     country: str,
     output: Path,
     dedup: bool = True,
+    rank: bool = True,
 ) -> int:
-    """Aplica a cascata, remove duplicatas, imprime contagens + exemplos e grava.
+    """Aplica a cascata, remove duplicatas, ranqueia por perfil, imprime e grava.
 
     A deduplicacao roda sobre o conjunto ja filtrado (a saida relevante nao
-    tem duplicatas); ``dedup=False`` (--no-dedup) a desliga.
+    tem duplicatas); ``dedup=False`` (--no-dedup) a desliga. O ranking
+    (``rank=True``, default) adiciona ``score`` + ``score_breakdown`` a cada
+    vaga, ordena desc (melhores primeiro) e imprime o TOP 20; ``rank=False``
+    (--no-rank) mantem a ordem original e imprime exemplos como antes.
     """
     selected, counts = select_relevant(
         [j.to_dict() if hasattr(j, "to_dict") else j for j in jobs],
@@ -122,8 +145,13 @@ def run_filter_pipeline(
     if dedup:
         selected, dedup_stats, _ = deduplicate(selected)
         print_dedup_report(dedup_stats)
-    print(f"\n=== {len(selected)} vagas candidataveis ===")
-    print_examples(selected)
+    if rank:
+        selected = rank_jobs(selected)
+    print(f"\n=== {len(selected)} vagas candidataveis{', ranqueadas por perfil' if rank else ''} ===")
+    if rank:
+        print_ranking(selected)
+    else:
+        print_examples(selected)
     save_outputs(selected, output)
     return 0 if selected else 1
 
@@ -203,6 +231,13 @@ def main(argv: list[str] | None = None) -> int:
         default=True,
         help="Remove duplicatas da saida (default: ligado; --no-dedup desliga)",
     )
+    parser.add_argument(
+        "--rank",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Rankeia as vagas por compatibilidade com o perfil (score + TOP 20; "
+        "default: ligado; --no-rank desliga e mantem a ordem original)",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -263,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
             country=args.country,
             output=Path(args.filter_output),
             dedup=args.dedup,
+            rank=args.rank,
         )
 
     # Modo filtro (default): le vagas ja coletadas e filtra.
@@ -279,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
         country=args.country,
         output=output,
         dedup=args.dedup,
+        rank=args.rank,
     )
 
 
