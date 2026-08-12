@@ -265,3 +265,155 @@ Contentful, TeamViewer, Flix, Puma, HelloFresh, Tchibo, Deutsche Bank, Vattenfal
    não é motivo para excluir, mas afeta o funil.
 5. **Nenhuma regra de filtro/ranking foi alterada**; a expansão só adiciona empresas
    à coleta. Requisitos do dono preservados (qualidade > quantidade).
+
+---
+
+# Fase E1b — fetch de validação (2026-08-12) — tabela de status real
+
+Gerado com `scripts/verify_companies.py "<lista>" --fetch --timeout 60` sobre as
+**33 candidatas da shortlist** (Tiers 1-5) + 4 verificações de identidade ambígua
+(ifm, Metro, Otto, E.ON). Dois lotes:
+
+- **Lote 1** (04:28:21–04:31:06 UTC, **2 min 45 s**): as 33 candidatas com os
+  nomes de consulta do E1a (slug para os tenants com slug genérico).
+- **Lote 2** (04:31:59–04:32:31 UTC, **32 s**): retries — nomes de consulta
+  alternativos (Hellmann, GFT, Dräger) e re-teste de tenants que falharam no
+  lote 1 após 2 ajustes mínimos de ambiente (ver §Ajustes).
+
+**Nenhuma regra de filtro/ranking foi alterada.** Ajustes aplicados (commit
+separado `050c5db`): `"phenom"` adicionado a `URL_SLUG_ATS` (coletor) e
+`beautifulsoup4` no requirements (extra exigido pelo scraper avature).
+
+## Ajustes mínimos aplicados (commit 050c5db, documentado)
+
+1. **`URL_SLUG_ATS` += `"phenom"`** em `src/internship_finder/collectors/ats_scraper.py`
+   — a base traz `slug='nan'` para tenants phenom e a URL real em `company.url`;
+   sem a inclusão o `PhenomScraper` recebia `'nan'` e falhava. Com o ajuste,
+   **DHL (8.405 vagas)** e **Kuehne+Nagel (1.109 vagas)** passaram a coletar.
+2. **`beautifulsoup4>=4.12`** em `requirements.txt` — o `AvatureScraper`
+   (Siemens Healthineers, DHL) exige bs4 (extra opcional do ats-scrapers);
+   sem ele o fetch falhava com `ScraperError`. Com a instalação,
+   **Siemens Healthineers** passou a coletar (6 vagas).
+
+Suíte de testes após os ajustes: **7/7 arquivos EXIT=0** (test_dedup, test_fetch,
+test_filters, test_find_company, test_manifest, test_ranking, test_resolver).
+
+## Tabela de status — 33 candidatas (lote 1 + lote 2 consolidados)
+
+| Empresa | Consulta E1b | Tenant (ATS) | Status | Vagas | Motivo (se falha) |
+| --- | --- | --- | --- | --- | --- |
+| DHL Group | `DHL` (lote 2; avature testado 2x) | `phenom:nan` (phenom) | **OK** | 8.405 | avature `dpdhlgroup` inativo (`Avature site not found`) — coleta via phenom `careers.dhl.com` |
+| Hellmann | `Hellmann` (lote 2) | `workday:hellmann/hellmannexternaljobs` | **OK** | 320 | nome completo não casa no coletor estrito |
+| Kuehne+Nagel | `Kuehne+Nagel` | `phenom:nan` (phenom) | **OK** | 1.109 | cornerstone `kuehne-nagel` falha DNS (`Name or service not known`) — coleta via phenom `jobs.kuehne-nagel.com` |
+| Lidl | `Lidl` | `successfactors:lidlstiftuP2` | **OK** | 24.488 | — |
+| Kaufland | `Kaufland` | `successfactors:jobs` | **OK** | 3.636 | — |
+| Volkswagen Group | `VWAGLPPROD10` | `successfactors:VWAGLPPROD10` | **OK** | 974 | — |
+| Schaeffler | `Schaeffler` | `successfactors:jobs` | **OK** | 747 | — |
+| Mahle | `Mahle` | `successfactors:mahleinter` | **OK** | 391 | — |
+| Trumpf | `Trumpf` | `workday:trumpf/TRUMPF_Apprenticeships` | **OK** | 60 | — |
+| Trumpf | `Trumpf` | `workday:trumpf/TRUMPF_Students` | **OK** | 78 | — |
+| Trumpf | `Trumpf` | `workday:trumpf/trumpf_graduates_and_professionals` | **OK** | 254 | — |
+| SICK AG | `SICK AG` | `successfactors:jobs` | **OK** | 92 | — |
+| Voith | `Voith` | `successfactors:jobs` | **OK** | 390 | — |
+| Knorr-Bremse | `knorrbremsP2` | `successfactors:knorrbremsP2` | **OK** | 270 | — |
+| Brose | `brosefahrz` | `successfactors:brosefahrz` | **OK** | 204 | — |
+| Phoenix Contact | `Phoenix Contact` | `greenhouse:phoenixcontact` | **OK** | 32 | — |
+| KraussMaffei | `KraussMaffei` | `successfactors:jobs` | **OK** | 16 | — |
+| Krones | `kronesag` | `successfactors:kronesag` | **OK** | 79 | — |
+| Hager Group | `Hager Group` (2x) | `successfactors:HagerGroup` | **FAIL** | — | `SuccessFactors returned malformed XML (line 15, col 51)` — persistente nos 2 lotes |
+| Boehringer Ingelheim | `Boehringer Ingelheim` (2x) | `successfactors:BoehringerPRD` | **FAIL** | — | idem (malformed XML) |
+| B. Braun | `bbraunprd` | `successfactors:bbraunprd` | **OK** | 924 | — |
+| Sartorius | `Sartorius` | `workday:sartorius/sartoriuscareers` | **OK** | 205 | — |
+| Lanxess | `Lanxess` (2x) | `successfactors:lanxessP` | **FAIL** | — | idem (malformed XML) |
+| Symrise | `Symrise` (2x) | `join_com:symrise` | **FAIL** | — | API join.com retorna **422** (endpoint quebrado/company id desatualizado) |
+| Fresenius | `freseniusglobal` | `workday:freseniusglobal/fse` | **OK** | 54 | só o tenant `fse` casa no coletor (fme/fk_careers não) |
+| Deutsche Telekom | `Deutsche Telekom` | `eightfold:telekom-growthhub` | **OK** | 237 | tenant smartrecruiters não casa com o nome |
+| Celonis | `Celonis` | `greenhouse:celonis` | **OK** | 258 | — |
+| DATEV | `DATEV` | `workday:datev/Datev_Careers` + `workday:datev/ENG_DATEV` | **OK** | 63 + 1 | — |
+| Statista | `Statista` | `ashby:statista` | **OK** | 48 | — |
+| Scout24 | `Scout24` | `greenhouse:scout24` | **OK** | 26 | — |
+| GFT Technologies SE | `GFT` (lote 2) | `workable:gft` | **OK (0 vagas)** | 0 | tenant ativo, sem vagas no momento; nome completo não casa |
+| Siemens Healthineers | `Siemens Healthineers` | `avature:https://jobs.siemens-healthineers.com/...` | **OK** | 6 | lote 1 falhou por bs4 ausente (ambiente); lote 2 OK |
+| Zeiss Group | `Zeiss Group` | `workday:zeissgroup/external` | **OK** | 812 | tenant lever `zeiss` não casa com o nome |
+| Dräger | `draegerP` (lote 2) | `successfactors:draegerP` | **OK** | 24 | nome com umlaut (`Dräger`) não casa; usar o slug |
+| Uniper | `Uniper` | `successfactors:jobs` | **OK** | 90 | — |
+
+## Decisões de identidade ambígua (verificação pelo resultado do fetch)
+
+| Consulta | Resultado | Decisão |
+| --- | --- | --- |
+| `ifm` | `join_com:ifm` = ifm electronic GmbH (tenant correto), mas API join.com retorna 422 | **Não incluir** — identidade confirmada, coleta quebrada (mesma falha do Symrise) |
+| `Metro` | 3 tenants: greenhouse 2 vagas, smartrecruiters 0, icims 28 — vagas de **segurança/EMS nos EUA** (Protective Security Officer, Paramedic/Firefighter) | **Falso positivo** — não é a Metro AG alemã; excluir |
+| `Otto` | `jazzhr:otto` (otto.applytojob.com) 2 vagas remotas genéricas | **Falso positivo** — não é o Otto Group (Hamburgo); excluir |
+| `E.ON` | NONE (sem match exato) | **Sem match** — excluir |
+
+## Lista final de operacionais NOVAS (28 com vagas coletadas)
+
+| # | Empresa | Tenant | ATS | Vagas (brutas) |
+| --- | --- | --- | --- | --- |
+| 1 | DHL Group | `phenom:nan` | phenom | 8.405 |
+| 2 | Lidl | `successfactors:lidlstiftuP2` | successfactors | 24.488 |
+| 3 | Kaufland | `successfactors:jobs` | successfactors | 3.636 |
+| 4 | Kuehne+Nagel (suíça — avaliar) | `phenom:nan` | phenom | 1.109 |
+| 5 | Volkswagen Group | `successfactors:VWAGLPPROD10` | successfactors | 974 |
+| 6 | B. Braun | `successfactors:bbraunprd` | successfactors | 924 |
+| 7 | Zeiss Group | `workday:zeissgroup/external` | workday | 812 |
+| 8 | Schaeffler | `successfactors:jobs` | successfactors | 747 |
+| 9 | Mahle | `successfactors:mahleinter` | successfactors | 391 |
+| 10 | Voith | `successfactors:jobs` | successfactors | 390 |
+| 11 | Trumpf (3 tenants) | `workday:trumpf/*` | workday | 392 |
+| 12 | Hellmann | `workday:hellmann/hellmannexternaljobs` | workday | 320 |
+| 13 | Knorr-Bremse | `successfactors:knorrbremsP2` | successfactors | 270 |
+| 14 | Celonis | `greenhouse:celonis` | greenhouse | 258 |
+| 15 | Deutsche Telekom | `eightfold:telekom-growthhub` | eightfold | 237 |
+| 16 | Sartorius | `workday:sartorius/sartoriuscareers` | workday | 205 |
+| 17 | Brose | `successfactors:brosefahrz` | successfactors | 204 |
+| 18 | SICK AG | `successfactors:jobs` | successfactors | 92 |
+| 19 | Uniper | `successfactors:jobs` | successfactors | 90 |
+| 20 | Krones | `successfactors:kronesag` | successfactors | 79 |
+| 21 | DATEV (2 tenants) | `workday:datev/*` | workday | 64 |
+| 22 | Fresenius | `workday:freseniusglobal/fse` | workday | 54 |
+| 23 | Statista | `ashby:statista` | ashby | 48 |
+| 24 | Phoenix Contact | `greenhouse:phoenixcontact` | greenhouse | 32 |
+| 25 | Dräger | `successfactors:draegerP` | successfactors | 24 |
+| 26 | Scout24 | `greenhouse:scout24` | greenhouse | 26 |
+| 27 | KraussMaffei | `successfactors:jobs` | successfactors | 16 |
+| 28 | Siemens Healthineers | `avature:https://jobs.siemens-healthineers.com/...` | avature | 6 |
+
+**Total novas com vagas: 28 empresas** (+ GFT com 0 vagas, tenant ativo — incluir
+apenas se houver interesse em monitorar). Soma bruta: 44.293 vagas.
+
+## Falhas documentadas (5 definitivas) + motivo
+
+| Empresa | ATS | Motivo | Observação |
+| --- | --- | --- | --- |
+| Hager Group | successfactors | `malformed XML (line 15, col 51)` no sitemap — persistente (2 lotes) | instância `career012.successfactors.eu` devolve XML inválido; não corrigível no nosso lado |
+| Boehringer Ingelheim | successfactors | idem | instância `career5.successfactors.eu` |
+| Lanxess | successfactors | idem | instância `career5.successfactors.eu` |
+| Symrise | join_com | API `join.com/api/public/companies/95418/jobs` retorna **422** | endpoint quebrado/desatualizado; persistente |
+| ifm (Reserva) | join_com | idem (company 140788) | identidade correta, coleta quebrada |
+
+## ATS sem scraper no pacote
+
+Nenhum **novo** ATS sem scraper apareceu entre as 33 candidatas (todas tinham
+scraper registrado). Os ATS sem scraper conhecidos seguem os do E1a: **moka**
+(adidas), **adp** (Rhenus), **softgarden** (Bechtel/HanseVision), **paycom**
+(Balluff INC).
+
+## Notas para E2 (adição à coleta)
+
+1. **Nomes de consulta finais** (alguns diferem do E1a): `DHL` (não "DHL Group"),
+   `Hellmann` (não o nome completo), `GFT`, `draegerP` (slug), além dos slugs já
+   previstos (`VWAGLPPROD10`, `knorrbremsP2`, `bbraunprd`, `brosefahrz`,
+   `freseniusglobal`, `kronesag`).
+2. **Lidl (24.488 vagas)** é o maior tenant; o fetch levou 79s (timeout 60 +
+   margem 25) — OK, mas é o item mais pesado da coleta E2.
+3. **Workday não expõe país** (limitação conhecida): Hellmann, Trumpf, Sartorius,
+   DATEV, Zeiss, Fresenius terão vagas sem `country_iso` — afeta o funil
+   (filtro `--country de`), não a coleta.
+4. **Kuehne+Nagel é suíça** — manter na lista a critério do lead/owner (agrega
+   1.109 vagas de SCM gigante com forte presença DE).
+5. **GFT (workable) com 0 vagas** — registrar como operacional sem vagas no
+   momento; reavaliar em E2 se voltou a publicar.
+6. **Fresenius**: só o tenant `fse` casa com `freseniusglobal`; fme/fk_careers
+   exigiriam consulta própria (não testados — fora da decisão desta fase).
