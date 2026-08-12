@@ -46,6 +46,7 @@ Regras de negocio (dono):
 from __future__ import annotations
 
 import re
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Tipo de vaga (estudante/estagio)
@@ -340,6 +341,112 @@ EUROPE_COUNTRIES = frozenset(
     """.lower().split()
 )
 
+# Nomes de pais (ingles, minusculas) -> ISO 3166-1 alpha-2. Usado pelo fallback
+# de ``infer_country_iso`` quando a ``location`` termina com o NOME do pais
+# (ex.: API Phenom compoe "Cidade, Estado, Germany"). A chave e o dado real da
+# vaga — a inferencia e segura (o nome do pais esta explicito na localizacao),
+# nao inventada. Inclui os nomes observados nas coletas (Phenom/DHL, eightfold,
+# greenhouse, etc.) + nomes padrao ISO 3166-1 + variantes comuns.
+COUNTRY_NAMES: dict[str, str] = {
+    "afghanistan": "af", "albania": "al", "algeria": "dz", "andorra": "ad",
+    "angola": "ao", "anguilla": "ai", "antigua and barbuda": "ag",
+    "argentina": "ar", "armenia": "am", "aruba": "aw", "australia": "au",
+    "austria": "at", "azerbaijan": "az", "bahamas": "bs", "bahrain": "bh",
+    "bangladesh": "bd", "barbados": "bb", "belarus": "by", "belgium": "be",
+    "belize": "bz", "benin": "bj", "bermuda": "bm", "bhutan": "bt",
+    "bolivia": "bo", "bosnia and herzegovina": "ba", "botswana": "bw",
+    "brazil": "br", "brunei": "bn", "bulgaria": "bg", "burkina faso": "bf",
+    "burundi": "bi", "cabo verde": "cv", "cape verde": "cv", "cambodia": "kh",
+    "cameroon": "cm", "canada": "ca", "cayman islands": "ky",
+    "central african republic": "cf", "chad": "td", "chile": "cl",
+    "china": "cn", "colombia": "co", "comoros": "km", "congo": "cg",
+    "costa rica": "cr", "croatia": "hr", "cuba": "cu", "curacao": "cw",
+    "cyprus": "cy", "czech republic": "cz", "czechia": "cz",
+    "democratic republic of the congo": "cd", "denmark": "dk", "djibouti": "dj",
+    "dominica": "dm", "dominican republic": "do", "ecuador": "ec", "egypt": "eg",
+    "el salvador": "sv", "equatorial guinea": "gq", "eritrea": "er",
+    "estonia": "ee", "eswatini": "sz", "ethiopia": "et",
+    "falkland islands": "fk", "faroe islands": "fo", "fiji": "fj",
+    "finland": "fi", "france": "fr", "french guiana": "gf",
+    "french polynesia": "pf", "gabon": "ga", "gambia": "gm", "georgia": "ge",
+    "germany": "de", "deutschland": "de", "ghana": "gh", "gibraltar": "gi",
+    "great britain": "gb", "greece": "gr", "greenland": "gl",
+    "grenada": "gd", "guadeloupe": "gp", "guam": "gu", "guatemala": "gt",
+    "guinea": "gn", "guinea-bissau": "gw", "guyana": "gy", "haiti": "ht",
+    "honduras": "hn", "hong kong": "hk", "hungary": "hu", "iceland": "is",
+    "india": "in", "indonesia": "id", "iran": "ir", "iraq": "iq",
+    "ireland": "ie", "israel": "il", "italy": "it", "jamaica": "jm",
+    "japan": "jp", "jordan": "jo", "kazakhstan": "kz", "kenya": "ke",
+    "kiribati": "ki", "kuwait": "kw", "kyrgyzstan": "kg", "laos": "la",
+    "latvia": "lv", "lebanon": "lb", "lesotho": "ls", "liberia": "lr",
+    "libya": "ly", "libyan arab. jamahir": "ly", "libyan arab jamahiriya": "ly",
+    "liechtenstein": "li", "lithuania": "lt", "luxembourg": "lu",
+    "madagascar": "mg", "malawi": "mw", "malaysia": "my", "maldives": "mv",
+    "mali": "ml", "malta": "mt", "martinique": "mq", "mauritania": "mr",
+    "mauritius": "mu", "mayotte": "yt", "mexico": "mx", "micronesia": "fm",
+    "moldova": "md", "monaco": "mc", "mongolia": "mn", "montenegro": "me",
+    "montserrat": "ms", "morocco": "ma", "mozambique": "mz", "myanmar": "mm",
+    "namibia": "na", "nauru": "nr", "nepal": "np", "netherlands": "nl",
+    "new caledonia": "nc", "new zealand": "nz", "nicaragua": "ni", "niger": "ne",
+    "nigeria": "ng", "north korea": "kp", "north macedonia": "mk",
+    "norway": "no", "oman": "om", "pakistan": "pk", "palau": "pw",
+    "palestine": "ps", "panama": "pa", "papua new guinea": "pg",
+    "paraguay": "py", "peru": "pe", "philippines": "ph", "poland": "pl",
+    "portugal": "pt", "puerto rico": "pr", "qatar": "qa", "reunion": "re",
+    "romania": "ro", "russia": "ru", "russian federation": "ru",
+    "rwanda": "rw", "samoa": "ws", "san marino": "sm",
+    "sao tome and principe": "st", "saudi arabia": "sa", "senegal": "sn",
+    "serbia": "rs", "seychelles": "sc", "sierra leone": "sl",
+    "singapore": "sg", "slovakia": "sk", "slovenia": "si",
+    "solomon islands": "sb", "somalia": "so", "south africa": "za",
+    "south korea": "kr", "south sudan": "ss", "spain": "es", "espana": "es",
+    "españa": "es", "sri lanka": "lk", "sudan": "sd", "suriname": "sr",
+    "swaziland": "sz", "sweden": "se", "switzerland": "ch", "schweiz": "ch",
+    "syria": "sy", "taiwan": "tw", "tajikistan": "tj", "tanzania": "tz",
+    "thailand": "th", "timor-leste": "tl", "togo": "tg", "tonga": "to",
+    "trinidad and tobago": "tt", "tunisia": "tn", "turkey": "tr",
+    "turkmenistan": "tm", "turks and caicos islands": "tc", "tuvalu": "tv",
+    "uganda": "ug", "ukraine": "ua", "united arab emirates": "ae",
+    "united kingdom": "gb", "united states": "us", "usa": "us",
+    "united states of america": "us", "uruguay": "uy", "uzbekistan": "uz",
+    "vanuatu": "vu", "vatican city": "va", "venezuela": "ve", "vietnam": "vn",
+    "yemen": "ye", "zambia": "zm", "zimbabwe": "zw",
+    # Pares de 2 segmentos observados na API Phenom (nome do pais dividido
+    # entre os dois ultimos segmentos da location).
+    "china, people's republic of": "cn",
+    "korea, (south) republic": "kr",
+    # Variantes comuns em ingles.
+    "uk": "gb", "u.k.": "gb", "u.k": "gb",
+    # Variantes comuns em ingles.
+    "ivory coast": "ci", "cote d'ivoire": "ci", "côte d'ivoire": "ci",
+    "burma": "mm", "east timor": "tl", "holland": "nl",
+    "england": "gb", "scotland": "gb", "wales": "gb", "northern ireland": "gb",
+    "macao": "mo", "macedonia": "mk", "republic of korea": "kr",
+    "people's republic of china": "cn", "the bahamas": "bs",
+    "the netherlands": "nl", "the philippines": "ph",
+    "democratic republic of congo": "cd", "dr congo": "cd", "dr. congo": "cd",
+}
+
+
+def _country_name_from_location(location: str) -> str | None:
+    """ISO do pais quando o ULTIMO segmento da ``location`` e um nome de pais.
+
+    Formato "Cidade, Estado, Pais" (API Phenom e similares): o nome do pais
+    vem explicito no ultimo segmento separado por virgula — derivar o ISO
+    disso e seguro (dado real, nao inferencia inventada). Suporta tambem
+    nomes divididos em 2 segmentos ("China, People's Republic of",
+    "Korea, (South) Republic").
+    """
+    parts = [p.strip().rstrip(".") for p in str(location).split(",")]
+    parts = [p for p in parts if p]
+    if not parts:
+        return None
+    last = parts[-1].lower()
+    code = COUNTRY_NAMES.get(last)
+    if code is None and len(parts) >= 2:
+        code = COUNTRY_NAMES.get(f"{parts[-2].lower()}, {last}")
+    return code
+
 
 def infer_country_iso(
     location: str | None = None,
@@ -348,11 +455,20 @@ def infer_country_iso(
 ) -> str | None:
     """ISO alpha-2 do pais da vaga, com fallbacks.
 
-    1. ``country_iso`` / ``country`` (normalizados).
-    2. Ultimo codigo de 2 letras valido em ``location`` (ex.: SAP grava
+    1. Nome do pais como ULTIMO segmento da ``location`` (ex.: Phenom grava
+       "Bonn, Nordrhein-Westfalen, Germany" — o pais vem explicito no dado).
+       Vence ate um ``country_iso`` invalido/ruidoso armazenado: corrige
+       falsos codigos antigos (ex.: "Remseck am Neckar, ..." -> 'am' Armenia
+       pelo token de 2 letras; agora o nome do pais no fim vale 'de').
+    2. ``country_iso`` / ``country`` (normalizados).
+    3. Ultimo codigo de 2 letras valido em ``location`` (ex.: SAP grava
        "Walldorf, DE, 69190" sem campo de pais; estados US como "GA"/"PA"
        nao sao codigos ISO e sao ignorados).
     """
+    if location:
+        code = _country_name_from_location(location)
+        if code is not None:
+            return code
     for value in (country_iso, country):
         if value:
             code = str(value).strip().lower()
@@ -449,10 +565,21 @@ def select_eligible(
         ]
     counts["area"] = len(step)
     if spec is not None:
-        step = [
-            j
-            for j in step
-            if matches_country(j.get("country_iso"), j.get("location"), j.get("remote"), spec)
-        ]
+        # Fase 2 (Phenom/DHL): o filtro de pais re-infere o ISO via
+        # ``infer_country_iso`` (ex.: Phenom nao expoe country_iso, mas a
+        # location termina com o NOME do pais). Alem de filtrar, GRAVA de
+        # volta o ISO canonico nos dicts selecionados (``country_iso`` e
+        # ``country``) — a saida eligible carrega o pais (DHL volta a ter
+        # 'de'), sem mudar a regra do filtro (mesmo predicado de sempre).
+        enriched: list[dict[str, Any]] = []
+        for j in step:
+            if matches_country(
+                j.get("country_iso"), j.get("location"), j.get("remote"), spec
+            ):
+                iso = infer_country_iso(
+                    location=j.get("location"), country_iso=j.get("country_iso")
+                )
+                enriched.append({**j, "country_iso": iso, "country": iso})
+        step = enriched
     counts["pais"] = len(step)
     return step, counts
