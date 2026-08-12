@@ -1,7 +1,7 @@
 """Testes do modulo de deduplicacao (scripts/test_dedup.py).
 
 Roda tres blocos: (1) normalizacoes puras, (2) deduplicate sintetico (chaves e
-regra do vencedor), (3) execucao real sobre data/relevant_jobs.json com
+regra do vencedor), (3) execucao real sobre data/eligible_jobs.json com
 verificacao dos grupos removidos. Uso:
 
     .venv/bin/python scripts/test_dedup.py
@@ -150,12 +150,12 @@ def test_synthetic() -> None:
 
 
 def test_real_data() -> None:
-    print("== execucao real (data/relevant_jobs.json) ==")
+    print("== execucao real (data/eligible_jobs.json) ==")
     root = Path(__file__).resolve().parent.parent
-    path = root / "data" / "relevant_jobs.json"
+    path = root / "data" / "eligible_jobs.json"
     jobs = json.loads(path.read_text(encoding="utf-8"))
     out, stats, removed = deduplicate(jobs)
-    print(f"  relevantes: {len(jobs)} -> {len(out)} (removidas {len(removed)})")
+    print(f"  eligible: {len(jobs)} -> {len(out)} (removidas {len(removed)})")
     print(f"  por chave: {stats}")
     check("real: sem duplicatas no resultado", len(out) == len(set(id(j) for j in out)))
 

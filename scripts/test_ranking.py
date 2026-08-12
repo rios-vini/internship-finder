@@ -2,7 +2,7 @@
 
 Roda tres blocos: (1) score_job sintetico (componentes e regras de negocio),
 (2) determinismo/desempate/robustez, (3) execucao real sobre
-data/relevant_jobs.json com distribucao, TOP 10 e sanity checks. Uso:
+data/eligible_jobs.json com distribucao, TOP 10 e sanity checks. Uso:
 
     .venv/bin/python scripts/test_ranking.py
 """
@@ -94,8 +94,10 @@ def test_synthetic() -> None:
     check("Marketing: skills 0", mkt_area["skills"] == 0.0)
     check("Marketing: MENOR que Praktikum SC", mkt.total < sc.total)
 
-    # 3. JMP Purchasing: "Junior Managers Program" no titulo protege de
-    #    penalidade de "manager" (marcador forte de tipo vence senioridade).
+    # 3. JMP Purchasing: "Junior Managers Program" NAO e mais marcador forte
+    #    (Fase 1 pos-auditoria: programas de trainee sao excluidos do
+    #    eligible; no ranking, nao ganham bonus de tipo e NAO protegem de
+    #    penalidade de manager).
     jmp = score_job(
         base_job(
             id="test:3",
@@ -104,10 +106,9 @@ def test_synthetic() -> None:
             description=None,
         )
     )
-    check("JMP: sem penalidade de manager", jmp.breakdown["penalties"] >= -0.5)
+    check("JMP: penalidade de manager aplica", jmp.breakdown["penalties"] <= -1.0)
     check("JMP: area alta (purchasing primary)", jmp.breakdown["area"] >= 3.0)
-    check("JMP: tipo no titulo", jmp.breakdown["type"] == 1.0)
-    check("JMP: score alto", jmp.total >= 4.0)
+    check("JMP: sem bonus de tipo (nao e marcador)", jmp.breakdown["type"] == 0.0)
 
     # 4. Senior sem marcador de tipo no titulo: penalidade forte.
     senior = score_job(
@@ -178,9 +179,9 @@ def _job_model(d: dict):
 
 
 def test_real_data() -> None:
-    print("== execucao real (data/relevant_jobs.json) ==")
+    print("== execucao real (data/eligible_jobs.json) ==")
     root = Path(__file__).resolve().parent.parent
-    jobs = json.loads((root / "data" / "relevant_jobs.json").read_text(encoding="utf-8"))
+    jobs = json.loads((root / "data" / "eligible_jobs.json").read_text(encoding="utf-8"))
     ranked = rank_jobs(jobs)
     scores = [j["score"] for j in ranked]
     scores_sorted = sorted(scores, reverse=True)
@@ -204,8 +205,9 @@ def test_real_data() -> None:
         )
 
     # Sanity checks da especificacao (calibrados no conjunto real 2026-08-10:
-    # mediana ~6.25; Praktikum Logistik/SC no topo; JMP acima da mediana;
-    # Marketing longe do topo; nenhum senior no topo).
+    # mediana ~6.25; Praktikum Logistik/SC no topo; JMP fora do eligible
+    # (programa excluido na Fase 1); Marketing longe do topo; nenhum senior
+    # no topo).
     def find(sub: str):
         return [j for j in ranked if sub.lower() in j["title"].lower()]
 
@@ -226,8 +228,8 @@ def test_real_data() -> None:
           bool(all_mkt) and all(ranked.index(j) + 1 > len(ranked) // 4 for j in all_mkt))
 
     jmp = find("Junior Managers Program")
-    check("sanity: 'Junior Managers Program' alto",
-          bool(jmp) and any(j["score"] >= med for j in jmp))
+    check("sanity: nenhum 'Junior Managers Program' no eligible",
+          not bool(jmp))
 
     import re
 
