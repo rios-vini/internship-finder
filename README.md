@@ -39,69 +39,80 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 **best matches = TOP N do ranked** (sem entidade/camada nova):
 
 ```bash
-.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (170 vagas ranqueadas, sem duplicatas)
+.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (389 vagas ranqueadas, sem duplicatas)
 .venv/bin/internship-finder --country europe             # Europa inteira em vez de so Alemanha
 .venv/bin/internship-finder --no-area                    # qualquer area, desde que estudante + Alemanha
-.venv/bin/internship-finder --no-dedup                   # mantem duplicatas (182 vagas)
+.venv/bin/internship-finder --no-dedup                   # mantem duplicatas (406 vagas)
 .venv/bin/internship-finder --no-rank                    # sem ranking: ordem original + exemplos
 .venv/bin/internship-finder --all                        # copia tudo, sem filtros
 ```
 
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
 mesma cascata, gravando o resultado em `data/eligible_jobs.json`. Lista atual
-(12 empresas com dados, validada em 2026-08-10; ver
-`docs/empresas_verificacao.md`):
+(39 empresas — 12 da validacao inicial + 27 da expansao E2, 2026-08-12; ver
+`docs/empresas_verificacao.md` e `docs/relatorio_expansao.md`):
 
 ```bash
-.venv/bin/internship-finder --companies "Bosch,SAP,Continental,ZF,Bayer,BASF,Henkel,Infineon,Zalando,Delivery Hero,Covestro,Evonik" --timeout 60
+.venv/bin/internship-finder --companies "Bosch,SAP,Continental,ZF,Bayer,BASF,Henkel,Infineon,Zalando,Delivery Hero,Covestro,Evonik,DHL,Hellmann,Lidl,Kaufland,VWAGLPPROD10,Schaeffler,Mahle,Trumpf,SICK AG,Voith,knorrbremsP2,brosefahrz,Phoenix Contact,KraussMaffei,kronesag,bbraunprd,Sartorius,freseniusglobal,Deutsche Telekom,Celonis,DATEV,Statista,Scout24,Siemens Healthineers,Zeiss Group,draegerP,Uniper" --timeout 60
 # ou, sem instalar:
 python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 ```
 
-Resultado do ultimo run completo (13.482 vagas brutas):
-`total 13.482 -> tipo estudante 1.995 -> area-alvo 510 -> Alemanha 182` (SAP 94,
-Bosch 43, BASF 21, Henkel 4, ZF 3, Bayer 2, Infineon 2, Continental 1; pos-dedup
-sao **170**). Com dedup, as 182 eligible viram **170** (12 duplicatas removidas:
-10 SAP + 2 Bosch — versoes EN/DE do mesmo cargo e repostagens). Apos a auditoria
-(Fase 1), a regra de tipo mudou e os 3 Junior Managers Program (Bosch) sairam do
-eligible (173 -> 170). A coleta total leva alguns minutos — cada tenant usa
-timeout proprio (`--timeout 60`).
+Resultado do ultimo run completo (expansao E2, 2026-08-12 04:52–04:57 UTC, 56.810
+vagas brutas, zero falhas):
+`total 56.810 -> tipo estudante 4.995 -> area-alvo 914 -> Alemanha 406` (pos-dedup
+sao **389** eligible/ranked — 18 empresas com vagas eligible; top: lidlstiftup2
+103, SAP 91, Volkswagen AG 42, BoschGroup 39, Schaeffler 25, BASF SE 21,
+Knorr-Bremse 18, Kaufland 13, B. Braun 8, MAHLE 7, Telekom Growthhub 5,
+Infineon 5, henkel 4, Brose 2, ZF 2, Bayer 2, continental 1, Uniper 1). Com
+dedup, as 406 eligible viram **389** (17 duplicatas removidas, todas por
+company+title+location — versoes EN/DE e repostagens; 0 por external_id/URL).
+A expansao **nao alterou filtros nem ranking** (exigencia do dono): so
+adicionou empresas a coleta, com 1 ajuste minimo de coletor (phenom em
+`URL_SLUG_ATS` + `beautifulsoup4` p/ avature — commit `050c5db`). A coleta
+total leva alguns minutos — cada tenant usa timeout proprio (`--timeout 60`).
 
-### Cobertura (17 avaliadas → 12 operacionais → 8 com vagas eligible)
+### Cobertura (39 na coleta → 18 com vagas eligible)
 
 **"Avaliada", "operacional" e "com vagas eligible" sao metricas DIFERENTES**:
 
 - **Avaliada** = empresa que passou pela verificacao do runbook
   (`docs/empresas_verificacao.md`): match exato na base do `ats-scrapers` e
-  teste do tenant/ATS. Foram **17** empresas alemãs avaliadas durante a
-  validacao.
+  teste do tenant/ATS. Apos a expansao E2 (2026-08-12), sao **39 empresas**
+  operacionais na coleta (12 da validacao inicial + 27 novas).
 - **Operacional** = retorna vagas no fetch real (tenant ativo, ATS com
-  scraper): **12** (13 tenants com dados em `data/jobs.json`).
+  scraper): **39** (36 tenants com dados em `data/jobs.json`; a Bosch conta
+  2x no campo `company` — tenants `BoschGroup` e `bosch-homecomfort`).
 - **Com vagas eligible** = tem pelo menos 1 vaga eligible na Alemanha apos a
-  cascata de filtros + dedup: **8** (SAP, Bosch, BASF, Henkel, ZF, Bayer,
-  Infineon, Continental).
+  cascata de filtros + dedup: **18** (as 8 originais + 10 novas: lidlstiftup2,
+  Volkswagen AG, Schaeffler, Knorr-Bremse, Kaufland, B. Braun, MAHLE, Telekom
+  Growthhub, Brose, Uniper).
 
-Falhas documentadas (motivo da exclusao): Siemens (tenant `teamtailor` inativo),
+Falhas conhecidas (motivo da exclusao): Siemens (tenant `teamtailor` inativo),
 BMW (falso positivo: so `join_com:bmw-kuehnert`, nao a BMW AG),
 Mercedes-Benz e ThyssenKrupp (sem match exato na base), Adidas (ATS `moka` sem
-scraper no pacote). Limitacao de dados: **Workday** (Covestro, Evonik, Zalando)
-nao expoe codigo de pais nas localizacoes alemas (ex.: Leverkusen, Essen,
-Berlin) — vagas alemãs desses tenants ficam sem `country_iso` e o filtro de
-pais nao as inclui; um enriquecimento futuro (geocodificacao/cidades)
-resolveria.
+scraper no pacote). **Novas na expansao E2**: Hager Group, Boehringer
+Ingelheim e Lanxess (SuccessFactors devolve XML malformado), Symrise (API
+join.com 422); identidades excluidas por decisao: ifm (join 422), Metro e Otto
+(falsos positivos), E.ON (sem match), Kuehne+Nagel (suica — fora do escopo
+"empresas alemas"), GFT (0 vagas no momento). Limitacao de dados: **Workday**
+(Covestro, Evonik, Zalando e as novas Trumpf/Sartorius/DATEV/Zeiss/Hellmann/
+Fresenius) nao expoe codigo de pais nas localizacoes alemas — vagas alemas
+desses tenants ficam sem `country_iso` e o filtro de pais nao as inclui; um
+enriquecimento futuro (geocodificacao/cidades) resolveria.
 
 Resumo de cobertura (reproduzido por `scripts/coverage.py`, offline e
 deterministico — `.venv/bin/python scripts/coverage.py`):
 
 | Metrica | Valor |
 | --- | --- |
-| Funil: raw → tipo → area → pais (DE) | 13.482 → 1.995 → 510 → 182 |
-| eligible (pos-dedup) → ranked | 170 → 170 (12 removidas na dedup) |
-| Empresas com eligible / tenants (source) | 8 / 6 (bruto: 13 empresas / 12 tenants) |
-| Top empresas (eligible) | SAP 94, BoschGroup 43, BASF SE 21, Henkel 4, ZF 3, Bayer 2, Infineon 2, Continental 1 |
-| Contribuicao das maiores | top1 SAP 55,3% | top3 92,9% | top5 97,1% |
-| Top ATS (eligible) | successfactors 120, smartrecruiters 44, cornerstone 4, eightfold 2 |
-| Paises (eligible) | `de` 170 (100%) — None/localizacao desconhecida: 0 (0,0%) |
+| Funil: raw → tipo → area → pais (DE) | 56.810 → 4.995 → 914 → 406 |
+| eligible (pos-dedup) → ranked | 389 → 389 (17 removidas na dedup) |
+| Empresas com eligible / tenants (source) | 18 / 13 (bruto: 39 empresas / 36 tenants) |
+| Top empresas (eligible) | lidlstiftup2 103, SAP 91, Volkswagen AG 42, BoschGroup 39, Schaeffler 25, BASF SE 21, Knorr-Bremse 18, Kaufland 13, B. Braun 8, MAHLE 7, Telekom Growthhub 5, Infineon 5 |
+| Contribuicao das maiores | top1 26,5% | top3 60,7% | top5 77,1% |
+| Top ATS (eligible) | successfactors 335, smartrecruiters 40, eightfold 10, cornerstone 4 |
+| Paises (eligible) | `de` 389 (100%) — None/localizacao desconhecida: 0 (0,0%) |
 
 (Fase 3: `country_iso` tem fonte unica — `filters.infer_country_iso`; a
 heuristica antiga de "tail da location" foi removida do adapter, entao
@@ -151,8 +162,8 @@ a com `description` preenchida; senao a com `employment_type`; senao a que
 veio primeiro. O CLI reporta quantas foram removidas e por qual chave.
 Titulos que sao traducao real (conteudo diferente, ex.: "Marketing
 Deutschland" vs "Marketing Germany") NAO sao fundidos — exigiria dicionario
-de traducao/fuzzy, fora do escopo do MVP. No conjunto atual: eligible
-182 -> 170 (12 removidas, todas pela chave 3; 10 SAP + 2 Bosch).
+de traducao/fuzzy, fora do escopo do MVP. No conjunto atual (expansao E2):
+eligible 406 -> 389 (17 removidas, todas pela chave 3; 0 por external_id/URL).
 
 ### Ranking por perfil
 
@@ -173,19 +184,18 @@ Score = `area + skills + language + type + location + penalties`:
 | `location` | DE explicito +1.0; Berlin +0.5 | ISO alpha-2 via `filters.infer_country_iso`; remoto neutro |
 | `penalties` | senior/director/head/principal -3.0; manager -1.0; FULL_TIME -0.5 | senioridade e "manager" SO valem sem marcador forte de tipo no titulo (Praktikum/Werkstudent/Internship no titulo protegem; JMP/Trainee nao protegem — nao sao marcadores); FULL_TIME e suave (Werkstudent/Praktikum vêm marcados FULL_TIME no conjunto e nao zeram) |
 
-Sem descricao (46 das 170), age-se com graca: skills/idioma contribuem 0 e o
-score vem do titulo. Exemplo real do conjunto atual (2026-08-10, 170
-eligible, pos-Fase 2): scores `min 1.00 | mediana 6.75 | max 13.50`; TOP 1 =
-"Pflichtpraktikum Logistik - Schwerpunkt Data & Analytics" (13.50); o antigo
-TOP 1 "Working Student ... Communications / Media Production in SAP Analytics
-Cloud" (14.00 — falso positivo: a area 8.0 vinha do NOME DO PRODUTO) caiu
-para **6.00 (posicao 99/170)** — mascarado o produto no titulo, a area zerou
-e so restaram skills/idioma/tipo/local; "Praktikum im Bereich Logistik und
-Supply Chain Design" em 5o (11.50); "Working Student - Marketing" nao chega
-ao quartil superior; nenhuma vaga senior no TOP 10; nenhum JMP no eligible;
-nenhum communications/marketing/media no TOP 10 (novo sanity da Fase 2);
-o presales SCM (B-list do dono) segue no TOP 10 com a area real de Supply
-Chain no titulo (a mudanca nao penaliza contexto).
+Sem descricao (parte das 389), age-se com graca: skills/idioma contribuem 0 e o
+score vem do titulo. Exemplo real do conjunto atual (2026-08-12, expansao E2,
+389 eligible, sem mudanca de regras): scores `min 1.00 | mediana 6.00 |
+max 16.00`; TOP 1 = "Werkstudent Data Analytics & Logistics" (Knorr-Bremse,
+16.00); o ex-TOP 1 da Fase 4 "Pflichtpraktikum Logistik - Schwerpunkt Data &
+Analytics" (BoschGroup, 13.50) segue no TOP 3; o falso positivo corrigido na
+Fase 2 ("Working Student ... Communications / Media Production in SAP
+Analytics Cloud") continua fora do TOP 10 (area zerada — produto mascarado no
+titulo); nenhuma vaga senior no TOP 10; nenhum JMP no eligible; nenhum
+communications/marketing/media no TOP 10 (sanity da Fase 2 mantido);
+o presales SCM (B-list do dono) segue no TOP 20 com a area real de Supply
+Chain no titulo.
 Ver `scripts/test_ranking.py` (sintetico + run real + sanity checks).
 
 ## Runbook
@@ -227,7 +237,7 @@ parecida errada). Passos:
 **Coleta** (grava o bruto em `data/jobs.json` e ja aplica a cascata, gravando
 as eligible em `data/eligible_jobs.json` + `.csv`):
 ```bash
-.venv/bin/internship-finder --companies "Bosch,SAP,Continental,ZF,Bayer,BASF,Henkel,Infineon,Zalando,Delivery Hero,Covestro,Evonik" --timeout 60
+.venv/bin/internship-finder --companies "Bosch,SAP,Continental,ZF,Bayer,BASF,Henkel,Infineon,Zalando,Delivery Hero,Covestro,Evonik,DHL,Hellmann,Lidl,Kaufland,VWAGLPPROD10,Schaeffler,Mahle,Trumpf,SICK AG,Voith,knorrbremsP2,brosefahrz,Phoenix Contact,KraussMaffei,kronesag,bbraunprd,Sartorius,freseniusglobal,Deutsche Telekom,Celonis,DATEV,Statista,Scout24,Siemens Healthineers,Zeiss Group,draegerP,Uniper" --timeout 60
 ```
 **Filtro** (re-aplica a cascata sobre o bruto ja coletado, sem rede):
 ```bash
