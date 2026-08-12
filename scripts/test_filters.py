@@ -279,6 +279,47 @@ def test_consistency() -> None:
         "adapter: sem localizacao -> country_iso None",
         sem_pais.country_iso is None,
     )
+    # Fase 2 (Phenom/DHL): a API Phenom compoe "Cidade, Estado, Nome do Pais"
+    # sem campo country_iso — o fallback por NOME do pais no ultimo segmento
+    # recupera o ISO. Nomes divididos em 2 segmentos tambem sao reconhecidos.
+    phenom_de = adapter.to_job(
+        {
+            "title": "Praktikum Logistik (m/w/d)",
+            "location": "Bonn, Nordrhein-Westfalen, Germany",
+        },
+        company,
+    )
+    check("F2. Phenom 'Bonn, ..., Germany' -> country_iso 'de'",
+          phenom_de.country_iso == "de")
+    phenom_us = adapter.to_job(
+        {
+            "title": "Intern - Supply Chain",
+            "location": "Goodyear, Arizona, United States of America",
+        },
+        company,
+    )
+    check("F2. Phenom '..., United States of America' -> 'us'",
+          phenom_us.country_iso == "us")
+    check("F2. infer: 'Chengdu, ..., China, People's Republic of' -> 'cn'",
+          infer_country_iso(
+              location="Chengdu, Sichuan, China, People's Republic of"
+          ) == "cn")
+    check("F2. infer: 'Seoul, ..., Korea, (South) Republic' -> 'kr'",
+          infer_country_iso(
+              location="Seoul, Seoul Teugbyeolsi, Korea, (South) Republic"
+          ) == "kr")
+    # Junk de 2 letras corrigido: o NOME do pais no fim vence o codigo
+    # ruidoso armazenado (nunca inventa pais).
+    check("F2. 'Remseck am Neckar, ..., Germany' (stored 'am') -> 'de'",
+          infer_country_iso(location="Remseck am Neckar, Baden-Württemberg, Germany",
+                            country_iso="am") == "de")
+    check("F2. 'Cienega de flores, ..., Mexico' (stored 'de') -> 'mx'",
+          infer_country_iso(location="Cienega de flores, Nuevo Leon, Mexico",
+                            country_iso="de") == "mx")
+    # Regressao: formato SAP "Cidade, DE, CEP" continua resolvendo pelo
+    # codigo ISO na location (nao ha nome de pais no fim).
+    check("F2. regressao SAP 'Walldorf, DE, 69190' -> 'de'",
+          infer_country_iso(location="Walldorf, DE, 69190") == "de")
 
 
 def main() -> int:
