@@ -48,8 +48,8 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 ```
 
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
-mesma cascata, gravando o resultado em `data/eligible_jobs.json`. Lista-alvo
-atual (12 empresas com dados, validada em 2026-08-10; ver
+mesma cascata, gravando o resultado em `data/eligible_jobs.json`. Lista atual
+(12 empresas com dados, validada em 2026-08-10; ver
 `docs/empresas_verificacao.md`):
 
 ```bash
@@ -58,15 +58,54 @@ atual (12 empresas com dados, validada em 2026-08-10; ver
 python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 ```
 
-Resultado do ultimo run completo (13 empresas candidatas, 13.482 vagas brutas):
+Resultado do ultimo run completo (13.482 vagas brutas):
 `total 13.482 -> tipo estudante 1.995 -> area-alvo 510 -> Alemanha 182` (SAP 94,
 Bosch 43, BASF 21, Henkel 4, ZF 3, Bayer 2, Infineon 2, Continental 1; pos-dedup
 sao **170**). Com dedup, as 182 eligible viram **170** (12 duplicatas removidas:
 10 SAP + 2 Bosch — versoes EN/DE do mesmo cargo e repostagens). Apos a auditoria
 (Fase 1), a regra de tipo mudou e os 3 Junior Managers Program (Bosch) sairam do
-eligible (173 -> 170); Siemens foi testada e excluida (tenant `teamtailor`
-inativo). A coleta total leva alguns minutos — cada tenant usa timeout proprio
-(`--timeout 60`).
+eligible (173 -> 170). A coleta total leva alguns minutos — cada tenant usa
+timeout proprio (`--timeout 60`).
+
+### Cobertura (17 avaliadas → 12 operacionais → 8 com vagas eligible)
+
+**"Avaliada", "operacional" e "com vagas eligible" sao metricas DIFERENTES**:
+
+- **Avaliada** = empresa que passou pela verificacao do runbook
+  (`docs/empresas_verificacao.md`): match exato na base do `ats-scrapers` e
+  teste do tenant/ATS. Foram **17** empresas alemãs avaliadas durante a
+  validacao.
+- **Operacional** = retorna vagas no fetch real (tenant ativo, ATS com
+  scraper): **12** (13 tenants com dados em `data/jobs.json`).
+- **Com vagas eligible** = tem pelo menos 1 vaga eligible na Alemanha apos a
+  cascata de filtros + dedup: **8** (SAP, Bosch, BASF, Henkel, ZF, Bayer,
+  Infineon, Continental).
+
+Falhas documentadas (motivo da exclusao): Siemens (tenant `teamtailor` inativo),
+BMW (falso positivo: so `join_com:bmw-kuehnert`, nao a BMW AG),
+Mercedes-Benz e ThyssenKrupp (sem match exato na base), Adidas (ATS `moka` sem
+scraper no pacote). Limitacao de dados: **Workday** (Covestro, Evonik, Zalando)
+nao expoe codigo de pais nas localizacoes alemas (ex.: Leverkusen, Essen,
+Berlin) — vagas alemãs desses tenants ficam sem `country_iso` e o filtro de
+pais nao as inclui; um enriquecimento futuro (geocodificacao/cidades)
+resolveria.
+
+Resumo de cobertura (reproduzido por `scripts/coverage.py`, offline e
+deterministico — `.venv/bin/python scripts/coverage.py`):
+
+| Metrica | Valor |
+| --- | --- |
+| Funil: raw → tipo → area → pais (DE) | 13.482 → 1.995 → 510 → 182 |
+| eligible (pos-dedup) → ranked | 170 → 170 (12 removidas na dedup) |
+| Empresas com eligible / tenants (source) | 8 / 6 (bruto: 13 empresas / 12 tenants) |
+| Top empresas (eligible) | SAP 94, BoschGroup 43, BASF SE 21, Henkel 4, ZF 3, Bayer 2, Infineon 2, Continental 1 |
+| Contribuicao das maiores | top1 SAP 55,3% | top3 92,9% | top5 97,1% |
+| Top ATS (eligible) | successfactors 120, smartrecruiters 44, cornerstone 4, eightfold 2 |
+| Paises (eligible) | `de` 170 (100%) — None/localizacao desconhecida: 0 (0,0%) |
+
+(Fase 3: `country_iso` tem fonte unica — `filters.infer_country_iso`; a
+heuristica antiga de "tail da location" foi removida do adapter, entao
+"Friedrichshafen, BW, DE, 88046" vira `de` e nao mais `None`.)
 
 Saida: contagens em cascata (`total -> tipo estudante -> area-alvo -> pais`),
 linha de dedup (`removidas N: X por external_id, Y por URL, Z por
@@ -208,6 +247,9 @@ internship, posted_at, collected_at, external_id, employment_type, country_iso, 
 
 - `source` e `ats:slug` do tenant (ex.: `smartrecruiters:BoschGroup`).
 - `id` deriva de `external_id` (ou hash da URL) prefixado pelo `source`.
+- `country_iso` tem FONTE UNICA: o adapter usa `filters.infer_country_iso`
+  (ISO alpha-2 valido via `COUNTRY_CODES`; fallback `country_iso` -> `country`
+  -> tokens da location). Nenhuma heuristica de tail no adapter — Fase 3.
 - `internship` e preenchido pelo adapter via heuristica (`filters.py`, termos
   EN/PT/DE: intern, internship, working student, Werkstudent, Praktikum,
   iXp...). Graduate/absolvent NAO entram (perfil e de estudante atual);
@@ -230,6 +272,8 @@ src/internship_finder/
 ├── ranking.py      # ranking por perfil: score_job (score + breakdown) e rank_jobs
 └── cli.py          # entry point `internship-finder` (filtro default + coleta)
 scripts/collect_jobs.py   # atalho p/ rodar sem instalar
+scripts/verify_companies.py  # runbook de empresas (match exato + fetch)
+scripts/coverage.py       # cobertura: funil + empresas/ATS/paises (offline)
 ```
 
 ## Notas
