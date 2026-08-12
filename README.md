@@ -127,7 +127,7 @@ Score = `area + skills + language + type + location + penalties`:
 
 | Componente | Peso | Fonte |
 | --- | --- | --- |
-| `area` | titulo x2.0; descricao x0.0 | reusa `filters.area_score` (PRIMARY 3 / RELATED 2 / WEAK 1 no titulo). A area da descricao e **zerada** por calibracao no conjunto real: templates genericos (ex.: SAP) citam `data`/`sap`/`reporting` em vagas de Marketing e inflavam a area; o valor da descricao entra por skills e idioma |
+| `area` | titulo x2.0; descricao x0.0 | reusa `filters.area_score` (PRIMARY 3 / RELATED 2 / WEAK 1 no titulo). A area da descricao e **zerada** por calibracao no conjunto real: templates genericos (ex.: SAP) citam `data`/`sap`/`reporting` em vagas de Marketing e inflavam a area; o valor da descricao entra por skills e idioma. Fase 2: frases de PRODUTO com termos de area no titulo (`AREA_TITLE_PRODUCT_PATTERNS`: "SAP Analytics Cloud", "Analytics Cloud") sao **mascaradas** antes da deteccao — o termo e do nome do produto, nao da funcao ("Working Student ... Communications / Media Production in SAP Analytics Cloud" nao e vaga de Analytics). Lista curta e fixa, calibrada no caso real; a frase mais especifica vem primeiro (senao sobraria o "sap" fraco pontuando) |
 | `skills` | +0.75 por competencia (descricao) | Inventory Management, Supplier Relationships/Management, Process Automation, System Integration, Python, APIs, Cloud, Reporting, Continuous Improvement |
 | `language` | ingles +1.5, alemao +0.5 | detectados no titulo+descricao (`english`/`englisch`; `german`/`deutsch` como palavra — "Deutschland" nao conta) |
 | `type` | +1.0 | marcador forte de tipo no TITULO (Praktikum, Werkstudent, Internship, iXp... — reusa `filters.STUDENT_TYPE_PATTERNS`; Trainee/JMP NAO sao marcadores: os programas de `filters.PROGRAM_EXCLUSION_PATTERNS` nao chegam ao eligible) |
@@ -136,11 +136,17 @@ Score = `area + skills + language + type + location + penalties`:
 
 Sem descricao (46 das 170), age-se com graca: skills/idioma contribuem 0 e o
 score vem do titulo. Exemplo real do conjunto atual (2026-08-10, 170
-eligible): scores `min 1.00 | mediana 6.75 | max 14.00`; TOP 1 =
-"Working Student ... SAP Analytics Cloud" (14.00 — falso positivo conhecido
-de area, a corrigir na Fase 2); "Praktikum im Bereich Logistik und Supply
-Chain Design" em 6o (11.50); "Working Student - Marketing" nao chega
-ao quartil superior; nenhuma vaga senior no TOP 10; nenhum JMP no eligible.
+eligible, pos-Fase 2): scores `min 1.00 | mediana 6.75 | max 13.50`; TOP 1 =
+"Pflichtpraktikum Logistik - Schwerpunkt Data & Analytics" (13.50); o antigo
+TOP 1 "Working Student ... Communications / Media Production in SAP Analytics
+Cloud" (14.00 — falso positivo: a area 8.0 vinha do NOME DO PRODUTO) caiu
+para **6.00 (posicao 99/170)** — mascarado o produto no titulo, a area zerou
+e so restaram skills/idioma/tipo/local; "Praktikum im Bereich Logistik und
+Supply Chain Design" em 5o (11.50); "Working Student - Marketing" nao chega
+ao quartil superior; nenhuma vaga senior no TOP 10; nenhum JMP no eligible;
+nenhum communications/marketing/media no TOP 10 (novo sanity da Fase 2);
+o presales SCM (B-list do dono) segue no TOP 10 com a area real de Supply
+Chain no titulo (a mudanca nao penaliza contexto).
 Ver `scripts/test_ranking.py` (sintetico + run real + sanity checks).
 
 ## Runbook
