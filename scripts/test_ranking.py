@@ -15,7 +15,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from internship_finder.filters import area_score  # noqa: E402
+from internship_finder.filters import (  # noqa: E402
+    TYPE_EXCLUSION_PATTERNS,
+    area_score,
+)
 from internship_finder.ranking import (  # noqa: E402
     WEIGHT_AREA_TITLE,
     rank_jobs,
@@ -300,14 +303,14 @@ def test_real_data() -> None:
 
     # Fase 1 (correcao de ruido de tipo): nenhuma vaga de Duales Studium /
     # Ausbildung / Schul-/Schuelerpraktikum no eligible (regra nova do dono).
-    noise_pat = re.compile(
-        r"dual\w* stud|dual\w*[:/]*\w* student|dual\w* hochschule|dual\w* master"
-        r"|(berufs)?ausbildungs?"
-        r"|sch(ü|ue)lerpraktik|schulpraktik|praktikum f(ü|ue)r sch(ü|ue)ler"
-        r"|berufsorientierungspraktikum|\bfsj\b|\bbfd\b|bundesfreiwilligendienst",
-        re.IGNORECASE,
-    )
-    noise = [j for j in ranked if noise_pat.search(j["title"])]
+    # Fonte unica de verdade: TYPE_EXCLUSION_PATTERNS de filters.py — a regex
+    # duplicada local casava 'schulpraktik' DENTRO de 'Hochschulpraktikum'
+    # (estagio universitario VALIDO, 4 vagas B. Braun preservadas de proposito)
+    # e gerava falso positivo.
+    noise = [
+        j for j in ranked
+        if any(re.search(p, j["title"], re.IGNORECASE) for p in TYPE_EXCLUSION_PATTERNS)
+    ]
     check("sanity Fase1: nenhum ruido de tipo (dual/ausbildung/schueler) no eligible",
           not bool(noise))
     # Hochschulpraktikum (estagio universitario VALIDO) nao pode ter saido.
