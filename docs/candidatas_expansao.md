@@ -417,3 +417,96 @@ scraper registrado). Os ATS sem scraper conhecidos seguem os do E1a: **moka**
    momento; reavaliar em E2 se voltou a publicar.
 6. **Fresenius**: só o tenant `fse` casa com `freseniusglobal`; fme/fk_careers
    exigiriam consulta própria (não testados — fora da decisão desta fase).
+
+---
+
+# Fase E2 — resultado final (adição à coleta, 2026-08-12)
+
+Coleta final em **2026-08-12 04:52:06–04:57:31 UTC** com as **39 empresas**
+(12 atuais + 27 novas) via `--companies` + `--timeout 60`. **Nenhuma regra de
+filtro/ranking foi alterada** (exigência do dono); a única mudança de código da
+expansão foi o ajuste mínimo do coletor já aplicado no E1b (commit `050c5db`:
+`URL_SLUG_ATS` += phenom; `beautifulsoup4` no requirements). Nesta fase, apenas
+correção de texto de relatório em `scripts/coverage.py` (rótulo "(12
+operacionais)" obsoleto, sem efeito em números).
+
+## Empresas adicionadas (27)
+
+| Empresa | Consulta no `--companies` | Tenant (ATS) | Vagas brutas |
+| --- | --- | --- | --- |
+| DHL Group | `DHL` | `phenom:nan` (phenom) | 8.405 |
+| Lidl | `Lidl` | `successfactors:lidlstiftuP2` | 24.488 |
+| Kaufland | `Kaufland` | `successfactors:jobs` | 3.636 |
+| Volkswagen Group | `VWAGLPPROD10` | `successfactors:VWAGLPPROD10` | 974 |
+| B. Braun | `bbraunprd` | `successfactors:bbraunprd` | 925 |
+| Zeiss Group | `Zeiss Group` | `workday:zeissgroup/external` | 812 |
+| Schaeffler | `Schaeffler` | `successfactors:jobs` | 747 |
+| Mahle | `Mahle` | `successfactors:mahleinter` | 391 |
+| Voith | `Voith` | `successfactors:jobs` | 390 |
+| Trumpf (3 tenants) | `Trumpf` | `workday:trumpf/*` | 392 |
+| Hellmann | `Hellmann` | `workday:hellmann/hellmannexternaljobs` | 320 |
+| Knorr-Bremse | `knorrbremsP2` | `successfactors:knorrbremsP2` | 270 |
+| Celonis | `Celonis` | `greenhouse:celonis` | 258 |
+| Deutsche Telekom | `Deutsche Telekom` | `eightfold:telekom-growthhub` | 237 |
+| Sartorius | `Sartorius` | `workday:sartorius/sartoriuscareers` | 205 |
+| Brose | `brosefahrz` | `successfactors:brosefahrz` | 204 |
+| SICK AG | `SICK AG` | `successfactors:jobs` | 92 |
+| Uniper | `Uniper` | `successfactors:jobs` | 90 |
+| Krones | `kronesag` | `successfactors:kronesag` | 79 |
+| DATEV (2 tenants) | `DATEV` | `workday:datev/*` | 64 |
+| Fresenius | `freseniusglobal` | `workday:freseniusglobal/fse` | 54 |
+| Statista | `Statista` | `ashby:statista` | 48 |
+| Phoenix Contact | `Phoenix Contact` | `greenhouse:phoenixcontact` | 32 |
+| Scout24 | `Scout24` | `greenhouse:scout24` | 26 |
+| Dräger | `draegerP` | `successfactors:draegerP` | 24 |
+| KraussMaffei | `KraussMaffei` | `successfactors:jobs` | 16 |
+| Siemens Healthineers | `Siemens Healthineers` | `avature:https://jobs.siemens-healthineers.com/...` | 6 |
+
+## Empresas que falharam (4) + motivo
+
+| Empresa | ATS | Motivo |
+| --- | --- | --- |
+| Hager Group | successfactors | `SuccessFactors returned malformed XML (line 15, col 51)` — instância `career012.successfactors.eu` devolve XML inválido (persistente nos 2 lotes E1b) |
+| Boehringer Ingelheim | successfactors | idem — instância `career5.successfactors.eu` |
+| Lanxess | successfactors | idem — instância `career5.successfactors.eu` |
+| Symrise | join_com | API `join.com/api/public/companies/95418/jobs` retorna **422** (endpoint quebrado) |
+
+## Identidades excluídas
+
+| Empresa | Motivo |
+| --- | --- |
+| ifm | identidade correta (`join_com:ifm`), API join.com 422 (mesma falha do Symrise) |
+| Metro | falso positivo — vagas de segurança/EMS nos EUA, não a Metro AG |
+| Otto | falso positivo — `otto.applytojob.com`, não o Otto Group |
+| E.ON | sem match exato na base |
+| Kuehne+Nagel | suíça — fora do escopo "empresas alemãs" (decisão do lead/owner) |
+| GFT Technologies SE | tenant ativo, **0 vagas** no momento |
+
+## ATS sem scraper no pacote
+
+**Nenhum novo** na expansão — todas as 39 operacionais usam ATS com scraper.
+Seguem conhecidos (fora da lista): moka (adidas), adp (Rhenus), softgarden
+(Bechtel/HanseVision), paycom (Balluff INC).
+
+## Funil da coleta final
+
+```
+raw 56.810 → tipo estudante 4.995 → área-alvo 914 → país DE 406 → dedup 17 → eligible 389 → ranked 389
+```
+
+## Duplicatas
+
+`dedup: removidas 17 (0 por external_id, 0 por URL, 17 por company+title+location)`
+ versões EN/DE e repostagens; zero cross-tenant.
+
+## Impacto no ranking (distribuição antes/depois)
+
+| Métrica | Baseline Fase 4 (n=165) | E2 (n=389) |
+| --- | --- | --- |
+| min | 2.0 | 1.0 |
+| mediana | 6.75 | 6.0 |
+| max | 13.5 | 16.0 |
+| média | 6.47 | 6.01 |
+| faixas [10+]/[8,10)/[6,8)/[4,6)/[0,4) | 11/20/65/56/13 | 37/43/125/110/74 |
+
+TOP 20 antes/depois e análise completa: `docs/relatorio_expansao.md`.
