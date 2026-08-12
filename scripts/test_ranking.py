@@ -261,7 +261,11 @@ def test_real_data() -> None:
         )
 
     # Sanity checks da especificacao (calibrados no conjunto real 2026-08-12,
-    # expansao E2: n=389, mediana 6.00; antes 2026-08-10: n=170, mediana 6.75):
+    # expansao E2: n=389, mediana 6.00; antes 2026-08-10: n=170, mediana 6.75).
+    # Fase 1 das correcoes pos-auditoria (ruido de tipo): 106 vagas de Duales
+    # Studium/Ausbildung/Schuelerpraktikum sairam do eligible (n=283) — nenhuma
+    # regra de ranking foi alterada; os sanity abaixo sao de regra (titulo),
+    # nao de contagem, e seguem validos no conjunto menor.
     # Praktikum Logistik/SC no topo; JMP fora do eligible (programa excluido
     # na Fase 1); Marketing longe do topo; nenhum senior no topo; Fase 2:
     # Communications/Media "SAP Analytics Cloud" fora do topo e sem
@@ -293,6 +297,23 @@ def test_real_data() -> None:
           not bool(jmp))
 
     import re
+
+    # Fase 1 (correcao de ruido de tipo): nenhuma vaga de Duales Studium /
+    # Ausbildung / Schul-/Schuelerpraktikum no eligible (regra nova do dono).
+    noise_pat = re.compile(
+        r"dual\w* stud|dual\w*[:/]*\w* student|dual\w* hochschule|dual\w* master"
+        r"|(berufs)?ausbildungs?"
+        r"|sch(ü|ue)lerpraktik|schulpraktik|praktikum f(ü|ue)r sch(ü|ue)ler"
+        r"|berufsorientierungspraktikum|\bfsj\b|\bbfd\b|bundesfreiwilligendienst",
+        re.IGNORECASE,
+    )
+    noise = [j for j in ranked if noise_pat.search(j["title"])]
+    check("sanity Fase1: nenhum ruido de tipo (dual/ausbildung/schueler) no eligible",
+          not bool(noise))
+    # Hochschulpraktikum (estagio universitario VALIDO) nao pode ter saido.
+    hoch = find("Hochschulpraktikum")
+    check("sanity Fase1: 'Hochschulpraktikum' segue no eligible",
+          bool(hoch))
 
     top10 = ranked[:10]
     senior_pat = re.compile(r"\bsenior\b|\bdirector\b|\bhead of\b|\bprincipal\b", re.IGNORECASE)
