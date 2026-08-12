@@ -3,3 +3,6 @@
 ats-scrapers>=0.2.0
 requests>=2.31
 pydantic>=2.0
+# Scraper avature (Siemens Healthineers, DHL) exige beautifulsoup4 (extra
+# opcional do ats-scrapers); sem ele o fetch falha com ScraperError.
+beautifulsoup4>=4.12

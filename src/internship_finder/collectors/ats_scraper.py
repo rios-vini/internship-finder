@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 
 # Scrapers cujo "slug" e na verdade a URL completa de careers (o slug da
 # base, ex.: "jobs" p/ SAP/ZF no successfactors, nao e usavel sozinho).
-URL_SLUG_ATS = {"successfactors", "workday", "taleo", "icims"}
+URL_SLUG_ATS = {"successfactors", "workday", "taleo", "icims", "phenom"}
 
 
 def scraper_slug(company: Company) -> str:

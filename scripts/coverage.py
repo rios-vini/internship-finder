@@ -74,7 +74,7 @@ def main() -> int:
     print("\n=== Empresas (eligible) ===")
     print(f"  {n_companies} empresas distintas | {n_tenants} tenants (source)")
     print(f"  bruto: {len({j['company'] for j in jobs})} empresas | "
-          f"{len({j['source'] for j in jobs})} tenants com dados (12 operacionais)")
+          f"{len({j['source'] for j in jobs})} tenants com dados")
     for company, n in by_company.most_common():
         print(f"    {n:>4}  {company}")
     top1 = by_company.most_common(1)[0][1]

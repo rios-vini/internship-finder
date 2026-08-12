@@ -73,3 +73,49 @@ por token corroborado pelo slug). Re-rode o script para revalidar:
   **sem código de país** na localização (`country_iso` nulo) → o filtro de país não consegue
   inferir DE. Conhecido; um enriquecimento futuro (geocodificação/cidades) resolveria.
 - **bosch-homecomfort**: sem vagas de tipo estudante.
+
+---
+
+## Expansão E2 (2026-08-12) — 27 empresas novas (adicionadas à coleta)
+
+Verificação em `docs/candidatas_expansao.md` (E1a: matching; E1b: fetch de
+validação). Status E2 = coleta real final (run 04:52–04:57 UTC, `--timeout 60`):
+**27 OK com vagas, 0 falhas** na lista adicionada. Consulta = nome usado no
+`--companies` (slug do tenant quando o nome natural não passa no coletor
+estrito).
+
+| Empresa | Consulta | Tenant (ATS) | Slug efetivo / URL | Status E2 | Vagas |
+| --- | --- | --- | --- | --- | --- |
+| DHL Group | `DHL` | `phenom:nan` (phenom) | `https://careers.dhl.com` | OK | 8.405 |
+| Lidl | `Lidl` | `successfactors:lidlstiftuP2` | `https://jobs.lidl` | OK | 24.488 |
+| Kaufland | `Kaufland` | `successfactors:jobs` | `https://jobs.kaufland.com` | OK | 3.636 |
+| Volkswagen Group | `VWAGLPPROD10` | `successfactors:VWAGLPPROD10` | `https://jobs.volkswagen-group.com` | OK | 974 |
+| B. Braun | `bbraunprd` | `successfactors:bbraunprd` | `https://jobs.bbraun.com` | OK | 925 |
+| Zeiss Group | `Zeiss Group` | `workday:zeissgroup/external` | `https://zeissgroup.wd3.myworkdayjobs.com/external` | OK | 812 |
+| Schaeffler | `Schaeffler` | `successfactors:jobs` | `https://jobs.schaeffler.com` | OK | 747 |
+| Mahle | `Mahle` | `successfactors:mahleinter` | `https://careers.mahle.com` | OK | 391 |
+| Voith | `Voith` | `successfactors:jobs` | `https://jobs.voith.com` | OK | 390 |
+| Trumpf | `Trumpf` | `workday:trumpf/*` (3 tenants) | `https://trumpf.wd3.myworkdayjobs.com/...` | OK | 392 |
+| Hellmann | `Hellmann` | `workday:hellmann/hellmannexternaljobs` | `https://hellmann.wd103.myworkdayjobs.com/hellmannexternaljobs` | OK | 320 |
+| Knorr-Bremse | `knorrbremsP2` | `successfactors:knorrbremsP2` | `https://careers.knorr-bremse.com` | OK | 270 |
+| Celonis | `Celonis` | `greenhouse:celonis` | `celonis` | OK | 258 |
+| Deutsche Telekom | `Deutsche Telekom` | `eightfold:telekom-growthhub` | `telekom-growthhub` | OK | 237 |
+| Sartorius | `Sartorius` | `workday:sartorius/sartoriuscareers` | `https://sartorius.wd3.myworkdayjobs.com/sartoriuscareers` | OK | 205 |
+| Brose | `brosefahrz` | `successfactors:brosefahrz` | `https://job.brose.com` | OK | 204 |
+| SICK AG | `SICK AG` | `successfactors:jobs` | `https://jobs.sick.com` | OK | 92 |
+| Uniper | `Uniper` | `successfactors:jobs` | `https://jobs.uniper.energy` | OK | 90 |
+| Krones | `kronesag` | `successfactors:kronesag` | `https://career.krones.com` | OK | 79 |
+| DATEV | `DATEV` | `workday:datev/Datev_Careers` + `.../ENG_DATEV` | `https://datev.wd3.myworkdayjobs.com/...` | OK | 64 |
+| Fresenius | `freseniusglobal` | `workday:freseniusglobal/fse` | `https://freseniusglobal.wd3.myworkdayjobs.com/fse` | OK | 54 |
+| Statista | `Statista` | `ashby:statista` | `statista` | OK | 48 |
+| Phoenix Contact | `Phoenix Contact` | `greenhouse:phoenixcontact` | `phoenixcontact` | OK | 32 |
+| Scout24 | `Scout24` | `greenhouse:scout24` | `scout24` | OK | 26 |
+| Dräger | `draegerP` | `successfactors:draegerP` | `https://recruitment.draeger.jobs` | OK | 24 |
+| KraussMaffei | `KraussMaffei` | `successfactors:jobs` | `https://jobs.kraussmaffei.com` | OK | 16 |
+| Siemens Healthineers | `Siemens Healthineers` | `avature:https://jobs.siemens-healthineers.com/...` | URL completa como slug | OK | 6 |
+
+**Total E2: 27 novas operacionais** (+ 12 atuais = **39**; 36 tenants com dados;
+zero falhas). Empresas avaliadas e NÃO incluídas na expansão, com motivo, em
+`docs/relatorio_expansao.md` §3-4 (Hager/Boehringer/Lanxess/Symrise falharam;
+ifm/Metro/Otto/E.ON/Kuehne+Nagel/GFT excluídas). A cobertura final (funil,
+empresas, ATS, países) está em `docs/relatorio_expansao.md` §6.
