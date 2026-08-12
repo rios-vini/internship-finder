@@ -19,7 +19,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from internship_finder.filters import is_student_role
+from internship_finder.filters import infer_country_iso, is_student_role
 from internship_finder.models.company import Company
 from internship_finder.models.job import Job
 
@@ -82,13 +82,11 @@ class AtsJobAdapter:
         external_id = self._first_str(data, _FIELDS["external_id"])
         employment_type = self._first_str(data, _FIELDS["employment_type"])
         country_iso = self._first_str(data, _FIELDS["country_iso"])
-        if country_iso and len(country_iso) != 2:
-            country_iso = None
-        # Heuristica leve: "Milwaukee, WI, us" -> country_iso "us".
-        if not country_iso and location:
-            tail = location.rsplit(",", 1)[-1].strip()
-            if len(tail) == 2 and tail.isalpha():
-                country_iso = tail.lower()
+        # Fonte unica de pais: filters.infer_country_iso (ISO alpha-2 valido via
+        # COUNTRY_CODES; fallback country_iso -> country -> tokens da location).
+        # A heuristica antiga (tail da location) morria em codigo postal:
+        # "Friedrichshafen, BW, DE, 88046" -> "88046" (nao-ISO) em vez de "DE".
+        country_iso = infer_country_iso(location=location, country_iso=country_iso)
         posted_at = self._parse_dt(self._first_str(data, _FIELDS["posted_at"]))
 
         raw = {k: v for k, v in data.items() if k not in ("description", "raw")}

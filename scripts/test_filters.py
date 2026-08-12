@@ -168,6 +168,25 @@ def test_consistency() -> None:
         {"title": "Praktikum Logistik - Data & Analytics"}, company
     )
     check("adapter: Praktikum -> internship True", praktikum.internship is True)
+    # Fase 3: country_iso tem FONTE UNICA — o adapter usa
+    # filters.infer_country_iso (ISO valido via COUNTRY_CODES); a heuristica
+    # antiga (tail da location) morria em codigo postal.
+    friedrichshafen = adapter.to_job(
+        {
+            "title": "Praktikum Logistik",
+            "location": "Friedrichshafen, BW, DE, 88046",
+        },
+        company,
+    )
+    check(
+        "adapter: 'Friedrichshafen, BW, DE, 88046' -> country_iso 'de'",
+        friedrichshafen.country_iso == "de",
+    )
+    sem_pais = adapter.to_job({"title": "Praktikum Logistik"}, company)
+    check(
+        "adapter: sem localizacao -> country_iso None",
+        sem_pais.country_iso is None,
+    )
 
 
 def main() -> int:
