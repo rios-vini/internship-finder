@@ -67,7 +67,7 @@ por token corroborado pelo slug). Re-rode o script para revalidar:
 
 ### Limitações observadas (dados, não filtros)
 
-- **Delivery Hero**: 59 vagas de estudante, mas fora da Alemanha (SG/ES/BR...) → 0 relevantes em `de`.
+- **Delivery Hero**: 59 vagas de estudante, mas fora da Alemanha (SG/ES/BR...) → 0 eligible em `de`.
 - **Covestro/Evonik/Zalando**: vagas alemãs (ex.: "Praktikant:in Sustainability Strategy" em
   Leverkusen, "Pflichtpraktikum Employer Branding" em Essen, Working Student em Berlim) vêm do ATS
   **sem código de país** na localização (`country_iso` nulo) → o filtro de país não consegue

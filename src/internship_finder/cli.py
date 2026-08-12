@@ -4,10 +4,10 @@ Dois modos:
 
 - **Filtro (default):** le vagas coletadas (``--input``), aplica a cascata de
   filtros de utilidade, remove duplicatas, RANQUEIA por compatibilidade com o
-  perfil (score + TOP 20; ``--no-rank`` desliga) e grava as CANDIDATAVEIS em
+  perfil (score + TOP 20; ``--no-rank`` desliga) e grava as ELIGIBLE em
   ``--output`` com ``score``/``score_breakdown``::
 
-      internship-finder                                  # data/jobs.json -> data/relevant_jobs.json (ranqueado)
+      internship-finder                                  # data/jobs.json -> data/eligible_jobs.json (ranqueado)
       internship-finder --country europe --no-area       # Europa, qualquer area
       internship-finder --all                            # copia tudo, sem filtros
 
@@ -32,7 +32,7 @@ from pathlib import Path
 
 from internship_finder.collectors.ats_scraper import collect_company
 from internship_finder.dedup import deduplicate
-from internship_finder.filters import select_relevant
+from internship_finder.filters import select_eligible
 from internship_finder.models.job import Job
 from internship_finder.ranking import rank_jobs
 
@@ -129,13 +129,13 @@ def run_filter_pipeline(
 ) -> int:
     """Aplica a cascata, remove duplicatas, ranqueia por perfil, imprime e grava.
 
-    A deduplicacao roda sobre o conjunto ja filtrado (a saida relevante nao
+    A deduplicacao roda sobre o conjunto ja filtrado (a saida eligible nao
     tem duplicatas); ``dedup=False`` (--no-dedup) a desliga. O ranking
     (``rank=True``, default) adiciona ``score`` + ``score_breakdown`` a cada
     vaga, ordena desc (melhores primeiro) e imprime o TOP 20; ``rank=False``
     (--no-rank) mantem a ordem original e imprime exemplos como antes.
     """
-    selected, counts = select_relevant(
+    selected, counts = select_eligible(
         [j.to_dict() if hasattr(j, "to_dict") else j for j in jobs],
         student=student,
         area=area,
@@ -147,7 +147,7 @@ def run_filter_pipeline(
         print_dedup_report(dedup_stats)
     if rank:
         selected = rank_jobs(selected)
-    print(f"\n=== {len(selected)} vagas candidataveis{', ranqueadas por perfil' if rank else ''} ===")
+    print(f"\n=== {len(selected)} vagas eligible{', ranqueadas por perfil' if rank else ''} ===")
     if rank:
         print_ranking(selected)
     else:
@@ -174,13 +174,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--output",
         default=None,
-        help="modo filtro: saida filtrada (default: data/relevant_jobs.json); "
+        help="modo filtro: saida eligible (default: data/eligible_jobs.json); "
         "modo coleta: saida bruta (default: data/jobs.json)",
     )
     parser.add_argument(
         "--filter-output",
-        default="data/relevant_jobs.json",
-        help="modo coleta: saida filtrada (default: data/relevant_jobs.json)",
+        default="data/eligible_jobs.json",
+        help="modo coleta: saida eligible (default: data/eligible_jobs.json)",
     )
     parser.add_argument(
         "--timeout",
@@ -307,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"--input nao encontrado: {input_path} (colete antes com --companies)")
     with input_path.open(encoding="utf-8") as fh:
         jobs = json.load(fh)
-    output = Path(args.output or "data/relevant_jobs.json")
+    output = Path(args.output or "data/eligible_jobs.json")
     return run_filter_pipeline(
         jobs,
         student=args.student,

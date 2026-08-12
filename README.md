@@ -26,22 +26,29 @@ Requer Python **>= 3.12** (testado em 3.12; vale para 3.13/3.14).
 
 O CLI tem dois modos: **filtro** (default) e **coleta** (`--companies`).
 
-**Filtro** — le vagas ja coletadas e retorna apenas as CANDIDATAVEIS
+**Filtro** — le vagas ja coletadas e retorna apenas as ELIGIBLE
 (estudante/estagio + area-alvo + pais), **ranqueadas por perfil** (score +
-TOP 20), gravando em `data/relevant_jobs.json` + `.csv` (com campo `score`;
-`--no-rank` desliga o ranking):
+TOP 20), gravando em `data/eligible_jobs.json` + `.csv` (com campo `score`;
+`--no-rank` desliga o ranking). Conceitos do pipeline:
+
+```
+collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
+```
+
+`eligible` e o conceito final da cascata (passou em tipo + area + pais);
+**best matches = TOP N do ranked** (sem entidade/camada nova):
 
 ```bash
-.venv/bin/internship-finder                              # data/jobs.json -> data/relevant_jobs.json (173 vagas ranqueadas, sem duplicatas)
+.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (170 vagas ranqueadas, sem duplicatas)
 .venv/bin/internship-finder --country europe             # Europa inteira em vez de so Alemanha
 .venv/bin/internship-finder --no-area                    # qualquer area, desde que estudante + Alemanha
-.venv/bin/internship-finder --no-dedup                   # mantem duplicatas (186 vagas)
+.venv/bin/internship-finder --no-dedup                   # mantem duplicatas (182 vagas)
 .venv/bin/internship-finder --no-rank                    # sem ranking: ordem original + exemplos
 .venv/bin/internship-finder --all                        # copia tudo, sem filtros
 ```
 
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
-mesma cascata, gravando o resultado em `data/relevant_jobs.json`. Lista-alvo
+mesma cascata, gravando o resultado em `data/eligible_jobs.json`. Lista-alvo
 atual (12 empresas com dados, validada em 2026-08-10; ver
 `docs/empresas_verificacao.md`):
 
@@ -52,12 +59,14 @@ python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 ```
 
 Resultado do ultimo run completo (13 empresas candidatas, 13.482 vagas brutas):
-`total 13.482 -> tipo estudante 2.159 -> area-alvo 541 -> Alemanha 186` (SAP 104,
-Bosch 49, BASF 21, Henkel 4, ZF 3, Bayer 2, Infineon 2, Continental 1). Com
-dedup, as 186 relevantes viram **173** (13 duplicatas removidas: 10 SAP, 3
-Bosch — versoes EN/DE do mesmo cargo e repostagens). Siemens foi testada e
-excluida (tenant `teamtailor` inativo). A coleta total leva alguns minutos —
-cada tenant usa timeout proprio (`--timeout 60`).
+`total 13.482 -> tipo estudante 1.995 -> area-alvo 510 -> Alemanha 182` (SAP 94,
+Bosch 43, BASF 21, Henkel 4, ZF 3, Bayer 2, Infineon 2, Continental 1; pos-dedup
+sao **170**). Com dedup, as 182 eligible viram **170** (12 duplicatas removidas:
+10 SAP + 2 Bosch — versoes EN/DE do mesmo cargo e repostagens). Apos a auditoria
+(Fase 1), a regra de tipo mudou e os 3 Junior Managers Program (Bosch) sairam do
+eligible (173 -> 170); Siemens foi testada e excluida (tenant `teamtailor`
+inativo). A coleta total leva alguns minutos — cada tenant usa timeout proprio
+(`--timeout 60`).
 
 Saida: contagens em cascata (`total -> tipo estudante -> area-alvo -> pais`),
 linha de dedup (`removidas N: X por external_id, Y por URL, Z por
@@ -71,9 +80,9 @@ Flags do CLI:
 | --- | --- |
 | `--companies` | modo coleta: nomes separados por virgula (match exato na base; sem match, a empresa e ignorada com aviso) |
 | `--input` | modo filtro: JSON bruto de entrada (default: `data/jobs.json`) |
-| `--output` | filtro: saida filtrada (default: `data/relevant_jobs.json`); coleta: saida bruta (default: `data/jobs.json`) |
-| `--filter-output` | modo coleta: saida filtrada (default: `data/relevant_jobs.json`) |
-| `--student` / `--no-student` | filtra tipo estudante/estagio (Internship, Working Student, Praktikum, Werkstudent, iXp, trainee/JMP...; default: ligado) |
+| `--output` | filtro: saida eligible (default: `data/eligible_jobs.json`); coleta: saida bruta (default: `data/jobs.json`) |
+| `--filter-output` | modo coleta: saida eligible (default: `data/eligible_jobs.json`) |
+| `--student` / `--no-student` | filtra tipo estudante/estagio (Internship, Working Student, Praktikum, Werkstudent, iXp...; default: ligado) |
 | `--area` / `--no-area` | filtra areas-alvo do dono (Supply Chain, Procurement, BI, Analytics, Automacao; default: ligado) |
 | `--country`/`--countries` | pais/localizacao: ISO alpha-2 (`de`, `de,at,ch`), `europe`, `remote` ou `all` (default: `de`) |
 | `--all` | desliga os tres filtros de uma vez (copia o conjunto inteiro) |
@@ -103,8 +112,8 @@ a com `description` preenchida; senao a com `employment_type`; senao a que
 veio primeiro. O CLI reporta quantas foram removidas e por qual chave.
 Titulos que sao traducao real (conteudo diferente, ex.: "Marketing
 Deutschland" vs "Marketing Germany") NAO sao fundidos — exigiria dicionario
-de traducao/fuzzy, fora do escopo do MVP. No conjunto atual: relevantes
-186 -> 173 (13 removidas, todas pela chave 3; 10 SAP + 3 Bosch).
+de traducao/fuzzy, fora do escopo do MVP. No conjunto atual: eligible
+182 -> 170 (12 removidas, todas pela chave 3; 10 SAP + 2 Bosch).
 
 ### Ranking por perfil
 
@@ -121,18 +130,18 @@ Score = `area + skills + language + type + location + penalties`:
 | `area` | titulo x2.0; descricao x0.0 | reusa `filters.area_score` (PRIMARY 3 / RELATED 2 / WEAK 1 no titulo). A area da descricao e **zerada** por calibracao no conjunto real: templates genericos (ex.: SAP) citam `data`/`sap`/`reporting` em vagas de Marketing e inflavam a area; o valor da descricao entra por skills e idioma |
 | `skills` | +0.75 por competencia (descricao) | Inventory Management, Supplier Relationships/Management, Process Automation, System Integration, Python, APIs, Cloud, Reporting, Continuous Improvement |
 | `language` | ingles +1.5, alemao +0.5 | detectados no titulo+descricao (`english`/`englisch`; `german`/`deutsch` como palavra — "Deutschland" nao conta) |
-| `type` | +1.0 | marcador forte de tipo no TITULO (Praktikum, Werkstudent, Internship, Trainee/JMP, iXp... — reusa `filters.STUDENT_TYPE_PATTERNS`) |
+| `type` | +1.0 | marcador forte de tipo no TITULO (Praktikum, Werkstudent, Internship, iXp... — reusa `filters.STUDENT_TYPE_PATTERNS`; Trainee/JMP NAO sao marcadores: os programas de `filters.PROGRAM_EXCLUSION_PATTERNS` nao chegam ao eligible) |
 | `location` | DE explicito +1.0; Berlin +0.5 | ISO alpha-2 via `filters.infer_country_iso`; remoto neutro |
-| `penalties` | senior/director/head/principal -3.0; manager -1.0; FULL_TIME -0.5 | senioridade e "manager" SO valem sem marcador forte de tipo no titulo (JMP/Trainee protegidos); FULL_TIME e suave (Werkstudent/Praktikum vêm marcados FULL_TIME no conjunto e nao zeram) |
+| `penalties` | senior/director/head/principal -3.0; manager -1.0; FULL_TIME -0.5 | senioridade e "manager" SO valem sem marcador forte de tipo no titulo (Praktikum/Werkstudent/Internship no titulo protegem; JMP/Trainee nao protegem — nao sao marcadores); FULL_TIME e suave (Werkstudent/Praktikum vêm marcados FULL_TIME no conjunto e nao zeram) |
 
-Sem descricao (49 das 173), age-se com graca: skills/idioma contribuem 0 e o
-score vem do titulo. Exemplo real do conjunto atual (2026-08-10, 173
-candidataveis): scores `min 1.00 | mediana 6.75 | max 14.00`; TOP 1 =
-"Praktikum in der Logistik - Data & Analytics" (13.50); "Praktikum im Bereich
-Logistik und Supply Chain Design" em 6o (11.50); "Junior Managers Program
-Purchasing" em 34o (top 20%, 7.50); "Working Student - Marketing" nao chega
-ao quartil superior; nenhuma vaga senior no TOP 10. Ver
-`scripts/test_ranking.py` (sintetico + run real + sanity checks).
+Sem descricao (46 das 170), age-se com graca: skills/idioma contribuem 0 e o
+score vem do titulo. Exemplo real do conjunto atual (2026-08-10, 170
+eligible): scores `min 1.00 | mediana 6.75 | max 14.00`; TOP 1 =
+"Working Student ... SAP Analytics Cloud" (14.00 — falso positivo conhecido
+de area, a corrigir na Fase 2); "Praktikum im Bereich Logistik und Supply
+Chain Design" em 6o (11.50); "Working Student - Marketing" nao chega
+ao quartil superior; nenhuma vaga senior no TOP 10; nenhum JMP no eligible.
+Ver `scripts/test_ranking.py` (sintetico + run real + sanity checks).
 
 ## Runbook
 
@@ -171,7 +180,7 @@ parecida errada). Passos:
 ### Como rodar
 
 **Coleta** (grava o bruto em `data/jobs.json` e ja aplica a cascata, gravando
-as candidataveis em `data/relevant_jobs.json` + `.csv`):
+as eligible em `data/eligible_jobs.json` + `.csv`):
 ```bash
 .venv/bin/internship-finder --companies "Bosch,SAP,Continental,ZF,Bayer,BASF,Henkel,Infineon,Zalando,Delivery Hero,Covestro,Evonik" --timeout 60
 ```
@@ -184,7 +193,7 @@ as candidataveis em `data/relevant_jobs.json` + `.csv`):
 ```
 Saida: contagens em cascata (`total → tipo estudante → area-alvo → pais`),
 linha de dedup, **TOP 20 ranqueado por perfil** com score + breakdown, e os
-arquivos gravados (`data/relevant_jobs.json`/`.csv` com campo `score`).
+arquivos gravados (`data/eligible_jobs.json`/`.csv` com campo `score`).
 
 ## Modelo `Job` (canonico, pydantic)
 
@@ -194,9 +203,12 @@ internship, posted_at, collected_at, external_id, employment_type, country_iso, 
 - `source` e `ats:slug` do tenant (ex.: `smartrecruiters:BoschGroup`).
 - `id` deriva de `external_id` (ou hash da URL) prefixado pelo `source`.
 - `internship` e preenchido pelo adapter via heuristica (`filters.py`, termos
-  EN/PT/DE: intern, trainee, student, working student, Werkstudent, Praktikum,
-  iXp...). Graduate/absolvent NAO entram (perfil e de estudante atual) e
-  `PART_TIME` sozinho nao indica vaga de estudante.
+  EN/PT/DE: intern, internship, working student, Werkstudent, Praktikum,
+  iXp...). Graduate/absolvent NAO entram (perfil e de estudante atual);
+  `PART_TIME` sozinho nao indica vaga de estudante; os programas de trainee
+  (Graduate Trainee, Management Trainee, Junior Managers Program/JMP) sao
+  EXCLUIDOS mesmo com `employment_type` "trainee" (regra do dono,
+  pos-auditoria — `filters.PROGRAM_EXCLUSION_PATTERNS`).
 - `raw` guarda os campos extras do ATS (sem duplicar a `description`).
 
 ## Estrutura
