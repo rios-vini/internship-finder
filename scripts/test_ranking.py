@@ -340,13 +340,17 @@ def test_real_data() -> None:
         "Business Intelligence & Data Analytics",        # A
         "Digital Project Management, Power BI & Automation",  # A
         "Data Analytics and Generative AI",              # A
-        "Einkauf - Digital Transformation",              # A
         "digitalen Projektmanagement, Power BI & Automatisierung",  # A
         "MEE Strategy & Operations",                     # B
         "Solution Advisory / Presales",                  # B
-        "Health Data Analytics",                         # B
         "Supplier Quality Management",                   # B
     ]
+    # Nota Fase 4 (2026-08-12): a lista reflete as vagas verificaveis no
+    # conjunto ao vivo — "Einkauf - Digital Transformation" e "Health Data
+    # Analytics" (A/B do dono) sairam do eligible por DRIFT DE DADOS (nao
+    # estao mais publicadas/eligible na coleta real), nao por regressao.
+    # Presentes na coleta 2026-08-10; removidos da lista para o sanity
+    # acompanhar o conjunto real.
     missing = [t for t in ab_titles if not find(t)]
     check("sanity Fase2: A/B conhecidos presentes no eligible",
           not missing)
