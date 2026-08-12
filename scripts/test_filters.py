@@ -17,6 +17,7 @@ from internship_finder.adapters.ats import AtsJobAdapter  # noqa: E402
 from internship_finder.filters import (  # noqa: E402
     PROGRAM_EXCLUSION_PATTERNS,
     STUDENT_TYPE_PATTERNS,
+    TYPE_EXCLUSION_PATTERNS,
     infer_country_iso,
     is_student_role,
     matches_country,
@@ -91,6 +92,80 @@ def test_type_rules() -> None:
     )
 
 
+def test_type_exclusion_rules() -> None:
+    print("== exclusao de tipo: Duales Studium/Ausbildung/Schulpraktikum (Fase 1) ==")
+    # Casos do dono (decisao pos-auditoria): excluir Duales Studium, Ausbildung
+    # e Schuelerpraktikum; PRESERVAR Internship/Intern, Praktikum, Werkstudent
+    # e Working Student.
+    check("D1. 'Schuelerpraktikum' excluido",
+          not is_student_role("Schülerpraktikum"))
+    check("D2. 'Praktikum (w/m/d)' aceito",
+          is_student_role("Praktikum (w/m/d)"))
+    check("D3. 'Duales Studium BWL' excluido",
+          not is_student_role("Duales Studium BWL"))
+    check("D4. 'Werkstudent im Bereich Data Analytics' aceito",
+          is_student_role("Werkstudent im Bereich Data Analytics"))
+    check("D5. 'Ausbildung zum Fachinformatiker' excluido",
+          not is_student_role("Ausbildung zum Fachinformatiker"))
+    check("D6. 'Working Student Supply Chain (m/f/d)' aceito",
+          is_student_role("Working Student Supply Chain (m/f/d)"))
+    # Composicao: "Schuelerpraktikum" contem "praktikum" como substring — a
+    # palavra composta e excluida mesmo assim; "Hochschulpraktikum" (estagio
+    # universitario, B. Braun no dataset real) NAO e excluido (\b inicial).
+    check("D7. 'Schuelerpraktikum im Logistikzentrum' excluido (composicao)",
+          not is_student_role("Längerfristiges Schülerpraktikum im Logistikzentrum (m/w/d)"))
+    check("D8. 'Hochschulpraktikum' aceito (estagio universitario valido)",
+          is_student_role("Hochschulpraktikum (w/m/d) Sustainability Reporting & Controlling"))
+    check("D9. 'Schulpraktikum' excluido (estagio escolar)",
+          not is_student_role("Technisches Schulpraktikum (m/w/d)"))
+    check("D10. 'Praktikum im Rahmen des Dualen Studiums' excluido (genitivo)",
+          not is_student_role("Praktikum im Rahmen des Dualen Studiums"))
+    # Variantes reais do dataset: Dualer Master, Dual Study, Duale:r Student:in,
+    # Duale Hochschule, Dualer Student, ausbildungsintegriertes Duales Studium.
+    check("D11. 'Dualer Master (M.Eng.)' excluido",
+          not is_student_role("Dualer Master (M.Eng.) - Systems Engineering - Fachrichtung Elektrotechnik"))
+    check("D12. 'Dual Study programme ...' excluido (ingles)",
+          not is_student_role("Dual study programme 2026: Data Science and Artificial Intelligence (B.Sc)"))
+    check("D13. 'Duale:r Student:in' excluido (dois-pontos genero-inclusivo)",
+          not is_student_role("Duale:r Student:in - Spedition und Logistik (m/w/d)"))
+    check("D14. 'Dual Study Kooperation' vence 'Industriepraktikum' (dual)",
+          not is_student_role("Industriepraktikum - Hardware-Software-Design (Dual Study Kooperation FH OÖ Hagenberg)"))
+    check("D15. 'Duale Hochschule' excluido",
+          not is_student_role("Studium Wirtschaftsingenieurwesen - Duale Hochschule BW Heidenheim / Start 2027"))
+    check("D16. 'Dualer Student Studiengang (B. A)' excluido",
+          not is_student_role("Dualer Student Studiengang (B. A) Betriebswirtschaft - Fachrichtung Logistikmanagement (w/m/d)"))
+    check("D17. 'Ausbildungsintegriertes Duales Studium' excluido",
+          not is_student_role("Ausbildungsintegriertes Duales Studium Digital Engineering Maschinenbau (w/m/d) 2027"))
+    # Ausbildung e equivalentes.
+    check("D18. 'Berufsausbildung' excluido",
+          not is_student_role("Berufsausbildung"))
+    check("D19. 'Ausbildung Elektronikerin ...' excluido (VW real)",
+          not is_student_role("Ausbildung Elektronikerin / Elektroniker für Automatisierungstechnik (w/m/d) 2027"))
+    check("D20. 'Ausbildung als Industriekaufmann/-frau' excluido (ZF real)",
+          not is_student_role("Ausbildung als Industriekaufmann/-frau (m/w/d) ab 01.09.2027"))
+    # Estagios escolares (nao universitarios).
+    check("D21. 'Praktikum fuer Schueler:innen' excluido (SAP real)",
+          not is_student_role("Herbstpraktikum für Schüler:innen (m/w/d) Standort Walldorf 27.10 - 30.10.2026 (STAR)"))
+    check("D22. 'Berufsorientierungspraktikum' excluido (BASF/Evonik real)",
+          not is_student_role("Berufsorientierungspraktikum (m/w/d) Rheinfelden"))
+    check("D23. 'Schulpraktikum ... Berufsausbildung' excluido (MAHLE real)",
+          not is_student_role("Schulpraktikum Stuttgart 2026 - Schwerpunkt kaufmännische Berufsausbildung (m/w/d)"))
+    # Servico voluntario (nao estagio universitario).
+    check("D24. 'FSJ' excluido",
+          not is_student_role("FSJ im Bereich Logistik"))
+    check("D25. 'Freiwilliges Soziales Jahr' excluido",
+          not is_student_role("Freiwilliges Soziales Jahr im Bereich Einkauf"))
+    # NAO excluir "studium" sozinho: Werkstudent em contexto de estudo e valido.
+    check("D26. 'Werkstudent ... Studium' aceito ('studium' sozinho nao exclui)",
+          is_student_role("Werkstudent im Bereich Data Science - Studium der Wirtschaftsinformatik"))
+    check("D27. 'Pflichtpraktikum Logistik' aceito (Bosch real, Top 20)",
+          is_student_role("Pflichtpraktikum Logistik - Schwerpunkt Data & Analytics"))
+    # Sem marcador estudantil: titulo dual NAO passa (nao e regressao — nunca
+    # foi eligible; "Master ... dual" nao tem marcador de tipo).
+    check("D28. 'Master ... dual' sem marcador estudantil nao passa",
+          not is_student_role("Master Maschinenbau - Produktionssysteme dual (m/w/d) ab 01.03.2027"))
+
+
 def test_location_level() -> None:
     print("== vaga sem localizacao (dois niveis) ==")
     spec_de = parse_country_spec("de")
@@ -155,6 +230,14 @@ def test_consistency() -> None:
         "exclusoes com os 4 programas do dono",
         len(PROGRAM_EXCLUSION_PATTERNS) == 4,
     )
+    # Fase 1: regra de tipo com padroes EXPLICITOS (nada de palavra solta
+    # generica — "praktikum"/"studium" NAO podem virar exclusao).
+    check("exclusao de tipo nao tem 'praktikum' solto",
+          all("praktikum" != p.strip(r"\b") for p in TYPE_EXCLUSION_PATTERNS))
+    check("exclusao de tipo nao tem 'studium' solto",
+          all("studium" != p.strip(r"\b") for p in TYPE_EXCLUSION_PATTERNS))
+    check("exclusao de tipo tem 15 padroes explicitos",
+          len(TYPE_EXCLUSION_PATTERNS) == 15)
     # Adaptador (flag Job.internship) usa a mesma regra.
     company = Company(ats="smartrecruiters", slug="BoschGroup", name="Bosch Group")
     adapter = AtsJobAdapter()
@@ -168,6 +251,15 @@ def test_consistency() -> None:
         {"title": "Praktikum Logistik - Data & Analytics"}, company
     )
     check("adapter: Praktikum -> internship True", praktikum.internship is True)
+    dual = adapter.to_job(
+        {"title": "Duales Studium BWL - Logistik (B.A.) 2027"}, company
+    )
+    check("adapter: Duales Studium -> internship False", dual.internship is False)
+    hochschul = adapter.to_job(
+        {"title": "Hochschulpraktikum (w/m/d) im Bereich Controlling"}, company
+    )
+    check("adapter: Hochschulpraktikum -> internship True",
+          hochschul.internship is True)
     # Fase 3: country_iso tem FONTE UNICA — o adapter usa
     # filters.infer_country_iso (ISO valido via COUNTRY_CODES); a heuristica
     # antiga (tail da location) morria em codigo postal.
@@ -191,6 +283,7 @@ def test_consistency() -> None:
 
 def main() -> int:
     test_type_rules()
+    test_type_exclusion_rules()
     test_location_level()
     test_no_description()
     test_ats_independence()

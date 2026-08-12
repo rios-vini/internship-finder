@@ -14,6 +14,19 @@ Regras de negocio (dono):
   deixou de ser marcador forte: sem outro marcador, a vaga nao passa.
   "Internship Trainee" / contexto estudantil continua aceito (o termo
   "internship"/"intern" ja cobre — sem regra extra).
+- Tipos NAO compativeis com estagio/working student universitario EXCLUIDOS
+  (regra do dono, Fase 1 das correcoes pos-auditoria): Duales Studium (e
+  equivalentes: Dualer Student/Student:in, Dualer Master, Duale Hochschule,
+  Dual Study, "Praktikum im Rahmen des Dualen Studiums"), Ausbildung /
+  Berufsausbildung (aprendizagem profissional), Schul-/Schuelerpraktikum e
+  estagios escolares ("Praktikum fuer Schueler:innen",
+  Berufsorientierungspraktikum) e servico voluntario (FSJ/BFD). A exclusao do
+  tipo vence QUALQUER marcador forte de tipo no titulo (ex.: "Industriepraktikum
+  ... Dual Study Kooperation" e dual, nao estagio). Regra de TITULO apenas,
+  generica (nenhum ATS especifico), checada ANTES da aceitacao por tipo (mesmo
+  mecanismo da regra Trainee/JMP). PRESERVADOS: Internship/Intern, Praktikum
+  (inclusive Pflichtpraktikum/Hochschulpraktikum — o \b inicial dos patterns de
+  Schulpraktikum evita a composicao), Werkstudent, Working Student.
 - Excluir posicoes permanentes/senior (senior, director, head, manager...),
   MAS um marcador forte de tipo no TITULO vence a senioridade: ex.
   "Praktikum Assistenz im Management des Senior Vice Presidents" e estagio.
@@ -97,6 +110,52 @@ PROGRAM_EXCLUSION_PATTERNS = [
     r"\bjmp\b",
 ]
 
+# Tipos NAO compativeis com estagio/working student universitario EXCLUIDOS
+# (regra do dono, Fase 1 das correcoes pos-auditoria pos-expansao). Padroes
+# EXPLICITOS (nunca palavra solta generica — ex.: nao ha pattern de "praktikum"
+# nem de "studium" sozinhos; "Schuelerpraktikum" e pego pela palavra composta e
+# o \b inicial evita excluir "Hochschulpraktikum", que e estagio universitario
+# VALIDO). Checados no TITULO, ANTES da aceitacao por tipo (como a regra
+# Trainee/JMP): a exclusao vence qualquer marcador forte de tipo.
+TYPE_EXCLUSION_PATTERNS = [
+    # Duales Studium e equivalentes: programas de graduacao com estudo+trabalho
+    # (inicio 2027, DHBW etc.), NAO estagio universitario. Cobre "Duales
+    # Studium", "Dualen Studiums" (genitivo: "Praktikum im Rahmen des Dualen
+    # Studiums"), "Duale Studien", "Dualer Studiengang", "Dual Study/Studies/
+    # Study programme", "Ausbildungsintegriertes Duales Studium".
+    r"\bdual\w* stud\w*\b",
+    # "Dualer Student", "Dual Student", "Duale:r Student:in" (dois-pontos
+    # genero-inclusivo), "Duale/r Bachelor/Master Student/in".
+    r"\bdual\w*[:/]*\w* student",
+    # "Duale Hochschule (BW Heidenheim...)" — estudar na DH, nao estagio.
+    r"\bdual\w* hochschule",
+    # "Dualer Master (M.Eng.)" — mestrado dual, nao estagio.
+    r"\bdual\w* master",
+    # Ausbildung / Berufsausbildung: aprendizagem profissional (Azubi), nao
+    # estagio universitario. "Ausbildung zum/als ...", "Ausbildungsplatz",
+    # "Berufsausbildung", "Schwerpunkt kaufmaennische Berufsausbildung".
+    r"\b(berufs)?ausbildungs?",
+    # Estagios ESCOLARES (aluno do ensino medio, nao universidade):
+    # "Schuelerpraktikum", "Schuelerpraktikant", "Schulpraktikum" (o \b inicial
+    # NAO casa "Hochschulpraktikum" — estagio universitario valido),
+    # "Praktikum fuer Schueler:innen" (tambem em composicao: "Herbstpraktikum
+    # fuer Schueler:innen", "Betriebspraktikum fuer Schueler:innen" — sem \b
+    # inicial: o "fuer Schueler" ja e inequivoco),
+    # "Berufsorientierungspraktikum".
+    r"\bsch(ü|ue)lerpraktikum",
+    r"\bsch(ü|ue)lerpraktikant",
+    r"\bschulpraktikum",
+    r"\bschulpraktikant",
+    r"praktikum f(ü|ue)r sch(ü|ue)ler",
+    r"\bberufsorientierungspraktikum",
+    # Servico voluntario (ano sabatico pos-escola, nao estagio): FSJ, BFD,
+    # Freiwilliges Soziales/Oekologisches Jahr, Bundesfreiwilligendienst.
+    r"\bfsj\b",
+    r"\bbfd\b",
+    r"\bfreiwilliges (soziales|(ö|oe)kologisches) jahr\b",
+    r"\bbundesfreiwilligendienst",
+]
+
 # Exclusoes de senioridade/posicao permanente. So valem quando NAO ha marcador
 # forte de tipo no titulo (ver ``is_student_role``).
 SENIORITY_PATTERNS = [
@@ -130,8 +189,9 @@ def is_student_role(
 ) -> bool:
     """Vaga e de estudante/estagio (heuristica, sem ML)?
 
-    Programa excluido no TITULO (Graduate Trainee, Management Trainee,
-    Junior Managers Program, JMP) => False ANTES de qualquer aceitacao —
+    Programa/tipo excluido no TITULO (Graduate Trainee, Management Trainee,
+    Junior Managers Program, JMP; Duales Studium, Ausbildung, Schul-/
+    Schuelerpraktikum e equivalentes) => False ANTES de qualquer aceitacao —
     inclusive ``employment_type`` "trainee". "Trainee" generico deixou de
     ser marcador forte. Marcador forte de tipo no TITULO => estudante (mesmo
     que o titulo tenha "senior"/"manager": "Praktikum ... Senior VP" e
@@ -140,7 +200,9 @@ def is_student_role(
     ("Senior Manager" com descricao falando de estagio nao entra).
     """
     title_low = title.lower()
-    if _has_any(PROGRAM_EXCLUSION_PATTERNS, title_low):
+    if _has_any(PROGRAM_EXCLUSION_PATTERNS, title_low) or _has_any(
+        TYPE_EXCLUSION_PATTERNS, title_low
+    ):
         return False
     type_in_title = _has_any(STUDENT_TYPE_PATTERNS, title_low)
 
