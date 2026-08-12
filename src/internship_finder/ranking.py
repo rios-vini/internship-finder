@@ -15,6 +15,13 @@ Componentes do score (``score_job`` -> ``Score.total`` + ``breakdown``):
   Logistik, JMP Purchasing). O valor da descricao continua entrando pelas
   componentes **skills** e **language**. Se um dia as descricoes forem mais
   ricas, ajustar a constante.
+  Fase 2 (pos-auditoria): frases de PRODUTO com termos de area no TITULO
+  (``AREA_TITLE_PRODUCT_PATTERNS``, ex.: "SAP Analytics Cloud") sao
+  mascaradas antes da deteccao — o termo pertence ao nome do produto, nao a
+  funcao da vaga ("Working Student ... Communications / Media Production in
+  SAP Analytics Cloud" nao e vaga de Analytics). Lista curta e fixa,
+  calibrada no caso real da auditoria; a frase mais especifica vem primeiro
+  (senao o "sap" fraco remanescente ainda pontuaria).
 - **skills** — competencias do perfil na DESCRICAO (+WEIGHT_SKILL por termo;
   sem descricao, contribui 0).
 - **language** — ingles (+WEIGHT_LANG_EN, essencial) e alemao
@@ -70,6 +77,22 @@ PENALTY_SENIOR = -3.0  # senior/director/head/principal (forte)
 PENALTY_MANAGER = -1.0  # "manager" suave (protegido por marcador forte de tipo)
 PENALTY_FULL_TIME = -0.5  # suave: Werkstudent/Praktikum marcados FULL_TIME
 
+# Frases de PRODUTO que contem termos de area ("Analytics" em "SAP Analytics
+# Cloud"). O termo e do NOME DO PRODUTO, nao da funcao da vaga: nao deve
+# pontuar como area do TITULO (Fase 2, pos-auditoria). Lista curta e fixa,
+# calibrada no caso real (a unica vaga do conjunto com "analytics cloud" no
+# titulo era uma vaga de Communications/Media). A frase MAIS ESPECIFICA vem
+# PRIMEIRO: se "analytics cloud" rodasse antes, sobraria "sap" fraco no
+# titulo e a area ainda ganharia +2.0. Novos produtos: adicionar a frase
+# completa na ordem (especifica -> generica).
+AREA_TITLE_PRODUCT_PATTERNS = [
+    r"\bsap analytics cloud\b",
+    r"\banalytics cloud\b",
+]
+_AREA_TITLE_PRODUCT_RE = [
+    re.compile(p, re.IGNORECASE) for p in AREA_TITLE_PRODUCT_PATTERNS
+]
+
 # ---------------------------------------------------------------------------
 # Competencias do perfil (positivo; na descricao)
 # ---------------------------------------------------------------------------
@@ -123,15 +146,30 @@ def _matches_any(patterns: list[str], text: str) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
 
 
+def _mask_product_phrases(text: str) -> str:
+    """Remove frases de produto (ex.: 'SAP Analytics Cloud') do texto.
+
+    Fase 2 (pos-auditoria): termos de area dentro do NOME DO PRODUTO nao sao
+    termos de area da funcao — nao devem pontuar. Ordem dos padroes importa
+    (mais especifico primeiro: mascarar "SAP Analytics Cloud" inteiro antes
+    de "Analytics Cloud", senao sobraria o "sap" fraco pontuando).
+    """
+    for pattern in _AREA_TITLE_PRODUCT_RE:
+        text = pattern.sub(" ", text)
+    return text
+
+
 def _area_score(title: str, description: str | None) -> float:
     """Area: titulo com peso forte, descricao com peso fraco/zero.
 
     Reusa ``filters.area_score`` (mesmas listas de termos): a parte do titulo
     (``area_score(title, None)``) e a da descricao (diferenca ao incluir a
-    descricao) entram com pesos independentes.
+    descricao) entram com pesos independentes. Frases de produto
+    (``AREA_TITLE_PRODUCT_PATTERNS``) sao mascaradas no TITULO antes da
+    deteccao de area (ver ``_mask_product_phrases``).
     """
-    title_area = area_score(title, None)
-    desc_area = max(0.0, area_score(title, description) - title_area)
+    title_area = area_score(_mask_product_phrases(title), None)
+    desc_area = max(0.0, area_score(title, description) - area_score(title, None))
     return WEIGHT_AREA_TITLE * title_area + WEIGHT_AREA_DESC * desc_area
 
 

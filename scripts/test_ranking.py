@@ -143,6 +143,62 @@ def test_synthetic() -> None:
         s.breakdown["area"] == WEIGHT_AREA_TITLE * area_score(title, None),
     )
 
+    # 7. Fase 2 (pos-auditoria): termo de area dentro do NOME DO PRODUTO nao
+    #    pontua como area do titulo — "SAP Analytics Cloud" e produto, nao
+    #    funcao (a vaga real era Communications/Media e dominava o ranking).
+    prod = score_job(
+        base_job(
+            id="test:7",
+            title="Working Student (f/m/d) - Communications / Media Production "
+            "in SAP Analytics Cloud",
+            description="Support the marketing team with content creation.",
+            location="Berlin, de",
+        )
+    )
+    check(
+        "Fase2: 'SAP Analytics Cloud' mascarado no titulo -> area 0",
+        prod.breakdown["area"] == 0.0,
+    )
+    check(
+        "Fase2: tipo/locale continuam (nao zerou a vaga)",
+        prod.breakdown["type"] == 1.0 and prod.breakdown["location"] >= 1.5,
+    )
+    check(
+        "Fase2: 'SAP Analytics Cloud' BAIXO (sem area)",
+        prod.total < 6.75,
+    )
+
+    # O TERMO de area fora de produto continua pontuando normalmente
+    # (o mask e de frase de produto, nao do termo).
+    real_area = score_job(
+        base_job(
+            id="test:7b",
+            title="Working Student (f/m/d) - Analytics: AI Enablement",
+            description=None,
+        )
+    )
+    check(
+        "Fase2: 'Analytics' sozinho continua pontuando area",
+        real_area.breakdown["area"] == 6.0,
+    )
+
+    # B-list do dono: presales SCM NAO recebe penalidade de contexto — a
+    # area real de Supply Chain no titulo segue valendo (sem Option B).
+    presales = score_job(
+        base_job(
+            id="test:7c",
+            title="Werkstudent (w/m/d) - Solution Advisory / Presales - Fokus "
+            "auf Supply Chain Management",
+            description=None,
+        )
+    )
+    check(
+        "Fase2: presales SCM preservado (area de Supply Chain no titulo)",
+        presales.breakdown["area"] == 6.0,
+    )
+    check("Fase2: presales SCM sem penalidade de contexto",
+          presales.breakdown["penalties"] == 0.0)
+
 
 def test_determinism() -> None:
     print("== determinismo e robustez ==")
@@ -205,9 +261,10 @@ def test_real_data() -> None:
         )
 
     # Sanity checks da especificacao (calibrados no conjunto real 2026-08-10:
-    # mediana ~6.25; Praktikum Logistik/SC no topo; JMP fora do eligible
+    # mediana 6.75; Praktikum Logistik/SC no topo; JMP fora do eligible
     # (programa excluido na Fase 1); Marketing longe do topo; nenhum senior
-    # no topo).
+    # no topo; Fase 2: Communications/Media "SAP Analytics Cloud" fora do
+    # topo e sem marketing/comunicacao/media no TOP 10).
     def find(sub: str):
         return [j for j in ranked if sub.lower() in j["title"].lower()]
 
@@ -240,6 +297,62 @@ def test_real_data() -> None:
 
     check("sanity: topo e de area-alvo",
           all(j["score_breakdown"]["area"] > 0 for j in top10))
+
+    # ---- Fase 2 (pos-auditoria): falso positivo do topo corrigido ----
+    # A vaga Communications/Media "in SAP Analytics Cloud" (antigo TOP 1,
+    # 14.00 — area vinha do nome do PRODUTO) saiu do topo: fora do TOP 10
+    # e abaixo da mediana.
+    comms = find("Media Production in SAP Analytics Cloud")
+    check("sanity Fase2: existe a vaga Communications/Media 'SAP Analytics Cloud'",
+          bool(comms))
+    if comms:
+        comms_pos = ranked.index(comms[0]) + 1
+        print(f"  Fase2: Communications/Media 'SAP Analytics Cloud' agora na "
+              f"posicao {comms_pos}/{len(ranked)} (score {comms[0]['score']:.2f})")
+        check("sanity Fase2: fora do TOP 10", comms_pos > 10)
+        check("sanity Fase2: abaixo da mediana", comms[0]["score"] < med)
+        check("sanity Fase2: area zerada (produto mascarado no titulo)",
+              comms[0]["score_breakdown"]["area"] == 0.0)
+
+    # Novo sanity (Fase 2): nenhum communications/marketing/media no TOP 10.
+    ctx_pat = re.compile(r"\bcommunications?\b|\bmarketing\b|\bmedia\b", re.IGNORECASE)
+    check("sanity Fase2: nenhum communications/marketing/media no TOP 10",
+          not any(ctx_pat.search(j["title"]) for j in top10))
+
+    # B-list do dono preservada: o presales SCM (unico com 'presales' no
+    # titulo) segue no TOP 10 e a area vem do titulo (Supply Chain), nao de
+    # penalidade de contexto — a mudanca nao o derrubou.
+    presales = find("Solution Advisory / Presales - Fokus auf Supply Chain")
+    check("sanity Fase2: presales SCM (B) no TOP 10",
+          bool(presales) and presales[0] in top10)
+    if presales:
+        check("sanity Fase2: presales SCM com area real no titulo",
+              presales[0]["score_breakdown"]["area"] >= 6.0)
+
+    # A/B do dono: os candidataria/interessante conhecidos seguem no topo
+    # (todos no TOP 20, a maioria no TOP 10).
+    ab_titles = [
+        "Logistik - Schwerpunkt Data & Analytics",       # A
+        "Praktikum in der Logistik - Data & Analytics",  # A
+        "Analytics: AI Enablement & Automation",         # A
+        "Technology in Global Procurement",              # A
+        "Logistik und Supply Chain Design",              # A
+        "Business Intelligence & Data Analytics",        # A
+        "Digital Project Management, Power BI & Automation",  # A
+        "Data Analytics and Generative AI",              # A
+        "Einkauf - Digital Transformation",              # A
+        "digitalen Projektmanagement, Power BI & Automatisierung",  # A
+        "MEE Strategy & Operations",                     # B
+        "Solution Advisory / Presales",                  # B
+        "Health Data Analytics",                         # B
+        "Supplier Quality Management",                   # B
+    ]
+    missing = [t for t in ab_titles if not find(t)]
+    check("sanity Fase2: A/B conhecidos presentes no eligible",
+          not missing)
+    below_top20 = [t for t in ab_titles if find(t) and find(t)[0] not in ranked[:20]]
+    check("sanity Fase2: A/B conhecidos no TOP 20",
+          not below_top20)
 
 
 def main() -> int:
