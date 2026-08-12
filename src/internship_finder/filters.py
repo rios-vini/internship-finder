@@ -1,20 +1,25 @@
 """Filtros de utilidade: tipo (estudante/estagio), area-alvo e pais.
 
 Funcoes puras (sem dependencia de CLI/modelos) usadas tanto pelo adapter
-(flag ``Job.internship``) quanto pelo CLI (vagas candidataveis).
+(flag ``Job.internship``) quanto pelo CLI (vagas eligible).
 
 Regras de negocio (dono):
 - Tipo aceito: Internship, Intern, Working Student, Student Worker, Student
   Internship, Industrial Internship, Praktikum, Werkstudent, iXp, estagio e
-  equivalentes internacionais (gyakornok, staz, stazh, becario...). Trainee e
-  "Junior Managers Program" (Bosch) entram; graduate/absolvent NAO (perfil e
-  de estudante atual, nao recem-formado).
+  equivalentes internacionais (gyakornok, staz, stazh, becario...).
+  Graduate/absolvent NAO (perfil e de estudante atual, nao recem-formado).
+- Programas de trainee EXCLUIDOS (regra do dono, pos-auditoria): Graduate
+  Trainee, Management Trainee, Junior Managers Program e JMP. A exclusao do
+  programa vence inclusive ``employment_type`` "trainee". "Trainee" generico
+  deixou de ser marcador forte: sem outro marcador, a vaga nao passa.
+  "Internship Trainee" / contexto estudantil continua aceito (o termo
+  "internship"/"intern" ja cobre — sem regra extra).
 - Excluir posicoes permanentes/senior (senior, director, head, manager...),
   MAS um marcador forte de tipo no TITULO vence a senioridade: ex.
-  "Praktikum Assistenz im Management des Senior Vice Presidents" e estagio;
-  "Junior Managers Program - Software & KI" e trainee. Tradeoff documentado:
-  um titulo raro tipo "Internship Coordinator" (vaga full-time que coordena
-  estagiarios) entraria como falso positivo — aceitavel no MVP.
+  "Praktikum Assistenz im Management des Senior Vice Presidents" e estagio.
+  Tradeoff documentado: um titulo raro tipo "Internship Coordinator" (vaga
+  full-time que coordena estagiarios) entraria como falso positivo —
+  aceitavel no MVP.
 
 - Area-alvo com heuristica de pontuacao (sem ML): titulo e mais forte que
   descricao; termo "relacionado" sozinho nao basta; "sap"/"erp"/"data"
@@ -44,11 +49,13 @@ STUDENT_TYPE_PATTERNS = [
     r"\bstudent internship",
     r"\bindustrial internship",
     r"\bco[- ]?ops?\b",
-    r"\btrainees?\b",
     r"\bapprentices?\b",
     r"\bplacements?\b",
     # Nota: graduate/absolvent NAO entram (perfil e de estudante atual, nao
     # recem-formado); "SAP Associate" (full-time para graduados) fica de fora.
+    # Trainee generico NAO e marcador (regra do dono pos-auditoria); os
+    # programas Graduate/Management Trainee, Junior Managers Program e JMP
+    # sao EXCLUIDOS em PROGRAM_EXCLUSION_PATTERNS.
     # DE: Werkstudent, Praktikum, iXp, duales Studium, HiWi.
     r"\bwerkstudent",  # sem fechamento: pega Werkstudentin/Werkstudenten
     r"\bstudentische hilfskraft",
@@ -76,10 +83,18 @@ STUDENT_TYPE_PATTERNS = [
     r"\bpráxe\b",
     # TR: stajyer (intern).
     r"\bstajyer",
-    # Bosch: Junior Managers Program = trainee (entra por regra do dono).
+]
+
+# Programas de trainee/graduado EXCLUIDOS (regra do dono, pos-auditoria).
+# Quando o TITULO traz o nome do programa, a vaga NAO e eligible — mesmo que
+# ``employment_type`` seja "trainee": a exclusao do programa vence o
+# STUDENT_EMPLOYMENT_TYPES. "Internship Trainee" nao bate aqui (sem regra
+# extra: o termo "internship"/"intern" ja e marcador forte).
+PROGRAM_EXCLUSION_PATTERNS = [
+    r"\bgraduate trainee\b",
+    r"\bmanagement trainee\b",
     r"\bjunior managers program\b",
     r"\bjmp\b",
-    r"\bmanagement trainee\b",
 ]
 
 # Exclusoes de senioridade/posicao permanente. So valem quando NAO ha marcador
@@ -115,13 +130,18 @@ def is_student_role(
 ) -> bool:
     """Vaga e de estudante/estagio (heuristica, sem ML)?
 
-    Marcador forte de tipo no TITULO => estudante (mesmo que o titulo tenha
-    "senior"/"manager": "Praktikum ... Senior VP" e estagio; "Junior Managers
-    Program" e trainee). Sem marcador no titulo, aceita-se marcador na
-    descricao ou employment_type INTERN, mas ai exclusoes de senioridade no
-    titulo valem ("Senior Manager" com descricao falando de estagio nao entra).
+    Programa excluido no TITULO (Graduate Trainee, Management Trainee,
+    Junior Managers Program, JMP) => False ANTES de qualquer aceitacao —
+    inclusive ``employment_type`` "trainee". "Trainee" generico deixou de
+    ser marcador forte. Marcador forte de tipo no TITULO => estudante (mesmo
+    que o titulo tenha "senior"/"manager": "Praktikum ... Senior VP" e
+    estagio). Sem marcador no titulo, aceita-se marcador na descricao ou
+    employment_type INTERN, mas ai exclusoes de senioridade no titulo valem
+    ("Senior Manager" com descricao falando de estagio nao entra).
     """
     title_low = title.lower()
+    if _has_any(PROGRAM_EXCLUSION_PATTERNS, title_low):
+        return False
     type_in_title = _has_any(STUDENT_TYPE_PATTERNS, title_low)
 
     text = f"{title} {description or ''}".lower()
@@ -223,7 +243,7 @@ def area_score(title: str, description: str | None = None) -> float:
 
 
 def matches_area(title: str, description: str | None = None) -> bool:
-    """Vaga e relevante para as areas-alvo do dono? (heuristica, sem ML)."""
+    """Vaga adere as areas-alvo do dono? (heuristica, sem ML)."""
     return area_score(title, description) >= AREA_MIN_SCORE
 
 
@@ -332,7 +352,7 @@ def matches_country(
 # ---------------------------------------------------------------------------
 
 
-def select_relevant(
+def select_eligible(
     jobs: list[dict],
     *,
     student: bool = True,

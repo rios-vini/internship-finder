@@ -21,7 +21,9 @@ Componentes do score (``score_job`` -> ``Score.total`` + ``breakdown``):
   (+WEIGHT_LANG_DE, menor) no titulo+descricao. Muitas descricoes estao
   vazias: sem descricao, age-se com graca e o score vem so do titulo.
 - **type** — marcador forte de tipo de vaga no TITULO (Praktikum, Werkstudent,
-  Internship, Trainee/JMP, iXp... — reusa ``filters.STUDENT_TYPE_PATTERNS``):
+  Internship, iXp... — reusa ``filters.STUDENT_TYPE_PATTERNS``; Trainee/JMP
+  NAO sao marcadores: os programas de ``filters.PROGRAM_EXCLUSION_PATTERNS``
+  nao chegam ao ranking e nao ganham bonus de tipo):
   +WEIGHT_TYPE_TITLE.
 - **location** — DE explicito (ISO alpha-2 via ``filters.infer_country_iso``)
   +WEIGHT_DE_EXPLICIT; Berlin (capital alema) +WEIGHT_DE_CAPITAL. Remoto fica
@@ -29,7 +31,8 @@ Componentes do score (``score_job`` -> ``Score.total`` + ``breakdown``):
 - **penalties** — ``senior/director/head/principal`` (PENALTY_SENIOR, forte) e
   ``manager`` (PENALTY_MANAGER, suave) SO quando nao ha marcador forte de tipo
   no titulo (regra do milestone 2: marcador forte vence senioridade —
-  "Junior Managers Program" e Trainee ficam protegidos);
+  "Praktikum ... Senior VP" fica protegido; JMP/Trainee nao sao marcadores e
+  nao recebem protecao de penalidade);
   ``employment_type == FULL_TIME`` (PENALTY_FULL_TIME, suave: varios
   Werkstudent/Praktikum vêm marcados FULL_TIME no conjunto — nao zera).
 
@@ -168,9 +171,10 @@ def _penalty_score(title_low: str, employment_type: str | None) -> float:
 
     Senioridade e "manager" so valem quando NAO ha marcador forte de tipo no
     titulo (regra do milestone 2, mesma de ``filters.is_student_role``:
-    "Praktikum ... Senior VP" e estagio; "Junior Managers Program" e trainee).
-    FULL_TIME e suave e aplica sempre (-0.5 — muitos Werkstudent/Praktikum
-    vêm marcados FULL_TIME e nao podem zerar).
+    "Praktikum ... Senior VP" e estagio e fica protegido). JMP/Trainee NAO
+    sao marcadores: "Junior Managers Program" recebe a penalidade de manager
+    como qualquer cargo sem marcador. FULL_TIME e suave e aplica sempre (-0.5
+    — muitos Werkstudent/Praktikum vêm marcados FULL_TIME e nao podem zerar).
     """
     strong_type_in_title = _matches_any(STUDENT_TYPE_PATTERNS, title_low)
     penalty = 0.0
