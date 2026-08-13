@@ -448,6 +448,42 @@ def _country_name_from_location(location: str) -> str | None:
     return code
 
 
+def _iso_token_from_location(location: str) -> str | None:
+    """ISO alpha-2 de um token de 2 letras na ``location`` — SOMENTE quando o
+    token esta em POSICAO CONFIRAVEL:
+      - ultimo segmento da localizacao (ex.: "Neckarsulm, DE",
+        "Stuttgart, BW, de" — o ISO vem explicito no fim); ou
+      - imediatamente antes de um codigo postal numerico (ex.: SAP grava
+        "Walldorf, DE, 69190" sem campo de pais).
+
+    Um token de 2 letras NO MEIO da localizacao nao e pais confiavel: e
+    palavra ("de" em espanhol/portugues, "im" em alemao, "do" em portugues)
+    ou abreviacao de estado (US/CA/AU). Aceita-lo produzia ISOs falsos
+    (ex.: "Ecatepec, Estado de Mexico" -> 'de' Alemanha; "Freiburg im
+    Breisgau" -> 'im' Isle of Man; "Sao Bernardo do Campo" -> 'do' Republica
+    Dominicana). Descoberto na Fase 3 (Workday): 168/2516 vagas Workday
+    carregavam ISO inventado por esse fallback (11 delas 'de' falso, de
+    localizacoes no Mexico/Espanha). Estados US ("Lafayette, IN" -> 'in')
+    continuam um limite conhecido do ultimo segmento (a sigla de estado
+    colide com ISO valido e nao ha como distinguir sem contexto).
+    """
+    tokens = re.split(r"[\s,.;:]+", location)
+    tokens = [t for t in tokens if t]
+    for i in range(len(tokens) - 1, -1, -1):
+        token = tokens[i]
+        if len(token) != 2 or not token.isascii() or not token.isalpha():
+            continue
+        code = token.lower()
+        if code not in COUNTRY_CODES:
+            continue
+        if i == len(tokens) - 1:
+            return code
+        nxt = tokens[i + 1]
+        if nxt and nxt[0].isdigit():
+            return code
+    return None
+
+
 def infer_country_iso(
     location: str | None = None,
     country: str | None = None,
@@ -461,9 +497,10 @@ def infer_country_iso(
        falsos codigos antigos (ex.: "Remseck am Neckar, ..." -> 'am' Armenia
        pelo token de 2 letras; agora o nome do pais no fim vale 'de').
     2. ``country_iso`` / ``country`` (normalizados).
-    3. Ultimo codigo de 2 letras valido em ``location`` (ex.: SAP grava
-       "Walldorf, DE, 69190" sem campo de pais; estados US como "GA"/"PA"
-       nao sao codigos ISO e sao ignorados).
+    3. Codigo de 2 letras valido em posicao confiavel na ``location``
+       (``_iso_token_from_location``: ultimo segmento ou antes de CEP
+       numerico — ex.: SAP grava "Walldorf, DE, 69190" sem campo de pais).
+       Token de 2 letras no MEIO da localizacao NAO vale (palavra/estado).
     """
     if location:
         code = _country_name_from_location(location)
@@ -475,11 +512,7 @@ def infer_country_iso(
             if code in COUNTRY_CODES:
                 return code
     if location:
-        matches = re.findall(r"(?:^|[\s,]+)([A-Za-z]{2})(?=$|[\s,.;:])", location)
-        for token in reversed(matches):
-            code = token.lower()
-            if code in COUNTRY_CODES:
-                return code
+        return _iso_token_from_location(location)
     return None
 
 

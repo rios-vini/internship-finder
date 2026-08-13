@@ -320,6 +320,56 @@ def test_consistency() -> None:
     # codigo ISO na location (nao ha nome de pais no fim).
     check("F2. regressao SAP 'Walldorf, DE, 69190' -> 'de'",
           infer_country_iso(location="Walldorf, DE, 69190") == "de")
+    # Fase 3 (Workday): a API Workday expoe apenas a string de localizacao
+    # (na maioria cidade sozinha) — country_iso/region/lat/lon vem None. O
+    # fallback de token de 2 letras NAO pode inventar pais de palavra no meio
+    # da localizacao: 'de' em espanhol/portugues, 'im' em alemao, 'do' em
+    # portugues. Locais reais da coleta Workday:
+    check("F3. Workday 'Ecatepec, Estado de México' -> None (era 'de' falso)",
+          infer_country_iso(location="Ecatepec, Estado de México") is None)
+    check("F3. Workday 'Freiburg im Breisgau' -> None (era 'im' falso)",
+          infer_country_iso(location="Freiburg im Breisgau") is None)
+    check("F3. Workday 'São Bernardo do Campo' -> None (era 'do' falso)",
+          infer_country_iso(location="São Bernardo do Campo") is None)
+    check("F3. Workday 'El Prat de Llobregat' -> None (era 'de' falso)",
+          infer_country_iso(location="El Prat de Llobregat") is None)
+    # Cidade sozinha (formato Workday predominante) NAO vira pais:
+    check("F3. Workday 'Leverkusen' -> None (sem pais na localizacao)",
+          infer_country_iso(location="Leverkusen") is None)
+    check("F3. Workday 'Oberkochen' -> None",
+          infer_country_iso(location="Oberkochen") is None)
+    check("F3. Workday 'Nuremberg' -> None",
+          infer_country_iso(location="Nuremberg") is None)
+    check("F3. Workday '2 Locations' -> None",
+          infer_country_iso(location="2 Locations") is None)
+    # Adapter com o shape real da coleta Workday (raw sem country_iso):
+    wd_job = adapter.to_job(
+        {
+            "title": "Werkstudent Supply Chain Excellence (m/w/x)",
+            "location": "Oberkochen",
+            "requisition_id": "R123",
+            "ats_type": "workday",
+        },
+        company,
+    )
+    check("F3. adapter Workday 'Oberkochen' -> country_iso None",
+          wd_job.country_iso is None)
+    # Regressoes da Fase 3: ISO em posicao confiavel continua valendo.
+    check("F3. 'Neckarsulm, DE' (ultimo segmento) -> 'de'",
+          infer_country_iso(location="Neckarsulm, DE") == "de")
+    check("F3. 'Stuttgart, BW, de' (ultimo segmento) -> 'de'",
+          infer_country_iso(location="Stuttgart, BW, de") == "de")
+    check("F3. 'Berlin, DE, 10557' (CEP depois) -> 'de'",
+          infer_country_iso(location="Berlin, DE, 10557") == "de")
+    check("F3. Covestro 'Dormagen, North Rhine-Westphalia, Germany' -> 'de'",
+          infer_country_iso(
+              location="Dormagen, North Rhine-Westphalia, Germany"
+          ) == "de")
+    # Limite documentado: sigla de estado US como ultimo segmento colide com
+    # ISO valido ("IN" = Indiana/India) — comportamento mantido de proposito
+    # (nao ha contexto para distinguir; nunca produz 'de').
+    check("F3. limite conhecido 'Lafayette, IN' -> 'in' (estado US)",
+          infer_country_iso(location="Lafayette, IN") == "in")
 
 
 def main() -> int:
