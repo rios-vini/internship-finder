@@ -8,16 +8,16 @@ The project has a working company-oriented ATS collection pipeline.
 
 Current collection scope includes 39 evaluated/operational companies from the latest E2 expansion.
 
-Latest documented full run:
+Latest documented full run (after corrections F1–F3, see `docs/relatorio_final_pos_correcoes.md`):
 
 - 56,810 raw jobs
-- 4,995 student-type jobs
-- 914 target-area jobs
-- 406 Germany-eligible jobs before deduplication
-- 389 eligible/ranked jobs after deduplication
-- 18 companies with eligible jobs
+- 3,428 student-type jobs
+- 777 target-area jobs
+- 309 Germany-eligible jobs after country filter
+- 293 eligible/ranked jobs after deduplication
+- 20 companies with eligible jobs (SAP 91, Lidl 48, Bosch 39, VW 25, Knorr 18, BASF 18, Schaeffler 12, and 13 more)
 
-The current pipeline and results are documented in the README and existing `docs/` reports.
+Scores: min 2.00 | median 6.00 | max 16.00 · 293/293 `country_iso='de'`.
 
 ## Completed
 
@@ -36,6 +36,11 @@ The current pipeline and results are documented in the README and existing `docs
 - CSV output
 - E2 company expansion
 - Current 39-company collection scope
+- Post-audit corrections F1–F3 (parecer A, 2026-08-13):
+  - F1 type-noise: `TYPE_EXCLUSION_PATTERNS` (Duales Studium/Ausbildung/Schülerpraktikum/FSJ-BFD excluded; 389 → 283 eligible)
+  - F2 Phenom/DHL country: `COUNTRY_NAMES` + `_country_name_from_location` (283 → 293; DHL 0 → 4; 496 fake ISO codes corrected)
+  - F3 Workday: `_iso_token_from_location` (2-letter token only in reliable position; 168 fake ISOs eliminated; Workday limitation documented — API does not expose country)
+  - Final verdict: **parecer A** — dataset of 293 correctly represents "eligible"; Top 20 identical to baseline (13A/5B/1C/1D); suite 7/7 green; deterministic
 
 ## High priority
 
@@ -63,15 +68,18 @@ Analyze the current ATS sources and determine the exact implementation required 
 
 ## Known limitations
 
-- Some Workday tenants do not expose country information clearly enough for the current country filter.
-- Some companies/ATS combinations currently fail or are excluded for documented reasons.
+- Some Workday tenants do not expose country information clearly enough for the current country filter (documented; nothing fabricated).
+- Some companies/ATS combinations currently fail or are excluded for documented reasons (Hager/Boehringer/Lanxess/Symrise — external limitations from parecer B).
 - Application deadlines are not yet represented as a normalized field.
+- 7 degree-program titles in the tail (Schaeffler "Studium mit vertiefter Praxis", BASF Bachelor) are pre-existing, outside the approved F1 patterns — candidates for future pattern extension, not a regression.
 
-See the existing documentation under `docs/` for detailed collection and expansion reports.
+See the existing documentation under `docs/` for detailed collection, correction and expansion reports.
 
 ## Next priorities
 
-1. P0 — Application deadline tracking
+1. P0 — Application deadline tracking (backlog `55b78b63`; first step: analyze ATS sources)
 2. Improve coverage of useful international internship sources
 3. Address important data-quality limitations identified during collection
 4. Continue improving ranking only when evidence shows it is needed
+
+> SQLite persistence + active/expired status (backlog `aa5996fe`): **on hold** — owner requested to wait for further instructions (2026-08-13), even though parecer A authorized it.
