@@ -31,6 +31,9 @@ class Job(BaseModel):
     internship: bool = False
     posted_at: datetime | None = None
     collected_at: datetime
+    # Prazo explicito de candidatura, quando o ATS o expoe (P0 deadline).
+    # Nunca inferido de posted_at/fetched_at; None quando ausente.
+    application_deadline: datetime | None = None
     # Campos adicionados na integracao do MVP validado (set/2026).
     external_id: str | None = None
     employment_type: str | None = None

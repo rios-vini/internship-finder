@@ -51,6 +51,7 @@ CSV_COLUMNS = [
     "employment_type",
     "internship",
     "posted_at",
+    "application_deadline",
     "collected_at",
     "score",
 ]

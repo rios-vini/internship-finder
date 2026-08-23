@@ -8,6 +8,8 @@ build/
 dist/
 # Virtual environment
 .venv/
+# Lockfile gerado localmente pelo uv (o projeto nao versiona lockfile)
+uv.lock
 # VS Code
 .vscode/
 # Local data (saidas de coleta: jobs.json / jobs.csv / logs)

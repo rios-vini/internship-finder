@@ -64,6 +64,9 @@ _FIELDS: dict[str, tuple[str, ...]] = {
         "createdAt",
         "updated_at",
     ),
+    # Prazo explicito de candidatura. So e preenchido quando o ATS o expoe;
+    # nunca e inferido de posted_at ou qualquer outra data.
+    "application_deadline": ("application_deadline", "applicationDeadline", "deadline"),
 }
 
 
@@ -88,6 +91,11 @@ class AtsJobAdapter:
         # "Friedrichshafen, BW, DE, 88046" -> "88046" (nao-ISO) em vez de "DE".
         country_iso = infer_country_iso(location=location, country_iso=country_iso)
         posted_at = self._parse_dt(self._first_str(data, _FIELDS["posted_at"]))
+        # Prazo explicito de candidatura: apenas quando o ATS o expoe. Nunca
+        # inferido de posted_at/fetched_at; ausente ou invalido -> None.
+        application_deadline = self._parse_dt(
+            self._first_str(data, _FIELDS["application_deadline"])
+        )
 
         raw = {k: v for k, v in data.items() if k not in ("description", "raw")}
         if not raw:
@@ -104,6 +112,7 @@ class AtsJobAdapter:
             description=description,
             internship=is_student_role(title, description, employment_type),
             posted_at=posted_at,
+            application_deadline=application_deadline,
             collected_at=datetime.now(UTC),
             external_id=external_id,
             employment_type=employment_type,
