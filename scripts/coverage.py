@@ -1,14 +1,16 @@
 """Cobertura do pipeline (offline, deterministico, exit 0).
 
-Le ``data/jobs.json`` (bruto), ``data/eligible_jobs.json`` (eligible, pos-dedup
-e ranking) e ``data/ranked_jobs.json`` e imprime, em texto legivel:
+Le ``data/jobs.json`` (bruto) e ``data/eligible_jobs.json`` (eligible, pos-dedup
+e ranking — o resultado final do CLI) e imprime, em texto legivel:
 
 - **Funil**: raw -> tipo estudante -> area-alvo -> pais -> eligible -> dedup
   (removidas) -> ranked. Os passos intermediarios sao RECOMPUTADOS com a
   cascata real de filtros (``filters.select_eligible``) sobre o bruto, para a
   saida nunca divergir do CLI. ``dedup removidas`` = ``pais - eligible``
   (assumindo que eligible_jobs.json foi gerado do jobs.json com o pipeline
-  padrao, com dedup ligado).
+  padrao, com dedup ligado). O ``eligible_jobs.json`` ja e o resultado
+  RANQUEADO (contem ``score``/``score_breakdown``) — nao ha arquivo
+  ``ranked_jobs.json`` separado; ``ranked`` aqui e o proprio eligible.
 - **Empresas**: empresas distintas (campo ``company``) e tenants (campo
   ``source``) no conjunto eligible, vagas por empresa (desc), contribuicao das
   maiores (top 1/3/5 e a maior em %).
@@ -47,7 +49,6 @@ def pct(part: int, total: int) -> str:
 def main() -> int:
     jobs = load("jobs.json")
     eligible = load("eligible_jobs.json")
-    ranked = load("ranked_jobs.json")
 
     # --- Funil (recomputado com a cascata real; sem rede) ---
     _, c_tipo = select_eligible(jobs, student=True, area=False, country="all")
@@ -56,7 +57,9 @@ def main() -> int:
     raw, tipo, area, pais = c_tipo["total"], c_tipo["tipo"], c_area["area"], c_pais["pais"]
     eligible_n = len(eligible)
     dedup_removed = pais - eligible_n
-    ranked_n = len(ranked)
+    # O eligible_jobs.json ja e o resultado ranqueado (score/score_breakdown);
+    # nao ha arquivo ranked separado.
+    ranked_n = eligible_n
 
     print("=== Funil (--country de) ===")
     print(f"  raw coletadas        : {raw}")

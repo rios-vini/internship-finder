@@ -145,12 +145,25 @@ def candidate_keys(job: dict[str, Any]) -> list[tuple[str, str | tuple[str, str,
     chave company+titulo+localizacao so e usada quando as duas anteriores nao
     existem ou nao batem). A chave (c) exige titulo E localizacao nao vazios:
     sem localizacao, titulos iguais em cidades diferentes seriam fundidos.
+
+    A chave (a) e ESCOPADA pela origem (``source``): o mesmo valor de
+    ``external_id`` em empresas/ATS diferentes representa vagas DIFERENTES
+    (cada tenant numera seus ids de forma independente) — usar so o
+    ``external_id`` colapsaria vagas de tenants distintos. Quando nao ha
+    ``external_id``, usa-se o ``id`` canonico do job (ja ``source:...`` no
+    pipeline, portanto unico por tenant).
     """
     keys: list[tuple[str, str | tuple[str, str, str]]] = []
 
-    ext = job.get("external_id") or job.get("id")
+    source = str(job.get("source") or "").strip()
+    ext = job.get("external_id")
     if ext:
-        keys.append((KEY_EXTERNAL_ID, str(ext).strip()))
+        key = f"{source}:{str(ext).strip()}" if source else str(ext).strip()
+        keys.append((KEY_EXTERNAL_ID, key))
+    else:
+        job_id = job.get("id")
+        if job_id:
+            keys.append((KEY_EXTERNAL_ID, str(job_id).strip()))
 
     url = normalize_url(job.get("url"))
     if url:

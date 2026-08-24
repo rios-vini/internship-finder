@@ -90,14 +90,28 @@ def collect_company(
 ) -> tuple[list[Job], dict]:
     """Coleta as vagas de ``name`` (match exato na base do ats-scrapers).
 
-    Retorna ``(jobs, summary)``; ``summary`` tem as chaves:
-    ``ok`` [(source, n, tempo)], ``failed`` [(source, erro)], ``skipped``
-    [source] e ``not_found`` (bool). Erros/timeouts sao registrados e o
-    fluxo segue para as proximas empresas/tenants.
+    Retorna ``(jobs, summary)``; ``summary`` distingue o estado de cada
+    tenant, para que "0 vagas" (EMPTY) nao seja confundido com erro:
+    - ``ok``      [(source, n, tempo)]  — SUCCESS (>=1 vaga coletada)
+    - ``empty``   [(source, tempo)]     — EMPTY (tenant respondeu, 0 vagas)
+    - ``timeout`` [(source, erro)]      — TIMEOUT (nao respondeu no prazo)
+    - ``failed``  [(source, erro)]      — ERROR (excecao de coleta)
+    - ``skipped`` [source]              — sem scraper registrado
+    - ``not_found`` (bool)              — empresa sem match exato na base
+
+    Erros/timeouts sao registrados e o fluxo segue para as proximas
+    empresas/tenants (nenhuma excecao e engolida silenciosamente).
     """
     collector = CompanyCollector()
     companies = collector.find_company(name)
-    summary: dict = {"ok": [], "failed": [], "skipped": [], "not_found": False}
+    summary: dict = {
+        "ok": [],
+        "empty": [],
+        "timeout": [],
+        "failed": [],
+        "skipped": [],
+        "not_found": False,
+    }
     if not companies:
         log.warning("[%s] nao encontrada na base (match exato)", name)
         summary["not_found"] = True
@@ -109,17 +123,24 @@ def collect_company(
             log.warning("[%s] %s sem scraper registrado; pulando", name, company.source)
             summary["skipped"].append(company.source)
             continue
+        t0 = time.time()
         try:
-            t0 = time.time()
             raw_jobs = fetch_with_timeout(company, timeout, include_descriptions)
             if limit and len(raw_jobs) > limit:
                 raw_jobs = raw_jobs[:limit]
             # Os dicts ja saem normalizados (single-pass no subprocesso).
             converted = [Job(**d) for d in raw_jobs]
             dt = time.time() - t0
-            jobs.extend(converted)
-            summary["ok"].append((company.source, len(converted), f"{dt:.1f}s"))
-            log.info("[%s] %s: %d vagas em %.1fs", name, company.source, len(converted), dt)
+            if converted:
+                jobs.extend(converted)
+                summary["ok"].append((company.source, len(converted), f"{dt:.1f}s"))
+                log.info("[%s] %s: %d vagas em %.1fs", name, company.source, len(converted), dt)
+            else:
+                summary["empty"].append((company.source, f"{dt:.1f}s"))
+                log.info("[%s] %s: 0 vagas (EMPTY) em %.1fs", name, company.source, dt)
+        except TimeoutError as exc:
+            summary["timeout"].append((company.source, str(exc)))
+            log.error("[%s] %s timeout: %s", name, company.source, exc)
         except Exception as exc:  # noqa: BLE001 - segue para as proximas
             summary["failed"].append((company.source, str(exc)))
             log.error("[%s] %s falhou: %s", name, company.source, exc)

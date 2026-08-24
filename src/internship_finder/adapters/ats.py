@@ -77,9 +77,18 @@ class AtsJobAdapter:
         """Normaliza ``item`` (dict ou modelo pydantic) para ``Job``."""
         data = self._as_dict(item)
 
-        title = self._first(data, _FIELDS["title"]) or "Sem titulo"
+        # Titulo vazio (sem placeholder artificial "Sem titulo"): um valor
+        # fabricado seria tratado como identidade real pela chave de dedup
+        # company+title+location, colapsando vagas sem titulo da mesma
+        # empresa/local. Titulo vazio -> a chave (c) nao e gerada no dedup.
+        title = self._first(data, _FIELDS["title"]) or ""
         company_name = self._first(data, _FIELDS["company"]) or company.name or company.query
-        url = self._first_str(data, _FIELDS["url"]) or self._url_from_slug(company)
+        url_raw = self._first_str(data, _FIELDS["url"])
+        # Sem URL de vaga real, ``url`` fica vazio (nao fabrica uma URL de
+        # careers): uma URL generica identica para todos os jobs da empresa
+        # colidiria na chave de dedup por URL, colapsando vagas distintas.
+        url_is_fallback = url_raw is None
+        url = url_raw or ""
         location = self._first_str(data, _FIELDS["location"])
         description = self._first_str(data, _FIELDS["description"])
         external_id = self._first_str(data, _FIELDS["external_id"])
@@ -102,7 +111,13 @@ class AtsJobAdapter:
             raw = None
 
         return Job(
-            id=self._make_id(company, external_id, url),
+            id=self._make_id(
+                company,
+                external_id,
+                url,
+                url_is_fallback=url_is_fallback,
+                discriminator=(title, location),
+            ),
             source=company.source,
             title=title,
             company=company_name,
@@ -121,10 +136,33 @@ class AtsJobAdapter:
         )
 
     @staticmethod
-    def _make_id(company: Company, external_id: str | None, url: str) -> str:
-        """ID estavel: ``source:external_id`` ou ``source:hash(url)``."""
+    def _make_id(
+        company: Company,
+        external_id: str | None,
+        url: str,
+        *,
+        url_is_fallback: bool = False,
+        discriminator: tuple[str, ...] = (),
+    ) -> str:
+        """ID estavel: ``source:external_id`` ou ``source:hash(url)``.
+
+        Quando ha ``external_id``, o ID e ``source:external_id`` (unico por
+        tenant). Sem ``external_id``, o ID e o hash da URL real da vaga. Se
+        o ATS nao forneceu URL (``url`` vazio — URL de careers nao e URL de
+        vaga e nao deve servir de identidade), o hash da URL vazia seria o
+        mesmo para todos os jobs da empresa. Nesse caso (e somente nele)
+        inclui-se campos discriminantes estaveis do job (titulo/localizacao)
+        no hash, para distinguir vagas diferentes mantendo determinismo
+        (mesmo job -> mesmo ID). Se nem isso distinguir (titulo e
+        localizacao vazios), nao ha identidade segura possivel — a colisao e
+        aceita como limite (os jobs sao semanticamente indistinguiveis).
+        """
         if external_id:
             return f"{company.source}:{external_id}"
+        if url_is_fallback:
+            for field in discriminator:
+                if field:
+                    url = f"{url}|{field}"
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
         return f"{company.source}:{digest}"
 
@@ -180,10 +218,3 @@ class AtsJobAdapter:
             v = ", ".join(str(x) for x in v if str(x).strip())
             return v or None
         return str(v).strip() or None
-
-    @staticmethod
-    def _url_from_slug(company: Company) -> str:
-        """Fallback de URL quando o ATS nao expoe link: careers_url + slug."""
-        if company.url:
-            return company.url
-        return f"https://careers.{company.ats}.com/{company.slug}"

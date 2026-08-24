@@ -19,7 +19,11 @@ Dois modos:
 
 Cascata de contagens (tudo ligado por padrao): total -> tipo estudante/estagio
 -> area-alvo -> pais (``--country``, default ``de``). ``--all`` desliga os tres
-filtros de uma vez. Exit code 0 se algo foi gravado.
+filtros de uma vez. Exit code: 0 se algo foi gravado e a coleta nao teve
+falha real; 1 se nada foi gravado/nenhuma vaga; 2 no modo coleta quando houve
+falha real de coleta (timeout/erro/sem match), mesmo com vagas coletadas. As
+metricas de execucao sao persistidas em JSONL (``--metrics``, default
+``data/collection_metrics.jsonl`` no modo coleta).
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from pathlib import Path
 from internship_finder.collectors.ats_scraper import collect_company
 from internship_finder.dedup import deduplicate
 from internship_finder.filters import select_eligible
+from internship_finder.metrics import utcnow_iso, write_metrics
 from internship_finder.models.job import Job
 from internship_finder.ranking import rank_jobs
 
@@ -127,6 +132,8 @@ def run_filter_pipeline(
     output: Path,
     dedup: bool = True,
     rank: bool = True,
+    metrics: Path | None = None,
+    run_id: str | None = None,
 ) -> int:
     """Aplica a cascata, remove duplicatas, ranqueia por perfil, imprime e grava.
 
@@ -135,6 +142,12 @@ def run_filter_pipeline(
     (``rank=True``, default) adiciona ``score`` + ``score_breakdown`` a cada
     vaga, ordena desc (melhores primeiro) e imprime o TOP 20; ``rank=False``
     (--no-rank) mantem a ordem original e imprime exemplos como antes.
+
+    Se ``metrics`` for fornecido, grava um registro de resumo do run
+    (``type: run``) em JSONL com ``total_collected``/``filtered``/
+    ``dedup_removed``/``eligible`` (o total coletado e o ``len(jobs)`` de
+    entrada; ``filtered`` e o final da cascata; ``dedup_removed`` so conta
+    quando ``dedup=True``).
     """
     selected, counts = select_eligible(
         [j.to_dict() if hasattr(j, "to_dict") else j for j in jobs],
@@ -154,7 +167,53 @@ def run_filter_pipeline(
     else:
         print_examples(selected)
     save_outputs(selected, output)
+
+    if metrics is not None:
+        write_metrics(
+            metrics,
+            [
+                {
+                    "type": "run",
+                    "run_id": run_id or utcnow_iso(),
+                    "timestamp": utcnow_iso(),
+                    "total_collected": len(jobs),
+                    "filtered": counts["pais"],
+                    "dedup_removed": sum(dedup_stats.values()) if dedup else 0,
+                    "eligible": len(selected),
+                }
+            ],
+        )
     return 0 if selected else 1
+
+
+def _tenant_record(
+    run_id: str,
+    company: str,
+    source: str,
+    status: str,
+    collected: int,
+    duration: str | None = None,
+    error: str | None = None,
+) -> dict:
+    """Registro de metricas de um tenant (linha ``type: tenant`` do JSONL).
+
+    ``source`` e ``ats:slug`` (ex.: ``successfactors:jobs``) — o ATS e o
+    prefixo ate o primeiro ``:``. ``duration`` chega como string formatada
+    do summary (ex.: ``0.4s``); ``error`` carrega a mensagem de timeout/erro.
+    """
+    ats = source.split(":", 1)[0] if source else ""
+    return {
+        "type": "tenant",
+        "run_id": run_id,
+        "timestamp": utcnow_iso(),
+        "company": company,
+        "source": source,
+        "ats": ats,
+        "status": status,
+        "collected": collected,
+        "error": error,
+        "duration": duration,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -239,6 +298,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Rankeia as vagas por compatibilidade com o perfil (score + TOP 20; "
         "default: ligado; --no-rank desliga e mantem a ordem original)",
     )
+    parser.add_argument(
+        "--metrics",
+        default=None,
+        help="Caminho do JSONL de metricas da execucao (default no modo coleta: "
+        "data/collection_metrics.jsonl)",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -258,6 +323,8 @@ def main(argv: list[str] | None = None) -> int:
         if not names:
             parser.error("--companies vazio")
 
+        run_id = utcnow_iso()
+        metrics_path = Path(args.metrics or "data/collection_metrics.jsonl")
         all_jobs: list[Job] = []
         summaries: list[tuple[str, dict]] = []
         for name in names:
@@ -277,22 +344,47 @@ def main(argv: list[str] | None = None) -> int:
 
         total = len(all_jobs)
         print(f"\n=== TOTAL: {total} vagas ===")
+        # Falhas reais de coleta (timeout/erro/nao encontrada) tornam a coleta
+        # parcialmente degradada; EMPTY (tenant respondeu com 0 vagas) e
+        # legitimo e nao conta como falha. Acumula para o exit code.
+        had_failure = False
+        tenant_records: list[dict] = []
         for name, summary in summaries:
             for source, n, dt in summary["ok"]:
                 print(f"  OK   {source}: {n} vagas ({dt})")
+                tenant_records.append(_tenant_record(run_id, name, source, "ok", n, dt))
+            for source, dt in summary.get("empty", []):
+                print(f"  EMPTY {source}: 0 vagas ({dt})")
+                tenant_records.append(_tenant_record(run_id, name, source, "empty", 0, dt))
+            for source, err in summary.get("timeout", []):
+                print(f"  TIMEOUT {source}: {err}")
+                had_failure = True
+                tenant_records.append(_tenant_record(run_id, name, source, "timeout", 0, None, err))
             for source, err in summary["failed"]:
                 print(f"  FAIL {source}: {err}")
+                had_failure = True
+                tenant_records.append(_tenant_record(run_id, name, source, "error", 0, None, err))
             for source in summary["skipped"]:
                 print(f"  SKIP {source}: sem scraper no pacote")
+                tenant_records.append(_tenant_record(run_id, name, source, "skipped", 0, None))
             if summary["not_found"]:
                 print(f"  NONE {name}: sem match exato na base")
+                had_failure = True
+                tenant_records.append(_tenant_record(run_id, name, "", "", 0, None, "sem match exato"))
 
         if not total:
+            write_metrics(metrics_path, tenant_records)
             log.error("nenhuma vaga coletada; verifique as empresas e o pacote ats-scrapers")
             return 1
+        # Salva e processa SEMPRE (nao descarta o que foi coletado), mas uma
+        # coleta com falhas reais sinaliza degradacao no exit code (>=2), para
+        # a automacao detectar; exit 1 ja e reservado para "nenhuma vaga".
         raw_output = Path(args.output or "data/jobs.json")
         save_outputs(all_jobs, raw_output)
-        return run_filter_pipeline(
+        # Tenant records primeiro; o run record (resumo) e escrito dentro do
+        # ``run_filter_pipeline``, ao final do processamento.
+        write_metrics(metrics_path, tenant_records)
+        pipeline_rc = run_filter_pipeline(
             all_jobs,
             student=args.student,
             area=args.area,
@@ -300,7 +392,14 @@ def main(argv: list[str] | None = None) -> int:
             output=Path(args.filter_output),
             dedup=args.dedup,
             rank=args.rank,
+            metrics=metrics_path,
+            run_id=run_id,
         )
+        if had_failure:
+            log.warning("coleta parcial com falhas (timeout/erro/sem match); "
+                        "resultado pode estar incompleto")
+            return 2
+        return pipeline_rc
 
     # Modo filtro (default): le vagas ja coletadas e filtra.
     input_path = Path(args.input)

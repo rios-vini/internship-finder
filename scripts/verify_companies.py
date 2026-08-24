@@ -43,6 +43,10 @@ def main(argv: list[str] | None = None) -> int:
             _, summary = collect_company(name, timeout=args.timeout, limit=args.limit)
             for source, n, dt in summary["ok"]:
                 print(f"   OK   {source}: {n} vagas ({dt})")
+            for source, dt in summary.get("empty", []):
+                print(f"   EMPTY {source}: 0 vagas ({dt})")
+            for source, err in summary.get("timeout", []):
+                print(f"   TIMEOUT {source}: {err}")
             for source, err in summary["failed"]:
                 print(f"   FAIL {source}: {err}")
             for source in summary["skipped"]:
