@@ -15,12 +15,24 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 ## 1. Estado verificado em 2026-08-31
 
 ### Main público (GitHub)
-- `main` está **atrás** da branch `feat/hardening-dedup-pipeline` (PR #8 aberto).
-  O `main` ainda não tem P0 deadline nem hardening — por isso qualquer leitura do
-  `main` parece "não implementado". Leitura correta: **tudo abaixo está na branch do
-  PR #8**, pronto para merge.
+- `main` = `da81475` (31/08): **PR #8 mergeado** ✅ (`9690c47`). main tem P0
+  deadline + hardening ACH-01..09 + fix metrics + MASTER_PLAN + SQLite desbloqueado.
 
-### PR #8 — feat/hardening-dedup-pipeline (aberto, 3 commits)
+### Baseline de coleta (31/08, nesta instância)
+- Coleta completa re-executada (39 empresas, `--timeout 60`): **37.373 brutas →
+  236 eligible/ranked (todos `country_iso='de'`)** → `data/jobs.json`,
+  `data/eligible_jobs.json/csv`. Baseline antigo (12/08) era 56.810→293: o
+  **mercado mudou** (menos vagas), não é regressão.
+- **Workday no eligible: 0** — confirma com dados reais a pendência P0.1
+  (tenants Workday alemães seguem sem `country_iso`).
+- **Achado novo**: `scripts/test_ranking.py` tem sanity checks **acoplados a um
+  snapshot de dados (12/08)** — buscam vagas que já não existem no dataset atual
+  (ex.: "Logistik und Supply Chain Design", "SAP Analytics Cloud"). `ranking.py`
+  não mudou desde o MVP (`3307ec5`); o teste quebra por dados, não por código.
+  → Nova pendência (P2): desacoplar `test_ranking.py` de vagas específicas
+  (fixture fixa ou sanity por invariante de regra, não por presença de vaga).
+
+### Painel do PR #8 (histórico — mergeado, manter como registro)
 | Commit | Data | Conteúdo |
 |---|---|---|
 | `7d3c3dd` | 23/08 | P0 Application Deadline: `Job.application_deadline` (datetime\|None, nunca inferido de `posted_at`), adapter, CSV, JSON, teste; pin upstream `ae0ad53` |
@@ -73,26 +85,27 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 13 | **Company Registry operacional** + tirar empresas da lógica do CLI | ⏳ | company/ATS/tenant/enabled/status/última coleta; execução vira "run collection". |
 | 14 | **Dedup 2.0 textual** | 🟡 parcial | fingerprint (company+title+location normalizados+desc), normalização multilíngue (Praktikum≈Internship≈Werkstudent). |
 | 15 | **Padronizar `--country de/europe/all`** (ACH-11) | ⏳ | CLI já aceita; padronizar enrichment sem alterar filtro. |
-| 16 | **Daily refresh + alertas** (Telegram?) | ⏳ | Depois do health check; detecção primeiro, notificação depois. |
+| 16 | **Desacoplar `test_ranking.py` do snapshot de dados** | ⏳ | Achado 31/08: sanity checks buscam vagas do baseline 12/08 que não existem mais (dataset atual 236 eligible). Fixture fixa ou invariantes de regra (não presença de vaga). |
+| 17 | **Daily refresh + alertas** (Telegram?) | ⏳ | Depois do health check; detecção primeiro, notificação depois. |
 
 ### 🟢 P3 — manutenção / escala (baixa urgência)
 | # | Item | Status | Notas |
 |---|---|---|---|
-| 17 | Trocar pin git `ae0ad53` → release PyPI do ats-scrapers quando existir | ⏳ | Monitorar; não bloqueia. |
-| 18 | Validação `--timeout`/`--limit` (ACH-14) · `remote` preenchido vs campo (ACH-16) · `country` vs `country_iso` (ACH-17) · CSV completo decisão JSON=completo/CSV=tabular (ACH-18) · parsing datas DD.MM.YYYY se medir necessidade (ACH-20) · `EUROPE_COUNTRIES`/BY documentar (ACH-19) | ⏳ | Itens pequenos; "medir antes de corrigir". |
-| 19 | Código morto (ACH-13) | ⏳ | Só após referências zero; limpeza independente. |
-| 20 | Separar código/dados (repo de dados) · Parquet quando volume justificar · chunking p/ frontend | ⏳ | Não por moda; quando o dado crescer. |
-| 21 | Expansão internacional (NL/CH/AT → BE/FR/nórdicos/UK) + mais empresas DE (39→60→100) | ⏳ | Depois de estabilizar qualidade; ATS novo só se relevante p/ cobertura. |
-| 22 | Agregadores (LinkedIn/Indeed/Glassdoor) | ⏳ | Depois de persistência + dedup maduro (identidade cross-source é complexa). |
-| 23 | Interface simples (top vagas, filtros, link) | ⏳ | Sem frontend sofisticado; dashboard/lista basta. |
+| 18 | Trocar pin git `ae0ad53` → release PyPI do ats-scrapers quando existir | ⏳ | Monitorar; não bloqueia. |
+| 19 | Validação `--timeout`/`--limit` (ACH-14) · `remote` preenchido vs campo (ACH-16) · `country` vs `country_iso` (ACH-17) · CSV completo decisão JSON=completo/CSV=tabular (ACH-18) · parsing datas DD.MM.YYYY se medir necessidade (ACH-20) · `EUROPE_COUNTRIES`/BY documentar (ACH-19) | ⏳ | Itens pequenos; "medir antes de corrigir". |
+| 20 | Código morto (ACH-13) | ⏳ | Só após referências zero; limpeza independente. |
+| 21 | Separar código/dados (repo de dados) · Parquet quando volume justificar · chunking p/ frontend | ⏳ | Não por moda; quando o dado crescer. |
+| 22 | Expansão internacional (NL/CH/AT → BE/FR/nórdicos/UK) + mais empresas DE (39→60→100) | ⏳ | Depois de estabilizar qualidade; ATS novo só se relevante p/ cobertura. |
+| 23 | Agregadores (LinkedIn/Indeed/Glassdoor) | ⏳ | Depois de persistência + dedup maduro (identidade cross-source é complexa). |
+| 24 | Interface simples (top vagas, filtros, link) | ⏳ | Sem frontend sofisticado; dashboard/lista basta. |
 
 ### 🔵 P4 — inteligência (só com dados históricos reais)
 | # | Item | Status | Notas |
 |---|---|---|---|
-| 24 | Embeddings / semantic dedup | ⏳ | Só depois do dedup textual provar insuficiente com dados reais. |
-| 25 | Feedback do usuário (viu/ignorou/gostou/aplicou) → ranking adaptativo | ⏳ | Estatística simples antes de qualquer RL. |
-| 26 | LLM enrichment pós-determinístico | ⏳ | Nunca decide validade da vaga; extrai características. |
-| 27 | Análise de mercado / tendências / forecasting | ⏳ | P5; exige meses de histórico; estatística simples antes de LSTM. |
+| 25 | Embeddings / semantic dedup | ⏳ | Só depois do dedup textual provar insuficiente com dados reais. |
+| 26 | Feedback do usuário (viu/ignorou/gostou/aplicou) → ranking adaptativo | ⏳ | Estatística simples antes de qualquer RL. |
+| 27 | LLM enrichment pós-determinístico | ⏳ | Nunca decide validade da vaga; extrai características. |
+| 28 | Análise de mercado / tendências / forecasting | ⏳ | P5; exige meses de histórico; estatística simples antes de LSTM. |
 
 ### ❌ Descartado (ratificado, com motivo)
 | Item | Motivo |
@@ -129,6 +142,10 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-08-31 (3ª edição)**: **baseline de coleta gerado** nesta instância —
+  37.373 brutas → 236 eligible (todos `de`), Workday 0 confirmado com dados reais.
+  Achado: `test_ranking.py` acoplado a snapshot → nova pendência P2 #16.
+  `PROJECT_STATUS` desbloqueio SQLite refletido; main = da81475.
 - **2026-08-31 (2ª edição)**: **PR #8 mergeado** no main (9690c47, dono autorizou) —
   main agora tem P0 deadline + hardening + fix metrics + MASTER_PLAN. **SQLite
   desbloqueado** (era ON HOLD desde 13/08): item sobe para P1 #5, na frente da
