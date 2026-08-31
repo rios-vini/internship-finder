@@ -186,6 +186,25 @@ def run_filter_pipeline(
     return 0 if selected else 1
 
 
+def _parse_duration(duration: str | None) -> float | None:
+    """Converte a duracao formatada do summary (ex.: ``0.4s``) em float (segundos).
+
+    Devolve ``None`` quando ``duration`` e ``None``/vazio ou nao pode ser
+    interpretado como numero — a metrica deve ser nativamente numerica no JSONL.
+    """
+    if duration is None:
+        return None
+    text = str(duration).strip().lower()
+    if text.endswith("s"):
+        text = text[:-1]
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
 def _tenant_record(
     run_id: str,
     company: str,
@@ -199,7 +218,8 @@ def _tenant_record(
 
     ``source`` e ``ats:slug`` (ex.: ``successfactors:jobs``) — o ATS e o
     prefixo ate o primeiro ``:``. ``duration`` chega como string formatada
-    do summary (ex.: ``0.4s``); ``error`` carrega a mensagem de timeout/erro.
+    do summary (ex.: ``0.4s``) e e convertida em float (segundos) antes da
+    persistencia; ``error`` carrega a mensagem de timeout/erro.
     """
     ats = source.split(":", 1)[0] if source else ""
     return {
@@ -212,7 +232,7 @@ def _tenant_record(
         "status": status,
         "collected": collected,
         "error": error,
-        "duration": duration,
+        "duration": _parse_duration(duration),
     }
 
 
@@ -370,7 +390,7 @@ def main(argv: list[str] | None = None) -> int:
             if summary["not_found"]:
                 print(f"  NONE {name}: sem match exato na base")
                 had_failure = True
-                tenant_records.append(_tenant_record(run_id, name, "", "", 0, None, "sem match exato"))
+                tenant_records.append(_tenant_record(run_id, name, "", "not_found", 0, None, "sem match exato"))
 
         if not total:
             write_metrics(metrics_path, tenant_records)

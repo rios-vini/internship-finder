@@ -2,15 +2,16 @@
 
 Nao e um banco de dados: um arquivo de texto append-only, uma linha JSON por
 tenant coletado + uma linha de resumo do run. Cada execucao do modo coleta
-grava o estado de cada tenant (SUCCESS/EMPTY/TIMEOUT/ERROR/SKIP, erro,
-duracao) e o resumo do pipeline (filtered/dedup/eligible), para auditoria e
-deteccao de regressao sem depender de stdout.
+grava o estado de cada tenant (SUCCESS/EMPTY/TIMEOUT/ERROR/SKIP/NOT_FOUND,
+erro, duracao) e o resumo do pipeline (filtered/dedup/eligible), para
+auditoria e deteccao de regressao sem depender de stdout.
 
 Formato (JSONL, utf-8, uma linha por registro):
 
   {"type": "tenant", "run_id": ..., "timestamp": ..., "company": ...,
-   "source": ..., "ats": ..., "status": "ok|empty|timeout|error|skipped",
-   "collected": int, "error": null|str, "duration": float}
+   "source": ..., "ats": ...,
+   "status": "ok|empty|timeout|error|skipped|not_found",
+   "collected": int, "error": null|str, "duration": float|null}
 
   {"type": "run", "run_id": ..., "timestamp": ..., "total_collected": int,
    "filtered": int, "eligible": int, "dedup_removed": int}

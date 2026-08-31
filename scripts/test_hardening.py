@@ -219,13 +219,14 @@ def test_metrics_roundtrip() -> None:
     write_metrics(path, [
         _tenant_record("runX", "Acme", "successfactors:acme", "ok", 761, "4.2s"),
         _tenant_record("runX", "Acme", "smartrecruiters:other", "error", 0, None, "boom"),
+        _tenant_record("runX", "Acme", "", "not_found", 0, None, "sem match exato"),
     ])
     write_metrics(path, [{"type": "run", "run_id": "runX", "timestamp": "t",
                           "total_collected": 761, "filtered": 10, "dedup_removed": 3,
                           "eligible": 10}])
     records = read_metrics(path)
     path.unlink()
-    check("11a. 3 registros persistidos", len(records) == 3)
+    check("11a. 4 registros persistidos", len(records) == 4)
     tenants = [r for r in records if r["type"] == "tenant"]
     runs = [r for r in records if r["type"] == "run"]
     check("11b. tenant ok com ats/status/duracao",
@@ -234,6 +235,49 @@ def test_metrics_roundtrip() -> None:
     check("11c. tenant erro carrega mensagem", tenants[1]["error"] == "boom")
     check("11d. run record com dedup_removed",
           runs[0]["total_collected"] == 761 and runs[0]["dedup_removed"] == 3)
+
+
+# ---------------------------------------------------------------------------
+# 15-16. metricas: not_found e duration numerico
+# ---------------------------------------------------------------------------
+
+def test_metrics_not_found_and_duration() -> None:
+    print("== metricas: status not_found e duration numerico ==")
+    from internship_finder.cli import _tenant_record
+
+    # PROBLEMA 1: empresa sem match exato -> status "not_found"
+    rec = _tenant_record("runX", "Acme", "", "not_found", 0, None, "sem match exato")
+    check("15a. not_found com status correto", rec["status"] == "not_found")
+    check("15b. not_found com source vazio", rec["source"] == "" and rec["ats"] == "")
+    check("15c. not_found com error 'sem match exato'", rec["error"] == "sem match exato")
+    check("15d. not_found duration null", rec["duration"] is None)
+
+    # PROBLEMA 2: duration deve ser float (segundos), nao string
+    success = _tenant_record("runX", "Acme", "successfactors:acme", "ok", 10, "0.4s")
+    check("16a. SUCCESS duration numerico", isinstance(success["duration"], float)
+          and success["duration"] == 0.4, f"duration={success['duration']!r}")
+
+    empty = _tenant_record("runX", "Acme", "successfactors:acme", "empty", 0, "1.2s")
+    check("16b. EMPTY duration numerico", isinstance(empty["duration"], float)
+          and empty["duration"] == 1.2, f"duration={empty['duration']!r}")
+
+    timeout = _tenant_record("runX", "Acme", "successfactors:acme", "timeout", 0, None, "boom")
+    check("16c. TIMEOUT duration null", timeout["duration"] is None)
+
+    error = _tenant_record("runX", "Acme", "successfactors:acme", "error", 0, None, "boom")
+    check("16d. ERROR duration null", error["duration"] is None)
+
+    not_found = _tenant_record("runX", "Acme", "", "not_found", 0, None, "sem match exato")
+    check("16e. NOT_FOUND duration null", not_found["duration"] is None)
+
+    # campos preservados (timestamp UTC, run_id, source, ats, company, status,
+    # collected, error)
+    check("16f. run_id/source/company preservados",
+          success["run_id"] == "runX" and success["source"] == "successfactors:acme"
+          and success["company"] == "Acme")
+    ts = success["timestamp"]
+    check("16g. timestamp UTC (termina em +00:00 ou Z)",
+          ts.endswith("+00:00") or ts.endswith("Z"), f"ts={ts!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +327,7 @@ def main() -> int:
     test_partial_failure_exit()
     test_coverage_offline()
     test_metrics_roundtrip()
+    test_metrics_not_found_and_duration()
     test_p0_deadline()
     test_filter_rank_no_regression()
     print()
