@@ -58,15 +58,11 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 |---|---|---|---|
 | 3 | **CI — GitHub Actions** | ⏳ | Testes a cada PR. Rede de segurança do fluxo de delegação (agente externo edita código). Custo ~1h. |
 | 4 | **Regenerar baseline de coleta** nesta instância | ⏳ | Sem `data/` hoje. Pré-requisito p/ observar, medir e historiar. Uma coleta real completa (39 empresas) + registrar resultado. |
-| 5 | **Observabilidade de consumo** (health por tenant/ATS sobre o JSONL já existente) | 🟡 base pronta (ACH-03), consumo falta | source_stats.jsonl, job_count, duration, status, queda brusca, erro recorrente. |
-| 6 | **Structured error codes** | ⏳ | `TIMEOUT / CONNECTION_ERROR / FETCH_ERROR / NORMALIZATION_ERROR / UNKNOWN` no lugar de texto livre na queue. |
-| 7 | **Multiprocessing lifecycle** (ACH-07) | ⏳ | spawn → execute → timeout → cleanup completo → join; sem órfãos; distinguir "worker morreu" de "timeout". |
-| 8 | **Documentação operacional** | ⏳ | PROJECT_STATUS (P0 já feito), README 389→293, `docs/roadmap.md` (reescrever), `docs/architecture.md` (`is_internship()` → `is_student_role()`), relatórios antigos = histórico. |
-
-### 🔒 P1-bloqueado (gate: dono reabre SQLite)
-| # | Item | Status | Notas |
-|---|---|---|---|
-| 9 | **Persistência SQLite** + `first_seen`/`last_seen`/`active`/`archived` | 🔒 ON HOLD (decisão dono, 13/08) | `sqlite3` basta; sem Postgres/Redis/ORM. Transforma snapshot → sistema com ciclo de vida da vaga. |
+| 5 | **Persistência SQLite** + `first_seen`/`last_seen`/`active`/`archived` | 🔓 **DESBLOQUEADO 31/08** (decisão do dono; era ON HOLD desde 13/08) | `sqlite3` basta; sem Postgres/Redis/ORM. Pré-requisito do histórico; o parecer A já autorizava. Campo `application_deadline` entra no schema junto com first/last_seen. |
+| 6 | **Observabilidade de consumo** (health por tenant/ATS sobre o JSONL já existente) | 🟡 base pronta (ACH-03), consumo falta | source_stats.jsonl, job_count, duration, status, queda brusca, erro recorrente. Pode consumir o SQLite após o item 5. |
+| 7 | **Structured error codes** | ⏳ | `TIMEOUT / CONNECTION_ERROR / FETCH_ERROR / NORMALIZATION_ERROR / UNKNOWN` no lugar de texto livre na queue. |
+| 8 | **Multiprocessing lifecycle** (ACH-07) | ⏳ | spawn → execute → timeout → cleanup completo → join; sem órfãos; distinguir "worker morreu" de "timeout". |
+| 9 | **Documentação operacional** | ⏳ | PROJECT_STATUS (P0 feito, SQLite desbloqueado), README 389→293, `docs/roadmap.md` (reescrever), `docs/architecture.md` (`is_internship()` → `is_student_role()`), relatórios antigos = histórico. |
 
 ### 🟡 P2 — qualidade e automação (após acumular histórico)
 | # | Item | Status | Notas |
@@ -122,6 +118,8 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - **Dados não versionados** (`data/` no .gitignore): números são documentados em
   relatórios; dados são artefato local de coleta. (Reabrir só por decisão do dono.)
 - `application_deadline` **nunca** inferido de `posted_at`; `None` quando ausente.
+- **Persistência autorizada** (decisão dono 31/08): SQLite via `sqlite3` stdlib,
+  sem ORM/Postgres/Redis; schema mínimo (Job canônico + first_seen/last_seen/active).
 
 ## 4. Como este documento é mantido
 - Proposta de mudança de prioridade/item → registro com data + verificação no código
@@ -131,9 +129,14 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-08-31 (2ª edição)**: **PR #8 mergeado** no main (9690c47, dono autorizou) —
+  main agora tem P0 deadline + hardening + fix metrics + MASTER_PLAN. **SQLite
+  desbloqueado** (era ON HOLD desde 13/08): item sobe para P1 #5, na frente da
+  observabilidade (que passa a poder consumi-lo); `application_deadline` entra no
+  schema junto com first/last_seen.
 - **2026-08-31**: consolidação única criada a partir de 3 fontes concorrentes
   (roadmap original, auditoria ACH, consolidações de sessão) + verificação no código.
   P0 deadline e ACH-01..09 marcados como feitos na branch do PR #8; fix `dfcf415`
   registrado; ACH-10 (SAP Analytics Cloud) **removido** do backlog (implementado);
-  P0.1 Workday confirmado como **nunca implementado**; CI subido a P1; SQLite mantido
-  🔒 ON HOLD; anomalia/zero-return com gate de histórico; baseline de coleta adicionado.
+  P0.1 Workday confirmado como **nunca implementado**; CI subido a P1; anomalia/
+  zero-return com gate de histórico; baseline de coleta adicionado.

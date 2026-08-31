@@ -82,4 +82,6 @@ See the existing documentation under `docs/` for detailed collection, correction
 3. Address important data-quality limitations identified during collection
 4. Continue improving ranking only when evidence shows it is needed
 
-> SQLite persistence + active/expired status (backlog `aa5996fe`): **on hold** — owner requested to wait for further instructions (2026-08-13), even though parecer A authorized it.
+> SQLite persistence + active/expired status (backlog `aa5996fe`): **desbloqueado pelo
+> dono em 2026-08-31** — entra no MASTER_PLAN como P1 #5 (schema via `sqlite3` stdlib,
+> `application_deadline` + first_seen/last_seen/active).
