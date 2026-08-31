@@ -1,0 +1,139 @@
+# MASTER_PLAN — Internship Finder (fonte de verdade única)
+
+**Versão:** 2026-08-31 · **Status:** unificado a partir de (1) roadmap original Hermes,
+(2) auditoria OpenHands (ACH-01..21), (3) consolidações das sessões 27–30/08,
+(4) **verificação direta no código/git em 31/08**. Nenhum item entra aqui por memória:
+tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
+
+> Regra de leitura: ✅ = verificado feito · ⏳ = pendente · 🔒 = bloqueado por decisão
+> do dono · ❌ = descartado com motivo. Fonte da verdade de execução: este arquivo +
+> `PROJECT_STATUS.md` (estado medido) + PRs abertos. `docs/roadmap.md` está obsoleto
+> (época do MVP) e não deve ser usado como plano — reescrever quando a doc for tocada.
+
+---
+
+## 1. Estado verificado em 2026-08-31
+
+### Main público (GitHub)
+- `main` está **atrás** da branch `feat/hardening-dedup-pipeline` (PR #8 aberto).
+  O `main` ainda não tem P0 deadline nem hardening — por isso qualquer leitura do
+  `main` parece "não implementado". Leitura correta: **tudo abaixo está na branch do
+  PR #8**, pronto para merge.
+
+### PR #8 — feat/hardening-dedup-pipeline (aberto, 3 commits)
+| Commit | Data | Conteúdo |
+|---|---|---|
+| `7d3c3dd` | 23/08 | P0 Application Deadline: `Job.application_deadline` (datetime\|None, nunca inferido de `posted_at`), adapter, CSV, JSON, teste; pin upstream `ae0ad53` |
+| `63fb21b` | 24/08 | Hardening ACH-01..09: dedup por tenant, ids sem URL, métricas JSONL, coverage via `eligible_jobs.json`, exit code 2 p/ falha parcial |
+| `dfcf415` | 31/08 | Review PR #8: `status="not_found"` + `duration` float no JSONL (eram `status=""` e string `"0.4s"`) — testes 15a–16g |
+
+### Pipeline (validado end-to-end, parecer A)
+```
+56.810 brutas → 3.428 estudante → 777 área → 309 DE → dedup −16 → 293 eligible/ranked
+```
+- 293/293 `country_iso='de'` · scores min 2.00 / mediana 6.00 / max 16.00 · md5 do
+  eligible idêntico em re-execução (determinístico) · Top 20 = 13A/5B/1C/1D.
+- Baseline oficial: **293** (não 389 — 389 é pré-correções F1–F3; README desatualizado).
+- 39 empresas na coleta · 20 com vagas eligible · ATS: successfactors 78%, smartrecruiters,
+  eightfold, cornerstone, phenom, greenhouse; workday 0 eligible (limitação documentada).
+
+### Limitações externas conhecidas (não são bugs internos)
+- Workday: API não expõe país confiável p/ vários tenants → vagas DE sem `country_iso`.
+- Hager / Boehringer / Lanxess (SuccessFactors XML malformado) / Symrise (join.com 422).
+- 7 títulos de graduação na cauda (SmvP Schaeffler, Bachelor BASF) — fora dos padrões
+  aprovados F1; candidatos a extensão futura, não regressão.
+
+---
+
+## 2. Ranking oficial (ordem de execução)
+
+### 🔴 P0 — desbloqueio e valor
+| # | Item | Status | Notas |
+|---|---|---|---|
+| 1 | **Merge do PR #8** (`7d3c3dd`+`63fb21b`+`dfcf415` → main) | ⏳ ação do dono | Nada no main fica atual antes disso. Verificar CI/mergeable antes. |
+| 2 | **Workday Country/Location Resolver** (P0.1 original) | ⏳ **nunca implementado** — NÃO existe geocodificação no `src/` (grep confirmou 0 linhas; a "Tarefa 1" de 28/08 foi relatada e nunca entregue) | Pipeline: `country_iso` já existe → usa; nome de país explícito → infere; location conhecida → cache (`data/geocoding_cache.json`); desconhecida → geocoder **gateado por flag** (default OFF). Proibido geocoding em massa. Medir vagas recuperadas. |
+
+### 🟠 P1 — fundação operacional (nesta ordem)
+| # | Item | Status | Notas |
+|---|---|---|---|
+| 3 | **CI — GitHub Actions** | ⏳ | Testes a cada PR. Rede de segurança do fluxo de delegação (agente externo edita código). Custo ~1h. |
+| 4 | **Regenerar baseline de coleta** nesta instância | ⏳ | Sem `data/` hoje. Pré-requisito p/ observar, medir e historiar. Uma coleta real completa (39 empresas) + registrar resultado. |
+| 5 | **Observabilidade de consumo** (health por tenant/ATS sobre o JSONL já existente) | 🟡 base pronta (ACH-03), consumo falta | source_stats.jsonl, job_count, duration, status, queda brusca, erro recorrente. |
+| 6 | **Structured error codes** | ⏳ | `TIMEOUT / CONNECTION_ERROR / FETCH_ERROR / NORMALIZATION_ERROR / UNKNOWN` no lugar de texto livre na queue. |
+| 7 | **Multiprocessing lifecycle** (ACH-07) | ⏳ | spawn → execute → timeout → cleanup completo → join; sem órfãos; distinguir "worker morreu" de "timeout". |
+| 8 | **Documentação operacional** | ⏳ | PROJECT_STATUS (P0 já feito), README 389→293, `docs/roadmap.md` (reescrever), `docs/architecture.md` (`is_internship()` → `is_student_role()`), relatórios antigos = histórico. |
+
+### 🔒 P1-bloqueado (gate: dono reabre SQLite)
+| # | Item | Status | Notas |
+|---|---|---|---|
+| 9 | **Persistência SQLite** + `first_seen`/`last_seen`/`active`/`archived` | 🔒 ON HOLD (decisão dono, 13/08) | `sqlite3` basta; sem Postgres/Redis/ORM. Transforma snapshot → sistema com ciclo de vida da vaga. |
+
+### 🟡 P2 — qualidade e automação (após acumular histórico)
+| # | Item | Status | Notas |
+|---|---|---|---|
+| 10 | **Zero-return + anomaly detection** | ⏳ gate: ≥5 execuções persistidas | Sem histórico estatístico hoje; rebaixado de P1. |
+| 11 | **Job validation forte** | ⏳ | title/url/country_iso sem `""`/`"   "`; ausência ≠ dado falso. |
+| 12 | **Country/domain module** | ⏳ | centralizar codes/aliases/inferência (hoje espalhado em filters.py). |
+| 13 | **Company Registry operacional** + tirar empresas da lógica do CLI | ⏳ | company/ATS/tenant/enabled/status/última coleta; execução vira "run collection". |
+| 14 | **Dedup 2.0 textual** | 🟡 parcial | fingerprint (company+title+location normalizados+desc), normalização multilíngue (Praktikum≈Internship≈Werkstudent). |
+| 15 | **Padronizar `--country de/europe/all`** (ACH-11) | ⏳ | CLI já aceita; padronizar enrichment sem alterar filtro. |
+| 16 | **Daily refresh + alertas** (Telegram?) | ⏳ | Depois do health check; detecção primeiro, notificação depois. |
+
+### 🟢 P3 — manutenção / escala (baixa urgência)
+| # | Item | Status | Notas |
+|---|---|---|---|
+| 17 | Trocar pin git `ae0ad53` → release PyPI do ats-scrapers quando existir | ⏳ | Monitorar; não bloqueia. |
+| 18 | Validação `--timeout`/`--limit` (ACH-14) · `remote` preenchido vs campo (ACH-16) · `country` vs `country_iso` (ACH-17) · CSV completo decisão JSON=completo/CSV=tabular (ACH-18) · parsing datas DD.MM.YYYY se medir necessidade (ACH-20) · `EUROPE_COUNTRIES`/BY documentar (ACH-19) | ⏳ | Itens pequenos; "medir antes de corrigir". |
+| 19 | Código morto (ACH-13) | ⏳ | Só após referências zero; limpeza independente. |
+| 20 | Separar código/dados (repo de dados) · Parquet quando volume justificar · chunking p/ frontend | ⏳ | Não por moda; quando o dado crescer. |
+| 21 | Expansão internacional (NL/CH/AT → BE/FR/nórdicos/UK) + mais empresas DE (39→60→100) | ⏳ | Depois de estabilizar qualidade; ATS novo só se relevante p/ cobertura. |
+| 22 | Agregadores (LinkedIn/Indeed/Glassdoor) | ⏳ | Depois de persistência + dedup maduro (identidade cross-source é complexa). |
+| 23 | Interface simples (top vagas, filtros, link) | ⏳ | Sem frontend sofisticado; dashboard/lista basta. |
+
+### 🔵 P4 — inteligência (só com dados históricos reais)
+| # | Item | Status | Notas |
+|---|---|---|---|
+| 24 | Embeddings / semantic dedup | ⏳ | Só depois do dedup textual provar insuficiente com dados reais. |
+| 25 | Feedback do usuário (viu/ignorou/gostou/aplicou) → ranking adaptativo | ⏳ | Estatística simples antes de qualquer RL. |
+| 26 | LLM enrichment pós-determinístico | ⏳ | Nunca decide validade da vaga; extrai características. |
+| 27 | Análise de mercado / tendências / forecasting | ⏳ | P5; exige meses de histórico; estatística simples antes de LSTM. |
+
+### ❌ Descartado (ratificado, com motivo)
+| Item | Motivo |
+|---|---|
+| `remote` None→False | None = desconhecido, não = não-remoto. |
+| Patterns → YAML/JSON | Regras de filtro são lógica de domínio, não config. |
+| `lru_cache` no ranking | Sem gargalo medido. |
+| Retry/backoff próprio | ats-scrapers já tem; observar/coordenar, não duplicar. |
+| ETag/Last-Modified | Só se bandwidth/tempo virar problema real. |
+| Self-healing LLM scraper | Extração determinística + erros observáveis; LLM não adivinha parser. |
+| Behavioral mimicry | Não virar bot de browser. |
+| Knowledge Graph / Neo4j | Não resolve problema atual. |
+| Reinforcement Learning | Feedback simples vem antes; overkill. |
+
+---
+
+## 3. Decisões de engenharia ratificadas (não reabrir sem evidência)
+- Arquitetura ATS→adapter→Job→filters→dedup→ranking **não desmontar** (filtros/ranking
+  não dependem de campos de ATS específicos).
+- Ranking **heurístico, determinístico, sem ML**, com score_breakdown auditável.
+- Inferência de país **segura por construção**: nome explícito ou token em posição
+  confiável; nunca fabricar; Workday sem país = `None` documentado.
+- **Dados não versionados** (`data/` no .gitignore): números são documentados em
+  relatórios; dados são artefato local de coleta. (Reabrir só por decisão do dono.)
+- `application_deadline` **nunca** inferido de `posted_at`; `None` quando ausente.
+
+## 4. Como este documento é mantido
+- Proposta de mudança de prioridade/item → registro com data + verificação no código
+  (nunca por memória de sessão).
+- Tarefas saem daqui direto para o fluxo: **cronograma → prompt-builder → OpenHands →
+  conferir → git** (skill `openhands-orchestration`).
+- Itens P1+ exigem critério de "pronto" verificável antes de delegar.
+
+## 5. Log de mudanças
+- **2026-08-31**: consolidação única criada a partir de 3 fontes concorrentes
+  (roadmap original, auditoria ACH, consolidações de sessão) + verificação no código.
+  P0 deadline e ACH-01..09 marcados como feitos na branch do PR #8; fix `dfcf415`
+  registrado; ACH-10 (SAP Analytics Cloud) **removido** do backlog (implementado);
+  P0.1 Workday confirmado como **nunca implementado**; CI subido a P1; SQLite mantido
+  🔒 ON HOLD; anomalia/zero-return com gate de histórico; baseline de coleta adicionado.
