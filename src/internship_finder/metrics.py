@@ -11,10 +11,16 @@ Formato (JSONL, utf-8, uma linha por registro):
   {"type": "tenant", "run_id": ..., "timestamp": ..., "company": ...,
    "source": ..., "ats": ...,
    "status": "ok|empty|timeout|error|skipped|not_found",
-   "collected": int, "error": null|str, "duration": float|null}
+   "collected": int, "error": null|str, "error_code": null|str,
+   "duration": float|null}
 
   {"type": "run", "run_id": ..., "timestamp": ..., "total_collected": int,
    "filtered": int, "eligible": int, "dedup_removed": int}
+
+``error_code`` (P1 #7) e opcional: quando presente, traz o codigo estruturado
+de ``internship_finder.errors`` (ex.: ``TIMEOUT``, ``CONNECTION_ERROR``),
+acompanhando o ``error`` legivel; ``null`` em estados ok/empty/skipped ou em
+registros antigos (append-only, o JSONL existente continua valido).
 """
 
 from __future__ import annotations

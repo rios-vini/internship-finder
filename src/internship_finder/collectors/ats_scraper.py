@@ -16,6 +16,14 @@ from ats_scrapers.scrapers import get_scraper
 
 from internship_finder.adapters.ats import AtsJobAdapter
 from internship_finder.collectors.company import CompanyCollector
+from internship_finder.errors import (
+    FETCH_STAGE,
+    NORMALIZE_STAGE,
+    TIMEOUT,
+    UNKNOWN,
+    CollectionError,
+    classify_exception,
+)
 from internship_finder.geocoding import flush_cache
 from internship_finder.models.company import Company
 from internship_finder.models.job import Job
@@ -41,30 +49,49 @@ def fetch_worker(
 
     A normalizacao usa a ``Company`` real (source/slug corretos) e acontece
     uma unica vez — a re-adaptacao apos a queue duplicaria prefixos no ``id``.
+
+    O payload de erro na queue e ESTRUTURADO (sem texto livre): a tupla
+    ``("-error", code, detail)``, com ``code``/``detail`` vindos de
+    ``classify_exception`` por estagio (fetch vs normalize).
     """
     try:
-        scraper = get_scraper(
-            company.ats,
-            scraper_slug(company),
-            timeout=timeout,
-            include_descriptions=include_descriptions,
-        )
-        jobs = scraper.fetch()
-        adapter = AtsJobAdapter()
-        result = [adapter.to_job(j, company).to_dict() for j in jobs]
-        # Persiste o cache de geocoding (resultados/respostas) que este
-        # subprocesso possa ter gravado durante a adaptacao. O cache e
-        # file-based, entao o write propaga para os demais processos.
-        flush_cache()
+        try:
+            scraper = get_scraper(
+                company.ats,
+                scraper_slug(company),
+                timeout=timeout,
+                include_descriptions=include_descriptions,
+            )
+            jobs = scraper.fetch()
+        except Exception as exc:  # noqa: BLE001 - falha do estagio de fetch
+            code, detail = classify_exception(exc, stage=FETCH_STAGE)
+            queue.put(("-error", code, detail))
+            return
+        try:
+            adapter = AtsJobAdapter()
+            result = [adapter.to_job(j, company).to_dict() for j in jobs]
+            # Persiste o cache de geocoding (resultados/respostas) que este
+            # subprocesso possa ter gravado durante a adaptacao. O cache e
+            # file-based, entao o write propaga para os demais processos.
+            flush_cache()
+        except Exception as exc:  # noqa: BLE001 - falha do estagio de adaptacao
+            code, detail = classify_exception(exc, stage=NORMALIZE_STAGE)
+            queue.put(("-error", code, detail))
+            return
         queue.put(("ok", result))
-    except Exception as exc:  # noqa: BLE001 - qualquer falha vira mensagem
-        queue.put(("error", f"{type(exc).__name__}: {exc}"))
+    except Exception as exc:  # noqa: BLE001 - nem a classificacao pode derrubar
+        queue.put(("-error", UNKNOWN, f"{type(exc).__name__}: {exc}"))
 
 
 def fetch_with_timeout(
     company: Company, timeout: float, include_descriptions: bool
 ) -> list[dict]:
-    """fetch() do scraper com teto de tempo; trava/erro nao derruba o fluxo."""
+    """fetch() do scraper com teto de tempo; trava/erro nao derruba o fluxo.
+
+    A excecao levantada carrega o codigo estruturado: timeout do subprocesso
+    vira ``CollectionError(TIMEOUT, ...)``; erro vindo do worker, um
+    ``CollectionError(code, detail)`` com o codigo do payload estruturado.
+    """
     ctx = mp.get_context()
     queue = ctx.Queue()
     proc = ctx.Process(
@@ -78,12 +105,14 @@ def fetch_with_timeout(
     except Exception:
         proc.terminate()
         proc.join(timeout=5)
-        raise TimeoutError(
-            f"scraper {company.ats}/{company.slug} nao respondeu em {deadline:.0f}s (timeout)"
-        )
+        raise CollectionError(
+            TIMEOUT,
+            f"scraper {company.ats}/{company.slug} nao respondeu em {deadline:.0f}s (timeout)",
+        ) from None
     proc.join(timeout=5)
-    if status == "error":
-        raise RuntimeError(payload)
+    if status == "-error":
+        code, detail = payload
+        raise CollectionError(code, detail) from None
     return payload
 
 
@@ -97,12 +126,16 @@ def collect_company(
 
     Retorna ``(jobs, summary)``; ``summary`` distingue o estado de cada
     tenant, para que "0 vagas" (EMPTY) nao seja confundido com erro:
-    - ``ok``      [(source, n, tempo)]  — SUCCESS (>=1 vaga coletada)
-    - ``empty``   [(source, tempo)]     — EMPTY (tenant respondeu, 0 vagas)
-    - ``timeout`` [(source, erro)]      — TIMEOUT (nao respondeu no prazo)
-    - ``failed``  [(source, erro)]      — ERROR (excecao de coleta)
-    - ``skipped`` [source]              — sem scraper registrado
-    - ``not_found`` (bool)              — empresa sem match exato na base
+    - ``ok``      [(source, n, tempo)]     — SUCCESS (>=1 vaga coletada)
+    - ``empty``   [(source, tempo)]        — EMPTY (tenant respondeu, 0 vagas)
+    - ``timeout`` [(source, code, erro)]   — TIMEOUT (nao respondeu no prazo)
+    - ``failed``  [(source, code, erro)]   — ERROR (excecao de coleta)
+    - ``skipped`` [source]                 — sem scraper registrado
+    - ``not_found`` (bool)                 — empresa sem match exato na base
+
+    ``code`` e o codigo estruturado de ``errors`` (ex.: ``TIMEOUT``,
+    ``CONNECTION_ERROR``) e ``erro`` o detalhe legivel (``str(exc)``); os dois
+    juntos (e nao texto livre sozinho) propagam da queue ate o registro JSONL.
 
     Erros/timeouts sao registrados e o fluxo segue para as proximas
     empresas/tenants (nenhuma excecao e engolida silenciosamente).
@@ -143,10 +176,20 @@ def collect_company(
             else:
                 summary["empty"].append((company.source, f"{dt:.1f}s"))
                 log.info("[%s] %s: 0 vagas (EMPTY) em %.1fs", name, company.source, dt)
-        except TimeoutError as exc:
-            summary["timeout"].append((company.source, str(exc)))
+        except CollectionError as exc:
+            code = exc.code if exc.code else UNKNOWN
+            if code == TIMEOUT:
+                summary["timeout"].append((company.source, code, exc.detail))
+                log.error("[%s] %s timeout: %s", name, company.source, exc)
+            else:
+                summary["failed"].append((company.source, code, exc.detail))
+                log.error("[%s] %s falhou: %s", name, company.source, exc)
+        except TimeoutError as exc:  # noqa: BLE001 - builtin str do mock/pista
+            code, detail = classify_exception(exc)
+            summary["timeout"].append((company.source, code, detail))
             log.error("[%s] %s timeout: %s", name, company.source, exc)
         except Exception as exc:  # noqa: BLE001 - segue para as proximas
-            summary["failed"].append((company.source, str(exc)))
+            code, detail = classify_exception(exc)
+            summary["failed"].append((company.source, code, detail))
             log.error("[%s] %s falhou: %s", name, company.source, exc)
     return jobs, summary

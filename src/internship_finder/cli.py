@@ -217,6 +217,21 @@ def _parse_duration(duration: str | None) -> float | None:
         return None
 
 
+def _split_summary_error(item: tuple) -> tuple[str, str | None, str]:
+    """Desempacota uma entrada de ``summary``[``timeout``|``failed``].
+
+    O formato novo e ``(source, code, err)``; o antigo ``(source, err)`` ainda
+    pode surgir de testes/mocks. Devolve sempre ``(source, code, err)`` com
+    ``code=None`` quando a entrada antiga nao traz codigo.
+    """
+    if len(item) >= 3:
+        source, code, err = item[0], item[1], item[2]
+    else:
+        source, err = item[0], item[1]
+        code = None
+    return source, code, err
+
+
 def _tenant_record(
     run_id: str,
     company: str,
@@ -225,13 +240,17 @@ def _tenant_record(
     collected: int,
     duration: str | None = None,
     error: str | None = None,
+    *,
+    error_code: str | None = None,
 ) -> dict:
     """Registro de metricas de um tenant (linha ``type: tenant`` do JSONL).
 
     ``source`` e ``ats:slug`` (ex.: ``successfactors:jobs``) — o ATS e o
     prefixo ate o primeiro ``:``. ``duration`` chega como string formatada
     do summary (ex.: ``0.4s``) e e convertida em float (segundos) antes da
-    persistencia; ``error`` carrega a mensagem de timeout/erro.
+    persistencia; ``error`` carrega a mensagem de timeout/erro; ``error_code``
+    (kwarg opcional) o codigo estruturado (ex.: ``TIMEOUT``) quando houver —
+    ``null`` em estados ok/empty/skipped ou quando o registro nao tem codigo.
     """
     ats = source.split(":", 1)[0] if source else ""
     return {
@@ -244,6 +263,7 @@ def _tenant_record(
         "status": status,
         "collected": collected,
         "error": error,
+        "error_code": error_code,
         "duration": _parse_duration(duration),
     }
 
@@ -422,14 +442,18 @@ def main(argv: list[str] | None = None) -> int:
             for source, dt in summary.get("empty", []):
                 print(f"  EMPTY {source}: 0 vagas ({dt})")
                 tenant_records.append(_tenant_record(run_id, name, source, "empty", 0, dt))
-            for source, err in summary.get("timeout", []):
+            for item in summary.get("timeout", []):
+                source, code, err = _split_summary_error(item)
                 print(f"  TIMEOUT {source}: {err}")
                 had_failure = True
-                tenant_records.append(_tenant_record(run_id, name, source, "timeout", 0, None, err))
-            for source, err in summary["failed"]:
+                tenant_records.append(_tenant_record(
+                    run_id, name, source, "timeout", 0, None, err, error_code=code))
+            for item in summary["failed"]:
+                source, code, err = _split_summary_error(item)
                 print(f"  FAIL {source}: {err}")
                 had_failure = True
-                tenant_records.append(_tenant_record(run_id, name, source, "error", 0, None, err))
+                tenant_records.append(_tenant_record(
+                    run_id, name, source, "error", 0, None, err, error_code=code))
             for source in summary["skipped"]:
                 print(f"  SKIP {source}: sem scraper no pacote")
                 tenant_records.append(_tenant_record(run_id, name, source, "skipped", 0, None))
