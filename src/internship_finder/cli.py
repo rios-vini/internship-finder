@@ -17,13 +17,22 @@ Dois modos:
 
       internship-finder --companies "Bosch,SAP" --output data/jobs.json
 
+- **Health:** com ``--health [PATH]``, consome o JSONL de metricas de execucao
+  (default ``data/collection_metrics.jsonl``), imprime o relatorio de health por
+  tenant/ATS (JSON indentado) no stdout e retorna 0. E o UNICO modo quando
+  presente::
+
+      internship-finder --health
+      internship-finder --health data/collection_metrics.jsonl
+
 Cascata de contagens (tudo ligado por padrao): total -> tipo estudante/estagio
 -> area-alvo -> pais (``--country``, default ``de``). ``--all`` desliga os tres
 filtros de uma vez. Exit code: 0 se algo foi gravado e a coleta nao teve
 falha real; 1 se nada foi gravado/nenhuma vaga; 2 no modo coleta quando houve
 falha real de coleta (timeout/erro/sem match), mesmo com vagas coletadas. As
 metricas de execucao sao persistidas em JSONL (``--metrics``, default
-``data/collection_metrics.jsonl`` no modo coleta).
+``data/collection_metrics.jsonl`` no modo coleta). No modo health, arquivo
+inexistente/ilegivel -> mensagem de erro no stderr e exit != 0.
 """
 
 from __future__ import annotations
@@ -32,12 +41,14 @@ import argparse
 import csv
 import json
 import logging
+import sys
 from pathlib import Path
 
 from internship_finder.collectors.ats_scraper import collect_company
 from internship_finder.dedup import deduplicate
 from internship_finder.filters import select_eligible
-from internship_finder.metrics import utcnow_iso, write_metrics
+from internship_finder.health import build_health_report
+from internship_finder.metrics import read_metrics, utcnow_iso, write_metrics
 from internship_finder.models.job import Job
 from internship_finder.ranking import rank_jobs
 from internship_finder.storage.sqlite_store import SqliteStore
@@ -333,6 +344,17 @@ def main(argv: list[str] | None = None) -> int:
         "last_seen/active/archived) no banco sqlite3 em PATH (default: desligado). "
         "Sem a flag, o comportamento e identico ao atual.",
     )
+    parser.add_argument(
+        "--health",
+        nargs="?",
+        const="data/collection_metrics.jsonl",
+        default=None,
+        metavar="PATH",
+        help="Modo health (unico quando presente): le o JSONL de metricas de "
+        "execucao (default: data/collection_metrics.jsonl), imprime o relatorio "
+        "por tenant/ATS em JSON no stdout e retorna 0. Arquivo inexistente/"
+        "ilegivel -> erro no stderr e exit != 0.",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -341,6 +363,21 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(message)s",
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    if args.health is not None:
+        health_path = Path(args.health)
+        if not health_path.exists():
+            print(f"ERRO: arquivo de metricas nao encontrado: {health_path} "
+                  "(colete antes com --companies)", file=sys.stderr)
+            return 1
+        try:
+            records = read_metrics(health_path)
+        except Exception as exc:  # noqa: BLE001 - sem traceback feio para o usuario
+            print(f"ERRO: nao foi possivel ler {health_path}: {exc}", file=sys.stderr)
+            return 1
+        report = build_health_report(records)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
 
     if args.all:
         args.student = False
