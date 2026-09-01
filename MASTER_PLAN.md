@@ -71,7 +71,7 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 3 | **CI — GitHub Actions** | ✅ **implementado 01/09** (PR #11, main 7b88f76) — `.github/workflows/ci.yml`: push (main, feature/*) + pull_request; runner limpo Python 3.12; pin `ae0ad53` instalado do tarball oficial do GitHub (`archive/ae0ad53.tar.gz`, pois o commit só existe como `refs/pull/268/head`) com verificação do expose de `application_deadline`; `test_dedup`/`test_ranking` ganharam skip do bloco real quando `data/` ausente (runner não tem dados); run real verde no PR (7/7 TUDO OK). |
 | 4 | **Regenerar baseline de coleta** nesta instância | ✅ coleta 31/08 (37.373 brutas → 236 eligible; fallhas parciais documentadas: Lidl timeout etc.) | `data/` populado; base p/ medir. P0.1 usou (baseline 0 Workday) e P3 #18 validou. |
 | 5 | **Persistência SQLite** + `first_seen`/`last_seen`/`active`/`archived` | 🔓 **DESBLOQUEADO 31/08** (decisão do dono; era ON HOLD desde 13/08) | `sqlite3` basta; sem Postgres/Redis/ORM. Pré-requisito do histórico; o parecer A já autorizava. Campo `application_deadline` entra no schema junto com first/last_seen. |
-| 6 | **Observabilidade de consumo** (health por tenant/ATS sobre o JSONL já existente) | 🟡 base pronta (ACH-03), consumo falta | source_stats.jsonl, job_count, duration, status, queda brusca, erro recorrente. Pode consumir o SQLite após o item 5. |
+| 6 | **Observabilidade de consumo** (health por tenant/ATS sobre o JSONL já existente) | ✅ **implementado 01/09** (PR #12) — `src/internship_finder/health.py` + flag `--health [PATH]` (default `data/collection_metrics.jsonl`): relatório JSON por source/ATS (status, collected, duration, médias ok) + alertas de queda brusca (gate ≥3 runs ok, <50% da mediana) e erro recorrente (≥2 consecutivos); `duration` antiga string `"1.0s"` normalizada; malformados não derrubam. SQLite não é fonte (guarda vagas, não métricas de execução — decisão informada). Testes `scripts/test_health.py` (bloco real com SKIP sem `data/`, padrão CI). 1ª medição real: 1 alerta factual — `smartrecruiters:other`, 22/22 runs `error`. |
 | 7 | **Structured error codes** | ⏳ | `TIMEOUT / CONNECTION_ERROR / FETCH_ERROR / NORMALIZATION_ERROR / UNKNOWN` no lugar de texto livre na queue. |
 | 8 | **Multiprocessing lifecycle** (ACH-07) | ⏳ | spawn → execute → timeout → cleanup completo → join; sem órfãos; distinguir "worker morreu" de "timeout". |
 | 9 | **Documentação operacional** | ⏳ | PROJECT_STATUS (P0 feito, SQLite desbloqueado), README 389→293, `docs/roadmap.md` (reescrever), `docs/architecture.md` (`is_internship()` → `is_student_role()`), relatórios antigos = histórico. |
@@ -143,6 +143,11 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-01 (P1 #6)**: **Observabilidade implementada** (PR #12) — `health.py` +
+  flag `--health` (relatório JSON por tenant/ATS + alertas de queda brusca com gate
+  e erro recorrente); `test_health.py` no padrão standalone com SKIP sem `data/`
+  (entrou no array do CI); 1ª medição real: `smartrecruiters:other` 22/22 `error`.
+  Decisão informada: SQLite não é fonte (guarda vagas, não métricas do run). [#6 ✅]
 - **2026-09-01 (P1 #3)**: **CI implementado** (PR #11, main `7b88f76`, run verde
   `33502983892`) — workflow GitHub Actions com suíte standalone em runner limpo;
   decisões: tarball `ae0ad53` (pin que só existe como ref de PR) + skip do bloco
