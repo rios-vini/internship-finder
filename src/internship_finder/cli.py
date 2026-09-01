@@ -40,6 +40,7 @@ from internship_finder.filters import select_eligible
 from internship_finder.metrics import utcnow_iso, write_metrics
 from internship_finder.models.job import Job
 from internship_finder.ranking import rank_jobs
+from internship_finder.storage.sqlite_store import SqliteStore
 
 log = logging.getLogger("internship_finder")
 
@@ -324,6 +325,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Caminho do JSONL de metricas da execucao (default no modo coleta: "
         "data/collection_metrics.jsonl)",
     )
+    parser.add_argument(
+        "--sqlite",
+        default=None,
+        metavar="PATH",
+        help="Modo coleta: persiste o historico de cada vaga (first_seen/"
+        "last_seen/active/archived) no banco sqlite3 em PATH (default: desligado). "
+        "Sem a flag, o comportamento e identico ao atual.",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -401,6 +410,24 @@ def main(argv: list[str] | None = None) -> int:
         # a automacao detectar; exit 1 ja e reservado para "nenhuma vaga".
         raw_output = Path(args.output or "data/jobs.json")
         save_outputs(all_jobs, raw_output)
+        # Persistencia SQLite (opcional, P1 #5): roda no processo pai apos o
+        # merge dos jobs vindos dos subprocessos (escritor unico). Sem --sqlite,
+        # nada muda — comportamento identico ao atual. Uma falha de escrita
+        # nunca derruba a coleta: qualquer erro (caminho inacessivel, disco
+        # cheio, etc.) e logado e o run segue.
+        if args.sqlite:
+            sqlite_path = Path(args.sqlite)
+            try:
+                sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+                with SqliteStore(sqlite_path) as store:
+                    stats = store.run(all_jobs)
+                print(
+                    f"\n=== SQLite {sqlite_path}: {len(all_jobs)} vagas no run "
+                    f"({stats['inserted']} novas, {stats['reactivated']} "
+                    f"reativadas) ==="
+                )
+            except Exception as exc:  # noqa: BLE001 - a coleta nunca cai por sqlite
+                log.error("sqlite falhou e foi ignorado (%s): %s", sqlite_path, exc)
         # Tenant records primeiro; o run record (resumo) e escrito dentro do
         # ``run_filter_pipeline``, ao final do processamento.
         write_metrics(metrics_path, tenant_records)
