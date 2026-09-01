@@ -153,6 +153,11 @@ def test_real_data() -> None:
     print("== execucao real (data/eligible_jobs.json) ==")
     root = Path(__file__).resolve().parent.parent
     path = root / "data" / "eligible_jobs.json"
+    # Ambiente sem coleta (ex.: CI runner sem data/): skip do bloco real com
+    # exit 0. O bloco de dados so roda onde o arquivo existe localmente.
+    if not path.exists():
+        print("  SKIP: data/eligible_jobs.json ausente (sem coleta local) - bloco real ignorado")
+        return
     jobs = json.loads(path.read_text(encoding="utf-8"))
     out, stats, removed = deduplicate(jobs)
     print(f"  eligible: {len(jobs)} -> {len(out)} (removidas {len(removed)})")
