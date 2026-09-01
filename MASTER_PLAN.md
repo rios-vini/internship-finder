@@ -68,7 +68,7 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 ### 🟠 P1 — fundação operacional (nesta ordem)
 | # | Item | Status | Notas |
 |---|---|---|---|
-| 3 | **CI — GitHub Actions** | ⏳ | Testes a cada PR. Rede de segurança do fluxo de delegação (agente externo edita código). Custo ~1h. |
+| 3 | **CI — GitHub Actions** | ✅ **implementado 01/09** (PR #11, main 7b88f76) — `.github/workflows/ci.yml`: push (main, feature/*) + pull_request; runner limpo Python 3.12; pin `ae0ad53` instalado do tarball oficial do GitHub (`archive/ae0ad53.tar.gz`, pois o commit só existe como `refs/pull/268/head`) com verificação do expose de `application_deadline`; `test_dedup`/`test_ranking` ganharam skip do bloco real quando `data/` ausente (runner não tem dados); run real verde no PR (7/7 TUDO OK). |
 | 4 | **Regenerar baseline de coleta** nesta instância | ✅ coleta 31/08 (37.373 brutas → 236 eligible; fallhas parciais documentadas: Lidl timeout etc.) | `data/` populado; base p/ medir. P0.1 usou (baseline 0 Workday) e P3 #18 validou. |
 | 5 | **Persistência SQLite** + `first_seen`/`last_seen`/`active`/`archived` | 🔓 **DESBLOQUEADO 31/08** (decisão do dono; era ON HOLD desde 13/08) | `sqlite3` basta; sem Postgres/Redis/ORM. Pré-requisito do histórico; o parecer A já autorizava. Campo `application_deadline` entra no schema junto com first/last_seen. |
 | 6 | **Observabilidade de consumo** (health por tenant/ATS sobre o JSONL já existente) | 🟡 base pronta (ACH-03), consumo falta | source_stats.jsonl, job_count, duration, status, queda brusca, erro recorrente. Pode consumir o SQLite após o item 5. |
@@ -143,6 +143,11 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-01 (P1 #3)**: **CI implementado** (PR #11, main `7b88f76`, run verde
+  `33502983892`) — workflow GitHub Actions com suíte standalone em runner limpo;
+  decisões: tarball `ae0ad53` (pin que só existe como ref de PR) + skip do bloco
+  real nos testes quando `data/` ausente; validação local reproduzida em venv
+  temporário (expose de `application_deadline` confirmado). [#3 ✅]
 - **2026-08-31 (3ª edição)**: **baseline de coleta gerado** nesta instância —
   37.373 brutas → 236 eligible (todos `de`), Workday 0 confirmado com dados reais.
   Achado: `test_ranking.py` acoplado a snapshot → nova pendência P2 #16.
