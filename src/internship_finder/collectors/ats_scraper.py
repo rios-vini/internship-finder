@@ -16,6 +16,7 @@ from ats_scrapers.scrapers import get_scraper
 
 from internship_finder.adapters.ats import AtsJobAdapter
 from internship_finder.collectors.company import CompanyCollector
+from internship_finder.geocoding import flush_cache
 from internship_finder.models.company import Company
 from internship_finder.models.job import Job
 
@@ -51,6 +52,10 @@ def fetch_worker(
         jobs = scraper.fetch()
         adapter = AtsJobAdapter()
         result = [adapter.to_job(j, company).to_dict() for j in jobs]
+        # Persiste o cache de geocoding (resultados/respostas) que este
+        # subprocesso possa ter gravado durante a adaptacao. O cache e
+        # file-based, entao o write propaga para os demais processos.
+        flush_cache()
         queue.put(("ok", result))
     except Exception as exc:  # noqa: BLE001 - qualquer falha vira mensagem
         queue.put(("error", f"{type(exc).__name__}: {exc}"))
