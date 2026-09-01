@@ -62,14 +62,14 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 ### 🔴 P0 — desbloqueio e valor
 | # | Item | Status | Notas |
 |---|---|---|---|
-| 1 | **Merge do PR #8** (`7d3c3dd`+`63fb21b`+`dfcf415` → main) | ⏳ ação do dono | Nada no main fica atual antes disso. Verificar CI/mergeable antes. |
-| 2 | **Workday Country/Location Resolver** (P0.1 original) | ⏳ **nunca implementado** — NÃO existe geocodificação no `src/` (grep confirmou 0 linhas; a "Tarefa 1" de 28/08 foi relatada e nunca entregue) | Pipeline: `country_iso` já existe → usa; nome de país explícito → infere; location conhecida → cache (`data/geocoding_cache.json`); desconhecida → geocoder **gateado por flag** (default OFF). Proibido geocoding em massa. Medir vagas recuperadas. |
+| 1 | **Merge do PR #8** (`7d3c3dd`+`63fb21b`+`dfcf415` → main) | ✅ mergeado 31/08 (main 9690c47) | P0 deadline + hardening liberados; main atualizado. |
+| 2 | **Workday Country/Location Resolver** (P0.1 original) | ✅ **implementado 01/09** (PR #9, main 35a215a) — `geocoding.py` cache-first + flag `INTERNSHIP_FINDER_GEOCODING` (OFF), integração no adapter (fallback pós-`infer_country_iso`), testes novos; **9 vagas Workday DE recuperadas no eligible (baseline 0)** — medição reproduzida pelo orquestrador. |
 
 ### 🟠 P1 — fundação operacional (nesta ordem)
 | # | Item | Status | Notas |
 |---|---|---|---|
 | 3 | **CI — GitHub Actions** | ⏳ | Testes a cada PR. Rede de segurança do fluxo de delegação (agente externo edita código). Custo ~1h. |
-| 4 | **Regenerar baseline de coleta** nesta instância | ⏳ | Sem `data/` hoje. Pré-requisito p/ observar, medir e historiar. Uma coleta real completa (39 empresas) + registrar resultado. |
+| 4 | **Regenerar baseline de coleta** nesta instância | ✅ coleta 31/08 (37.373 brutas → 236 eligible; fallhas parciais documentadas: Lidl timeout etc.) | `data/` populado; base p/ medir. P0.1 usou (baseline 0 Workday) e P3 #18 validou. |
 | 5 | **Persistência SQLite** + `first_seen`/`last_seen`/`active`/`archived` | 🔓 **DESBLOQUEADO 31/08** (decisão do dono; era ON HOLD desde 13/08) | `sqlite3` basta; sem Postgres/Redis/ORM. Pré-requisito do histórico; o parecer A já autorizava. Campo `application_deadline` entra no schema junto com first/last_seen. |
 | 6 | **Observabilidade de consumo** (health por tenant/ATS sobre o JSONL já existente) | 🟡 base pronta (ACH-03), consumo falta | source_stats.jsonl, job_count, duration, status, queda brusca, erro recorrente. Pode consumir o SQLite após o item 5. |
 | 7 | **Structured error codes** | ⏳ | `TIMEOUT / CONNECTION_ERROR / FETCH_ERROR / NORMALIZATION_ERROR / UNKNOWN` no lugar de texto livre na queue. |
