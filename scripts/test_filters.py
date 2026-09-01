@@ -352,8 +352,12 @@ def test_consistency() -> None:
         },
         company,
     )
-    check("F3. adapter Workday 'Oberkochen' -> country_iso None",
-          wd_job.country_iso is None)
+    # P0.1: o resolver (fallback pos-infer_country_iso) resolve cidade DE
+    # conhecida -> 'de' no adapter. A funcao infer_country_iso em si continua
+    # imutavel (retorna None p/ Oberkochen); o adapter agora preenche via
+    # geocoding.resolve_country_iso (camada de cidades DE conhecidas, sem rede).
+    check("F3. adapter Workday 'Oberkochen' -> country_iso 'de' (resolver P0.1)",
+          wd_job.country_iso == "de")
     # Regressoes da Fase 3: ISO em posicao confiavel continua valendo.
     check("F3. 'Neckarsulm, DE' (ultimo segmento) -> 'de'",
           infer_country_iso(location="Neckarsulm, DE") == "de")

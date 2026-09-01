@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from internship_finder.filters import infer_country_iso, is_student_role
+from internship_finder.geocoding import resolve_country_iso
 from internship_finder.models.company import Company
 from internship_finder.models.job import Job
 
@@ -99,6 +100,14 @@ class AtsJobAdapter:
         # A heuristica antiga (tail da location) morria em codigo postal:
         # "Friedrichshafen, BW, DE, 88046" -> "88046" (nao-ISO) em vez de "DE".
         country_iso = infer_country_iso(location=location, country_iso=country_iso)
+        # Fallback pos-infer_country_iso (P0.1): se a inferencia segura nao
+        # determinou pais e ha location, o resolver preenche apenas com
+        # evidencia segura de cidade DE conhecida / cache / geocoder (flag ON).
+        # Nunca substitui infer_country_iso nem roda antes dele; nunca fabrica
+        # ISO; cacheia misses para nao repetir consultas. 0 chamadas de rede no
+        # default (flag OFF).
+        if location and country_iso is None:
+            country_iso = resolve_country_iso(location)
         posted_at = self._parse_dt(self._first_str(data, _FIELDS["posted_at"]))
         # Prazo explicito de candidatura: apenas quando o ATS o expoe. Nunca
         # inferido de posted_at/fetched_at; ausente ou invalido -> None.
