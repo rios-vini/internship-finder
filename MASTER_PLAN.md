@@ -91,21 +91,22 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 ### 🟢 P3 — manutenção / escala (baixa urgência)
 | # | Item | Status | Notas |
 |---|---|---|---|
-| 18 | Trocar pin git `ae0ad53` → release PyPI do ats-scrapers quando existir | ⏳ | Monitorar; não bloqueia. |
-| 19 | Validação `--timeout`/`--limit` (ACH-14) · `remote` preenchido vs campo (ACH-16) · `country` vs `country_iso` (ACH-17) · CSV completo decisão JSON=completo/CSV=tabular (ACH-18) · parsing datas DD.MM.YYYY se medir necessidade (ACH-20) · `EUROPE_COUNTRIES`/BY documentar (ACH-19) | ⏳ | Itens pequenos; "medir antes de corrigir". |
-| 20 | Código morto (ACH-13) | ⏳ | Só após referências zero; limpeza independente. |
-| 21 | Separar código/dados (repo de dados) · Parquet quando volume justificar · chunking p/ frontend | ⏳ | Não por moda; quando o dado crescer. |
-| 22 | Expansão internacional (NL/CH/AT → BE/FR/nórdicos/UK) + mais empresas DE (39→60→100) | ⏳ | Depois de estabilizar qualidade; ATS novo só se relevante p/ cobertura. |
-| 23 | Agregadores (LinkedIn/Indeed/Glassdoor) | ⏳ | Depois de persistência + dedup maduro (identidade cross-source é complexa). |
-| 24 | Interface simples (top vagas, filtros, link) | ⏳ | Sem frontend sofisticado; dashboard/lista basta. |
+| 18 | **Sincronizar venv com o pyproject (pin ats-scrapers)** | 🔴 **URGENTE — descoberto 31/08**: venv tem ats-scrapers **0.2.0 (PyPI)** que NÃO expõe `application_deadline` (release anterior ao merge do PR #268; code instalado: "We don't surface that"). pyproject declara `git+...@ae0ad53` (com o expose). Divergência pyproject↔venv → **P0 deadline inócuo na prática: 0/37.373 vagas com deadline** (verificado 31/08). Corrigir: re-instalar dependências conforme o pyproject (ou migrar para release com o PR #268 quando existir) e re-validar `application_deadline` no eligible. |
+| 19 | Trocar pin git `ae0ad53` → release PyPI do ats-scrapers quando existir | ⏳ | Depois de resolver o #18; monitorar release com PR #268. |
+| 20 | Validação `--timeout`/`--limit` (ACH-14) · `remote` preenchido vs campo (ACH-16) · `country` vs `country_iso` (ACH-17) · CSV completo decisão JSON=completo/CSV=tabular (ACH-18) · parsing datas DD.MM.YYYY se medir necessidade (ACH-20) · `EUROPE_COUNTRIES`/BY documentar (ACH-19) | ⏳ | Itens pequenos; "medir antes de corrigir". |
+| 21 | Código morto (ACH-13) | ⏳ | Só após referências zero; limpeza independente. |
+| 22 | Separar código/dados (repo de dados) · Parquet quando volume justificar · chunking p/ frontend | ⏳ | Não por moda; quando o dado crescer. |
+| 23 | Expansão internacional (NL/CH/AT → BE/FR/nórdicos/UK) + mais empresas DE (39→60→100) | ⏳ | Depois de estabilizar qualidade; ATS novo só se relevante p/ cobertura. |
+| 24 | Agregadores (LinkedIn/Indeed/Glassdoor) | ⏳ | Depois de persistência + dedup maduro (identidade cross-source é complexa). |
+| 25 | Interface simples (top vagas, filtros, link) | ⏳ | Sem frontend sofisticado; dashboard/lista basta. |
 
 ### 🔵 P4 — inteligência (só com dados históricos reais)
 | # | Item | Status | Notas |
 |---|---|---|---|
-| 25 | Embeddings / semantic dedup | ⏳ | Só depois do dedup textual provar insuficiente com dados reais. |
-| 26 | Feedback do usuário (viu/ignorou/gostou/aplicou) → ranking adaptativo | ⏳ | Estatística simples antes de qualquer RL. |
-| 27 | LLM enrichment pós-determinístico | ⏳ | Nunca decide validade da vaga; extrai características. |
-| 28 | Análise de mercado / tendências / forecasting | ⏳ | P5; exige meses de histórico; estatística simples antes de LSTM. |
+| 26 | Embeddings / semantic dedup | ⏳ | Só depois do dedup textual provar insuficiente com dados reais. |
+| 27 | Feedback do usuário (viu/ignorou/gostou/aplicou) → ranking adaptativo | ⏳ | Estatística simples antes de qualquer RL. |
+| 28 | LLM enrichment pós-determinístico | ⏳ | Nunca decide validade da vaga; extrai características. |
+| 29 | Análise de mercado / tendências / forecasting | ⏳ | P5; exige meses de histórico; estatística simples antes de LSTM. |
 
 ### ❌ Descartado (ratificado, com motivo)
 | Item | Motivo |
