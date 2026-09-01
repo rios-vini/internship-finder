@@ -240,7 +240,15 @@ def _job_model(d: dict):
 def test_real_data() -> None:
     print("== execucao real (data/eligible_jobs.json) ==")
     root = Path(__file__).resolve().parent.parent
-    jobs = json.loads((root / "data" / "eligible_jobs.json").read_text(encoding="utf-8"))
+    path = root / "data" / "eligible_jobs.json"
+    # Ambiente sem coleta (ex.: CI runner sem data/): skip do bloco real (e dos
+    # sanity checks de ranking/snapshot) com exit 0. O bloco so roda onde o
+    # arquivo existe localmente. Os 5 sanity pre-existentes (P2 #16) seguem
+    # intactos no codigo, mas nao rodam sem dados.
+    if not path.exists():
+        print("  SKIP: data/eligible_jobs.json ausente (sem coleta local) - bloco real e sanity ignorados")
+        return
+    jobs = json.loads(path.read_text(encoding="utf-8"))
     ranked = rank_jobs(jobs)
     scores = [j["score"] for j in ranked]
     scores_sorted = sorted(scores, reverse=True)

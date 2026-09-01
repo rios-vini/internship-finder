@@ -1,0 +1,105 @@
+# CI — Internship Finder
+#
+# Roda a suite standalone de scripts de teste (scripts/test_*.py) em runner
+# limpo (ubuntu-latest, Python 3.12). Os testes sao scripts standalone: imprimem
+# `[OK]`/`[FAIL]` e terminam com `TUDO OK` (exit 0) ou FALHAS (exit != 0).
+#
+# DECISAO item 2 (data/): opcao (a). Em runner limpo nao existe `data/`
+# (gitignored). Os scripts test_dedup.py e test_ranking.py foram ajustados (mudanca
+# minima) para SKIP o bloco "real" (data/eligible_jobs.json) quando o arquivo esta
+# ausente, com mensagem clara e exit 0. Por isso os 5 sanity checks de ranking
+# que estao acoplados ao snapshot antigo (P2 #16) NAO rodam em CI e NAO ha
+# allowlist no test_ranking: test_ranking termina "TUDO OK" com o bloco real
+# skipado.
+#
+# DECISAO item 1 (pin ats-scrapers ae0ad53): o commit ae0ad53 nao esta em branch
+# do upstream (so existe como refs/pull/268/head). Um `git clone + checkout ae0ad53`
+# falha em runner limpo. Solucao (opcao a): instalar `ats-scrapers` do tarball
+# oficial de arquivo do GitHub (https://github.com/kalil0321/ats-scrapers/archive/
+# ae0ad53.tar.gz), que expoe `application_deadline` (validado no passo abaixo)
+# ANTES de instalar o projeto com `--no-deps`. O pyproject.toml (pin `@ae0ad53`)
+# NAO e alterado.
+
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/*"]
+  pull_request:
+
+jobs:
+  test:
+    name: Suite standalone (Python 3.12)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      # ats-scrapers pin ae0ad53: o checkout direto git+...@ae0ad53 falha em clone
+      # fresco (ref so existe em refs/pull/268/head). Tarball do arquivo oficial e
+      # a fonte confiavel que expoe application_deadline.
+      - name: Install ats-scrapers (pin ae0ad53) from official archive tarball
+        run: |
+          python -m pip install "https://github.com/kalil0321/ats-scrapers/archive/ae0ad53.tar.gz"
+
+      # Dependencias do projeto + o proprio pacote. O projeto instala com
+      # --no-deps (ats-scrapers ja instalado como fonte confiavel acima).
+      - name: Install project deps and package (editable)
+        run: |
+          python -m pip install "requests>=2.31" "pydantic>=2.0" "beautifulsoup4>=4.12"
+          python -m pip install -e . --no-deps
+
+      - name: Verify application_deadline expose in installed ats-scrapers
+        run: |
+          SF=$(python -c "import ats_scrapers.scrapers.successfactors as s; print(s.__file__)")
+          echo "successfactors module: $SF"
+          if grep -q "application_deadline" "$SF"; then
+            echo "OK: application_deadline exposto no pacote instalado"
+          else
+            echo "ERRO: application_deadline ausente no pacote instalado"
+            exit 1
+          fi
+
+      # Suite standalone. Cada script imprime [OK]/[FAIL] real no log. Exit code do
+      # passo = 1 se QUALQUER teste falhar. (Com a decisao (a) do item 2, nao ha
+      # dados em CI: test_dedup e test_ranking skipam o bloco real e terminam
+      # "TUDO OK"; as 5 expectativas pre-existentes de test_ranking — P2 #16,
+      # acopladas ao snapshot de 293 — nao rodam, logo NAO ha allowlist neste
+      # workflow.)
+      - name: Run standalone test scripts
+        run: |
+          set +e
+          tests=(test_filters test_hardening test_application_deadline test_dedup test_ranking test_geocoding test_sqlite)
+          status=0
+          for t in "${tests[@]}"; do
+            echo "==================== $t ===================="
+            python "scripts/$t.py"
+            rc=$?
+            if [ $rc -ne 0 ]; then
+              status=1
+              echo "::error::$t FAILED (exit $rc)"
+            else
+              echo "==== $t OK ===="
+            fi
+            echo
+          done
+          if [ $status -ne 0 ]; then
+            echo "::error::Uma ou mais suites falharam (ver logs acima)."
+            exit 1
+          fi
+          echo "Todas as suites terminaram OK."
