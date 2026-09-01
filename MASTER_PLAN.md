@@ -72,7 +72,7 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 4 | **Regenerar baseline de coleta** nesta instância | ✅ coleta 31/08 (37.373 brutas → 236 eligible; fallhas parciais documentadas: Lidl timeout etc.) | `data/` populado; base p/ medir. P0.1 usou (baseline 0 Workday) e P3 #18 validou. |
 | 5 | **Persistência SQLite** + `first_seen`/`last_seen`/`active`/`archived` | 🔓 **DESBLOQUEADO 31/08** (decisão do dono; era ON HOLD desde 13/08) | `sqlite3` basta; sem Postgres/Redis/ORM. Pré-requisito do histórico; o parecer A já autorizava. Campo `application_deadline` entra no schema junto com first/last_seen. |
 | 6 | **Observabilidade de consumo** (health por tenant/ATS sobre o JSONL já existente) | ✅ **implementado 01/09** (PR #12) — `src/internship_finder/health.py` + flag `--health [PATH]` (default `data/collection_metrics.jsonl`): relatório JSON por source/ATS (status, collected, duration, médias ok) + alertas de queda brusca (gate ≥3 runs ok, <50% da mediana) e erro recorrente (≥2 consecutivos); `duration` antiga string `"1.0s"` normalizada; malformados não derrubam. SQLite não é fonte (guarda vagas, não métricas de execução — decisão informada). Testes `scripts/test_health.py` (bloco real com SKIP sem `data/`, padrão CI). 1ª medição real: 1 alerta factual — `smartrecruiters:other`, 22/22 runs `error`. |
-| 7 | **Structured error codes** | ⏳ | `TIMEOUT / CONNECTION_ERROR / FETCH_ERROR / NORMALIZATION_ERROR / UNKNOWN` no lugar de texto livre na queue. |
+| 7 | **Structured error codes** | ✅ **implementado 01/09** (PR #13) — `src/internship_finder/errors.py` (+ `CollectionError`, classificador lazy com fallback `UNKNOWN`): payload da `mp.Queue` deixa de ser texto livre e vira `("-error", code, detail)` com estágios fetch/normalize separados; `summary` timeout/failed com `(source, code, erro)`; registro JSONL ganha `error_code` (kwarg keyword-only; `error` legível preservado; JSONL antigo continua válido). Testes `scripts/test_errors.py` (no CI). |
 | 8 | **Multiprocessing lifecycle** (ACH-07) | ⏳ | spawn → execute → timeout → cleanup completo → join; sem órfãos; distinguir "worker morreu" de "timeout". |
 | 9 | **Documentação operacional** | ⏳ | PROJECT_STATUS (P0 feito, SQLite desbloqueado), README 389→293, `docs/roadmap.md` (reescrever), `docs/architecture.md` (`is_internship()` → `is_student_role()`), relatórios antigos = histórico. |
 
@@ -143,6 +143,12 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-01 (P1 #7)**: **Structured error codes implementados** (PR #13) —
+  `errors.py` (5 códigos + classificador lazy + `CollectionError`); payload da
+  queue estruturado `("-error", code, detail)`; estágios fetch/normalize separados
+  no worker; `error_code` no registro JSONL (keyword-only, `error` preservado).
+  Delegado 01/09 com retomada via `openhands --resume` (parada prematura do agente
+  na 1ª janela — código parcial sem quebra; resume completou testes + CI). [#7 ✅]
 - **2026-09-01 (P1 #6)**: **Observabilidade implementada** (PR #12) — `health.py` +
   flag `--health` (relatório JSON por tenant/ATS + alertas de queda brusca com gate
   e erro recorrente); `test_health.py` no padrão standalone com SKIP sem `data/`
