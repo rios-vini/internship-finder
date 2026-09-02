@@ -1,4 +1,5 @@
 # Expansão de empresas alemãs — Fase E1a: tabela de matching
+> 📜 **Documento histórico** (período da coleta: 2026-08-12). Estado atual e plano: MASTER_PLAN.md + PROJECT_STATUS.md.
 
 Gerado em **2026-08-12** com `scripts/verify_companies.py` **sem `--fetch`** (matching
 offline via manifest do `ats-scrapers`, `find_company`). Nenhuma coleta/rede de vagas

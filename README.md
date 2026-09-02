@@ -5,7 +5,7 @@ foco em **Supply Chain, Procurement, BI, Analytics e Automacao**, prioridade par
 **Alemanha**. Pipeline **orientado a empresas**:
 
 ```
-Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeout) → adapter → Job (pydantic) → print/save (JSON/CSV)
+Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeout) → adapter → Job (pydantic) → filtros → dedup → ranking → print/save (JSON/CSV)
 ```
 
 Base de empresas/ATS: pacote [`ats-scrapers`](https://pypi.org/project/ats-scrapers/)
@@ -38,13 +38,21 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 `eligible` e o conceito final da cascata (passou em tipo + area + pais);
 **best matches = TOP N do ranked** (sem entidade/camada nova):
 
+> **Nota (dados)**: `data/` e gitignored e local — os numeros abaixo sao
+> documentacao de coleta, nao arquivos versionados. O default
+> (`data/eligible_jobs.json`/`.csv`) grava localmente; para validacao sem
+> depender de `data/`, use `--output`/`--filter-output`/`--metrics` dedicados
+> (ex.: `/tmp/...`).
+
 ```bash
-.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (389 vagas ranqueadas, sem duplicatas)
+.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (236 vagas ranqueadas, sem duplicatas)
 .venv/bin/internship-finder --country europe             # Europa inteira em vez de so Alemanha
 .venv/bin/internship-finder --no-area                    # qualquer area, desde que estudante + Alemanha
-.venv/bin/internship-finder --no-dedup                   # mantem duplicatas (406 vagas)
+.venv/bin/internship-finder --no-dedup                   # mantem duplicatas (258 antes da dedup)
 .venv/bin/internship-finder --no-rank                    # sem ranking: ordem original + exemplos
 .venv/bin/internship-finder --all                        # copia tudo, sem filtros
+# validacao sem escrever em data/ (dados locais sao gitignored):
+.venv/bin/internship-finder --country de --output /tmp/eligible.json --metrics /tmp/coleta.jsonl
 ```
 
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
@@ -58,21 +66,21 @@ mesma cascata, gravando o resultado em `data/eligible_jobs.json`. Lista atual
 python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 ```
 
-Resultado do ultimo run completo (expansao E2, 2026-08-12 04:52–04:57 UTC, 56.810
-vagas brutas, zero falhas):
-`total 56.810 -> tipo estudante 4.995 -> area-alvo 914 -> Alemanha 406` (pos-dedup
-sao **389** eligible/ranked — 18 empresas com vagas eligible; top: lidlstiftup2
-103, SAP 91, Volkswagen AG 42, BoschGroup 39, Schaeffler 25, BASF SE 21,
-Knorr-Bremse 18, Kaufland 13, B. Braun 8, MAHLE 7, Telekom Growthhub 5,
-Infineon 5, henkel 4, Brose 2, ZF 2, Bayer 2, continental 1, Uniper 1). Com
-dedup, as 406 eligible viram **389** (17 duplicatas removidas, todas por
-company+title+location — versoes EN/DE e repostagens; 0 por external_id/URL).
-A expansao **nao alterou filtros nem ranking** (exigencia do dono): so
-adicionou empresas a coleta, com 1 ajuste minimo de coletor (phenom em
-`URL_SLUG_ATS` + `beautifulsoup4` p/ avature — commit `050c5db`). A coleta
-total leva alguns minutos — cada tenant usa timeout proprio (`--timeout 60`).
+Resultado do ultimo run completo (coleta local de 31/08; os numeros sao
+reproduzidos offline por `scripts/coverage.py`):
+`total 37.373 -> tipo estudante 2.982 -> area-alvo 754 -> Alemanha 258`;
+pos-dedup sao **236** eligible/ranked (22 duplicatas removidas), todos
+`country_iso='de'` — **19 empresas com vagas eligible**, top: SAP 84,
+BoschGroup 40, Volkswagen AG 26, Knorr-Bremse 18, BASF SE 15, Bayer 8,
+Schaeffler 8, Infineon 7, B. Braun 6, Telekom Growthhub 4, Brose 4,
+careers.dhl.com 4, Uniper 2 (demais na tabela de cobertura). O baseline antigo
+(12/08, 56.810 → 293) era de outra janela de mercado com mais vagas; o valor
+atual **nao e regressao** — o mercado encolheu. Dados em `data/` sao locais e
+gitignored: os numeros servem como documentacao de coleta, nao como arquivos
+versionados. A coleta total leva alguns minutos — cada tenant usa timeout
+proprio (`--timeout 60`).
 
-### Cobertura (39 na coleta → 18 com vagas eligible)
+### Cobertura (39 na coleta → 19 com vagas eligible)
 
 **"Avaliada", "operacional" e "com vagas eligible" sao metricas DIFERENTES**:
 
@@ -81,38 +89,39 @@ total leva alguns minutos — cada tenant usa timeout proprio (`--timeout 60`).
   teste do tenant/ATS. Apos a expansao E2 (2026-08-12), sao **39 empresas**
   operacionais na coleta (12 da validacao inicial + 27 novas).
 - **Operacional** = retorna vagas no fetch real (tenant ativo, ATS com
-  scraper): **39** (36 tenants com dados em `data/jobs.json`; a Bosch conta
+  scraper): **39** (35 tenants com dados em `data/jobs.json`; a Bosch conta
   2x no campo `company` — tenants `BoschGroup` e `bosch-homecomfort`).
 - **Com vagas eligible** = tem pelo menos 1 vaga eligible na Alemanha apos a
-  cascata de filtros + dedup: **18** (as 8 originais + 10 novas: lidlstiftup2,
-  Volkswagen AG, Schaeffler, Knorr-Bremse, Kaufland, B. Braun, MAHLE, Telekom
-  Growthhub, Brose, Uniper).
+  cascata de filtros + dedup: **19** empresas / 14 tenants (da lista de 39).
 
 Falhas conhecidas (motivo da exclusao): Siemens (tenant `teamtailor` inativo),
 BMW (falso positivo: so `join_com:bmw-kuehnert`, nao a BMW AG),
 Mercedes-Benz e ThyssenKrupp (sem match exato na base), Adidas (ATS `moka` sem
-scraper no pacote). **Novas na expansao E2**: Hager Group, Boehringer
-Ingelheim e Lanxess (SuccessFactors devolve XML malformado), Symrise (API
-join.com 422); identidades excluidas por decisao: ifm (join 422), Metro e Otto
-(falsos positivos), E.ON (sem match), Kuehne+Nagel (suica — fora do escopo
-"empresas alemas"), GFT (0 vagas no momento). Limitacao de dados: **Workday**
-(Covestro, Evonik, Zalando e as novas Trumpf/Sartorius/DATEV/Zeiss/Hellmann/
-Fresenius) nao expoe codigo de pais nas localizacoes alemas — vagas alemas
-desses tenants ficam sem `country_iso` e o filtro de pais nao as inclui; um
-enriquecimento futuro (geocodificacao/cidades) resolveria.
+scraper no pacote). **Na expansao E2**: Hager Group, Boehringer Ingelheim e
+Lanxess (SuccessFactors devolve XML malformado), Symrise (API join.com 422);
+identidades excluidas por decisao: ifm (join 422), Metro e Otto (falsos
+positivos), E.ON (sem match), Kuehne+Nagel (suica — fora do escopo "empresas
+alemas"), GFT (0 vagas no momento). Limitacao de dados: **Workday** (Covestro,
+Evonik, Zalando e as novas Trumpf/Sartorius/DATEV/Zeiss/Hellmann/Fresenius)
+nao expoe codigo de pais nas localizacoes alemas — vagas alemas desses tenants
+ficam sem `country_iso` e o filtro de pais nao as inclui. **Mitigacao
+opcional**: `geocoding.py` (flag `INTERNSHIP_FINDER_GEOCODING`, OFF por
+default) resolve cidade → `de` via lista local + cache + geocoder (OSM), um
+fallback pos-`infer_country_iso` no adapter — com a flag ligada, o eligible
+sobe para **245** (+9 Workday DE recuperadas).
 
 Resumo de cobertura (reproduzido por `scripts/coverage.py`, offline e
 deterministico — `.venv/bin/python scripts/coverage.py`):
 
 | Metrica | Valor |
 | --- | --- |
-| Funil: raw → tipo → area → pais (DE) | 56.810 → 4.995 → 914 → 406 |
-| eligible (pos-dedup) → ranked | 389 → 389 (17 removidas na dedup) |
-| Empresas com eligible / tenants (source) | 18 / 13 (bruto: 39 empresas / 36 tenants) |
-| Top empresas (eligible) | lidlstiftup2 103, SAP 91, Volkswagen AG 42, BoschGroup 39, Schaeffler 25, BASF SE 21, Knorr-Bremse 18, Kaufland 13, B. Braun 8, MAHLE 7, Telekom Growthhub 5, Infineon 5 |
-| Contribuicao das maiores | top1 26,5% | top3 60,7% | top5 77,1% |
-| Top ATS (eligible) | successfactors 335, smartrecruiters 40, eightfold 10, cornerstone 4 |
-| Paises (eligible) | `de` 389 (100%) — None/localizacao desconhecida: 0 (0,0%) |
+| Funil: raw → tipo → area → pais (DE) | 37.373 → 2.982 → 754 → 258 |
+| eligible (pos-dedup) → ranked | 236 → 236 (22 removidas na dedup) |
+| Empresas com eligible / tenants (source) | 19 / 14 (bruto: 39 empresas / 35 tenants) |
+| Top empresas (eligible) | SAP 84, BoschGroup 40, Volkswagen AG 26, Knorr-Bremse 18, BASF SE 15, Bayer 8, Schaeffler 8, Infineon 7, B. Braun 6, Telekom Growthhub 4, Brose 4, careers.dhl.com 4, Uniper 2 |
+| Contribuicao das maiores | top1 35,6% | top3 63,6% | top5 77,5% |
+| Top ATS (eligible) | successfactors 175, smartrecruiters 40, eightfold 14, phenom 4, greenhouse 2, cornerstone 1 |
+| Paises (eligible) | `de` 236 (100%) — None/localizacao desconhecida: 0 (0,0%); com `INTERNSHIP_FINDER_GEOCODING=1`: **245** |
 
 (Fase 3: `country_iso` tem fonte unica — `filters.infer_country_iso`; a
 heuristica antiga de "tail da location" foi removida do adapter, entao
@@ -141,7 +150,16 @@ Flags do CLI:
 | `--timeout` | teto de segundos por scraper (defensivo: uma empresa que trava nao derruba o resto) |
 | `--limit N` | maximo de vagas por tenant (0 = sem limite) |
 | `--include-descriptions` | busca a descricao por vaga (mais lento em ATS que exigem uma chamada por vaga, ex. SmartRecruiters) |
+| `--metrics PATH` | JSONL de metricas da execucao (modo coleta; default: `data/collection_metrics.jsonl`) |
+| `--sqlite PATH` | modo coleta: persiste o historico de cada vaga (`first_seen`/`last_seen`/`active`/`archived`) em banco `sqlite3` na PATH (default: desligado) |
+| `--health [PATH]` | modo health (unico quando presente): relatorio JSON por tenant/ATS sobre o JSONL de metricas + alertas; arquivo inexistente -> erro no stderr e exit != 0 |
 | `--verbose` | log DEBUG |
+
+Ambiente:
+
+| Variavel | Descricao |
+| --- | --- |
+| `INTERNSHIP_FINDER_GEOCODING` | OFF por default. Com `=1`, liga o geocoder de rede (OSM Nominatim) + cache no fallback de pais (`geocoding.py`). Com OFF, o fallback se limita a lista local de cidades + cache ja populado — nenhuma chamada de rede. Lei o eligible DE de 236 para **245** (+9 Workday). |
 
 ### Deduplicacao
 
@@ -162,8 +180,8 @@ a com `description` preenchida; senao a com `employment_type`; senao a que
 veio primeiro. O CLI reporta quantas foram removidas e por qual chave.
 Titulos que sao traducao real (conteudo diferente, ex.: "Marketing
 Deutschland" vs "Marketing Germany") NAO sao fundidos — exigiria dicionario
-de traducao/fuzzy, fora do escopo do MVP. No conjunto atual (expansao E2):
-eligible 406 -> 389 (17 removidas, todas pela chave 3; 0 por external_id/URL).
+de traducao/fuzzy, fora do escopo do MVP. No conjunto atual (31/08): eligible
+258 -> 236 (22 removidas, todas pela chave 3; 0 por external_id/URL).
 
 ### Ranking por perfil
 
@@ -184,19 +202,18 @@ Score = `area + skills + language + type + location + penalties`:
 | `location` | DE explicito +1.0; Berlin +0.5 | ISO alpha-2 via `filters.infer_country_iso`; remoto neutro |
 | `penalties` | senior/director/head/principal -3.0; manager -1.0; FULL_TIME -0.5 | senioridade e "manager" SO valem sem marcador forte de tipo no titulo (Praktikum/Werkstudent/Internship no titulo protegem; JMP/Trainee nao protegem — nao sao marcadores); FULL_TIME e suave (Werkstudent/Praktikum vêm marcados FULL_TIME no conjunto e nao zeram) |
 
-Sem descricao (parte das 389), age-se com graca: skills/idioma contribuem 0 e o
-score vem do titulo. Exemplo real do conjunto atual (2026-08-12, expansao E2,
-389 eligible, sem mudanca de regras): scores `min 1.00 | mediana 6.00 |
-max 16.00`; TOP 1 = "Werkstudent Data Analytics & Logistics" (Knorr-Bremse,
-16.00); o ex-TOP 1 da Fase 4 "Pflichtpraktikum Logistik - Schwerpunkt Data &
-Analytics" (BoschGroup, 13.50) segue no TOP 3; o falso positivo corrigido na
-Fase 2 ("Working Student ... Communications / Media Production in SAP
-Analytics Cloud") continua fora do TOP 10 (area zerada — produto mascarado no
-titulo); nenhuma vaga senior no TOP 10; nenhum JMP no eligible; nenhum
-communications/marketing/media no TOP 10 (sanity da Fase 2 mantido);
-o presales SCM (B-list do dono) segue no TOP 20 com a area real de Supply
-Chain no titulo.
+Sem descricao (parte das vagas em que o ATS nao expoe descricao), age-se com
+graca: skills/idioma contribuem 0 e o score vem do titulo. Metrica real do
+conjunto de 31/08 (236 eligible, medido por `scripts/test_ranking.py`):
+scores `min 2.00 | mediana 6.38 | max 16.75`. O conjunto atual (janela de
+mercado menor que a de 12/08) NAO contem mais algumas vagas que os sanity
+checks do `test_ranking.py` procuram (acoplados a um snapshot 12/08) — por
+isso esse teste reporta **5 falhas pre-existentes e conhecidas** (P2 #16, nao
+regressao): as regras de ranking em si, o determinismo e os sanity de
+invariante continuam validos no TOP 10.
 Ver `scripts/test_ranking.py` (sintetico + run real + sanity checks).
+> Nota: as 5 falhas do `test_ranking.py` sao o gap conhecido do snapshot;
+> `ranking.py` nao mudou desde o MVP (o teste quebra por dados, nao por codigo).
 
 ## Runbook
 
@@ -249,17 +266,25 @@ as eligible em `data/eligible_jobs.json` + `.csv`):
 Saida: contagens em cascata (`total → tipo estudante → area-alvo → pais`),
 linha de dedup, **TOP 20 ranqueado por perfil** com score + breakdown, e os
 arquivos gravados (`data/eligible_jobs.json`/`.csv` com campo `score`).
+> Validacao/saidas gravam em `data/` por default (local, gitignored); para nao
+> depender de `data/`, use `--output PATH`/`--filter-output PATH`/`--metrics PATH`.
 
 ## Modelo `Job` (canonico, pydantic)
 
 `id, source, title, company, location, country, remote, url, description,
-internship, posted_at, collected_at, external_id, employment_type, country_iso, raw`.
+internship, posted_at, collected_at, application_deadline, external_id,
+employment_type, country_iso, raw`.
 
 - `source` e `ats:slug` do tenant (ex.: `smartrecruiters:BoschGroup`).
 - `id` deriva de `external_id` (ou hash da URL) prefixado pelo `source`.
+- `application_deadline` (`datetime|None`) e preenchido pelo adapter **quando o
+  ATS expoe a data explicitamente**; permanece `None` caso contrario e **nunca**
+  e inferido de `posted_at` (regra do dono).
 - `country_iso` tem FONTE UNICA: o adapter usa `filters.infer_country_iso`
   (ISO alpha-2 valido via `COUNTRY_CODES`; fallback `country_iso` -> `country`
-  -> tokens da location). Nenhuma heuristica de tail no adapter — Fase 3.
+  -> tokens da location). Nenhuma heuristica de tail no adapter — Fase 3; como
+  fallback pos-`infer_country_iso`, o `geocoding.py` (opcional, flag OFF) pode
+  resolver cidade → pais.
 - `internship` e preenchido pelo adapter via heuristica (`filters.py`, termos
   EN/PT/DE: intern, internship, working student, Werkstudent, Praktikum,
   iXp...). Graduate/absolvent NAO entram (perfil e de estudante atual);
@@ -278,13 +303,28 @@ src/internship_finder/
 │                   # greenhouse (API direta), base (ABC)
 ├── adapters/       # AtsJobAdapter: normaliza schema de cada ATS para Job
 ├── resolver/       # CompanyResolver (fachada sobre o matching exato)
+├── storage/        # sqlite_store: historico por vaga (first_seen/last_seen/active/archived)
 ├── filters.py      # filtros de utilidade: is_student_role, area-alvo, pais, cascata
+├── dedup.py        # deduplicacao: chaves por confiabilidade (id/external_id, URL, c+title+loc)
 ├── ranking.py      # ranking por perfil: score_job (score + breakdown) e rank_jobs
+├── metrics.py      # metricas de execucao em JSONL (por tenant + resumo do run)
+├── errors.py       # codigos de erro estruturados (CollectionError + classificador)
+├── health.py       # relatorio de health por tenant/ATS sobre o JSONL + alertas
+├── geocoding.py    # fallback de pais por cidade (cache-first; flag OFF por default)
 └── cli.py          # entry point `internship-finder` (filtro default + coleta)
 scripts/collect_jobs.py   # atalho p/ rodar sem instalar
 scripts/verify_companies.py  # runbook de empresas (match exato + fetch)
 scripts/coverage.py       # cobertura: funil + empresas/ATS/paises (offline)
+scripts/test_*.py         # suite standalone ([OK]/[FAIL]; exit 0 = TUDO OK)
 ```
+
+## Status / Roadmap
+
+Os numeros e o plano de execucao sao mantidos no **`MASTER_PLAN.md`** (fonte de
+verdade do plano: ranking P0–P4 com status ✅/⏳) e no **`PROJECT_STATUS.md`**
+(estado medido atual). `docs/roadmap.md` ficou como historico do MVP. CI:
+GitHub Actions (`.github/workflows/ci.yml`) roda a suite standalone
+(`scripts/test_*.py`) em runner limpo — exit 0 = TUDO OK.
 
 ## Notas
 

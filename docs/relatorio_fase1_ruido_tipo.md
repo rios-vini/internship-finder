@@ -1,4 +1,5 @@
 # Relatório — Fase 1: correção de ruído de tipo no eligible
+> 📜 **Documento histórico** (período da coleta: 2026-08-12). Estado atual e plano: MASTER_PLAN.md + PROJECT_STATUS.md.
 
 Data: 2026-08-12 · Branch: `feat/fix-ruido-tipo` · Correção controlada nº 1 da auditoria pós-expansão (parecer B), autorizada pelo dono.
 

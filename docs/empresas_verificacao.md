@@ -1,4 +1,5 @@
 # Verificação de empresas-alvo (Alemanha)
+> 📜 **Documento histórico** (período da coleta: 2026-08-10). Estado atual e plano: MASTER_PLAN.md + PROJECT_STATUS.md.
 
 Base: `ats-scrapers` (manifest + ~80k empresas). Tabela gerada em 2026-08-10
 com `scripts/verify_companies.py` (match exato: slug/nome casefold, fallback

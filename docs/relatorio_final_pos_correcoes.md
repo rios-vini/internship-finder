@@ -1,4 +1,5 @@
 # Relatório Final Pós-Correções + Novo Parecer (gate para o SQLite)
+> 📜 **Documento histórico** (período da coleta: 2026-08-13). Estado atual e plano: MASTER_PLAN.md + PROJECT_STATUS.md.
 
 **Data:** 2026-08-13 · **Branch:** `feat/relatorio-final-pos-correcoes` (base `main` 0968c2a) ·
 **Escopo:** consolidação das Fases 1–3 (correções controladas do parecer B) + classificação
