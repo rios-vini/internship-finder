@@ -11,7 +11,50 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
+
+# Campos obrigatorios do Job: ATS sem valor util (vazio/so whitespace) nao
+# produz uma vaga valida. Ausencia vira erro de validacao, nunca dado falso.
+_REQUIRED_STR_FIELDS = ("title", "url")
+# Campos opcionais: ausencia ou valor vazio/so whitespace vira ``None``
+# (ausencia != dado falso — AGENTS.md).
+_OPTIONAL_STR_FIELDS = (
+    "company",
+    "location",
+    "country",
+    "description",
+    "employment_type",
+    "country_iso",
+    "external_id",
+    "source",
+)
+
+# Todos os campos normalizaveis do Job (obrigatorios + opcionais).
+_STR_FIELDS = _REQUIRED_STR_FIELDS + _OPTIONAL_STR_FIELDS
+
+
+def _strip(value: Any) -> str | None:
+    """Normaliza um valor para ``str`` sem borda de whitespace (None preserva)."""
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    return stripped or None
+
+
+def normalize_job_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """Normaliza as strings de um dict de vaga (mesma regra dos validators).
+
+    Usado no caminho de filtro do CLI (que opera sobre dicts crus, sem
+    reconstruir ``Job``): ``strip`` em title/url/company/location/country/
+    country_iso/description/employment_type/external_id/source, e valor
+    vazio/so-whitespace vira ``None``. Nao rejeita nada nem valida
+    (inferencia/pais continua no adapter/filters).
+    """
+    result = dict(data)
+    for field in _STR_FIELDS:
+        if field in result:
+            result[field] = _strip(result[field])
+    return result
 
 
 class Job(BaseModel):
@@ -47,3 +90,24 @@ class Job(BaseModel):
     def __str__(self) -> str:
         loc = self.location or "-"
         return f"{self.title} | {self.company} | {loc} | {self.url}"
+
+    # ------------------------------------------------------------------
+    # Validacao forte de campos essenciais (P2 #11). Roda em ``mode="before"``
+    # para normalizar o valor cru antes de qualquer atribuicao (aceita None e
+    # preserva os defaults dos campos opcionais). Nada de inferencia de pais:
+    # ``country_iso`` so e normalizado aqui — a origem do valor continua no
+    # adapter/filters.
+    # ------------------------------------------------------------------
+
+    @field_validator(*_REQUIRED_STR_FIELDS, mode="before")
+    @classmethod
+    def _normalize_required_str(cls, value: Any, info: ValidationInfo) -> Any:
+        stripped = _strip(value)
+        if not stripped:
+            raise ValueError(f"campo obrigatorio '{info.field_name}' vazio")
+        return stripped
+
+    @field_validator(*_OPTIONAL_STR_FIELDS, mode="before")
+    @classmethod
+    def _normalize_optional_str(cls, value: Any) -> Any:
+        return _strip(value)

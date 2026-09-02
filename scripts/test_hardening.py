@@ -31,6 +31,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from pydantic import ValidationError  # noqa: E402
+
 from internship_finder.adapters.ats import AtsJobAdapter  # noqa: E402
 from internship_finder.dedup import deduplicate  # noqa: E402
 from internship_finder.models.company import Company  # noqa: E402
@@ -68,17 +70,29 @@ def test_dedup_external_id_scope() -> None:
 
 
 def test_ach08_no_url_id() -> None:
-    print("== ACH-08: jobs sem URL/external_id ==")
+    print("== ACH-08: deduplicacao sem URL/external_id ==")
     c = Company(name="Acme", ats="greenhouse", slug="acme", url=None)
     adapter = AtsJobAdapter()
-    j1 = adapter.to_job({"title": "Intern A", "location": "Berlin"}, c)
-    j2 = adapter.to_job({"title": "Intern B", "location": "Munich"}, c)
-    j3 = adapter.to_job({"title": "Intern A", "location": "Berlin"}, c)  # repete j1
-    check("3a. sem URL: titulos distintos -> ids distintos", j1.id != j2.id)
-    check("3b. sem URL: mesmo job repetido -> mesmo id", j1.id == j3.id)
-    check("3c. sem URL/external_id: url vazio (nao fabrica careers)", j1.url == "")
+    # P2 #11: URL e obrigatoria no Job (vaga sem URL util e invalida). O caso
+    # ACH-08 de colapso indevido por URL ausente agora testa o comportamento
+    # via external_id ausente + URLs reais — sem fabricar careers generic.
+    j1 = adapter.to_job({"title": "Intern A", "location": "Berlin",
+                         "url": "https://acme.example/a"}, c)
+    j2 = adapter.to_job({"title": "Intern B", "location": "Munich",
+                         "url": "https://acme.example/b"}, c)
+    j3 = adapter.to_job({"title": "Intern A", "location": "Berlin",
+                         "url": "https://acme.example/a"}, c)  # repete j1
+    check("3a. URLs distintas -> ids distintos", j1.id != j2.id)
+    check("3b. mesmo job repetido -> mesmo id", j1.id == j3.id)
     out, _, _ = deduplicate([j1.to_dict(), j2.to_dict(), j3.to_dict()])
-    check("3d. 2 distintos + 1 dup sem URL -> 2 vagas", len(out) == 2)
+    check("3c. 2 distintos + 1 dup -> 2 vagas", len(out) == 2)
+    # vaga sem URL (valida API/DB arredor do adapter) agora e invalida no Job:
+    from internship_finder.models.job import Job  # noqa: F401
+    try:
+        adapter.to_job({"title": "Intern A", "location": "Berlin"}, c)
+        check("3d. vaga sem URL -> rejeitada (P2 #11)", False)
+    except ValidationError:
+        check("3d. vaga sem URL -> rejeitada (P2 #11)", True)
 
     # com external_id, o ID e preservado (nao-regressao)
     je = adapter.to_job({"title": "Intern", "url": "https://x/1", "external_id": "R7"}, c)
@@ -89,12 +103,23 @@ def test_ach09_sem_titulo() -> None:
     print("== ACH-09: jobs sem titulo ==")
     c = Company(name="Acme", ats="greenhouse", slug="acme", url=None)
     adapter = AtsJobAdapter()
-    j1 = adapter.to_job({"location": "Berlin"}, c)
-    j2 = adapter.to_job({"location": "Munich"}, c)
-    check("4a. sem titulo -> titulo vazio (sem placeholder)", j1.title == "")
-    check("4b. sem titulo, loc diff -> ids distintos", j1.id != j2.id)
+    # P2 #11: titulo e obrigatorio no Job (vaga sem titulo util e invalida).
+    # O adapter expoe titulo vazio -> o validator forte rejeita (nao fabrica
+    # placeholder nem dado falso). A deduplicacao nao e alcancada: a vaga nem
+    # e construida.
+    j1 = adapter.to_job({"title": "Intern A", "location": "Berlin",
+                         "url": "https://a.example/a"}, c)
+    j2 = adapter.to_job({"title": "Intern B", "location": "Munich",
+                         "url": "https://a.example/b"}, c)
+    check("4a. titulos distintos -> ids distintos", j1.id != j2.id)
     out, _, _ = deduplicate([j1.to_dict(), j2.to_dict()])
-    check("4c. sem titulo, loc diff -> 2 vagas", len(out) == 2)
+    check("4b. titulos distintos -> 2 vagas", len(out) == 2)
+    # vaga sem titulo (valida API/DB ao redor do adapter) -> rejeitada:
+    try:
+        adapter.to_job({"location": "Berlin", "url": "https://a.example/c"}, c)
+        check("4c. vaga sem titulo -> rejeitada (P2 #11)", False)
+    except ValidationError:
+        check("4c. vaga sem titulo -> rejeitada (P2 #11)", True)
 
 
 # ---------------------------------------------------------------------------
