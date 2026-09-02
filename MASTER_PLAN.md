@@ -73,7 +73,7 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 5 | **Persistência SQLite** + `first_seen`/`last_seen`/`active`/`archived` | 🔓 **DESBLOQUEADO 31/08** (decisão do dono; era ON HOLD desde 13/08) | `sqlite3` basta; sem Postgres/Redis/ORM. Pré-requisito do histórico; o parecer A já autorizava. Campo `application_deadline` entra no schema junto com first/last_seen. |
 | 6 | **Observabilidade de consumo** (health por tenant/ATS sobre o JSONL já existente) | ✅ **implementado 01/09** (PR #12) — `src/internship_finder/health.py` + flag `--health [PATH]` (default `data/collection_metrics.jsonl`): relatório JSON por source/ATS (status, collected, duration, médias ok) + alertas de queda brusca (gate ≥3 runs ok, <50% da mediana) e erro recorrente (≥2 consecutivos); `duration` antiga string `"1.0s"` normalizada; malformados não derrubam. SQLite não é fonte (guarda vagas, não métricas de execução — decisão informada). Testes `scripts/test_health.py` (bloco real com SKIP sem `data/`, padrão CI). 1ª medição real: 1 alerta factual — `smartrecruiters:other`, 22/22 runs `error`. |
 | 7 | **Structured error codes** | ✅ **implementado 01/09** (PR #13) — `src/internship_finder/errors.py` (+ `CollectionError`, classificador lazy com fallback `UNKNOWN`): payload da `mp.Queue` deixa de ser texto livre e vira `("-error", code, detail)` com estágios fetch/normalize separados; `summary` timeout/failed com `(source, code, erro)`; registro JSONL ganha `error_code` (kwarg keyword-only; `error` legível preservado; JSONL antigo continua válido). Testes `scripts/test_errors.py` (no CI). |
-| 8 | **Multiprocessing lifecycle** (ACH-07) | ⏳ | spawn → execute → timeout → cleanup completo → join; sem órfãos; distinguir "worker morreu" de "timeout". |
+| 8 | **Multiprocessing lifecycle** (ACH-07) | ✅ **implementado 02/09** (PR #14, main 006f210) — `fetch_with_timeout` com 4 desfechos observáveis (timeout / worker-morto / erro estruturado / sucesso), sem status novo (6 do summary preservados); worker morto (`os._exit`/segfault/kill — o `except` não captura) detectado via `exitcode`/`is_alive` ANTES do deadline e distinto de timeout (`CollectionError(UNKNOWN, "worker morreu (exitcode N) sem mensagem")` vs `TIMEOUT`); cleanup em TODOS os caminhos no `finally` — `terminate()` → `join(5)` → se vivo `kill()` → `join(2)` (`_shutdown`) + queue drenada (`get_nowait` até `Empty`) e fechada (`close()`/`join_thread()`); margem parametrizável (`margin=`, default `TIMEOUT_MARGIN=25` — produção inalterada); payload `("-error", code, detail)` e códigos do P1 #7 herdados. `scripts/test_lifecycle.py` standalone (subprocesso real, sem rede/data): timeout ~1s, worker morto ~0.2s (deadline 35s), erro 0.05s, sucesso, loop de 5 sem órfãos (`pid_alive` + `active_children`) — no CI. |
 | 9 | **Documentação operacional** | ⏳ | PROJECT_STATUS (P0 feito, SQLite desbloqueado), README 389→293, `docs/roadmap.md` (reescrever), `docs/architecture.md` (`is_internship()` → `is_student_role()`), relatórios antigos = histórico. |
 
 ### 🟡 P2 — qualidade e automação (após acumular histórico)
@@ -143,6 +143,20 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-02 (P1 #8)**: **Multiprocessing lifecycle implementado** (PR #14, main
+  `006f210`, run verde `33597994938`) — `fetch_with_timeout` reestruturado em
+  `_wait_worker` (poll `get(0.2)` + monitoramento `exitcode`/`is_alive` a cada
+  iteração) + `_shutdown` (cleanup completo no `finally`): worker morto sem
+  mensagem (`os._exit`/segfault/kill) detectado ANTES do deadline e distinguido
+  de timeout (`CollectionError(UNKNOWN, "worker morreu (exitcode N) sem
+  mensagem")`); terminate→join(5)→kill→join(2); queue drenada + close/join_thread
+  em todos os desfechos; `margin=` parametrizável (default `TIMEOUT_MARGIN=25`,
+  produção inalterada); 6 status do summary e payload `("-error", code, detail)`
+  do P1 #7 preservados. `scripts/test_lifecycle.py` (standalone, subprocesso real,
+  sem rede/data) — 5 cenários: timeout ~1.01s, worker morto ~0.20s (deadline 35s),
+  erro 0.05s, sucesso, loop de 5 sem órfãos; 1 linha no array do CI. Delegado via
+  OpenHands retomado 2× (janela LLM ruim — exit 0 sem relatório na 1ª, resume
+  completou). [#8 ✅]
 - **2026-09-01 (P1 #7)**: **Structured error codes implementados** (PR #13) —
   `errors.py` (5 códigos + classificador lazy + `CollectionError`); payload da
   queue estruturado `("-error", code, detail)`; estágios fetch/normalize separados
