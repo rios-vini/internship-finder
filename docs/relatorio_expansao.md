@@ -1,4 +1,5 @@
 # Relatório da Expansão E2 — 12 → 39 empresas alemãs (2026-08-12)
+> 📜 **Documento histórico** (período da coleta: 2026-08-12). Estado atual e plano: MASTER_PLAN.md + PROJECT_STATUS.md.
 
 Registro completo da expansão aprovada pelo dono (decisão 2026-08-12): ampliar a
 cobertura de ~17 empresas alemãs avaliadas para **~30-40**, priorizando as áreas do

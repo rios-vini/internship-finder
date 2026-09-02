@@ -1,4 +1,5 @@
 # Relatório Final — Fase 4 (Validação) — 2026-08-12
+> 📜 **Documento histórico** (período da coleta: 2026-08-12). Estado atual e plano: MASTER_PLAN.md + PROJECT_STATUS.md.
 
 Pipeline completo do zero (coleta real de rede), branch `feat/integrate-validated-mvp`
 (HEAD 6886d34 + commit de validação desta fase). Dados **reais ao vivo** — nenhum

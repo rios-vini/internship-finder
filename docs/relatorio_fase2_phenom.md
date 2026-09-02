@@ -1,4 +1,5 @@
 # Relatório — Fase 2: Phenom/DHL — country genérico
+> 📜 **Documento histórico** (período da coleta: 2026-08-12). Estado atual e plano: MASTER_PLAN.md + PROJECT_STATUS.md.
 
 **Data:** 2026-08-12 · **Branch:** feat/fix-phenom-country (base `main` 2f6055d) · **Escopo:** correção controlada #2 do parecer B (auditoria pós-expansão). Sem novas empresas/paises/regras de negócio; pacote ats-scrapers intocado.
 
