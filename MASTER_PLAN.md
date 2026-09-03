@@ -83,7 +83,7 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 11 | **Job validation forte** | ✅ **mergeado 03/09** (PR #16, main 88a9936) — validators pydantic no `Job` (title/url vazios = erro de validação; opcionais vazio→None), `normalize_job_dict` no caminho filtro (4 títulos de borda limpos, baseline 236 ids intacto), adapter com título ausente → `NORMALIZATION_ERROR` (defensivo, 0 ocorrências), `test_validation.py` no CI (run 33695286158 verde). |
 | 12 | **Country/domain module** | ✅ **mergeado 03/09** (PR #17, main 7a4e6c9) — `countries.py` extrai país/localização de `filters.py` (COUNTRY_CODES, EUROPE_COUNTRIES, COUNTRY_NAMES, `_country_name_from_location`, `_iso_token_from_location`, `infer_country_iso`, `is_remote`, `parse_country_spec`, `matches_country` — movidos verbatim), `filters.py` re-exporta (consumidores intactos: ranking/cli/adapters/geocoding), `test_countries.py` no CI (run 33706802355 verde); baseline 236 preservado. |
 | 13 | **Company Registry operacional** + tirar empresas da lógica do CLI | ⏳ | company/ATS/tenant/enabled/status/última coleta; execução vira "run collection". |
-| 14 | **Dedup 2.0 textual** | 🟡 parcial | fingerprint (company+title+location normalizados+desc), normalização multilíngue (Praktikum≈Internship≈Werkstudent). |
+| 14 | **Dedup 2.0 textual** | ✅ **mergeado 03/09** (PR #19, main `4ed28d8`) — medição real no dataset (03/09): 12 pares candidatos EN/DE, 4 da MESMA vaga com marcadores diferentes escapavam (Knorr `Praktikant`≈`Working Student` Purchasing Controlling, SAP `Intern`≈`Working Student` Bid Council, VW `Praktikum`≈`Werkstudentin/Werkstudent` Analytics After Sales, MAHLE `Internship`≈`Praktikum` Lead-Buying — conteúdo 1:1); `TYPE_EQUIVALENCES` estendida com regex de fronteira de palavra (`praktikums?`/`praktikanten?`/`interns?`/`internships?` → working student) + colapso de repetidas na bag (`Werkstudentin / Werkstudent`); `Pflichtpraktikum` NÃO é atingido (obrigatório ≠ voluntário, anti-teste), trainee fora do domínio; description NÃO entrou no fingerprint (0 pares exigiram — ruído/falso positivo); `test_dedup` +casos reais medidos e anti-casos; `test_countries` desacoplado do número mágico `236` (invariante subconjunto + observabilidade do delta, autorizado pelo dono — precedente #16); baseline 236→232 (4 duplicatas TRUE por company+title+location), suíte local 16/16, CI run `33799148404` verde. |
 | 15 | **Padronizar `--country de/europe/all`** (ACH-11) | ⏳ | CLI já aceita; padronizar enrichment sem alterar filtro. |
 | 16 | **Desacoplar `test_ranking.py` do snapshot de dados** | ✅ **mergeado 03/09** (PR #18, main b82ff8e) — `FIXTURE` fixa (18 jobs sintéticos) + `test_fixture_ranking()` (regras no nível do rank: topo de área-alvo, sem senior/head/director, A-grade por área no TOP N, presales SCM com area≥6 sem penalidade, SAP Analytics Cloud mascarado na 2ª metade, marketing sem área fora do top 25%, JMP/trainee penalizado); bloco real reduzido a invariantes de formato + observabilidade; `test_synthetic`/`test_determinism` intactos (50→51 checks); suíte 16/16 local + determinismo 2x; CI run 33727053547 verde. |
 | 17 | **Daily refresh + alertas** (Telegram?) | ⏳ | Depois do health check; detecção primeiro, notificação depois. |
@@ -143,6 +143,28 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-03 (P2 #14)**: **Dedup 2.0 textual implementado** (PR #19, main
+  `4ed28d8`, run verde `33799148404`) — medição real primeiro (mandato da
+  tarefa): sobre país-DE 258→236, 12 pares candidatos; 4 verdadeiros escapavam
+  (Knorr `Praktikant`/`Working Student` Purchasing Controlling, SAP
+  `Intern`/`Working Student` Bid Council DPO, VW `Praktikum`/`Werkstudentin
+  /Werkstudent` Analytics After Sales, MAHLE `Internship`/`Praktikum`
+  Lead-Buying Mechatronics — descrições 1:1 EN/DE, veredito manual por
+  conteúdo). `TYPE_EQUIVALENCES` estendida com `\b` de fronteira de palavra
+  (`praktikums?`, `praktikanten?`, `interns?`, `internships?` → working
+  student) + colapso de palavras repetidas na bag (variante real
+  "Werkstudentin / Werkstudent" não difere de um único "working student").
+  `Pflichtpraktikum`/`Hochschulpraktikum` NÃO são atingidos (composto:
+  obrigatório≠voluntário — anti-testes); `trainee` fora do domínio;
+  description NÃO entrou no fingerprint (0 pares exigiram; normalizar desc é
+  ruído e risco de falso positivo — decisão documentada). `test_dedup` +71
+  linhas (casos reais medidos + anti-casos + sintético determinístico);
+  `test_countries` desacoplado do número mágico `236` (invariante: pipeline é
+  subconjunto do snapshot, dedup só remove + observabilidade do delta —
+  autorizado pelo dono, precedente P2 #16). Baseline eligible 236→232 (4
+  duplicatas TRUE, todas por company+title+location; ids auditados); suíte
+  local 16/16 TUDO OK; delegado OpenHands flash-0731 (1 run, sem resume
+  necessário). [#14 ✅]
 - **2026-09-02 (P1 #9)**: **Documentação operacional implementada** (PR #15, main
   `f55dc95`, run verde) — README/PROJECT_STATUS/architecture/roadmap atualizados
   para o estado real (funil 37.373→236, flags novas, `is_student_role`, módulos
