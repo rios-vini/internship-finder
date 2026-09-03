@@ -78,10 +78,11 @@ class AtsJobAdapter:
         """Normaliza ``item`` (dict ou modelo pydantic) para ``Job``."""
         data = self._as_dict(item)
 
-        # Titulo vazio (sem placeholder artificial "Sem titulo"): um valor
-        # fabricado seria tratado como identidade real pela chave de dedup
-        # company+title+location, colapsando vagas sem titulo da mesma
-        # empresa/local. Titulo vazio -> a chave (c) nao e gerada no dedup.
+        # Titulo obrigatorio: ATS sem titulo util (vazio/so whitespace) nao
+        # produz uma vaga valida. Nao fabricamos placeholder artificial —
+        # ``""`` cai no validator forte do Job (P2 #11) e a vaga e rejeitada
+        # (NORMALIZATION_ERROR). Nenhum ATS real do dataset produz titulo
+        # vazio hoje (0 ocorrencias em data/jobs.json), entao e defensivo.
         title = self._first(data, _FIELDS["title"]) or ""
         company_name = self._first(data, _FIELDS["company"]) or company.name or company.query
         url_raw = self._first_str(data, _FIELDS["url"])

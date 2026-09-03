@@ -175,6 +175,7 @@ def test_integration_with_infer_country_iso_and_adapter() -> None:
         job = ad.to_job({
             "title": "Werkstudent Supply Chain (m/w/x)",
             "location": "Oberkochen",
+            "url": "https://jobs.example/r1",
             "requisition_id": "R1",
             "ats_type": "workday",
         }, fake_company())
@@ -183,6 +184,7 @@ def test_integration_with_infer_country_iso_and_adapter() -> None:
         job2 = ad.to_job({
             "title": "Praktikum Einkauf",
             "location": "Walldorf, DE, 69190",
+            "url": "https://jobs.example/r2",
             "requisition_id": "R2",
         }, fake_company())
         check("adapter 'Walldorf, DE, 69190' -> de (infer, nao resolver)",
@@ -191,6 +193,7 @@ def test_integration_with_infer_country_iso_and_adapter() -> None:
         job3 = ad.to_job({
             "title": "Role X",
             "location": "Bangalore",
+            "url": "https://jobs.example/r3",
             "requisition_id": "R3",
         }, fake_company())
         check("adapter 'Bangalore' -> None (nao fabrica)", job3.country_iso is None)
@@ -210,12 +213,14 @@ def test_adapter_flag_off_no_network() -> None:
             ad.to_job({
                 "title": "Werkstudent (m/w/x)",
                 "location": "Braunschweig",
+                "url": "https://jobs.example/r9",
                 "requisition_id": "R9",
             }, fake_company())
             # cidade conhecida nao faz rede
             ad.to_job({
                 "title": "X",
                 "location": "UnresolvableCityXYZ",
+                "url": "https://jobs.example/r10",
                 "requisition_id": "R10",
             }, fake_company())
             mocked.assert_not_called()

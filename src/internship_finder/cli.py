@@ -49,7 +49,7 @@ from internship_finder.dedup import deduplicate
 from internship_finder.filters import select_eligible
 from internship_finder.health import build_health_report
 from internship_finder.metrics import read_metrics, utcnow_iso, write_metrics
-from internship_finder.models.job import Job
+from internship_finder.models.job import Job, normalize_job_dict
 from internship_finder.ranking import rank_jobs
 from internship_finder.storage.sqlite_store import SqliteStore
 
@@ -161,8 +161,15 @@ def run_filter_pipeline(
     entrada; ``filtered`` e o final da cascata; ``dedup_removed`` so conta
     quando ``dedup=True``).
     """
+    # Normaliza as strings de entrada (mesma regra dos validators do Job)
+    # antes da cascata. O caminho filtro opera sobre dicts, sem reconstruir
+    # ``Job``: dicts crus passam por ``normalize_job_dict``; instancias de
+    # ``Job`` ja passaram pelos validators (idempotente, inofensivo).
+    normalized = [
+        j.to_dict() if hasattr(j, "to_dict") else normalize_job_dict(j) for j in jobs
+    ]
     selected, counts = select_eligible(
-        [j.to_dict() if hasattr(j, "to_dict") else j for j in jobs],
+        normalized,
         student=student,
         area=area,
         country=country,

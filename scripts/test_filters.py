@@ -243,20 +243,24 @@ def test_consistency() -> None:
     adapter = AtsJobAdapter()
     jmp_job = adapter.to_job(
         {"title": "Junior Managers Program (Trainee) - Purchasing",
-         "employment_type": "trainee"},
+         "employment_type": "trainee",
+         "url": "https://jobs.example/jmp"},
         company,
     )
     check("adapter: JMP -> internship False", jmp_job.internship is False)
     praktikum = adapter.to_job(
-        {"title": "Praktikum Logistik - Data & Analytics"}, company
+        {"title": "Praktikum Logistik - Data & Analytics",
+         "url": "https://jobs.example/praktikum"}, company
     )
     check("adapter: Praktikum -> internship True", praktikum.internship is True)
     dual = adapter.to_job(
-        {"title": "Duales Studium BWL - Logistik (B.A.) 2027"}, company
+        {"title": "Duales Studium BWL - Logistik (B.A.) 2027",
+         "url": "https://jobs.example/dual"}, company
     )
     check("adapter: Duales Studium -> internship False", dual.internship is False)
     hochschul = adapter.to_job(
-        {"title": "Hochschulpraktikum (w/m/d) im Bereich Controlling"}, company
+        {"title": "Hochschulpraktikum (w/m/d) im Bereich Controlling",
+         "url": "https://jobs.example/hochschul"}, company
     )
     check("adapter: Hochschulpraktikum -> internship True",
           hochschul.internship is True)
@@ -267,6 +271,7 @@ def test_consistency() -> None:
         {
             "title": "Praktikum Logistik",
             "location": "Friedrichshafen, BW, DE, 88046",
+            "url": "https://jobs.example/friedrichshafen",
         },
         company,
     )
@@ -274,7 +279,8 @@ def test_consistency() -> None:
         "adapter: 'Friedrichshafen, BW, DE, 88046' -> country_iso 'de'",
         friedrichshafen.country_iso == "de",
     )
-    sem_pais = adapter.to_job({"title": "Praktikum Logistik"}, company)
+    sem_pais = adapter.to_job({"title": "Praktikum Logistik",
+                               "url": "https://jobs.example/sem-pais"}, company)
     check(
         "adapter: sem localizacao -> country_iso None",
         sem_pais.country_iso is None,
@@ -286,6 +292,7 @@ def test_consistency() -> None:
         {
             "title": "Praktikum Logistik (m/w/d)",
             "location": "Bonn, Nordrhein-Westfalen, Germany",
+            "url": "https://jobs.example/phenom-de",
         },
         company,
     )
@@ -295,6 +302,7 @@ def test_consistency() -> None:
         {
             "title": "Intern - Supply Chain",
             "location": "Goodyear, Arizona, United States of America",
+            "url": "https://jobs.example/phenom-us",
         },
         company,
     )
@@ -347,6 +355,7 @@ def test_consistency() -> None:
         {
             "title": "Werkstudent Supply Chain Excellence (m/w/x)",
             "location": "Oberkochen",
+            "url": "https://jobs.example/wd",
             "requisition_id": "R123",
             "ats_type": "workday",
         },
