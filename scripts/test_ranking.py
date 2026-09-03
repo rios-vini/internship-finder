@@ -1,8 +1,12 @@
 """Testes do modulo de ranking (scripts/test_ranking.py).
 
-Roda tres blocos: (1) score_job sintetico (componentes e regras de negocio),
-(2) determinismo/desempate/robustez, (3) execucao real sobre
-data/eligible_jobs.json com distribucao, TOP 10 e sanity checks. Uso:
+Roda quatro blocos: (1) score_job sintetico (componentes e regras de negocio),
+(2) determinismo/desempate/robustez, (3) ranking sobre uma FIXTURE FIXA
+(sintetica, sem data/) verificando as regras de ranking no nivel do rank, e
+(4) execucao real sobre data/eligible_jobs.json com invariantes de formato
+(mesma quantidade, score/breakdown, ordenacao desc, impressao da distribuicao
+e TOP 10 apenas como observabilidade — as regras de negocio agora vivem na
+fixture, desacopladas de qualquer snapshot de dados). Uso:
 
     .venv/bin/python scripts/test_ranking.py
 """
@@ -10,15 +14,13 @@ data/eligible_jobs.json com distribucao, TOP 10 e sanity checks. Uso:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from internship_finder.filters import (  # noqa: E402
-    TYPE_EXCLUSION_PATTERNS,
-    area_score,
-)
+from internship_finder.filters import area_score  # noqa: E402
 from internship_finder.ranking import (  # noqa: E402
     WEIGHT_AREA_TITLE,
     rank_jobs,
@@ -53,6 +55,276 @@ def base_job(**overrides) -> dict:
     }
     job.update(overrides)
     return job
+
+
+# ---------------------------------------------------------------------------
+# Fixture fixa (P2 #16) — desacopla as checagens de regra de ranking de
+# qualquer snapshot de dados real.
+#
+# 18 vagas 100% sinteticas (ids ``fixture:N``, construidas com base_job,
+# SEM ler ``data/``), inspiradas em casos reais mas com titulos/descricoes
+# proprios. Cobrem as regras que o bloco real validava por presenca de vaga:
+#   - A-grade de area-alvo (SC/Logistik, BI/Data, Automacao), com descricao
+#     rica (area + skills + idioma) -> pontuam no topo;
+#   - presales SCM (area real de Supply Chain vinda do TITULO, sem penalidade
+#     de contexto) -> TOP 5 com area >= 6.0 e penalties == 0.0;
+#   - "Communications/Media ... SAP Analytics Cloud" (produto mascarado) ->
+#     area 0, segunda metade;
+#   - Marketing sem area real -> fora do top 25% e na segunda metade;
+#   - Senior/Head/Director -> penalidade forte;
+#   - JMP/Management Trainee -> penalidade de manager, sem bonus de tipo;
+#   - vagas neutras (tipo ok, sem area) -> faixa intermediaria/baixa.
+# ---------------------------------------------------------------------------
+FIXTURE: list[dict] = [
+    # A-grade: Supply Chain / Logistik / Procurement
+    base_job(
+        id="fixture:1",
+        company="CoA",
+        title="Praktikum Supply Chain & Logistik (w/m/d)",
+        description=(
+            "Optimize inventory management and supplier relationships. "
+            "Process automation with Python and APIs. English required, "
+            "German is a plus."
+        ),
+    ),
+    base_job(
+        id="fixture:2",
+        company="CoA",
+        title="Werkstudent Einkauf & Procurement (w/m/d)",
+        description=(
+            "Support strategic procurement and purchasing operations. "
+            "Supplier management and reporting. English required."
+        ),
+    ),
+    base_job(
+        id="fixture:3",
+        company="CoK",
+        title="Werkstudent Procurement & Digital Operations",
+        description="Digital operations and sourcing. English required.",
+    ),
+    # A-grade: BI / Data & Analytics
+    base_job(
+        id="fixture:4",
+        company="CoB",
+        title="Praktikum im Bereich Data & Analytics",
+        description=(
+            "Process automation with Python and APIs. Reporting and "
+            "continuous improvement. English required."
+        ),
+    ),
+    base_job(
+        id="fixture:5",
+        company="CoC",
+        title="Working Student BI & Data Analytics",
+        description=(
+            "Build data analytics and reporting dashboards. Python and cloud. "
+            "English required."
+        ),
+    ),
+    base_job(
+        id="fixture:6",
+        company="CoJ",
+        title="Working Student Business Intelligence",
+        description=(
+            "Build business intelligence dashboards and data reporting. "
+            "English required."
+        ),
+    ),
+    # A-grade: Automation
+    base_job(
+        id="fixture:7",
+        company="CoB",
+        title="Working Student Process Automation & RPA",
+        description="Robotic process automation and system integration. English required.",
+    ),
+    # B-list do dono: presales SCM — area real de Supply Chain no TITULO,
+    # sem penalidade de contexto (regra Fase 2 preservada).
+    base_job(
+        id="fixture:8",
+        company="CoD",
+        title=(
+            "Werkstudent (w/m/d) - Solution Advisory / Presales - "
+            "Fokus auf Supply Chain Management"
+        ),
+        description=(
+            "Support supply chain presales and solution demos with customers. "
+            "Inventory management, supplier relationships, process automation "
+            "and system integration with APIs and reporting. English required, "
+            "German a plus. Python for continuous improvement."
+        ),
+    ),
+    # Communications/Media em "SAP Analytics Cloud": produto mascarado ->
+    # area 0, vaga BAIXA (regra Fase 2).
+    base_job(
+        id="fixture:9",
+        company="CoE",
+        location="Berlin, de",
+        title=(
+            "Working Student (f/m/d) - Communications / Media Production "
+            "in SAP Analytics Cloud"
+        ),
+        description="Support the marketing team with content creation.",
+    ),
+    # Marketing sem area real -> BAIXO (fora do top 25%).
+    base_job(
+        id="fixture:10",
+        company="CoE",
+        title="Working Student - Marketing",
+        description="Support the marketing team with content creation.",
+    ),
+    # Senior/Head/Director: penalidade forte.
+    base_job(
+        id="fixture:11",
+        company="CoF",
+        title="Senior Data Analyst (m/f/d)",
+        description="Internship position supporting BI reporting.",
+    ),
+    base_job(id="fixture:12", company="CoF", title="Head of Supply Chain Operations"),
+    base_job(id="fixture:13", company="CoG", title="Director Procurement"),
+    # JMP / Management Trainee: penalidade de manager, sem bonus de tipo.
+    base_job(
+        id="fixture:14",
+        company="CoG",
+        title="Junior Managers Program (Trainee) - Purchasing",
+    ),
+    base_job(id="fixture:15", company="CoH", title="Management Trainee - Supply Chain"),
+    # Neutras (tipo ok, sem area): faixa intermediaria/baixa.
+    base_job(id="fixture:16", company="CoI", title="Praktikum Logistik"),
+    base_job(
+        id="fixture:17",
+        company="CoL",
+        title="Working Student Supplier Quality Management",
+        description=(
+            "Supplier management and continuous improvement in quality. "
+            "English required."
+        ),
+    ),
+    base_job(id="fixture:18", company="CoI", title="Werkstudent allgemeine Verwaltung"),
+]
+FIXTURE_N = len(FIXTURE)
+
+
+def test_fixture_ranking() -> None:
+    """ranqueia a FIXTURE fixa e valida as REGRAS de ranking (deterministico,
+    sem dados reais), no nivel do RANK: mesmo conjunto de invariantes do
+    bloco real, mas sobre a fixture — nenhum find() em dados reais."""
+    print(f"== ranking na fixture fixa (N={FIXTURE_N}) ==")
+    # Topo proporcional (1/3 de 18): A-grade de cada area + presales cabem.
+    top_n = 6
+    first_half = (FIXTURE_N // 2) + 1  # segunda metade comeca a partir dai
+
+    ranked = rank_jobs(FIXTURE)
+    top = ranked[:top_n]
+
+    # Invariantes de formato (valem para qualquer dataset, inclusive a fixture).
+    check("fixture: mesma quantidade", len(ranked) == FIXTURE_N)
+    check("fixture: todos com score", all("score" in j for j in ranked))
+    check(
+        "fixture: todos com score_breakdown",
+        all("score_breakdown" in j for j in ranked),
+    )
+    scores = [j["score"] for j in ranked]
+    scores_sorted = sorted(scores, reverse=True)
+    check("fixture: ordenado desc", scores == scores_sorted)
+    check(
+        "fixture: score_breakdown soma ao score",
+        all(
+            abs(sum(j["score_breakdown"].values()) - j["score"]) < 0.01
+            for j in ranked
+        ),
+    )
+    print(
+        f"  fixture: min {min(scores):.2f} | "
+        f"mediana {scores_sorted[FIXTURE_N // 2]:.2f} | max {max(scores):.2f}"
+    )
+
+    # Regras (no nivel do RANK).
+    check(
+        "fixture: topo e de area-alvo",
+        all(j["score_breakdown"]["area"] > 0 for j in top),
+    )
+    senior_pat = re.compile(
+        r"\bsenior\b|\bdirector\b|\bhead of\b|\bprincipal\b", re.IGNORECASE
+    )
+    check(
+        "fixture: nenhum senior/head/director no topo",
+        not any(senior_pat.search(j["title"]) for j in top),
+    )
+
+    # A-grade de cada area-alvo no TOP N (SC/Logistik, Data & Analytics,
+    # BI, Automation).
+    top_titles = [j["title"] for j in ranked[: top_n]]
+    top_agrade = [
+        "Praktikum Supply Chain & Logistik (w/m/d)",  # Supply Chain
+        "Praktikum im Bereich Data & Analytics",      # Data & Analytics
+        "Working Student BI & Data Analytics",        # BI/Data
+        "Working Student Process Automation & RPA",   # Automation
+    ]
+    check(
+        "fixture: A-grade (SC/BI/Data/Automacao) no TOP N",
+        all(any(sub in t for t in top_titles) for sub in top_agrade),
+    )
+
+    # Presales SCM: TOP N com area real (>=6.0) vinda do TITULO e sem
+    # penalidade de contexto (penalties == 0.0).
+    presales = next(
+        j for j in ranked if "presales" in j["title"].lower()
+    )
+    check(
+        "fixture: presales SCM no TOP N",
+        ranked.index(presales) + 1 <= top_n,
+    )
+    check(
+        "fixture: presales SCM area >= 6.0 (titulo)",
+        presales["score_breakdown"]["area"] >= 6.0,
+    )
+    check(
+        "fixture: presales SCM sem penalidade (penalties == 0.0)",
+        presales["score_breakdown"]["penalties"] == 0.0,
+    )
+
+    # 'SAP Analytics Cloud' (produto mascarado): area == 0 e na segunda metade.
+    comms = next(
+        j for j in ranked if "communications / media production" in j["title"].lower()
+    )
+    check(
+        "fixture: Communications/Media 'SAP Analytics Cloud' area == 0.0",
+        comms["score_breakdown"]["area"] == 0.0,
+    )
+    check(
+        "fixture: Communications/Media 'SAP Analytics Cloud' na segunda metade",
+        ranked.index(comms) + 1 >= first_half,
+    )
+
+    # Marketing sem area real: fora do top 25% e na segunda metade.
+    mkt = next(j for j in ranked if j["title"] == "Working Student - Marketing")
+    check(
+        "fixture: marketing sem area fora do top 25%",
+        ranked.index(mkt) + 1 > FIXTURE_N // 4,
+    )
+    check(
+        "fixture: marketing sem area na segunda metade",
+        ranked.index(mkt) + 1 >= first_half,
+    )
+
+    # Senior/Head/Director penalizados: nao podem estar acima de qualquer
+    # A-grade (regra que o bloco real checava por presenca/top).
+    check(
+        "fixture: nenhum senior/head/director acima de A-grade",
+        all(ranked.index(j) + 1 > top_n for j in ranked if senior_pat.search(j["title"])),
+    )
+
+    # JMP/Trainee: abaixo do topo, penalidade de manager (penalties <= -1.0).
+    trainee_titles = [
+        "Junior Managers Program (Trainee) - Purchasing",
+        "Management Trainee - Supply Chain",
+    ]
+    trainee_pos = [ranked.index(j) for j in ranked if j["title"] in trainee_titles]
+    check("fixture: JMP/Trainee fora do TOP N", all(p + 1 > top_n for p in trainee_pos))
+    check(
+        "fixture: JMP/Trainee com penalidade de manager",
+        all(ranked[p]["score_breakdown"]["penalties"] <= -1.0 for p in trainee_pos),
+    )
 
 
 def test_synthetic() -> None:
@@ -271,140 +543,20 @@ def test_real_data() -> None:
             f"pen {b['penalties']:+.1f}"
         )
 
-    # Sanity checks da especificacao (calibrados no conjunto real 2026-08-12,
-    # expansao E2: n=389, mediana 6.00; antes 2026-08-10: n=170, mediana 6.75).
-    # Fase 1 das correcoes pos-auditoria (ruido de tipo): 106 vagas de Duales
-    # Studium/Ausbildung/Schuelerpraktikum sairam do eligible (n=283) — nenhuma
-    # regra de ranking foi alterada; os sanity abaixo sao de regra (titulo),
-    # nao de contagem, e seguem validos no conjunto menor.
-    # Praktikum Logistik/SC no topo; JMP fora do eligible (programa excluido
-    # na Fase 1); Marketing longe do topo; nenhum senior no topo; Fase 2:
-    # Communications/Media "SAP Analytics Cloud" fora do topo e sem
-    # marketing/comunicacao/media no TOP 10.
-    def find(sub: str):
-        return [j for j in ranked if sub.lower() in j["title"].lower()]
-
-    log_sc = find("Logistik und Supply Chain Design")
-    check("sanity: 'Praktikum ... Logistik und Supply Chain Design' ALTO",
-          bool(log_sc) and log_sc[0]["score"] >= med)
-
-    # "Working Student - Marketing": todas as vagas com Working Student +
-    # Marketing no titulo fora do quartil superior (top 25%); e nenhuma vaga
-    # de marketing SEM area real no titulo no quartil superior (a vaga Bosch
-    # "Online Marketing - Analytics & Performance" tem area REAL de Analytics
-    # no titulo — pontua por area, nao e falso positivo de contexto).
-    ws_mkt = [j for j in ranked
-              if "working student" in j["title"].lower()
-              and "marketing" in j["title"].lower()]
-    check("sanity: 'Working Student - Marketing' BAIXO",
-          bool(ws_mkt) and all(ranked.index(j) + 1 > len(ranked) // 4 for j in ws_mkt))
-    all_mkt = [j for j in ranked if "marketing" in j["title"].lower()]
-    mkt_sem_area = [j for j in all_mkt if j["score_breakdown"]["area"] == 0.0]
-    check("sanity: nenhum marketing (sem area real) no top 25%",
-          bool(mkt_sem_area) and all(ranked.index(j) + 1 > len(ranked) // 4 for j in mkt_sem_area))
-
-    jmp = find("Junior Managers Program")
-    check("sanity: nenhum 'Junior Managers Program' no eligible",
-          not bool(jmp))
-
-    import re
-
-    # Fase 1 (correcao de ruido de tipo): nenhuma vaga de Duales Studium /
-    # Ausbildung / Schul-/Schuelerpraktikum no eligible (regra nova do dono).
-    # Fonte unica de verdade: TYPE_EXCLUSION_PATTERNS de filters.py — a regex
-    # duplicada local casava 'schulpraktik' DENTRO de 'Hochschulpraktikum'
-    # (estagio universitario VALIDO, 4 vagas B. Braun preservadas de proposito)
-    # e gerava falso positivo.
-    noise = [
-        j for j in ranked
-        if any(re.search(p, j["title"], re.IGNORECASE) for p in TYPE_EXCLUSION_PATTERNS)
-    ]
-    check("sanity Fase1: nenhum ruido de tipo (dual/ausbildung/schueler) no eligible",
-          not bool(noise))
-    # Hochschulpraktikum (estagio universitario VALIDO) nao pode ter saido.
-    hoch = find("Hochschulpraktikum")
-    check("sanity Fase1: 'Hochschulpraktikum' segue no eligible",
-          bool(hoch))
-
-    top10 = ranked[:10]
-    senior_pat = re.compile(r"\bsenior\b|\bdirector\b|\bhead of\b|\bprincipal\b", re.IGNORECASE)
-    check("sanity: nenhum senior no topo",
-          not any(senior_pat.search(j["title"]) for j in top10))
-
-    check("sanity: topo e de area-alvo",
-          all(j["score_breakdown"]["area"] > 0 for j in top10))
-
-    # ---- Fase 2 (pos-auditoria): falso positivo do topo corrigido ----
-    # A vaga Communications/Media "in SAP Analytics Cloud" (antigo TOP 1,
-    # 14.00 — area vinha do nome do PRODUTO) saiu do topo: fora do TOP 10
-    # e abaixo da mediana.
-    comms = find("Media Production in SAP Analytics Cloud")
-    check("sanity Fase2: existe a vaga Communications/Media 'SAP Analytics Cloud'",
-          bool(comms))
-    if comms:
-        comms_pos = ranked.index(comms[0]) + 1
-        print(f"  Fase2: Communications/Media 'SAP Analytics Cloud' agora na "
-              f"posicao {comms_pos}/{len(ranked)} (score {comms[0]['score']:.2f})")
-        check("sanity Fase2: fora do TOP 10", comms_pos > 10)
-        check("sanity Fase2: na segunda metade (nao acima da mediana)",
-              comms_pos > len(ranked) // 2)
-        check("sanity Fase2: area zerada (produto mascarado no titulo)",
-              comms[0]["score_breakdown"]["area"] == 0.0)
-
-    # Novo sanity (Fase 2): nenhum communications/marketing/media no TOP 10.
-    ctx_pat = re.compile(r"\bcommunications?\b|\bmarketing\b|\bmedia\b", re.IGNORECASE)
-    check("sanity Fase2: nenhum communications/marketing/media no TOP 10",
-          not any(ctx_pat.search(j["title"]) for j in top10))
-
-    # B-list do dono preservada: o presales SCM (unico com 'presales' no
-    # titulo) segue no TOP 20 (conjunto expandido: posicao 18/389, top 5%;
-    # no conjunto Fase 2 de 170 estava no TOP 10) e a area vem do titulo
-    # (Supply Chain), nao de penalidade de contexto — a mudanca nao o derrubou.
-    presales = find("Solution Advisory / Presales - Fokus auf Supply Chain")
-    check("sanity Fase2: presales SCM (B) no TOP 20",
-          bool(presales) and presales[0] in ranked[:20])
-    if presales:
-        check("sanity Fase2: presales SCM com area real no titulo",
-              presales[0]["score_breakdown"]["area"] >= 6.0)
-
-    # A/B do dono: os candidataria/interessante conhecidos seguem no topo.
-    # Conjunto Fase 2/4 (165): todos no TOP 20. Conjunto expandido (389):
-    # os A/B de 9.5-10.0 (Bosch: BI & Data Analytics, Power BI & Automation,
-    # Generative AI, digitales Projektmanagement, Supplier Quality Mgmt)
-    # ficaram nas posicoes 36-44 por mais concorrencia acima — seguem no
-    # TOP 50 (top 13%), todos com score >= 9.5 (bem acima da mediana 6.0),
-    # sem regressao de regras.
-    ab_titles = [
-        "Logistik - Schwerpunkt Data & Analytics",       # A
-        "Praktikum in der Logistik - Data & Analytics",  # A
-        "Analytics: AI Enablement & Automation",         # A
-        "Technology in Global Procurement",              # A
-        "Logistik und Supply Chain Design",              # A
-        "Business Intelligence & Data Analytics",        # A
-        "Digital Project Management, Power BI & Automation",  # A
-        "Data Analytics and Generative AI",              # A
-        "digitalen Projektmanagement, Power BI & Automatisierung",  # A
-        "MEE Strategy & Operations",                     # B
-        "Solution Advisory / Presales",                  # B
-        "Supplier Quality Management",                   # B
-    ]
-    # Nota Fase 4 (2026-08-12): a lista reflete as vagas verificaveis no
-    # conjunto ao vivo — "Einkauf - Digital Transformation" e "Health Data
-    # Analytics" (A/B do dono) sairam do eligible por DRIFT DE DADOS (nao
-    # estao mais publicadas/eligible na coleta real), nao por regressao.
-    # Presentes na coleta 2026-08-10; removidos da lista para o sanity
-    # acompanhar o conjunto real.
-    missing = [t for t in ab_titles if not find(t)]
-    check("sanity Fase2: A/B conhecidos presentes no eligible",
-          not missing)
-    below_top50 = [t for t in ab_titles if find(t) and find(t)[0] not in ranked[:50]]
-    check("sanity Fase2: A/B conhecidos no TOP 50",
-          not below_top50)
+    # P2 #16 (desacoplar do snapshot): este bloco so valida INVARIANTES DE
+    # FORMATO que valem para QUALQUER dataset (mesma quantidade, todos com
+    # score/breakdown, ordenado desc) e imprime a distribuicao + TOP 10 como
+    # observabilidade. As checagens de REGRA (topo de area-alvo, nenhum
+    # senior no topo, presales SCM, Communications 'SAP Analytics Cloud'
+    # mascarado, marketing sem area fora do top, JMP/Trainee penalizado)
+    # foram movidas para a FIXTURE fixa (``test_fixture_ranking``), desacopladas
+    # de qualquer vaga especifica existir no dataset real (drift de dados).
 
 
 def main() -> int:
     test_synthetic()
     test_determinism()
+    test_fixture_ranking()
     test_real_data()
     print()
     if FAILURES:
