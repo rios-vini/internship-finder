@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 ## Current state
 
@@ -53,10 +53,13 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): 245 eli
 - **P1 #7 — Structured error codes** (PR #13): `errors.py` (`CollectionError` + codes), structured queue payload, `error_code` in the JSONL.
 - **P1 #8 — Multiprocessing lifecycle** (PR #14, merged 02/09): `fetch_with_timeout` with 4 outcomes (timeout / dead worker / erro / success), cleanup in `finally`.
 - **P3 #18 — venv synced with `ats-scrapers` pin `ae0ad53`**: reinstall from the pin; SAP exposes `application_deadline` (1086/1086).
+- **P2 #11 — Job validation forte** (PR #16, merged 03/09): pydantic validators on `Job` (empty `title`/`url` = validation error; empty optionals → `None`), `normalize_job_dict` for the filter path, adapter rejects missing titles (`NORMALIZATION_ERROR`, defensive), `test_validation.py` in CI.
+- **P2 #12 — Country/domain module** (PR #17, merged 03/09): country/location logic extracted from `filters.py` into `countries.py` (constants + inference + spec functions, moved verbatim, behavior unchanged); `filters.py` re-exports the symbols (consumers untouched); `test_countries.py` in CI.
 
 ## Next priorities
 
-- **P1 #9 (this doc pass)** done; next are P2 backlog items, e.g.:
+- **P1 #9 (this doc pass)** done; **P2 #11 and P2 #12 done** (see Completed). Next P2 backlog items:
+  - **P2 #16**: decouple `test_ranking.py` from the 12/08 snapshot (5 known pre-existing failures — NOT a regression)
   - P2 dedup 2.0 (e.g. cross-source identity, dedup textual evolution)
   - P2 company registry / expanding DE coverage (39→60→100)
   - P2 zero-return + anomaly detection (after history accumulates)

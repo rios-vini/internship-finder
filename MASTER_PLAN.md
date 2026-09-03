@@ -80,8 +80,8 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | # | Item | Status | Notas |
 |---|---|---|---|
 | 10 | **Zero-return + anomaly detection** | ⏳ gate: ≥5 execuções persistidas | Sem histórico estatístico hoje; rebaixado de P1. |
-| 11 | **Job validation forte** | ⏳ | title/url/country_iso sem `""`/`"   "`; ausência ≠ dado falso. |
-| 12 | **Country/domain module** | ⏳ | centralizar codes/aliases/inferência (hoje espalhado em filters.py). |
+| 11 | **Job validation forte** | ✅ **mergeado 03/09** (PR #16, main 88a9936) — validators pydantic no `Job` (title/url vazios = erro de validação; opcionais vazio→None), `normalize_job_dict` no caminho filtro (4 títulos de borda limpos, baseline 236 ids intacto), adapter com título ausente → `NORMALIZATION_ERROR` (defensivo, 0 ocorrências), `test_validation.py` no CI (run 33695286158 verde). |
+| 12 | **Country/domain module** | ✅ **mergeado 03/09** (PR #17, main 7a4e6c9) — `countries.py` extrai país/localização de `filters.py` (COUNTRY_CODES, EUROPE_COUNTRIES, COUNTRY_NAMES, `_country_name_from_location`, `_iso_token_from_location`, `infer_country_iso`, `is_remote`, `parse_country_spec`, `matches_country` — movidos verbatim), `filters.py` re-exporta (consumidores intactos: ranking/cli/adapters/geocoding), `test_countries.py` no CI (run 33706802355 verde); baseline 236 preservado. |
 | 13 | **Company Registry operacional** + tirar empresas da lógica do CLI | ⏳ | company/ATS/tenant/enabled/status/última coleta; execução vira "run collection". |
 | 14 | **Dedup 2.0 textual** | 🟡 parcial | fingerprint (company+title+location normalizados+desc), normalização multilíngue (Praktikum≈Internship≈Werkstudent). |
 | 15 | **Padronizar `--country de/europe/all`** (ACH-11) | ⏳ | CLI já aceita; padronizar enrichment sem alterar filtro. |
