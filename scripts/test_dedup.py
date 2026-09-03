@@ -57,6 +57,57 @@ def test_normalizations() -> None:
         normalize_title("Werkstudent (w/m/d) - IT End-User Enablement and Operations")
         == normalize_title("Working Student (f/m/d) - IT End-User Enablement and Operations"),
     )
+    # P2 #14 — pares reais medidos no dataset (03/09): a MESMA vaga publicada
+    # com marcadores de tipo diferentes (Praktikum/Internship/Intern/Praktikant/
+    # Working Student/Werkstudent) no MESMO company+location.
+    check(
+        "p2#14 MAHLE Internship==Praktikum (par real)",
+        normalize_title("Praktikum Lead-Buying Mechatronics (m/w/d)")
+        == normalize_title("Internship (m/f/d) Lead-Buying Mechatronics"),
+    )
+    check(
+        "p2#14 Knorr Praktikant==Working Student (par real)",
+        normalize_title("Praktikant Purchasing Controlling, Data Analytics, Supplier Management (m/f/d)")
+        == normalize_title("Working Student Purchasing Controlling, Data Analytics, Supplier Management (m/f/d)"),
+    )
+    check(
+        "p2#14 SAP Intern==Working Student (par real)",
+        normalize_title("Intern (f/m/d) - Bid Council Support - Delivery and Program Office DPO")
+        == normalize_title("Working Student (f/m/d) - Bid Council Support - Delivery and Program Office DPO"),
+    )
+    check(
+        "p2#14 VW Praktikum==Werkstudentin/Werkstudent (par real; bag colapsada)",
+        normalize_title("Praktikum Analytics After Sales (w/m/d)")
+        == normalize_title("Werkstudentin / Werkstudent Analytics After Sales (w/m/d)"),
+    )
+    check(
+        "p2#14 Praktikum==Intern (sintetico)",
+        normalize_title("Praktikum (m/w/d) Supply Chain")
+        == normalize_title("Intern (f/m/d) Supply Chain"),
+    )
+    # Anti-casos: marcadores diferentes NAO devem fundir quando o CONTEUDO da
+    # vaga difere (Prakuikum vs Working Student podem coexistir como vagas
+    # DISTINTAS no mesmo time/lugar).
+    check(
+        "p2#14 anti: Praktikum Einkauf vs Working Student Marketing",
+        normalize_title("Praktikum im Bereich Einkauf (w/m/div.)")
+        != normalize_title("Working Student (f/m/d) - Marketing - SAP Services MEE"),
+    )
+    check(
+        "p2#14 anti: Praktikant Data Science vs Werkstudent Digitalisierung (reais, mesmo local)",
+        normalize_title("Praktikant Data Science (m/w/d)")
+        != normalize_title("Werkstudent Digitalisierung Einkauf (m/w/d)"),
+    )
+    check(
+        "p2#14 anti: Pflichtpraktikum nao e atingido",
+        normalize_title("Pflichtpraktikum im Einkauf – Schwerpunkt internationale Beschaffung mechanischer Teile")
+        != normalize_title("Praktikum im Einkauf - processo de outra vaga"),
+    )
+    check(
+        "p2#14 anti: conteudo eMobility vs eBike segue divergente",
+        normalize_title("Praktikum (m/w/d) Supply Chain eMobility")
+        != normalize_title("Intern (f/m/d) Supply Chain eBike Marketing"),
+    )
     # ordem das palavras indiferente
     check(
         "ordem das palavras indiferente",
@@ -147,6 +198,26 @@ def test_synthetic() -> None:
                     location=None, title="Intern Procurement")
     out4, _, _ = deduplicate([no_loc_a, no_loc_b])
     check("sem localizacao: nao funde por (c)", len(out4) == 2)
+
+    # P2 #14 — a MESMA vaga com marcadores de tipo diferentes so deve fundir
+    # quando o CONTEUDO e igual (mesmo company+localizacao, titulo so difere
+    # no marcador de tipo).
+    marker_a = dict(base, id="20", external_id="2020", url="https://a.com/20",
+                    title="Praktikum Supply Chain Controlling (m/w/d)")
+    marker_b = dict(base, id="21", external_id="2121", url="https://a.com/21",
+                    title="Working Student Supply Chain Controlling (f/m/d)")
+    marker_c = dict(base, id="22", external_id="2222", url="https://a.com/22",
+                    title="Intern Supply Chain Controlling (m/f/d)")
+    out5, stats5, _ = deduplicate([marker_a, marker_b, marker_c])
+    check("p2#14 sintetico: Praktikum/Working Student/Intern fundem", len(out5) == 1)
+
+    anti_a = dict(base, id="30", external_id="3030", url="https://a.com/30",
+                  title="Praktikum Supply Chain Controlling (m/w/d)")
+    anti_b = dict(base, id="31", external_id="3131", url="https://a.com/31",
+                  title="Working Student Discrete Manufacturing Controlling (m/w/d)")
+    out6, _, _ = deduplicate([anti_a, anti_b])
+    check("p2#14 anti: conteudo diferente nao funde (Praktikum vs Working Student)",
+          len(out6) == 2)
 
 
 def test_real_data() -> None:

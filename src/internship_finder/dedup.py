@@ -15,11 +15,13 @@ ordem de confiabilidade (a primeira que bater decide):
 Para pegar EN/DE e variantes, o titulo e normalizado em passos deterministicos:
 casefold, remocao de acentos, remocao de sufixos de genero (m/w/d, f/m/d,
 w/m/div., "all genders"...), equivalencia de marcador de tipo traduzido
-(``Werkstudent`` == ``Working Student`` — mesma relacao que o filtro
-``is_student_role`` ja usa), remocao de palavras funcionais EN/DE (artigos,
-preposicoes, "start/starte your/deine"...) e comparacao do BAG de palavras
-(ordem indiferente: "Praktikum in der Logistik - Data & Analytics" ==
-"Praktikum Data Analytics in der Logistik").
+(``Werkstudent`` == ``Working Student`` == ``Praktikum`` == ``Intern(ship)`` —
+mesma relacao que o filtro ``is_student_role`` ja usa), remocao de palavras
+funcionais EN/DE (artigos, preposicoes, "start/starte your/deine"...) e
+comparacao do BAG de palavras (ordem indiferente: "Praktikum in der Logistik -
+Data & Analytics" == "Praktikum Data Analytics in der Logistik"). Palavras
+repetidas na bag sao colapsadas (ex.: "Werkstudentin / Werkstudent" vira um
+unico "working student").
 
 Limite documentado: titulos que sao traducao real (conteudo diferente, nao so
 palavra funcional — ex.: "Marketing Deutschland" vs "Marketing Germany",
@@ -48,13 +50,24 @@ GENDER_SUFFIX_PATTERNS = [
     r"\b(?:w/m/div\.?|m/w/div\.?|all genders|alle geschlechter|all gender|any gender)\b",
 ]
 
-# Marcadores de tipo de vaga traduzidos DE->EN. Minimalista e intencional:
+# Marcadores de tipo de vaga traduzidos DE->EN->DE. Minimalista e intencional:
 # apenas marcadores de tipo de vaga (mesma relacao que ``filters.is_student_role``
 # ja enxerga como equivalentes), NAO palavras de conteudo (pais, departamento).
+# Alem do par original ``Werkstudent`` == ``Working Student``, cobrem os pares
+# reais medidos no dataset (03/09): ``Praktikum`` == ``Internship`` == ``Intern``
+# == ``Praktikant`` == ``Working Student`` = ``Werkstudent``. Os ``\b`` de borda
+# de palavra garantem que markadores compostos de outra natureza (ex.:
+# ``Pflichtpraktikum``, ``Hochschulpraktikum``) NAO sejam atingidos.
 TYPE_EQUIVALENCES = [
-    (r"\bwerkstudentin\b", "working student"),
     (r"\bwerkstudenten?\b", "working student"),
+    (r"\bwerkstudentin\b", "working student"),
     (r"\bwerkstudent\b", "working student"),
+    (r"\bpraktikanten?\b", "working student"),
+    (r"\bpraktikantin\b", "working student"),
+    (r"\bpraktikant\b", "working student"),
+    (r"\bpraktikums?\b", "working student"),
+    (r"\binternships?\b", "working student"),
+    (r"\binterns?\b", "working student"),
 ]
 
 # Palavras funcionais EN/DE removidas do titulo para a comparacao (nao carregam
@@ -112,7 +125,12 @@ def normalize_title(title: str | None) -> str:
         t = re.sub(pattern, repl, t)
     tokens = re.findall(r"[a-z0-9]+", t)
     tokens = [w for w in tokens if w not in FUNCTION_WORDS]
-    return " ".join(sorted(tokens))
+    # Colapsa palavras repetidas na BAG (ordem indiferente -> duplicadas nao
+    # carregam identidade). Necessario para variantes como "Werkstudentin /
+    # Werkstudent" (vista em pares DE reais) que, apos a equivalencia de tipo,
+    # virariam "working student working student" — e nao devem diferir de uma
+    # vaga com um unico "working student".
+    return " ".join(dict.fromkeys(sorted(tokens)))
 
 
 def normalize_location(location: str | None) -> str:
