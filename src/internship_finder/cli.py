@@ -51,6 +51,7 @@ from internship_finder.health import build_health_report
 from internship_finder.metrics import read_metrics, utcnow_iso, write_metrics
 from internship_finder.models.job import Job, normalize_job_dict
 from internship_finder.ranking import rank_jobs
+from internship_finder.registry import CompanyRegistry, registry_names
 from internship_finder.storage.sqlite_store import SqliteStore
 
 log = logging.getLogger("internship_finder")
@@ -286,6 +287,13 @@ def main(argv: list[str] | None = None) -> int:
         "filtra --input)",
     )
     parser.add_argument(
+        "--registry",
+        action="store_true",
+        help="Modo coleta orientado a registry: usa as empresas ENABLED do "
+        "CompanyRegistry (fonte de verdade em codigo) como lista de coleta. "
+        "Com --companies, restringe a esse subconjunto, na ordem informada.",
+    )
+    parser.add_argument(
         "--input",
         default="data/jobs.json",
         help="JSON bruto de entrada (modo filtro; default: data/jobs.json)",
@@ -411,8 +419,16 @@ def main(argv: list[str] | None = None) -> int:
         args.area = False
         args.country = "all"
 
-    if args.companies:
-        names = [n.strip() for n in args.companies.split(",") if n.strip()]
+    if args.companies or args.registry:
+        names = [n.strip() for n in args.companies.split(",") if n.strip()] if args.companies else []
+        if args.registry:
+            # Modo orientado a registry: a lista vem do CompanyRegistry. Sem
+            # --companies, são TODAS as ENABLED; com --companies, o subconjunto
+            # na ordem informada. API total: --companies "A,B" segue idêntico.
+            registry = CompanyRegistry()
+            names = registry_names(registry, names or None)
+            if not names:
+                parser.error("--registry sem nenhuma empresa habilitada no registry")
         if not names:
             parser.error("--companies vazio")
 
