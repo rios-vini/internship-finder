@@ -90,6 +90,47 @@ compatibilidade, mas a lista oficial e o registry.
 - Seed e modelo: `src/internship_finder/registry.py` (pydantic, `SEED` + 39
   entradas); testes em `scripts/test_registry.py`.
 
+### Daily refresh (P2 #17)
+
+Rotina de producao que **faz a coleta real diariamente** e **alerta via
+Telegram SOMENTE em anomalia** (anti-spam), reusando o health do P1 #6:
+
+```bash
+.venv/bin/python scripts/refresh_daily.py              # producao (cacheia em data/)
+.venv/bin/python scripts/refresh_daily.py --dry-run    # demonstrativo: tempdir sintetico, sem rede/data
+.venv/bin/python scripts/refresh_daily.py --always-notify  # digest diario (nao e o default)
+```
+
+Fluxo: (1) **rotacao** — copia `data/jobs.json`/`.csv`,
+`data/eligible_jobs.json`/`.csv` e `data/collection_metrics.jsonl` para
+`data/archive/<timestamp>/` (copia, nao move: a origem fica intacta ate o CLI
+gravar; rollback = copiar de volta o archive + re-rodar `--health`); (2)
+**coleta real** — subprocesso do CLI (`--registry --timeout 60`, teto total
+`--max-collection-secs`, default 5400s); (3) **health** — `build_health_report`
+sobre o JSONL completo pos-run; (4) **alerta** — 1 mensagem por run, alertas
+deduplicados por fonte, disparado quando exit != 0 (coleta falhou/parcial) OU o
+relatorio tem alertas (queda brusca / erro recorrente); sem anomalia, nada e
+enviado. `--always-notify` envia o resumo mesmo sem anomalia (digest, opcional).
+
+**Credenciais** (`.env` na raiz — gitignored): `TELEGRAM_BOT_TOKEN` e
+`TELEGRAM_CHAT_ID`. Sem token no `.env` o script loga aviso e NAO envia
+(nunca crasha). Envio via Bot API `sendMessage` (stdlib, sem dependencia
+nova); falha de rede do envio e logada, nao derruba o refresh.
+
+**Cron** (instalado no VPS, 05/09): diario as 06:00 UTC, com `flock -n`
+(nao sobrepoe runs; se o anterior ainda roda, o novo e pulado):
+
+```
+0 6 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock cd /home/ubuntu/internship-finder && .venv/bin/python scripts/refresh_daily.py >> /tmp/refresh_daily.log 2>&1
+```
+
+**Limitação documentada**: o JSONL de metricas acumula lixo historico de
+validacao (registros `type: tenant` de mocks, ex.: `smartrecruiters:other` 70x
+`error` de 25/08–04/09). O health e defensivo (malformados pulados), mas lixo
+VALIDO entra nas contagens por fonte — uma fonte que so tem lixo emitira
+"erro recorrente" em todo run ate o JSONL ser limpo (1 alerta por fonte por
+run; nao ha dedup entre runs).
+
 Resultado do ultimo run completo (coleta local de 31/08; os numeros sao
 reproduzidos offline por `scripts/coverage.py`):
 `total 37.373 -> tipo estudante 2.982 -> area-alvo 754 -> Alemanha 258`;
@@ -342,9 +383,10 @@ src/internship_finder/
 ├── registry.py     # CompanyRegistry: fonte unica das 39 empresas de coleta (SEED, P2 #13)
 └── cli.py          # entry point `internship-finder` (filtro default + coleta)
 scripts/collect_jobs.py   # atalho p/ rodar sem instalar
+scripts/refresh_daily.py  # refresh diario + alertas Telegram (rotacao -> coleta -> health -> alerta)
 scripts/verify_companies.py  # runbook de empresas (match exato + fetch)
 scripts/coverage.py       # cobertura: funil + empresas/ATS/paises (offline)
-scripts/test_*.py         # suite standalone ([OK]/[FAIL]; exit 0 = TUDO OK)
+scripts/test_*.py         # suite standalone ([OK]/[FAIL]; exit 0 = TUDO OK) — test_refresh = refresh diario
 ```
 
 ## Status / Roadmap
