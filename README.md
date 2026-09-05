@@ -45,7 +45,7 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 > (ex.: `/tmp/...`).
 
 ```bash
-.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (236 vagas ranqueadas, sem duplicatas)
+.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (snapshot 236 ranqueadas; pipeline dedup 2.0 = 232)
 .venv/bin/internship-finder --country europe             # Europa inteira em vez de so Alemanha
 .venv/bin/internship-finder --no-area                    # qualquer area, desde que estudante + Alemanha
 .venv/bin/internship-finder --no-dedup                   # mantem duplicatas (258 antes da dedup)
@@ -56,20 +56,46 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 ```
 
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
-mesma cascata, gravando o resultado em `data/eligible_jobs.json`. Lista atual
-(39 empresas — 12 da validacao inicial + 27 da expansao E2, 2026-08-12; ver
-`docs/empresas_verificacao.md` e `docs/relatorio_expansao.md`):
+mesma cascata, gravando o resultado em `data/eligible_jobs.json`. A lista de
+empresas nao e mais colada no comando: vem do **registry** (fonte de verdade
+das 39 empresas em codigo — ver "Registry de empresas" abaixo):
 
 ```bash
-.venv/bin/internship-finder --companies "Bosch,SAP,Continental,ZF,Bayer,BASF,Henkel,Infineon,Zalando,Delivery Hero,Covestro,Evonik,DHL,Hellmann,Lidl,Kaufland,VWAGLPPROD10,Schaeffler,Mahle,Trumpf,SICK AG,Voith,knorrbremsP2,brosefahrz,Phoenix Contact,KraussMaffei,kronesag,bbraunprd,Sartorius,freseniusglobal,Deutsche Telekom,Celonis,DATEV,Statista,Scout24,Siemens Healthineers,Zeiss Group,draegerP,Uniper" --timeout 60
+.venv/bin/internship-finder --registry --timeout 60
+# subconjunto, na ordem informada (empresas fora do registry sao ignoradas):
+.venv/bin/internship-finder --registry --companies "Bosch,SAP" --timeout 60
 # ou, sem instalar:
 python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 ```
 
+### Registry de empresas
+
+As 39 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
+E2) vivem em **codigo**, no `SEED` de `src/internship_finder/registry.py` — a
+fonte de verdade do "quem coleta": nome canonico (a consulta do `--companies`),
+ATS/tenant de referencia e `enabled` (desabilitar tira da coleta sem apagar do
+registry). Nada de lista colada em doc: o `--companies` continua aceito por
+compatibilidade, mas a lista oficial e o registry.
+
+```bash
+.venv/bin/internship-finder --registry --timeout 60          # todas as ENABLED
+.venv/bin/internship-finder --registry --companies "Bosch,SAP" --timeout 60  # subconjunto
+```
+
+- `--registry` (modo coleta): usa as empresas `enabled` do registry como lista;
+  `--companies` so restringe a um subconjunto (na ordem informada).
+- O **estado por empresa** (status/ultima coleta) NAO fica no registry: e
+  derivado do JSONL de metricas (`company_status`, read-only) e exposto pelo
+  `--health` — registry = configuracao, JSONL = status (decisao de design).
+- Seed e modelo: `src/internship_finder/registry.py` (pydantic, `SEED` + 39
+  entradas); testes em `scripts/test_registry.py`.
+
 Resultado do ultimo run completo (coleta local de 31/08; os numeros sao
 reproduzidos offline por `scripts/coverage.py`):
 `total 37.373 -> tipo estudante 2.982 -> area-alvo 754 -> Alemanha 258`;
-pos-dedup sao **236** eligible/ranked (22 duplicatas removidas), todos
+pos-dedup o snapshot e **236** eligible/ranked (22 duplicatas removidas); o
+pipeline com dedup 2.0 (P2 #14) produz **232** (4 duplicatas TRUE a mais por
+company+title+location — ver `MASTER_PLAN.md` #14), todos
 `country_iso='de'` — **19 empresas com vagas eligible**, top: SAP 84,
 BoschGroup 40, Volkswagen AG 26, Knorr-Bremse 18, BASF SE 15, Bayer 8,
 Schaeffler 8, Infineon 7, B. Braun 6, Telekom Growthhub 4, Brose 4,
@@ -116,12 +142,12 @@ deterministico — `.venv/bin/python scripts/coverage.py`):
 | Metrica | Valor |
 | --- | --- |
 | Funil: raw → tipo → area → pais (DE) | 37.373 → 2.982 → 754 → 258 |
-| eligible (pos-dedup) → ranked | 236 → 236 (22 removidas na dedup) |
+| eligible (pos-dedup) → ranked | snapshot: 236 → 236 (22 removidas na dedup) · pipeline dedup 2.0: 232 → 232 |
 | Empresas com eligible / tenants (source) | 19 / 14 (bruto: 39 empresas / 35 tenants) |
 | Top empresas (eligible) | SAP 84, BoschGroup 40, Volkswagen AG 26, Knorr-Bremse 18, BASF SE 15, Bayer 8, Schaeffler 8, Infineon 7, B. Braun 6, Telekom Growthhub 4, Brose 4, careers.dhl.com 4, Uniper 2 |
 | Contribuicao das maiores | top1 35,6% | top3 63,6% | top5 77,5% |
 | Top ATS (eligible) | successfactors 175, smartrecruiters 40, eightfold 14, phenom 4, greenhouse 2, cornerstone 1 |
-| Paises (eligible) | `de` 236 (100%) — None/localizacao desconhecida: 0 (0,0%); com `INTERNSHIP_FINDER_GEOCODING=1`: **245** |
+| Paises (eligible) | `de` 236 (100%) snapshot / 232 (100%) pipeline dedup 2.0 — None/localizacao desconhecida: 0 (0,0%); com `INTERNSHIP_FINDER_GEOCODING=1` (sobre o snapshot): **245** |
 
 (Fase 3: `country_iso` tem fonte unica — `filters.infer_country_iso`; a
 heuristica antiga de "tail da location" foi removida do adapter, entao
@@ -138,6 +164,7 @@ Flags do CLI:
 | Flag | Descricao |
 | --- | --- |
 | `--companies` | modo coleta: nomes separados por virgula (match exato na base; sem match, a empresa e ignorada com aviso) |
+| `--registry` | modo coleta orientado ao registry: usa as empresas `enabled` do `CompanyRegistry` (fonte de verdade em codigo); com `--companies` restringe a subconjunto, na ordem informada |
 | `--input` | modo filtro: JSON bruto de entrada (default: `data/jobs.json`) |
 | `--output` | filtro: saida eligible (default: `data/eligible_jobs.json`); coleta: saida bruta (default: `data/jobs.json`) |
 | `--filter-output` | modo coleta: saida eligible (default: `data/eligible_jobs.json`) |
@@ -159,7 +186,7 @@ Ambiente:
 
 | Variavel | Descricao |
 | --- | --- |
-| `INTERNSHIP_FINDER_GEOCODING` | OFF por default. Com `=1`, liga o geocoder de rede (OSM Nominatim) + cache no fallback de pais (`geocoding.py`). Com OFF, o fallback se limita a lista local de cidades + cache ja populado — nenhuma chamada de rede. Lei o eligible DE de 236 para **245** (+9 Workday). |
+| `INTERNSHIP_FINDER_GEOCODING` | OFF por default. Com `=1`, liga o geocoder de rede (OSM Nominatim) + cache no fallback de pais (`geocoding.py`). Com OFF, o fallback se limita a lista local de cidades + cache ja populado — nenhuma chamada de rede. Lei o eligible DE (snapshot 236; pipeline 232) para **245** (+9 Workday). |
 
 ### Deduplicacao
 
@@ -180,8 +207,10 @@ a com `description` preenchida; senao a com `employment_type`; senao a que
 veio primeiro. O CLI reporta quantas foram removidas e por qual chave.
 Titulos que sao traducao real (conteudo diferente, ex.: "Marketing
 Deutschland" vs "Marketing Germany") NAO sao fundidos — exigiria dicionario
-de traducao/fuzzy, fora do escopo do MVP. No conjunto atual (31/08): eligible
-258 -> 236 (22 removidas, todas pela chave 3; 0 por external_id/URL).
+de traducao/fuzzy, fora do escopo do MVP. No conjunto atual (31/08, snapshot):
+eligible 258 -> 236 (22 removidas, todas pela chave 3; 0 por external_id/URL).
+Com o dedup 2.0 (P2 #14) o pipeline produz **232** (4 duplicatas TRUE a mais —
+pares EN/DE do mesmo cargo; ver `MASTER_PLAN.md` #14).
 
 ### Ranking por perfil
 
@@ -204,16 +233,12 @@ Score = `area + skills + language + type + location + penalties`:
 
 Sem descricao (parte das vagas em que o ATS nao expoe descricao), age-se com
 graca: skills/idioma contribuem 0 e o score vem do titulo. Metrica real do
-conjunto de 31/08 (236 eligible, medido por `scripts/test_ranking.py`):
-scores `min 2.00 | mediana 6.38 | max 16.75`. O conjunto atual (janela de
-mercado menor que a de 12/08) NAO contem mais algumas vagas que os sanity
-checks do `test_ranking.py` procuram (acoplados a um snapshot 12/08) — por
-isso esse teste reporta **5 falhas pre-existentes e conhecidas** (P2 #16, nao
-regressao): as regras de ranking em si, o determinismo e os sanity de
-invariante continuam validos no TOP 10.
-Ver `scripts/test_ranking.py` (sintetico + run real + sanity checks).
-> Nota: as 5 falhas do `test_ranking.py` sao o gap conhecido do snapshot;
-> `ranking.py` nao mudou desde o MVP (o teste quebra por dados, nao por codigo).
+snapshot de 31/08 (236 eligible; pipeline dedup 2.0 = 232, medido por
+`scripts/test_ranking.py`):
+scores `min 2.00 | mediana 6.38 | max 16.75`.
+Ver `scripts/test_ranking.py` (suite sintetica com `FIXTURE` fixa, desacoplada
+do snapshot desde o P2 #16 — 03/09; bloco real roda como invariantes de
+formato/observabilidade; suite 17/17 local TUDO OK).
 
 ## Runbook
 
@@ -252,9 +277,12 @@ parecida errada). Passos:
 ### Como rodar
 
 **Coleta** (grava o bruto em `data/jobs.json` e ja aplica a cascata, gravando
-as eligible em `data/eligible_jobs.json` + `.csv`):
+as eligible em `data/eligible_jobs.json` + `.csv`; a lista de empresas vem do
+registry — ver "Registry de empresas"):
 ```bash
-.venv/bin/internship-finder --companies "Bosch,SAP,Continental,ZF,Bayer,BASF,Henkel,Infineon,Zalando,Delivery Hero,Covestro,Evonik,DHL,Hellmann,Lidl,Kaufland,VWAGLPPROD10,Schaeffler,Mahle,Trumpf,SICK AG,Voith,knorrbremsP2,brosefahrz,Phoenix Contact,KraussMaffei,kronesag,bbraunprd,Sartorius,freseniusglobal,Deutsche Telekom,Celonis,DATEV,Statista,Scout24,Siemens Healthineers,Zeiss Group,draegerP,Uniper" --timeout 60
+.venv/bin/internship-finder --registry --timeout 60
+# subconjunto, na ordem informada:
+.venv/bin/internship-finder --registry --companies "Bosch,SAP" --timeout 60
 ```
 **Filtro** (re-aplica a cascata sobre o bruto ja coletado, sem rede):
 ```bash

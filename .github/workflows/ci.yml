@@ -7,18 +7,21 @@
 # DECISAO item 2 (data/): opcao (a). Em runner limpo nao existe `data/`
 # (gitignored). Os scripts test_dedup.py e test_ranking.py foram ajustados (mudanca
 # minima) para SKIP o bloco "real" (data/eligible_jobs.json) quando o arquivo esta
-# ausente, com mensagem clara e exit 0. Por isso os 5 sanity checks de ranking
-# que estao acoplados ao snapshot antigo (P2 #16) NAO rodam em CI e NAO ha
-# allowlist no test_ranking: test_ranking termina "TUDO OK" com o bloco real
-# skipado.
+# ausente, com mensagem clara e exit 0. Desde o P2 #16 (03/09) o test_ranking roda
+# com a FIXTURE fixa (18 jobs sinteticos) no CI e NAO depende de snapshot: o
+# bloco real e skipado sem `data/` e nao ha allowlist de falhas conhecidas.
 #
-# DECISAO item 1 (pin ats-scrapers ae0ad53): o commit ae0ad53 nao esta em branch
-# do upstream (so existe como refs/pull/268/head). Um `git clone + checkout ae0ad53`
-# falha em runner limpo. Solucao (opcao a): instalar `ats-scrapers` do tarball
-# oficial de arquivo do GitHub (https://github.com/kalil0321/ats-scrapers/archive/
-# ae0ad53.tar.gz), que expoe `application_deadline` (validado no passo abaixo)
-# ANTES de instalar o projeto com `--no-deps`. O pyproject.toml (pin `@ae0ad53`)
-# NAO e alterado.
+# EXCLUSAO: scripts/test_manifest.py NAO entra na suite do CI. O manifesto das
+# empresas do ats-scrapers vive fora do repo (requisicao de rede externa a
+# storage.stapply.ai) — em runner limpo isso e instavel e nao-deterministico;
+# o teste roda localmente (no VPS, com a base acessivel) e segue fora do CI.
+#
+# DECISAO item 1 (ats-scrapers, P3 #19 desde 04/09): release PyPI 0.3.0
+# (02/09/2026) contem o expose de application_deadline (PR #268). Instalar
+# "ats-scrapers>=0.3.0" do PyPI elimina a dependencia da ref de PR ae0ad53
+# (so existia como refs/pull/268/head; clone + checkout falhava em runner
+# limpo). O passo de verify abaixo valida o expose na versao instalada ANTES
+# de instalar o projeto com --no-deps.
 
 name: CI
 
@@ -50,12 +53,12 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip setuptools wheel
 
-      # ats-scrapers pin ae0ad53: o checkout direto git+...@ae0ad53 falha em clone
-      # fresco (ref so existe em refs/pull/268/head). Tarball do arquivo oficial e
-      # a fonte confiavel que expoe application_deadline.
-      - name: Install ats-scrapers (pin ae0ad53) from official archive tarball
+      # ats-scrapers 0.3.0 (release PyPI 02/09/2026, P3 #19): instalacao direta do
+      # PyPI substitui o tarball da ref de PR ae0ad53 (instavel em clone fresco) e
+      # elimina o risco de instalacao fresca voltar ao 0.2.0 sem expose.
+      - name: Install ats-scrapers (PyPI >=0.3.0)
         run: |
-          python -m pip install "https://github.com/kalil0321/ats-scrapers/archive/ae0ad53.tar.gz"
+          python -m pip install "ats-scrapers>=0.3.0"
 
       # Dependencias do projeto + o proprio pacote. O projeto instala com
       # --no-deps (ats-scrapers ja instalado como fonte confiavel acima).
@@ -64,6 +67,7 @@ jobs:
           python -m pip install "requests>=2.31" "pydantic>=2.0" "beautifulsoup4>=4.12"
           python -m pip install -e . --no-deps
 
+      # Valida o expose na versao instalada (agora a release 0.3.0 do PyPI).
       - name: Verify application_deadline expose in installed ats-scrapers
         run: |
           SF=$(python -c "import ats_scrapers.scrapers.successfactors as s; print(s.__file__)")
@@ -78,13 +82,13 @@ jobs:
       # Suite standalone. Cada script imprime [OK]/[FAIL] real no log. Exit code do
       # passo = 1 se QUALQUER teste falhar. (Com a decisao (a) do item 2, nao ha
       # dados em CI: test_dedup e test_ranking skipam o bloco real e terminam
-      # "TUDO OK"; as 5 expectativas pre-existentes de test_ranking — P2 #16,
-      # acopladas ao snapshot de 293 — nao rodam, logo NAO ha allowlist neste
-      # workflow.)
+      # "TUDO OK"; test_ranking tambem roda a FIXTURE fixa do P2 #16 — nao ha
+      # allowlist de falhas conhecidas. test_manifest fica FORA do array: depende
+      # de rede externa (manifest do ats-scrapers em storage.stapply.ai).
       - name: Run standalone test scripts
         run: |
           set +e
-          tests=(test_filters test_hardening test_countries test_application_deadline test_dedup test_ranking test_geocoding test_sqlite test_validation test_errors test_health test_lifecycle)
+          tests=(test_filters test_hardening test_countries test_application_deadline test_dedup test_ranking test_geocoding test_sqlite test_validation test_errors test_health test_lifecycle test_registry test_fetch test_find_company test_resolver)
           status=0
           for t in "${tests[@]}"; do
             echo "==================== $t ===================="
