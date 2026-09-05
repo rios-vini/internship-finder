@@ -46,7 +46,7 @@ from pathlib import Path
 
 from internship_finder.collectors.ats_scraper import collect_company
 from internship_finder.dedup import deduplicate
-from internship_finder.filters import select_eligible
+from internship_finder.filters import parse_country_spec, select_eligible
 from internship_finder.health import build_health_report
 from internship_finder.metrics import read_metrics, utcnow_iso, write_metrics
 from internship_finder.models.job import Job, normalize_job_dict
@@ -344,8 +344,8 @@ def main(argv: list[str] | None = None) -> int:
         "--countries",
         dest="country",
         default="de",
-        help="Pais/localizacao: ISO alpha-2 (de,at,ch), 'europe', 'remote' ou "
-        "'all' (default: de)",
+        help="Pais/localizacao: ISO alpha-2 (ex.: 'de,at,ch'), 'europe', 'remote' "
+        "ou 'all' (default: de; valor invalido -> erro)",
     )
     parser.add_argument(
         "--all",
@@ -418,6 +418,16 @@ def main(argv: list[str] | None = None) -> int:
         args.student = False
         args.area = False
         args.country = "all"
+
+    # P2 #15 (ACH-11): valida a spec de pais cedo (antes de input/coleta).
+    # Antes, valor invalido virava 0 vagas silencioso (frozenset que nunca
+    # casa) ou token nao-ISO era ignorado; agora e erro claro com exit 2.
+    # Especs validas seguem o MESMO parse de select_eligible — resultado
+    # do filtro inalterado.
+    try:
+        parse_country_spec(args.country)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.companies or args.registry:
         names = [n.strip() for n in args.companies.split(",") if n.strip()] if args.companies else []

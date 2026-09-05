@@ -16,6 +16,12 @@
 # storage.stapply.ai) — em runner limpo isso e instavel e nao-deterministico;
 # o teste roda localmente (no VPS, com a base acessivel) e segue fora do CI.
 #
+# EXCLUSAO (limpeza 05/09): test_fetch.py, test_find_company.py e test_resolver.py
+# foram REMOVIDOS do repo e do array — eram smokes de rede SEM assertions (prints +
+# fetch ao vivo), nao testes; entraram no CI por engano no PR #21. Rede ao vivo e
+# nao-deterministico em runner limpo; a cobertura que eles tocavam e offline
+# (test_registry/test_errors) ou runbook (scripts/verify_companies.py).
+#
 # DECISAO item 1 (ats-scrapers, P3 #19 desde 04/09): release PyPI 0.3.0
 # (02/09/2026) contem o expose de application_deadline (PR #268). Instalar
 # "ats-scrapers>=0.3.0" do PyPI elimina a dependencia da ref de PR ae0ad53
@@ -47,7 +53,6 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
-            requirements.txt
             pyproject.toml
 
       - name: Upgrade pip
@@ -88,7 +93,7 @@ jobs:
       - name: Run standalone test scripts
         run: |
           set +e
-          tests=(test_filters test_hardening test_countries test_application_deadline test_dedup test_ranking test_geocoding test_sqlite test_validation test_errors test_health test_lifecycle test_registry test_fetch test_find_company test_resolver)
+          tests=(test_filters test_hardening test_countries test_application_deadline test_dedup test_ranking test_geocoding test_sqlite test_validation test_errors test_health test_lifecycle test_registry)
           status=0
           for t in "${tests[@]}"; do
             echo "==================== $t ===================="

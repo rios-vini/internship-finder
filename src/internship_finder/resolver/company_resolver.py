@@ -4,7 +4,7 @@ O ``find_company`` do pacote faz busca por substring e pode devolver ruido
 (ex.: "sap" -> asap, Casap...). A logica de matching exato (slug/nome
 casefold + fallback por token corroborado pelo slug) vive no
 ``CompanyCollector``; o resolver e a fachada mantida para compatibilidade
-(usada por scripts/test_resolver.py e por quem prefere a API "resolver").
+(usada por scripts/test_filters.py e por quem prefere a API "resolver").
 """
 
 from __future__ import annotations
