@@ -9,11 +9,12 @@ description = "Buscador de estagios (internship / working student / Praktikum / 
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    # P0 deadline: ancoragem explicita no commit upstream oficial ae0ad53
-    # (contem o merge do PR #268 "expose application deadline"), porque a
-    # release PyPI com esse commit ainda nao foi publicada. Trocar pelo pin
-    # PyPI assim que existir.
-    "ats-scrapers @ git+https://github.com/kalil0321/ats-scrapers@ae0ad53",
+    # P3 #19 (04/09): release PyPI 0.3.0 (02/09/2026) contem o expose de
+    # application_deadline (PR #268). Pin PyPI >=0.3.0 elimina a ref de PR
+    # fragil (ae0ad53, so existia como refs/pull/268/head) e o risco de
+    # instalacao fresca voltar ao 0.2.0 (sem expose). Reavaliar o range
+    # quando o upstream evoluir (MASTER_PLAN P3 #30).
+    "ats-scrapers>=0.3.0",
     "requests>=2.31",
     "pydantic>=2.0",
     # Scraper avature (Siemens Healthineers, DHL) do ats-scrapers exige
@@ -26,8 +27,3 @@ internship-finder = "internship_finder.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/internship_finder"]
-
-[tool.hatch.metadata]
-# Necessario para a dependencia direta por commit git (pin provisorio ae0ad53)
-# ate existir release PyPI com o merge do PR #268.
-allow-direct-references = true

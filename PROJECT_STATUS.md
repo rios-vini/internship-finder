@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ## Current state
 
@@ -56,21 +56,22 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): 245 eli
 - **P2 #11 — Job validation forte** (PR #16, merged 03/09): pydantic validators on `Job` (empty `title`/`url` = validation error; empty optionals → `None`), `normalize_job_dict` for the filter path, adapter rejects missing titles (`NORMALIZATION_ERROR`, defensive), `test_validation.py` in CI.
 - **P2 #12 — Country/domain module** (PR #17, merged 03/09): country/location logic extracted from `filters.py` into `countries.py` (constants + inference + spec functions, moved verbatim, behavior unchanged); `filters.py` re-exports the symbols (consumers untouched); `test_countries.py` in CI.
 - **P2 #16 — test_ranking decoupled from the data snapshot** (PR #18, merged 03/09): fixed synthetic `FIXTURE` (18 jobs) + `test_fixture_ranking()` validating the ranking rules at rank level (top = target area, no senior in top, A-grade per area in TOP N, presales SCM preserved, SAP Analytics Cloud masked, marketing w/o area out of top 25%, JMP/trainee penalized); `test_real_data()` reduced to format invariants + observability; suite 16/16 local, deterministic; the 5 pre-existing failures are gone.
+- **P2 #14 — Dedup 2.0 textual** (PR #19, merged 03/09): measured first on the real dataset (12 candidate EN/DE pairs, 4 TRUE duplicates of the same job escaping as `Praktikant`≈`Working Student`, `Intern`≈`Working Student`, `Internship`≈`Praktikum`); `TYPE_EQUIVALENCES` extended with word-boundary regex + repeated-token collapse in the bag; `Pflichtpraktikum`/`trainee` NOT touched (anti-tests); description kept OUT of the fingerprint (decided); baseline 236→**232** (4 TRUE dups, company+title+location); `test_countries` decoupled from the magic number 236 (subset invariant + delta observability); suite 16/16 local, CI run `33799148404` green.
+- **P2 #13 — Company Registry operacional** (PR #20, merged 04/09, main `e7604db`, CI run `33840628495` green): `src/internship_finder/registry.py` is the single source of truth for the 39 collection companies in code (canonical name + reference ATS/tenant + `enabled`); `--registry` CLI flag collects the ENABLED entries (`--registry --companies "Bosch,SAP"` restricts to a subset, order preserved; plain `--companies` still works); per-company status is derived from the metrics JSONL via `company_status` (read-only, malformed records never crash) — design decision: **registry = configuration, JSONL = status**; `test_registry.py` added to CI (array now 16 scripts); README gained a "Registry de empresas" section.
 
 ## Next priorities
 
-- **P1 #9 (this doc pass)** done; **P2 #11, #12 and #16 done** (see Completed). Next P2 backlog items:
-  - **P2 #14**: dedup 2.0 textual (fingerprint already exists; measure real near-dups first — e.g. EN/DE pairs that still slip through — then extend multilingual type-marker equivalences with evidence)
-  - P2 #13 company registry / expanding DE coverage (39→60→100)
-  - P2 #17 daily refresh + alerts (Telegram?)
-  - P2 #10 zero-return + anomaly detection (after history accumulates)
+- **P2 #11, #12, #13, #14 and #16 are done** (see Completed). Next P2 backlog items:
+  - **P2 #15**: standardize `--country de/europe/all` (CLI already accepts them; standardize enrichment without changing the filter)
+  - **P2 #17**: daily refresh + alerts (Telegram?); after health check — detection first, notification later
+  - **P2 #10**: zero-return + anomaly detection — gate: ≥5 completed collection runs (history today: 1 full run 31/08 + targeted validations)
 - Full ranked plan (P0–P4, status ✅/⏳): see `MASTER_PLAN.md` (source of truth).
 
 ## Known limitations
 
 - Some Workday tenants do not expose country information clearly enough for the current country filter (documented; nothing fabricated). **Partially mitigated** by the optional `geocoding.py` fallback (OFF by default; +9 Workday DE when enabled; network geocoding only with the flag on).
 - Some companies/ATS combinations currently fail or are excluded for documented reasons (Hager/Boehringer/Lanxess/Symrise — external limitations from parecer B).
-- `scripts/test_ranking.py` reports **5 known pre-existing failures** (P2 #16): its sanity checks are coupled to a 12/08 data snapshot and look for jobs that no longer exist in the current dataset (e.g. "Logistik und Supply Chain Design", "SAP Analytics Cloud"). `ranking.py` has not changed since the MVP — the test breaks on data, not code.
+- Eligible count drift (known, documented): the snapshot in `data/eligible_jobs.json` (collection 31/08) = **236**; the current pipeline with dedup 2.0 (P2 #14) = **232** (4 TRUE duplicates removed by company+title+location — see MASTER_PLAN #14). Snapshot vs pipeline are not comparable 1:1 without re-running collection.
 - 7 degree-program titles in the tail (Schaeffler "Studium mit vertiefter Praxis", BASF Bachelor) are pre-existing, outside the approved F1 patterns — candidates for future pattern extension, not a regression.
 
 Data in `data/` is local and gitignored: numbers serve as collection documentation, not as versioned files.
