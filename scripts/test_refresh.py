@@ -240,7 +240,12 @@ def test_dry_run_nao_toca_data() -> None:
         print("  SKIP: sem data/ (CI runner) - bloco real ignorado")
         return
     before = _data_snapshot(data_dir)
-    check("data/ tem arquivos (baseline)", len(before) >= 5)
+    # Nota (CI): o test_hardening, que roda antes no array, pode criar
+    # data/collection_metrics.jsonl no cwd do checkout (default de metrics
+    # relativo ao cwd). O invariante NAO e "quantos arquivos data/ tem", e sim
+    # "o dry-run nao altera nenhum" — antes == depois, qualquer que seja o
+    # conteudo inicial.
+    print(f"  (data/ com {len(before)} arquivos; dry-run nao pode alterar nenhum)")
     rc = rd.main(["--dry-run"])
     check("dry-run exit 0", rc == 0)
     after = _data_snapshot(data_dir)
