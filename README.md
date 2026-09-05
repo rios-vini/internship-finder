@@ -121,8 +121,17 @@ nova); falha de rede do envio e logada, nao derruba o refresh.
 (nao sobrepoe runs; se o anterior ainda roda, o novo e pulado):
 
 ```
-0 6 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock cd /home/ubuntu/internship-finder && .venv/bin/python scripts/refresh_daily.py >> /tmp/refresh_daily.log 2>&1
+0 6 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/python /home/ubuntu/internship-finder/scripts/refresh_daily.py >> /tmp/refresh_daily.log 2>&1
 ```
+
+> **Corrigido 05/09 (noite)**: a 1a versao usava `flock ... cd /repo && python ...`
+> (padrao da tarefa), mas **flock executa o comando via `execvp`** — `cd` e
+> builtin do shell e nao existe como binario (falha "failed to execute cd",
+> exit 69) e o `&&` desligaria o python do lock. A linha acima usa caminhos
+> ABSOLUTOS (o script nao depende de cwd; resolve a raiz via `__file__`) e o
+> lock cobre o run inteiro. Validado: preflight cron-like (`env -i PATH=/usr/bin:/bin`
+> + `--dry-run`, exit 0, sem tocar `data/`) e reentrada do flock (`-n` com lock
+> segurado → exit 1; liberado → exit 0).
 
 **Limitação documentada**: o JSONL de metricas acumula lixo historico de
 validacao (registros `type: tenant` de mocks, ex.: `smartrecruiters:other` 70x

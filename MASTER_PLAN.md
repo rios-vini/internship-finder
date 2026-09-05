@@ -188,7 +188,18 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
   scripts/refresh_daily.py >> /tmp/refresh_daily.log 2>&1` (diário 06:00 UTC —
   antes do horário comercial europeu; flock evita sobreposição de runs;
   JUSTIFICATIVA de concorrência: 2 runs simultâneos de 37k+ requests
-  duplicariam trabalho e disputariam os mesmos arquivos de data/). Suíte
+  duplicariam trabalho e disputariam os mesmos arquivos de data/). **Corrigido
+  à noite**: `flock ... cd ... && python` NÃO funciona — flock executa o
+  comando via `execvp` e `cd` é builtin do shell (prova: exit 69 "failed to
+  execute cd"); o `&&` desligaria o python do lock. Linha final (instalada e
+  documentada no README): `0 6 * * * /usr/bin/flock -n
+  /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/
+  python /home/ubuntu/internship-finder/scripts/refresh_daily.py >>
+  /tmp/refresh_daily.log 2>&1` (caminhos absolutos; o script resolve a raiz via
+  `__file__` e não depende de cwd; lock cobre o run inteiro). Validada com
+  preflight cron-like (`env -i PATH=/usr/bin:/bin` + `--dry-run` → exit 0, sem
+  rede, data/ intocada) e reentrada do flock (`-n` com lock segurado → exit 1;
+  liberado → exit 0). Suíte
   15/15 TUDO OK de cwd scratch (14 CI + test_manifest local-only);
   `data/` intocada nas validações (stat antes==depois); `.env` não commitado
   (git status limpo de credenciais). [#17 ✅]
