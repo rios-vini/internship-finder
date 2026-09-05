@@ -76,6 +76,32 @@ def test_synthetic() -> None:
           parse_country_spec("all") is None)
     check("parse_country_spec('remote') == 'remote'",
           parse_country_spec("remote") == "remote")
+    # P2 #15: validacao — token nao-ISO ou spec vazia levantam ValueError.
+    for bad, token in (
+        ("xx", "xx"),
+        ("de,xx", "xx"),
+        ("europe,de", "europe"),
+        (",", None),
+    ):
+        try:
+            parse_country_spec(bad)
+        except ValueError as exc:
+            check(f"parse_country_spec({bad!r}) levanta ValueError", True)
+            if token:
+                check(f"parse_country_spec({bad!r}) cita {token!r}",
+                      token in str(exc))
+        else:
+            check(f"parse_country_spec({bad!r}) levanta ValueError", False)
+    # Compat/comportamento preservado para especs validas.
+    check("parse_country_spec('DE,AT') == {'de','at'} (case-insensitive)",
+          parse_country_spec("DE,AT") == frozenset({"de", "at"}))
+    check("parse_country_spec('de,,at') == {'de','at'} (virgulas duplas ok)",
+          parse_country_spec("de,,at") == frozenset({"de", "at"}))
+    check("parse_country_spec('world') is None (compat, 'all' canonico)",
+          parse_country_spec("world") is None)
+    check("parse_country_spec('any') is None (compat)", parse_country_spec("any") is None)
+    check("parse_country_spec('EUROPE') e EUROPE_COUNTRIES (case)",
+          parse_country_spec("EUROPE") is EUROPE_COUNTRIES)
 
     # matches_country com 'de'.
     spec_de = parse_country_spec("de")
@@ -129,6 +155,43 @@ def test_compat_re_export() -> None:
           F_matches("de", None, None, F_parse("de")))
 
 
+def test_cli_validation() -> None:
+    print("== CLI: validacao de --country (P2 #15) ==")
+    import contextlib
+    import io
+
+    from internship_finder.cli import main
+
+    # Valor invalido -> SystemExit(2) com mensagem clara (antes: 0 vagas
+    # silencioso com exit 1). A validacao roda antes de ler --input, entao
+    # nao depende de arquivo nenhum.
+    for spec in ("xx", "de,xx", ",", "europe,de"):
+        err = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(err):
+                main(["--country", spec, "--input", "/tmp/nao-existe-p2-15.json",
+                      "--output", "/tmp/p2_15_invalido.json"])
+        except SystemExit as exc:
+            check(f"cli --country {spec!r} -> exit 2", exc.code == 2)
+            check(f"cli --country {spec!r} -> mensagem clara",
+                  "invalida" in err.getvalue() or "vazia" in err.getvalue())
+        else:
+            check(f"cli --country {spec!r} -> SystemExit(2)", False)
+
+    # Spec valida nao e bloqueada: o erro passa a ser do --input inexistente
+    # (prova que a validacao nova nao interfere em especs validas).
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            main(["--country", "de,at", "--input", "/tmp/nao-existe-p2-15.json",
+                  "--output", "/tmp/p2_15_valido.json"])
+    except SystemExit as exc:
+        check("cli --country 'de,at' valido: erro vem do input (nao do pais)",
+              exc.code == 2 and "nao encontrado" in err.getvalue())
+    else:
+        check("cli --country 'de,at' valido: erro vem do input (nao do pais)", False)
+
+
 def test_real_data() -> None:
     print("== execucao real (data/eligible_jobs.json) ==")
     root = Path(__file__).resolve().parent.parent
@@ -174,6 +237,7 @@ def test_real_data() -> None:
 def main() -> int:
     test_synthetic()
     test_compat_re_export()
+    test_cli_validation()
     test_real_data()
     print()
     if FAILURES:

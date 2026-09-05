@@ -82,9 +82,9 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 10 | **Zero-return + anomaly detection** | ⏳ gate: ≥5 execuções persistidas | Sem histórico estatístico hoje; rebaixado de P1. |
 | 11 | **Job validation forte** | ✅ **mergeado 03/09** (PR #16, main 88a9936) — validators pydantic no `Job` (title/url vazios = erro de validação; opcionais vazio→None), `normalize_job_dict` no caminho filtro (4 títulos de borda limpos, baseline 236 ids intacto), adapter com título ausente → `NORMALIZATION_ERROR` (defensivo, 0 ocorrências), `test_validation.py` no CI (run 33695286158 verde). |
 | 12 | **Country/domain module** | ✅ **mergeado 03/09** (PR #17, main 7a4e6c9) — `countries.py` extrai país/localização de `filters.py` (COUNTRY_CODES, EUROPE_COUNTRIES, COUNTRY_NAMES, `_country_name_from_location`, `_iso_token_from_location`, `infer_country_iso`, `is_remote`, `parse_country_spec`, `matches_country` — movidos verbatim), `filters.py` re-exporta (consumidores intactos: ranking/cli/adapters/geocoding), `test_countries.py` no CI (run 33706802355 verde); baseline 236 preservado. |
-| 13 | **Company Registry operacional** + tirar empresas da lógica do CLI | ✅ **mergeado 04/09** (PR #20, main `e7604db`, run `33840628495` verde) — `src/internship_finder/registry.py` com `SEED` das 39 empresas (fonte única em código: nome canônico de coleta + ATS/tenant de referência + `enabled`), `CompanyRegistry` + `company_status` (estado por empresa **derivado do JSONL de métricas**, read-only — registro malformado nunca derruba) e ponte `registry_names` para o CLI; flag `--registry` (coleta usa as ENABLED do registry; com `--companies` restringe a subconjunto, na ordem informada; modo `--companies` puro continua funcionando) — decisão de design: **registry = configuração, status = JSONL** (sem duplicar estado). `test_registry.py` offline/determinístico (seed, enabled, subconjunto, ponte CLI, company_status via tempfile — sem rede/data); **adicionado ao CI** (16 scripts). Docs: README subseção "Registry de empresas" + PROJECT_STATUS + este log (04/09). |
+| 13 | **Company Registry operacional** + tirar empresas da lógica do CLI | ✅ **mergeado 04/09** (PR #20, main `e7604db`, run `33840628495` verde) — `src/internship_finder/registry.py` com `SEED` das 39 empresas (fonte única em código: nome canônico de coleta + ATS/tenant de referência + `enabled`), `CompanyRegistry` + `company_status` (estado por empresa **derivado do JSONL de métricas**, read-only — registro malformado nunca derruba) e ponte `registry_names` para o CLI; flag `--registry` (coleta usa as ENABLED do registry; com `--companies` restringe a subconjunto, na ordem informada; modo `--companies` puro continua funcionando) — decisão de design: **registry = configuração, status = JSONL** (sem duplicar estado). `test_registry.py` offline/determinístico (seed, enabled, subconjunto, ponte CLI, company_status via tempfile — sem rede/data); **adicionado ao CI** (13 scripts). Docs: README subseção "Registry de empresas" + PROJECT_STATUS + este log (04/09). |
 | 14 | **Dedup 2.0 textual** | ✅ **mergeado 03/09** (PR #19, main `4ed28d8`) — medição real no dataset (03/09): 12 pares candidatos EN/DE, 4 da MESMA vaga com marcadores diferentes escapavam (Knorr `Praktikant`≈`Working Student` Purchasing Controlling, SAP `Intern`≈`Working Student` Bid Council, VW `Praktikum`≈`Werkstudentin/Werkstudent` Analytics After Sales, MAHLE `Internship`≈`Praktikum` Lead-Buying — conteúdo 1:1); `TYPE_EQUIVALENCES` estendida com regex de fronteira de palavra (`praktikums?`/`praktikanten?`/`interns?`/`internships?` → working student) + colapso de repetidas na bag (`Werkstudentin / Werkstudent`); `Pflichtpraktikum` NÃO é atingido (obrigatório ≠ voluntário, anti-teste), trainee fora do domínio; description NÃO entrou no fingerprint (0 pares exigiram — ruído/falso positivo); `test_dedup` +casos reais medidos e anti-casos; `test_countries` desacoplado do número mágico `236` (invariante subconjunto + observabilidade do delta, autorizado pelo dono — precedente #16); baseline 236→232 (4 duplicatas TRUE por company+title+location), suíte local 16/16, CI run `33799148404` verde. |
-| 15 | **Padronizar `--country de/europe/all`** (ACH-11) | ⏳ | CLI já aceita; padronizar enrichment sem alterar filtro. |
+| 15 | **Padronizar `--country de/europe/all`** (ACH-11) | ✅ **implementado 05/09** — `parse_country_spec` agora VALIDA a spec (token não-ISO ou spec vazia → `ValueError` claro; `all` canônico, `world`/`any` mantidos por compat), e o CLI valida cedo (`parser.error`, exit 2). Antes: `--country xx` → 0 vagas silencioso e `de,xx` ignorava o token inválido; agora erro claro. Filtro INALTERADO p/ specs válidas (baseline `--country de` → 232 ids idênticos lista-a-lista; `europe` 371 / `all` 31006 / `remote` 1 idênticos). `test_countries` +21 checks. |
 | 16 | **Desacoplar `test_ranking.py` do snapshot de dados** | ✅ **mergeado 03/09** (PR #18, main b82ff8e) — `FIXTURE` fixa (18 jobs sintéticos) + `test_fixture_ranking()` (regras no nível do rank: topo de área-alvo, sem senior/head/director, A-grade por área no TOP N, presales SCM com area≥6 sem penalidade, SAP Analytics Cloud mascarado na 2ª metade, marketing sem área fora do top 25%, JMP/trainee penalizado); bloco real reduzido a invariantes de formato + observabilidade; `test_synthetic`/`test_determinism` intactos (50→51 checks); suíte 16/16 local + determinismo 2x; CI run 33727053547 verde. |
 | 17 | **Daily refresh + alertas** (Telegram?) | ⏳ | Depois do health check; detecção primeiro, notificação depois. |
 
@@ -92,7 +92,7 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | # | Item | Status | Notas |
 |---|---|---|---|
 | 18 | **Sincronizar venv com o pyproject (pin ats-scrapers)** | ✅ **RESOLVIDO 01/09** — venv reinstalado do pin `ae0ad53` (via `refs/pull/268/head`: o upstream NUNCA mergeou o PR #268 — o commit só existe como ref de PR, por isso `git clone` simples + checkout falha; usar `git fetch origin refs/pull/268/head`). Validação real: SAP 1086/1086 com `application_deadline` (antes 0/37.373); eligible 84/84 com deadline; suíte verde (deadline/filters/hardening). ❌ risco recorrente: instalação fresca volta ao 0.2.0 PyPI sem expose — **ELIMINADO 04/09** pelo #19 (release 0.3.0 no PyPI; range aberto `>=0.3.0` monitorado no #30). |
-| 19 | Trocar pin git `ae0ad53` → release PyPI do ats-scrapers quando existir | ✅ **implementado 04/09** — release 0.3.0 (02/09/2026) contém o expose do PR #268; pyproject pina `"ats-scrapers>=0.3.0"`, CI instala do PyPI mantendo o passo de verify do expose; validado offline em venv /tmp (232 eligible, delta 4 ids, suite 17/17, `data/` intocada) — detalhes no log de 04/09. |
+| 19 | Trocar pin git `ae0ad53` → release PyPI do ats-scrapers quando existir | ✅ **implementado 04/09** — release 0.3.0 (02/09/2026) contém o expose do PR #268; pyproject pina `"ats-scrapers>=0.3.0"`, CI instala do PyPI mantendo o passo de verify do expose; validado offline em venv /tmp (232 eligible, delta 4 ids, suite 14/14, `data/` intocada) — detalhes no log de 04/09. |
 | 20 | Validação `--timeout`/`--limit` (ACH-14) · `remote` preenchido vs campo (ACH-16) · `country` vs `country_iso` (ACH-17) · CSV completo decisão JSON=completo/CSV=tabular (ACH-18) · parsing datas DD.MM.YYYY se medir necessidade (ACH-20) · `EUROPE_COUNTRIES`/BY documentar (ACH-19) | ⏳ | Itens pequenos; "medir antes de corrigir". |
 | 21 | Código morto (ACH-13) | ⏳ | Só após referências zero; limpeza independente. |
 | 22 | Separar código/dados (repo de dados) · Parquet quando volume justificar · chunking p/ frontend | ⏳ | Não por moda; quando o dado crescer. |
@@ -144,6 +144,25 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-05 (P2 #15)**: **`--country`/`--countries` padronizado e validado** (ACH-11) — antes, valor inválido era silencioso: `--country xx` → 0 vagas com exit 1 sem mensagem (frozenset que nunca casa) e token não-ISO em lista (`de,xx`) era ignorado. Agora `parse_country_spec` levanta `ValueError` citando os tokens inválidos (spec vazia `,` também) e o CLI converte em `parser.error` (mensagem clara + exit 2), antes de ler input/coletar. **Sem alterar o filtro**: specs válidas passam pelo mesmo parse de `select_eligible` — prova por código: `--country de` → **232 ids idênticos** (lista-a-lista, mesma ordem, antes × depois; delta vs snapshot 236 = só os 4 TRUE dups do #14), `europe` 371, `all` 31006, `remote` 1 idênticos. `all` canônico (world/any aceitos por compat, docstring); case-insensitive (`DE,AT`); vírgulas duplas ok. Testes: `test_countries` +21 checks (validação de spec + bloco CLI exit 2/mensagem); suite 14/14 TUDO OK de cwd scratch; `data/` intocada (stat antes==depois). [#15 ✅]
+- **2026-09-05 (Limpeza de repo — P3 #21)**: **array do CI corrigido 16→13 e
+  remoção de 9 arquivos mortos/redundantes** — auditoria do orquestrador em 05/09: 3
+  itens do array (`test_fetch`, `test_find_company`, `test_resolver`) **não eram
+  testes** — smokes de rede SEM assertions (prints + fetch ao vivo), incluídos por
+  engano no PR #21 (o run ficava verde sem prover cobertura real). **Lição
+  registrada**: "CI verde" não prova cobertura — conferir membership no workflow;
+  um script só é teste se tem ASSERTIONS. Removidos do repo e do array; contagens
+  reais: CI = **13**, suite local = **14** (13 + `test_manifest`, local-only por
+  rede externa). Deleções com re-grep de 0 refs: `collectors/base.py` +
+  `collectors/greenhouse.py` (código morto, 0 refs externas no grafo de imports),
+  `experiments/ats_test.py` (scratch), `ARCHITECTURE.md` e `DEVELOPMENT.md`
+  (duplicados, 0 refs — as 2 regras únicas do DEVELOPMENT.md migradas para
+  AGENTS.md), `requirements.txt` (pin git `ae0ad53` obsoleto — pyproject é a fonte
+  de deps; removido também do cache-dependency-path do CI).
+  Docs sincronizadas: README (suite 14/14, três modos do CLI, `countries.py`/
+  `registry.py` na estrutura, tabela de verificação marcada **histórica**),
+  AGENTS.md (2 regras migradas), docs/architecture (módulos) e PROJECT_STATUS
+  (13 scripts).
 - **2026-09-04 (P3 #19)**: **Pin git `ae0ad53` → release PyPI ats-scrapers 0.3.0** —
   pyproject troca `"ats-scrapers @ git+https://github.com/kalil0321/ats-scrapers@ae0ad53"`
   por `"ats-scrapers>=0.3.0"` (release 02/09/2026 contém o expose de
@@ -153,13 +172,13 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
   okay + ats-scrapers 0.3.0 do PyPI + `import internship_finder.cli` OK). CI:
   passo "Install ats-scrapers (PyPI >=0.3.0)" substitui o tarball `ae0ad53`;
   passo de verify do expose MANTIDO (valida a 0.3.0 instalada); array de testes
-  inalterado (16 scripts; `test_manifest` segue fora — rede externa). Validação
+  inalterado (13 scripts; `test_manifest` segue fora — rede externa; corrigido 05/09). Validação
   offline em venv /tmp (rede só p/ pip): expose confirmado no successfactors
   instalado (2 hits em `application_deadline`), `import internship_finder.cli`
   OK, pipeline `--country de --no-rank` sobre `data/jobs.json` → **232 eligible**
   (ids subconjunto do snapshot 236; delta = as 4 duplicatas TRUE do #14: VW
   After Sales, SAP Bid Council, Knorr Purchasing Controlling, MAHLE Lead-Buying),
-  suite standalone **17/17 TUDO OK**, `data/` intocada (stat antes == depois).
+  suite standalone **14/14 TUDO OK**, `data/` intocada (stat antes == depois).
   Limitação declarada: `application_deadline` 0/232 preenchido — o snapshot
   local (31/08) foi coletado com 0.2.0 (sem expose); o pipeline serializa o
   campo (chave presente, `None`); preencher exige coleta nova, fora do escopo
@@ -178,9 +197,9 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
   JSONL = status/última coleta** — estado operacional tem fonte única e o
   registry não duplica resultado. `test_registry.py` (offline, tempfile, sem
   rede/data: seed 39, enabled, subconjunto preservando ordem, ponte
-  registry→CLI com mock do fetch, company_status) — **entrou no CI** (array 12→16
+  registry→CLI com mock do fetch, company_status) — **entrou no CI** (array 12→13
   scripts; `test_manifest` segue fora por depender de rede externa
-  storage.stapply.ai). Suite local 17/17 TUDO OK; docs README/PROJECT_STATUS
+  storage.stapply.ai; corrigido 05/09). Suite local 14/14 TUDO OK; docs README/PROJECT_STATUS
   atualizadas (04/09). Decisão: registry vira a forma default de coleta nos
   próximos passos; `--companies` mantido por compatibilidade. [#13 ✅]
 - **2026-09-03 (P2 #14)**: **Dedup 2.0 textual implementado** (PR #19, main

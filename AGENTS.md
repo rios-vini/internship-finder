@@ -35,6 +35,7 @@ Do not introduce new architectural layers unless there is a clear need.
 - Do not maintain obsolete compatibility layers.
 - Do not add speculative abstractions or configuration.
 - Reuse existing dependencies and project utilities before adding new packages.
+- Do not assume that an existing dependency lacks functionality — inspect the installed dependency and current project usage before adding a package or reimplementing functionality.
 - Prefer mature, maintained libraries.
 - Keep responsibilities separated and components modular.
 - Follow existing project patterns before creating new ones.
@@ -59,6 +60,7 @@ Before modifying code:
 - Distinguish explicitly sourced fields from inferred fields.
 - If a source does not provide a value, prefer `None` over fabricating a value.
 - Do not infer an application deadline from the posting date unless explicitly required by the task and clearly documented.
+- Before modifying generated data files, determine whether they are intentionally version-controlled and whether the task actually requires updating them.
 
 ## Jobs and internship scope
 

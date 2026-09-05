@@ -24,7 +24,7 @@ Requer Python **>= 3.12** (testado em 3.12; vale para 3.13/3.14).
 
 ## Como rodar
 
-O CLI tem dois modos: **filtro** (default) e **coleta** (`--companies`).
+O CLI tem tres modos: **filtro** (default), **coleta** (`--companies`) e **health** (`--health`).
 
 **Filtro** — le vagas ja coletadas e retorna apenas as ELIGIBLE
 (estudante/estagio + area-alvo + pais), **ranqueadas por perfil** (score +
@@ -170,7 +170,7 @@ Flags do CLI:
 | `--filter-output` | modo coleta: saida eligible (default: `data/eligible_jobs.json`) |
 | `--student` / `--no-student` | filtra tipo estudante/estagio (Internship, Working Student, Praktikum, Werkstudent, iXp...; default: ligado) |
 | `--area` / `--no-area` | filtra areas-alvo do dono (Supply Chain, Procurement, BI, Analytics, Automacao; default: ligado) |
-| `--country`/`--countries` | pais/localizacao: ISO alpha-2 (`de`, `de,at,ch`), `europe`, `remote` ou `all` (default: `de`) |
+| `--country`/`--countries` | pais/localizacao: ISO alpha-2 (`de`, `de,at,ch`), `europe`, `remote` ou `all` (default: `de`; valores fora desses -> erro claro, exit 2) |
 | `--all` | desliga os tres filtros de uma vez (copia o conjunto inteiro) |
 | `--dedup` / `--no-dedup` | remove duplicatas da saida (default: ligado) |
 | `--rank` / `--no-rank` | rankeia por compatibilidade com o perfil: score + TOP 20 (default: ligado; `--no-rank` mantem a ordem original) |
@@ -238,7 +238,7 @@ snapshot de 31/08 (236 eligible; pipeline dedup 2.0 = 232, medido por
 scores `min 2.00 | mediana 6.38 | max 16.75`.
 Ver `scripts/test_ranking.py` (suite sintetica com `FIXTURE` fixa, desacoplada
 do snapshot desde o P2 #16 — 03/09; bloco real roda como invariantes de
-formato/observabilidade; suite 17/17 local TUDO OK).
+formato/observabilidade; suite 14/14 local TUDO OK).
 
 ## Runbook
 
@@ -271,8 +271,8 @@ parecida errada). Passos:
    ```
    Reporta por tenant: `OK` com N vagas / `FAIL` (inativo) / `SKIP` (sem
    scraper) / `NONE` (sem match). So inclua na lista final empresas com `OK`.
-   A tabela de verificacao atual (incl. excluidas e motivos) esta em
-   `docs/empresas_verificacao.md`.
+   A tabela de verificacao em `docs/empresas_verificacao.md` e **historica** —
+   revalidar o estado real dos tenants com `scripts/verify_companies.py`.
 
 ### Como rodar
 
@@ -327,18 +327,19 @@ employment_type, country_iso, raw`.
 ```
 src/internship_finder/
 ├── models/         # Job e Company (pydantic, canonicos)
-├── collectors/     # CompanyCollector (match exato), ats_scraper (fetch c/ timeout),
-│                   # greenhouse (API direta), base (ABC)
+├── collectors/     # CompanyCollector (match exato), ats_scraper (fetch c/ timeout)
 ├── adapters/       # AtsJobAdapter: normaliza schema de cada ATS para Job
 ├── resolver/       # CompanyResolver (fachada sobre o matching exato)
 ├── storage/        # sqlite_store: historico por vaga (first_seen/last_seen/active/archived)
 ├── filters.py      # filtros de utilidade: is_student_role, area-alvo, pais, cascata
+├── countries.py    # pais/localizacao: ISO codes, nomes, infer_country_iso, spec (extraido de filters.py, P2 #12)
 ├── dedup.py        # deduplicacao: chaves por confiabilidade (id/external_id, URL, c+title+loc)
 ├── ranking.py      # ranking por perfil: score_job (score + breakdown) e rank_jobs
 ├── metrics.py      # metricas de execucao em JSONL (por tenant + resumo do run)
 ├── errors.py       # codigos de erro estruturados (CollectionError + classificador)
 ├── health.py       # relatorio de health por tenant/ATS sobre o JSONL + alertas
 ├── geocoding.py    # fallback de pais por cidade (cache-first; flag OFF por default)
+├── registry.py     # CompanyRegistry: fonte unica das 39 empresas de coleta (SEED, P2 #13)
 └── cli.py          # entry point `internship-finder` (filtro default + coleta)
 scripts/collect_jobs.py   # atalho p/ rodar sem instalar
 scripts/verify_companies.py  # runbook de empresas (match exato + fetch)

@@ -236,10 +236,20 @@ def is_remote(location: str | None, remote: bool | None) -> bool:
 def parse_country_spec(spec: str) -> frozenset[str] | str | None:
     """Normaliza ``--country`` para uma especificacao de filtro.
 
-    - "all"/"world"/"any" -> None (sem filtro de pais)
-    - "remote"            -> "remote" (vaga remota)
-    - "europe"            -> conjunto EUROPE_COUNTRIES
-    - lista ISO ("de,at,ch") -> conjunto de codigos
+    Retorna:
+      - ``None`` -> sem filtro de pais ("all"; "world"/"any" aceitos por
+        compatibilidade — "all" e o canonico);
+      - ``"remote"`` -> vaga remota (campo ``remote`` ou "remote"/"home
+        office" na localizacao);
+      - ``EUROPE_COUNTRIES`` -> "europe";
+      - ``frozenset`` de ISOs alpha-2 validos para lista ISO ("de,at,ch").
+
+    Token fora desses (nao-ISO na lista, ex.: "de,xx" ou "europe,de") ou
+    spec vazia (ex.: ",") levanta ``ValueError`` com a lista dos tokens
+    invalidos — o CLI converte em erro claro (parser.error); chamadas
+    diretas da funcao pura recebem a excecao (padronizacao P2 #15/ACH-11).
+    Antes, token invalido virava frozenset que nunca casa (0 vagas
+    silencioso) ou era ignorado.
     """
     s = (spec or "").strip().lower()
     if not s or s in {"all", "world", "any"}:
@@ -249,6 +259,18 @@ def parse_country_spec(spec: str) -> frozenset[str] | str | None:
     if s == "europe":
         return EUROPE_COUNTRIES
     codes = {c.strip() for c in s.split(",") if c.strip()}
+    if not codes:
+        raise ValueError(
+            "spec de pais vazia — use ISO alpha-2 (ex.: 'de,at,ch'), "
+            "'europe', 'remote' ou 'all'"
+        )
+    invalid = sorted(c for c in codes if c not in COUNTRY_CODES)
+    if invalid:
+        raise ValueError(
+            "spec de pais invalida: "
+            + ", ".join(repr(c) for c in invalid)
+            + " — use ISO alpha-2 (ex.: 'de,at,ch'), 'europe', 'remote' ou 'all'"
+        )
     return frozenset(codes)
 
 
