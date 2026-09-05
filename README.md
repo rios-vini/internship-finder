@@ -133,12 +133,18 @@ nova); falha de rede do envio e logada, nao derruba o refresh.
 > + `--dry-run`, exit 0, sem tocar `data/`) e reentrada do flock (`-n` com lock
 > segurado → exit 1; liberado → exit 0).
 
-**Limitação documentada**: o JSONL de metricas acumula lixo historico de
+**Limitação documentada**: o JSONL de metricas acumulava lixo historico de
 validacao (registros `type: tenant` de mocks, ex.: `smartrecruiters:other` 70x
 `error` de 25/08–04/09). O health e defensivo (malformados pulados), mas lixo
-VALIDO entra nas contagens por fonte — uma fonte que so tem lixo emitira
-"erro recorrente" em todo run ate o JSONL ser limpo (1 alerta por fonte por
-run; nao ha dedup entre runs).
+VALIDO entra nas contagens por fonte — uma fonte que so tem lixo emitiria
+"erro recorrente" em todo run ate o JSONL ser limpo. **Sanitizado em 05/09
+(noite)**: 460 → 104 linhas (removidos 142 run records de mock + 214 tenant
+records Acme/DATEV por criterio de run_id dos 4 runs reais: 31/08 37.373,
+01/09 1.084 x2, 05/09 38.038; preservados 100 tenant records de 39 companies).
+Backups: `/tmp/collection_metrics_pre_clean_0509.jsonl` (estado pos-E2E) +
+`data/archive/20260905T204307Z/collection_metrics.jsonl` (pre-E2E). Health
+pos-limpeza: 1 alerta factual — `successfactors:lidlstiftuP2` timeout em 31/08
+e 05/09.
 
 Resultado do ultimo run completo (coleta local de 31/08; os numeros sao
 reproduzidos offline por `scripts/coverage.py`):

@@ -199,7 +199,15 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
   `__file__` e não depende de cwd; lock cobre o run inteiro). Validada com
   preflight cron-like (`env -i PATH=/usr/bin:/bin` + `--dry-run` → exit 0, sem
   rede, data/ intocada) e reentrada do flock (`-n` com lock segurado → exit 1;
-  liberado → exit 0). Suíte
+  liberado → exit 0). **JSONL sanitizado (05/09, noite)**: critério de run_id
+  dos 4 runs reais (31/08 37.373, 01/09 1.084 ×2, 05/09 38.038) — removidos
+  142 run records + 214 tenant records de mock (`successfactors:acme` 140×,
+  `smartrecruiters:other` 70×, Acme/DATEV; todos `collected=1` / company de
+  teste); 460 → 104 linhas, 100 tenant records de 39 companies preservados.
+  Backups: `/tmp/collection_metrics_pre_clean_0509.jsonl` + archive E2E.
+  Health pós-limpeza: 1 alerta factual (`successfactors:lidlstiftuP2`, timeout
+  31/08 + 05/09); a anomalia `smartrecruiters:other` (70×) era lixo de mock e
+  sumiu do health vivo (preservada nos backups/docs como evidência E2E). Suíte
   15/15 TUDO OK de cwd scratch (14 CI + test_manifest local-only);
   `data/` intocada nas validações (stat antes==depois); `.env` não commitado
   (git status limpo de credenciais). [#17 ✅]
