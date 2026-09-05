@@ -93,7 +93,7 @@ jobs:
       - name: Run standalone test scripts
         run: |
           set +e
-          tests=(test_filters test_hardening test_countries test_application_deadline test_dedup test_ranking test_geocoding test_sqlite test_validation test_errors test_health test_lifecycle test_registry)
+          tests=(test_filters test_hardening test_countries test_application_deadline test_dedup test_ranking test_geocoding test_sqlite test_validation test_errors test_health test_lifecycle test_registry test_refresh)
           status=0
           for t in "${tests[@]}"; do
             echo "==================== $t ===================="

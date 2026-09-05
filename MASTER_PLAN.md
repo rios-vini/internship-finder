@@ -86,7 +86,7 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 14 | **Dedup 2.0 textual** | ✅ **mergeado 03/09** (PR #19, main `4ed28d8`) — medição real no dataset (03/09): 12 pares candidatos EN/DE, 4 da MESMA vaga com marcadores diferentes escapavam (Knorr `Praktikant`≈`Working Student` Purchasing Controlling, SAP `Intern`≈`Working Student` Bid Council, VW `Praktikum`≈`Werkstudentin/Werkstudent` Analytics After Sales, MAHLE `Internship`≈`Praktikum` Lead-Buying — conteúdo 1:1); `TYPE_EQUIVALENCES` estendida com regex de fronteira de palavra (`praktikums?`/`praktikanten?`/`interns?`/`internships?` → working student) + colapso de repetidas na bag (`Werkstudentin / Werkstudent`); `Pflichtpraktikum` NÃO é atingido (obrigatório ≠ voluntário, anti-teste), trainee fora do domínio; description NÃO entrou no fingerprint (0 pares exigiram — ruído/falso positivo); `test_dedup` +casos reais medidos e anti-casos; `test_countries` desacoplado do número mágico `236` (invariante subconjunto + observabilidade do delta, autorizado pelo dono — precedente #16); baseline 236→232 (4 duplicatas TRUE por company+title+location), suíte local 16/16, CI run `33799148404` verde. |
 | 15 | **Padronizar `--country de/europe/all`** (ACH-11) | ✅ **implementado 05/09** — `parse_country_spec` agora VALIDA a spec (token não-ISO ou spec vazia → `ValueError` claro; `all` canônico, `world`/`any` mantidos por compat), e o CLI valida cedo (`parser.error`, exit 2). Antes: `--country xx` → 0 vagas silencioso e `de,xx` ignorava o token inválido; agora erro claro. Filtro INALTERADO p/ specs válidas (baseline `--country de` → 232 ids idênticos lista-a-lista; `europe` 371 / `all` 31006 / `remote` 1 idênticos). `test_countries` +21 checks. |
 | 16 | **Desacoplar `test_ranking.py` do snapshot de dados** | ✅ **mergeado 03/09** (PR #18, main b82ff8e) — `FIXTURE` fixa (18 jobs sintéticos) + `test_fixture_ranking()` (regras no nível do rank: topo de área-alvo, sem senior/head/director, A-grade por área no TOP N, presales SCM com area≥6 sem penalidade, SAP Analytics Cloud mascarado na 2ª metade, marketing sem área fora do top 25%, JMP/trainee penalizado); bloco real reduzido a invariantes de formato + observabilidade; `test_synthetic`/`test_determinism` intactos (50→51 checks); suíte 16/16 local + determinismo 2x; CI run 33727053547 verde. |
-| 17 | **Daily refresh + alertas** (Telegram?) | ⏳ | Depois do health check; detecção primeiro, notificação depois. |
+| 17 | **Daily refresh + alertas** (Telegram?) | ✅ **implementado 05/09** | Depois do health check; detecção primeiro, notificação depois. Rotina `scripts/refresh_daily.py` (rotacao → coleta real → health → alerta Telegram só em anomalia); ver Log de mudanças 05/09. |
 
 ### 🟢 P3 — manutenção / escala (baixa urgência)
 | # | Item | Status | Notas |
@@ -144,6 +144,54 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-05 (P2 #17)**: **Daily refresh + alertas Telegram implementado** —
+  `scripts/refresh_daily.py` (padrão standalone/CLI do repo): (1) **rotação** —
+  cópia (não move) de `data/jobs.json`/`.csv`, `data/eligible_jobs.json`/`.csv`
+  e `data/collection_metrics.jsonl` para `data/archive/<timestamp>/` antes do
+  run (rollback = copiar de volta; `run_info.json` no archive registra o run
+  que substituiu o snapshot; hardlink rejeitado — `open("w")` truncaria o
+  mesmo inode); (2) **coleta real** — subprocesso `python -m
+  internship_finder.cli --registry --timeout 60` (cwd = raiz; PYTHONPATH=src;
+  teto `--max-collection-secs` default 5400s; exit 0/1/2 mapeado na mensagem);
+  registros do run isolados por **snapshot de linhas do JSONL** antes×depois
+  (sem adivinhar run_id); (3) **health** — `build_health_report` reusado
+  integralmente sobre o JSONL completo pós-run; (4) **alerta** — 1 mensagem
+  por run, alertas deduplicados por fonte; dispara quando exit != 0 OU
+  relatório com alertas (queda brusca/erro recorrente); sem anomalia → sem
+  envio (anti-spam); `--always-notify` = digest diário (documentado, não é o
+  default); **cooldown limitado**: o JSONL acumula lixo histórico de validação
+  (ex.: `smartrecruiters:other` 70× error de mocks) — o health é defensivo
+  (malformados pulados) mas lixo VÁLIDO alerta em todo run até o JSONL ser
+  limpo (alternativa rejeitada: filtrar só fontes do run esconderia anomalias
+  reais). Credenciais em `.env` (gitignored): `TELEGRAM_BOT_TOKEN`/
+  `TELEGRAM_CHAT_ID`; sem token → aviso e NÃO envia (nunca crasha). Telegram
+  via stdlib `urllib` (sem dep nova). `--dry-run` = tempdir sintético, sem
+  rede/data, valida rotação+health+mensagem. Testes: `scripts/test_refresh.py`
+  (offline, tempfile, 37 checks: rotação, snapshot/resumo, mensagem com
+  anomalia tipo `smartrecruiters:other` presente e sem anomalia → None,
+  anti-spam/exit codes, .env, url+send mockado do Telegram, comando do
+  subprocesso, dry-run com stat data/ antes==depois) — **no array do CI**
+  (13→14 scripts). **E2E real autorizado (uma execução)**: run
+  `2026-09-05T20:43:07.735642+00:00` — rotação para
+  `data/archive/20260905T204307Z/` (5 arquivos de 31/08 preservados), funil
+  **38.038 brutas → 248 filtered → 224 eligible (dedup −24)**; tenants 43 ok
+  / 2 empty / 1 timeout (`successfactors:lidlstiftuP2` TIMEOUT) / 1 error
+  (`moka:bayer/148387` FETCH_ERROR — pycryptodome ausente, limitação do
+  scraper, não do repo); exit 2 (parcial). Health pós-run: 2 alertas —
+  `smartrecruiters:other` erro recorrente (70 runs — a anomalia conhecida
+  validou a detecção) + `successfactors:lidlstiftuP2` erro recorrente (2, novo
+  e factual). Envio Telegram confirmado: `{"ok": true, "result":
+  {"message_id": 318, ...}}` (bot @vrios_bot → chat 695791270). **Cron
+  instalado** (backup do crontab em `/tmp/crontab_backup_0509.txt`, não havia
+  crontab): `0 6 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock
+  cd /home/ubuntu/internship-finder && .venv/bin/python
+  scripts/refresh_daily.py >> /tmp/refresh_daily.log 2>&1` (diário 06:00 UTC —
+  antes do horário comercial europeu; flock evita sobreposição de runs;
+  JUSTIFICATIVA de concorrência: 2 runs simultâneos de 37k+ requests
+  duplicariam trabalho e disputariam os mesmos arquivos de data/). Suíte
+  15/15 TUDO OK de cwd scratch (14 CI + test_manifest local-only);
+  `data/` intocada nas validações (stat antes==depois); `.env` não commitado
+  (git status limpo de credenciais). [#17 ✅]
 - **2026-09-05 (P2 #15)**: **`--country`/`--countries` padronizado e validado** (ACH-11) — antes, valor inválido era silencioso: `--country xx` → 0 vagas com exit 1 sem mensagem (frozenset que nunca casa) e token não-ISO em lista (`de,xx`) era ignorado. Agora `parse_country_spec` levanta `ValueError` citando os tokens inválidos (spec vazia `,` também) e o CLI converte em `parser.error` (mensagem clara + exit 2), antes de ler input/coletar. **Sem alterar o filtro**: specs válidas passam pelo mesmo parse de `select_eligible` — prova por código: `--country de` → **232 ids idênticos** (lista-a-lista, mesma ordem, antes × depois; delta vs snapshot 236 = só os 4 TRUE dups do #14), `europe` 371, `all` 31006, `remote` 1 idênticos. `all` canônico (world/any aceitos por compat, docstring); case-insensitive (`DE,AT`); vírgulas duplas ok. Testes: `test_countries` +21 checks (validação de spec + bloco CLI exit 2/mensagem); suite 14/14 TUDO OK de cwd scratch; `data/` intocada (stat antes==depois). [#15 ✅]
 - **2026-09-05 (Limpeza de repo — P3 #21)**: **array do CI corrigido 16→13 e
   remoção de 9 arquivos mortos/redundantes** — auditoria do orquestrador em 05/09: 3
