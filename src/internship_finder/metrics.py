@@ -26,6 +26,7 @@ registros antigos (append-only, o JSONL existente continua valido).
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -50,14 +51,28 @@ def write_metrics(path: Path | str, records: list[dict]) -> None:
 
 
 def read_metrics(path: Path | str) -> list[dict]:
-    """Le todos os registros JSONL de ``path`` (lista de dicts)."""
+    """Le todos os registros JSONL de ``path`` (lista de dicts).
+
+    Defensivo (P3 lote 1, padrao de tolerancia do health): uma linha JSON
+    malformada nunca derruba a leitura — e pulada com um aviso no stderr e a
+    leitura continua. Linhas em branco tambem sao ignoradas. Registros de
+    tipos inesperados (nao-dict) passam como estao; quem consome (ex.: o
+    health) valida o shape.
+    """
     path = Path(path)
     if not path.exists():
         return []
     records: list[dict] = []
     with path.open(encoding="utf-8") as fh:
-        for line in fh:
+        for idx, line in enumerate(fh):
             line = line.strip()
-            if line:
+            if not line:
+                continue
+            try:
                 records.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                print(
+                    f"[metrics] linha {idx + 1} ignorada: JSON invalido ({exc})",
+                    file=sys.stderr,
+                )
     return records

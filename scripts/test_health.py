@@ -12,10 +12,13 @@ demais testes quando o arquivo nao existe. Uso:
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -184,6 +187,66 @@ def test_run_id_fora_de_ordem() -> None:
     check("sem alerta por mediana", len(drop) == 0)
 
 
+def test_read_metrics_defensivo() -> None:
+    print("== read_metrics defensivo: linha malformada nao derruba (P3 lote 1) ==")
+    from internship_finder.metrics import read_metrics
+
+    tmp = tempfile.mkdtemp()
+    p = Path(tmp) / "m.jsonl"
+    p.write_text(
+        '{"type": "tenant", "company": "Bosch", "status": "ok", "collected": 5}\n'
+        + "lixo nao-json {{{{\n"
+        + '{"type": "tenant", "company": "Bosch", "status": "error", '
+        + '"collected": 0}\n',
+        encoding="utf-8",
+    )
+    with contextlib.redirect_stderr(io.StringIO()) as err:
+        records = read_metrics(p)
+    check("3a. registros validos preservados (malformada no meio)",
+          len(records) == 2 and records[0]["status"] == "ok"
+          and records[1]["status"] == "error")
+    check("3b. aviso no stderr", "ignorada" in err.getvalue())
+
+
+def test_cli_health_tempfile() -> None:
+    print("== CLI --health com tempfile: malformado + companies (P3 lote 1) ==")
+    root = Path(__file__).resolve().parent.parent
+    cli_mod = str(root / "src")
+    tmp = tempfile.mkdtemp()
+    p = Path(tmp) / "metrics.jsonl"
+    p.write_text(
+        '{"type": "tenant", "company": "Bosch", '
+        '"run_id": "2026-09-06T00:00:00Z", "timestamp": "2026-09-06T00:00:00Z", '
+        '"source": "smartrecruiters:BoschGroup", "ats": "smartrecruiters", '
+        '"status": "ok", "collected": 5}\n'
+        + "linha malformada {{{{\n"
+        + '{"type": "tenant", "company": "Bosch", '
+        '"run_id": "2026-09-07T00:00:00Z", "timestamp": "2026-09-07T00:00:00Z", '
+        '"source": "smartrecruiters:BoschGroup", "ats": "smartrecruiters", '
+        '"status": "error", "collected": 0}\n',
+        encoding="utf-8",
+    )
+    cmd = [sys.executable, "-m", "internship_finder.cli", "--health", str(p)]
+    env = {"PYTHONPATH": cli_mod, "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+    r = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    check("5h. --health com linha malformada -> exit 0", r.returncode == 0)
+    try:
+        report = json.loads(r.stdout)
+        ok_parse = True
+    except json.JSONDecodeError:
+        ok_parse = False
+        report = {}
+    check("5i. stdout e JSON parseavel", ok_parse)
+    check("5j. relatorio expoe 'companies' (fecha doc x codigo)", "companies" in report)
+    bosch = (report.get("companies") or {}).get("Bosch") or {}
+    check("5k. company_status presente no relatorio",
+          bosch.get("status") == "error" and bosch.get("last_collected") == 0)
+    # dados de tenant continuam no relatorio (nao regride)
+    check("5l. relatorio de tenant/ats preservado", "sources" in report
+          and any(s["source"] == "smartrecruiters:BoschGroup"
+                  for s in report.get("sources", [])))
+
+
 def test_cli() -> None:
     print("== CLI --health ==")
     root = Path(__file__).resolve().parent.parent
@@ -249,6 +312,8 @@ def main() -> int:
     test_registro_malformado()
     test_jsonl_vazio()
     test_run_id_fora_de_ordem()
+    test_read_metrics_defensivo()
+    test_cli_health_tempfile()
     test_cli()
     test_real_data()
     print()

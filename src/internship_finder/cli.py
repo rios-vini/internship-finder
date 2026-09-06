@@ -423,6 +423,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERRO: nao foi possivel ler {health_path}: {exc}", file=sys.stderr)
             return 1
         report = build_health_report(records)
+        # P3 lote 1: expoe o estado por empresa (CompanyRegistry.company_status,
+        # read-only e defensivo) na chave "companies" — fecha o gap doc x codigo
+        # (o README ja documenta essa exposicao no relatorio do --health).
+        report["companies"] = CompanyRegistry().company_status(health_path)
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
 
