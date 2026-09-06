@@ -41,11 +41,14 @@ COUNTRY_CODES = frozenset(
 )
 
 # "Europa" para o dono: UE/EEE + CH + UK + Balcas (paises onde estagio/estudo
-# em alemao e viavel ou comum no contexto). RU/BY ficam de fora. Minusculas,
-# como COUNTRY_CODES.
+# em alemao e viavel ou comum no contexto). RU/BY ficam de fora pelo mesmo
+# criterio (viabilidade de estagio/estudo em alemao no contexto do dono;
+# decidido e documentado em P3 #20/ACH-19 — medido: 0 vagas reais com ISO
+# 'by'/'ru' em data/jobs.json, entao a exclusao nao altera resultado real).
+# Minusculas, como COUNTRY_CODES.
 EUROPE_COUNTRIES = frozenset(
     """
-    AD AL AT BA BE BG BY CH CY CZ DE DK EE ES FI FR GB GR HR HU IE IS IT LI LT
+    AD AL AT BA BE BG CH CY CZ DE DK EE ES FI FR GB GR HR HU IE IS IT LI LT
     LU LV MC MD ME MK MT NL NO PL PT RO RS SE SI SK SM UA UK VA
     """.lower().split()
 )
