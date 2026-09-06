@@ -1,0 +1,35 @@
+# requirements-lock.txt — lock de reprodutibilidade do ambiente (gerado; NAO edite a mao).
+#
+# Gerado em: 2026-09-06 (UTC)
+# Como regenerar (na raiz do repo):
+#   /home/ubuntu/internship-finder/.venv/bin/python -m pip freeze > requirements-lock.txt
+# (ou: <python do ambiente do projeto> -m pip freeze > requirements-lock.txt)
+#
+# ATENCAO:
+# - Este arquivo e um SNAPSHOT do ambiente na data da geracao — inclui o proprio
+#   pacote do projeto quando instalado em modo editable (linha "-e git+...").
+# - O pyproject.toml continua sendo a FONTE das dependencias diretas; o lock
+#   apenas congela as versoes para reprodutibilidade e NAO entra no CI
+#   (a instalacao do CI segue o pyproject).
+annotated-types==0.8.0
+anyio==4.14.2
+ats-scrapers==0.3.0
+beautifulsoup4==4.15.0
+certifi==2026.7.22
+charset-normalizer==3.5.1
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.19
+-e git+https://github.com/rios-vini/internship-finder.git@947733933371cc967343065b78e201da919f1641#egg=internship_finder
+numpy==2.5.2
+pandas==3.0.5
+pydantic==2.13.4
+pydantic_core==2.46.4
+python-dateutil==2.9.0.post0
+requests==2.34.2
+six==1.17.0
+soupsieve==2.9.2
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+urllib3==2.7.0

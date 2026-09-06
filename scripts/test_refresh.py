@@ -1,12 +1,16 @@
 """Testes do refresh diario (scripts/test_refresh.py) — P2 #17.
 
 Standalone e OFFLINE (tempfile, sem rede, sem escrever em ``data/`` real):
-rotacao (arquivos falsos -> archive correto), snapshot de linhas do JSONL +
-resumo do run, construcao da mensagem (JSONL fake com anomalia tipo
-``smartrecruiters:other`` -> alerta presente; sem anomalia -> sem alerta),
-anti-spam/exit codes, config .env, Telegram (url + decisao sem token +
-send com mock), comando do subprocesso e dry-run que nao toca ``data/``
-(stat antes x depois; bloco real com SKIP quando ``data/`` ausente — padrao CI).
+rotacao (arquivos falsos -> archive correto), retencao do archive
+(``cleanup_archive``: antigos removidos / recentes mantidos / 0 desliga /
+argparse rejeita negativo), snapshot de linhas do JSONL + resumo do run,
+construcao da mensagem (JSONL fake com anomalia tipo
+``smartrecruiters:other`` -> alerta presente; sem anomalia -> sem alerta;
+aviso de disco com mock de ``shutil.disk_usage``), anti-spam/exit codes,
+config .env, Telegram (url + decisao sem token + send com mock), comando do
+subprocesso (com ``--sqlite data/jobs.db``), env herdado do subprocesso e
+dry-run que nao toca ``data/`` (stat antes x depois; bloco real com SKIP
+quando ``data/`` ausente — padrao CI).
 
 Uso:
 
@@ -14,9 +18,15 @@ Uso:
 """
 from __future__ import annotations
 
+import argparse
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
+import unittest.mock as mock
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/ (importa refresh_daily)
@@ -236,7 +246,111 @@ def test_comando_subprocesso() -> None:
     print("== comando do subprocesso de coleta ==")
     cmd = rd.collection_command(60)
     check("usa -m internship_finder.cli", cmd[:3] == [sys.executable, "-m", "internship_finder.cli"])
-    check("--registry + --timeout 60", cmd[3:] == ["--registry", "--timeout", "60"])
+    check("--registry + --timeout + --sqlite no fim",
+          cmd[3:] == ["--registry", "--timeout", "60", "--sqlite", "data/jobs.db"]
+          and "--sqlite" in cmd and "data/jobs.db" in cmd)
+    cmd2 = rd.collection_command(120)
+    check("timeout propagado com sqlite",
+          cmd2[cmd2.index("--timeout") + 1] == "120"
+          and cmd2[-2:] == ["--sqlite", "data/jobs.db"])
+
+
+def test_env_subprocesso_herdado() -> None:
+    print("== env do subprocesso herda o ambiente do chamador ==")
+    captured: dict = {}
+
+    def fake_run(command, cwd=None, env=None, timeout=None, check=False):
+        captured["command"] = command
+        captured["cwd"] = cwd
+        captured["env"] = env
+        captured["timeout"] = timeout
+        return subprocess.CompletedProcess(command, 0)
+
+    with mock.patch.object(rd.subprocess, "run", side_effect=fake_run):
+        proc = rd.run_collection(["prog", "arg"], Path("/tmp/if-taskB"), 1234)
+    env = captured.get("env") or {}
+    check("env contem as chaves de os.environ (heranca)",
+          all(k in env for k in list(os.environ)))
+    check("PYTHONPATH aponta para src do repo", env.get("PYTHONPATH") == "/tmp/if-taskB/src")
+    check("PATH fixado para /usr/bin:/bin", env.get("PATH") == "/usr/bin:/bin")
+    check("timeout do teto repassado ao subprocess.run", captured.get("timeout") == 1234)
+    check("exit 0 propaga (sem timeout)", proc.returncode == 0)
+
+
+def test_limpeza_archive() -> None:
+    print("== retencao do archive (--retention-days) ==")
+    now = datetime(2026, 9, 6, 6, 0, 0, tzinfo=UTC)
+    with tempfile.TemporaryDirectory(prefix="t_ret_") as tmp:
+        archive_root = Path(tmp) / "archive"
+        old = archive_root / "20200601T060000Z"
+        old.mkdir(parents=True)
+        (old / "jobs.json").write_text("{}", encoding="utf-8")
+        recent = archive_root / "20260901T060000Z"
+        recent.mkdir()
+        (recent / "jobs.json").write_text("{}", encoding="utf-8")
+        weird = archive_root / "not-a-timestamp"
+        weird.mkdir()
+
+        removed = rd.cleanup_archive(archive_root, 14, now=now)
+        check("archive antigo removido", old in removed and not old.exists())
+        check("archive recente mantido", recent.exists() and recent not in removed)
+        check("nome fora do formato preservado", weird.exists() and weird not in removed)
+
+    with tempfile.TemporaryDirectory(prefix="t_ret0_") as tmp:
+        archive_root = Path(tmp) / "archive"
+        old = archive_root / "20200601T060000Z"
+        old.mkdir(parents=True)
+        (old / "jobs.json").write_text("{}", encoding="utf-8")
+        removed = rd.cleanup_archive(archive_root, 0, now=now)
+        check("--retention-days 0 nao remove nada", not removed and old.exists())
+
+    check("archive_root inexistente -> sem crash, nada removido",
+          rd.cleanup_archive(Path("/tmp/nao_existe_archive_xyz"), 14, now=now) == [])
+
+    try:
+        rd._non_negative_int("-3")
+        check("_non_negative_int rejeita negativo", False)
+    except argparse.ArgumentTypeError:
+        check("_non_negative_int rejeita negativo (ArgumentTypeError)", True)
+    try:
+        rd._non_negative_int("abc")
+        check("_non_negative_int rejeita nao-inteiro", False)
+    except argparse.ArgumentTypeError:
+        check("_non_negative_int rejeita nao-inteiro (ArgumentTypeError)", True)
+    check("_non_negative_int aceita 0 e 14",
+          rd._non_negative_int("0") == 0 and rd._non_negative_int("14") == 14)
+    try:
+        rd.main(["--retention-days", "-1"])
+        check("argparse rejeita --retention-days negativo", False)
+    except SystemExit as exc:
+        check("argparse rejeita --retention-days negativo (exit != 0)", exc.code != 0)
+
+
+def test_aviso_disco() -> None:
+    print("== aviso de disco > 80% (mock de shutil.disk_usage) ==")
+    summary = rd.summarize_run([_run_record("r1", 400, 50)])
+
+    with mock.patch.object(shutil, "disk_usage", return_value=(100, 83, 17)) as m:
+        pct = rd.disk_usage_pct(Path("/tmp"))
+        check("disco 83% medido (round do ratio)", pct == 83 and m.call_count == 1)
+
+    msg = rd.build_message(summary, [], 0, disk_pct=83)
+    check("disco > 80% dispara envio mesmo sem anomalia", msg is not None)
+    check("linha '⚠️ Disco: 83% usado' na mensagem", "⚠️ Disco: 83% usado" in (msg or ""))
+
+    msg2 = rd.build_message(summary, [], 0, disk_pct=80)
+    check("limite exato (80%) nao dispara nem inclui linha", msg2 is None)
+    msg3 = rd.build_message(summary, [], 0, disk_pct=50)
+    check("disco <= 80%: sem envio", msg3 is None)
+
+    check("disk_pct None preserva anti-spam",
+          rd.build_message(summary, [], 0, disk_pct=None) is None)
+    check("assinatura antiga preservada (sem disk_pct)",
+          rd.build_message(summary, [], 0) is None
+          and rd.build_message(summary, [], 2) is not None)
+
+    with mock.patch.object(shutil, "disk_usage", side_effect=OSError("boom")):
+        check("disco inacessivel -> None, sem crash", rd.disk_usage_pct(Path("/tmp/xyz")) is None)
 
 
 def _data_snapshot(data_dir: Path) -> dict:
@@ -279,6 +393,9 @@ def main() -> int:
     test_env_config()
     test_telegram()
     test_comando_subprocesso()
+    test_env_subprocesso_herdado()
+    test_limpeza_archive()
+    test_aviso_disco()
     test_dry_run_nao_toca_data()
     print()
     if FAILURES:
