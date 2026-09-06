@@ -18,7 +18,8 @@ Regras de negocio (dono):
   (regra do dono, Fase 1 das correcoes pos-auditoria): Duales Studium (e
   equivalentes: Dualer Student/Student:in, Dualer Master, Duale Hochschule,
   Dual Study, "Praktikum im Rahmen des Dualen Studiums"), Ausbildung /
-  Berufsausbildung (aprendizagem profissional), Schul-/Schuelerpraktikum e
+  Berufsausbildung (aprendizagem profissional) e o equivalente EN
+  Apprentice/Apprenticeship (P3 lote 1), Schul-/Schuelerpraktikum e
   estagios escolares ("Praktikum fuer Schueler:innen",
   Berufsorientierungspraktikum) e servico voluntario (FSJ/BFD). A exclusao do
   tipo vence QUALQUER marcador forte de tipo no titulo (ex.: "Industriepraktikum
@@ -138,6 +139,15 @@ TYPE_EXCLUSION_PATTERNS = [
     # estagio universitario. "Ausbildung zum/als ...", "Ausbildungsplatz",
     # "Berufsausbildung", "Schwerpunkt kaufmaennische Berufsausbildung".
     r"\b(berufs)?ausbildungs?",
+    # EN equivalente (P3 lote 1): Apprentice/Apprenticeship (Azubi). O mesmo
+    # perfil dos 'Ausbildung ...' DE (aprendizagem profissional, nao estagio
+    # universitario). Como as regras DE, a exclusao vence QUALQUER marcador
+    # forte de tipo no titulo — inclusive o proprio ``\bapprentices?\b`` de
+    # STUDENT_TYPE_PATTERNS (a exclusao roda ANTES da aceitacao por tipo).
+    # ``\bapprentice`` cobre Apprentice/Apprentices; ``\bapprenticeships?``
+    # cobre a forma nominal (Apprenticeship/Apprenticeships).
+    r"\bapprentice",
+    r"\bapprenticeships?",
     # Estagios ESCOLARES (aluno do ensino medio, nao universidade):
     # "Schuelerpraktikum", "Schuelerpraktikant", "Schulpraktikum" (o \b inicial
     # NAO casa "Hochschulpraktikum" — estagio universitario valido),
@@ -178,7 +188,11 @@ MANAGER_PATTERN = re.compile(r"\bmanage", re.IGNORECASE)
 
 # employment_type que por si so indica vaga de estudante. PART_TIME nao basta:
 # ha clerk/posicoes permanentes part-time que nao sao vagas de estudante.
-STUDENT_EMPLOYMENT_TYPES = {"intern", "internship", "trainee", "co-op"}
+# ``trainee`` FORA (P3 lote 1): trainee generico nao e marcador forte (regra do
+# dono pos-auditoria) — um titulo so com et "trainee" nao passa; os programas
+# Graduate/Management Trainee/JMP continuam excluidos por
+# PROGRAM_EXCLUSION_PATTERNS.
+STUDENT_EMPLOYMENT_TYPES = {"intern", "internship", "co-op"}
 
 
 def _has_any(patterns: list[str], text: str) -> bool:
