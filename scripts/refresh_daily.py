@@ -18,10 +18,18 @@ Fluxo:
    rodar. Preserva o snapshot anterior (rollback = copiar de volta; o
    ``run_info.json`` gravado no archive registra o run que o substituiu).
    Copia, nao move: a origem fica intacta ate o CLI gravar por cima.
+1b. **Retencao do archive** — ``cleanup_archive`` apaga ``data/archive/<ts>``
+   cujo timestamp no nome (formato ``YYYYMMDDTHHMMSSZ``) seja mais antigo
+   que ``--retention-days`` dias (default 14; ``0`` desliga). Roda APOS a
+   rotacao; loga o que removeu (ou "nada a limpar").
 2. **Coleta real** — subprocesso ``python -m internship_finder.cli
-   --registry --timeout <T>`` (cwd = raiz do repo; PYTHONPATH=src; stdout/
-   stderr herdados — caem no log do cron). Exit 0 = ok; 1 = nada
-   eligible/coletado; 2 = parcial com falhas reais (dados salvos).
+   --registry --timeout <T> --sqlite data/jobs.db`` (cwd = raiz do repo;
+   env = ambiente do chamador + ``PYTHONPATH=src``; stdout/stderr herdados —
+   caem no log do cron). ``--sqlite`` persiste first_seen/last_seen/active/
+   archived no ``data/jobs.db`` (idempotente; falha de escrita nunca derruba
+   a coleta; o ``jobs.db`` NAO e rotacionado — historico acumulativo). Exit
+   0 = ok; 1 = nada eligible/coletado; 2 = parcial com falhas reais (dados
+   salvos).
 3. **Health** — ``build_health_report`` sobre o conteudo COMPLETO do JSONL
    apos o run (defensivo: malformados nunca derrubam). Os registros do run
    atual sao isolados por snapshot de linhas (antes x depois), sem adivinhar
@@ -32,12 +40,16 @@ Fluxo:
    nao default). Sem anomalia -> sem envio. Credenciais em ``.env``
    (gitignored): ``TELEGRAM_BOT_TOKEN`` e ``TELEGRAM_CHAT_ID``; sem token ->
    aviso no log e NAO envia (nunca crasha).
+4b. **Disco** — mede o uso do filesystem que contem ``data/``
+   (``shutil.disk_usage``) apos a coleta; acima de 80% loga warning e a
+   mensagem do Telegram ganha a linha ``⚠️ Disco: N% usado`` (esse aviso
+   tambem dispara o envio, mesmo sem anomalia).
 
 Flags:
 
 - ``--dry-run``: sem rede, sem escrever em ``data/`` — usa um tempdir com
-  dados sinteticos (rotacao + health + mensagem validados; a mensagem e
-  impressa, nada e enviado). Exit 0.
+  dados sinteticos (rotacao + limpeza + health + mensagem validados; a
+  mensagem e impressa, nada e enviado). Exit 0.
 - ``--config PATH``: arquivo de configuracao (default ``.env`` na raiz;
   formato ``CHAVE=VALOR``, ``#`` comenta).
 - ``--always-notify``: envia o resumo mesmo sem anomalia (digest; documentado,
@@ -46,6 +58,8 @@ Flags:
 - ``--max-collection-secs N``: teto total do subprocesso de coleta (default
   5400 = 90 min; a coleta completa de 39 empresas e ~10-30 min). Estourado:
   mensagem "run falhou (timeout do subprocesso)".
+- ``--retention-days N``: retencao do archive em dias (default 14; ``0`` =
+  desligado; negativo rejeitado com erro claro via argparse).
 
 Concorrencia: o cron usa ``flock -n`` (ver README) para nunca sobrepor runs;
 este script nao reimplementa lock.
@@ -62,6 +76,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -77,6 +92,9 @@ from internship_finder.health import build_health_report  # reuso — sem camada
 log = logging.getLogger("refresh_daily")
 
 # Arquivos de data/ rotacionados a cada run (fonte de dados + metricas).
+# O ``jobs.db`` do SQLite NAO entra aqui de proposito: e historico
+# acumulativo (first_seen/last_seen/active/archived), nao snapshot por run
+# (data/ e gitignored).
 ROTATE_FILES = [
     "jobs.json",
     "jobs.csv",
@@ -84,6 +102,16 @@ ROTATE_FILES = [
     "eligible_jobs.csv",
     "collection_metrics.jsonl",
 ]
+
+# Nome dos archives: YYYYMMDDTHHMMSSZ (UTC).
+ARCHIVE_TS_FORMAT = "%Y%m%dT%H%M%SZ"
+
+# Aviso de disco: percentual de uso do filesystem de data/ acima do qual o
+# refresh loga warning e inclui a linha "Disco" na mensagem do Telegram.
+DISK_WARN_PCT = 80
+
+# Retencao default do archive em dias (--retention-days).
+DEFAULT_RETENTION_DAYS = 14
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
@@ -152,21 +180,102 @@ def rotate(data_dir: Path, archive_root: Path, ts: str) -> Path:
     return archive_dir
 
 
+def _parse_archive_ts(name: str) -> datetime | None:
+    """Timestamp UTC de um nome de archive (``YYYYMMDDTHHMMSSZ``); None se
+    o nome nao estiver no formato esperado."""
+    try:
+        return datetime.strptime(name, ARCHIVE_TS_FORMAT).replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def cleanup_archive(archive_root: Path, retention_days: int,
+                    now: datetime | None = None) -> list[Path]:
+    """Aplica a retencao: apaga ``archive_root/<ts>`` mais antigos que
+    ``retention_days`` dias (``0`` = desligado). Nomes fora do formato
+    ``YYYYMMDDTHHMMSSZ`` sao preservados (defensivo) com aviso. Devolve a
+    lista dos diretorios removidos (log/testes). Chamada APOS a rotacao.
+    """
+    removed: list[Path] = []
+    if retention_days <= 0:
+        log.info("limpeza: retencao desligada (--retention-days %d); nada a limpar",
+                 retention_days)
+        return removed
+    if not archive_root.exists():
+        log.info("limpeza: %s nao existe; nada a limpar", archive_root)
+        return removed
+    now = now or datetime.now(UTC)
+    for child in sorted(archive_root.iterdir()):
+        if not child.is_dir():
+            continue
+        ts = _parse_archive_ts(child.name)
+        if ts is None:
+            log.warning("limpeza: %s fora do formato %s; preservado",
+                        child.name, ARCHIVE_TS_FORMAT)
+            continue
+        age_days = (now - ts).total_seconds() / 86400.0
+        if age_days >= retention_days:
+            shutil.rmtree(child)
+            removed.append(child)
+            log.info("limpeza: removido %s (idade %.1f dias)", child.name, age_days)
+    if not removed:
+        log.info("limpeza: nada a limpar")
+    return removed
+
+
+def _non_negative_int(value: str) -> int:
+    """Tipo argparse: inteiro >= 0 (negativo rejeitado com erro claro)."""
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"valor invalido: {value!r} (esperado inteiro nao negativo)")
+    if parsed < 0:
+        raise argparse.ArgumentTypeError(
+            f"retencao negativa ({parsed}) nao faz sentido; use 0 para desligar")
+    return parsed
+
+
+def disk_usage_pct(path: Path) -> int | None:
+    """Percentual de uso (0-100, arredondado) do filesystem que contem
+    ``path``; None se nao der para medir (diretorio inexistente/inacessivel).
+    """
+    try:
+        total, used, _free = shutil.disk_usage(path)
+    except OSError as exc:
+        log.warning("disco: uso de %s inacessivel (%s)", path, exc)
+        return None
+    if total <= 0:
+        return None
+    return int(round(used / total * 100))
+
+
 # --- coleta via subprocesso ------------------------------------------------
 
 def collection_command(timeout: float) -> list[str]:
-    """Linha de comando da coleta real (subprocesso, cwd = raiz do repo)."""
+    """Linha de comando da coleta real (subprocesso, cwd = raiz do repo).
+
+    ``--sqlite data/jobs.db``: persistencia first_seen/last_seen/active/
+    archived (P1 #5); a flag e idempotente e falha de escrita nunca derruba
+    a coleta. O ``jobs.db`` nao e rotacionado (historico acumulativo).
+    """
     return [
         sys.executable, "-m", "internship_finder.cli",
         "--registry",
         "--timeout", str(timeout),
+        "--sqlite", "data/jobs.db",
     ]
 
 
 def run_collection(command: list[str], cwd: Path, max_secs: float) -> subprocess.CompletedProcess:
     """Roda a coleta como subprocesso, herdando stdout/stderr (cai no log do
-    cron). Erro/estouro do teto vira ``timeout`` no processo retornado."""
-    env = {"PYTHONPATH": str(cwd / "src"), "PATH": "/usr/bin:/bin"}
+    cron). Erro/estouro do teto vira ``timeout`` no processo retornado.
+
+    O env herda o ambiente do chamador (ex.: ``INTERNSHIP_FINDER_GEOCODING=1``
+    definido no cron precisa chegar ao CLI) e sobrescreve apenas o que o run
+    exige (PYTHONPATH=src e PATH fixo).
+    """
+    env = {**os.environ, "PYTHONPATH": str(cwd / "src"), "PATH": "/usr/bin:/bin"}
     log.info("coleta: subprocesso %s (cwd=%s)", " ".join(command), cwd)
     try:
         return subprocess.run(
@@ -281,12 +390,18 @@ def build_message(
     exit_code: int,
     *,
     always_notify: bool = False,
+    disk_pct: int | None = None,
 ) -> str | None:
     """Monta a mensagem de alerta/digest; ``None`` = nada a enviar (anti-spam:
     sem anomalia, sem falha e sem ``--always-notify``, nao envia).
+
+    ``disk_pct``: percentual de uso do filesystem de ``data/``; quando maior
+    que ``DISK_WARN_PCT`` a mensagem ganha a linha ``⚠️ Disco: N% usado`` e o
+    aviso tambem dispara o envio. Chamadores passam o valor medido (ou None).
     Alertas deduplicados por fonte (1 por fonte por run)."""
     alerts = sorted(report_alerts, key=lambda a: (a.get("source", ""), a.get("type", "")))
-    if not (always_notify or exit_code != 0 or alerts):
+    disk_warning = disk_pct is not None and disk_pct > DISK_WARN_PCT
+    if not (always_notify or exit_code != 0 or alerts or disk_warning):
         return None
 
     lines: list[str] = ["📊 internship-finder · refresh diário"]
@@ -346,6 +461,10 @@ def build_message(
     if failures:
         lines.append("")
         lines.append("Falhas: " + " · ".join(f"{s} [{c}]" for s, c in failures))
+
+    if disk_warning:
+        lines.append("")
+        lines.append(f"⚠️ Disco: {disk_pct}% usado")
     return "\n".join(lines)
 
 
@@ -457,12 +576,18 @@ def _seed_dry_run(data_dir: Path) -> tuple[int, int]:
     with (data_dir / "collection_metrics.jsonl").open("a", encoding="utf-8") as fh:
         for rec in history + new:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+    # Archive antigo (fora da retencao) para o dry-run exercitar a limpeza.
+    old_archive = data_dir / "archive" / "20200101T000000Z"
+    old_archive.mkdir(parents=True)
+    (old_archive / "jobs.json").write_text("{}", encoding="utf-8")
     return len(history), len(new)
 
 
-def _run_dry_run() -> int:
-    """Fluxo dry-run: tempdir com dados sinteticos; valida rotacao, snapshot
-    de linhas, health, resumo e mensagem. Nunca toca ``data/`` nem a rede."""
+def _run_dry_run(retention_days: int = DEFAULT_RETENTION_DAYS) -> int:
+    """Fluxo dry-run: tempdir com dados sinteticos; valida rotacao, limpeza
+    do archive, snapshot de linhas, health, resumo e mensagem. Nunca toca
+    ``data/`` nem a rede."""
     with tempfile.TemporaryDirectory(prefix="refresh_dryrun_") as tmp:
         base = Path(tmp)
         data_dir = base / "data"
@@ -471,6 +596,10 @@ def _run_dry_run() -> int:
         ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         print(f"== DRY-RUN (tempdir {base}) ==")
         archive_dir = rotate(data_dir, archive_root, ts)
+        print(f"== limpeza do archive (--retention-days {retention_days}) ==")
+        removed = cleanup_archive(archive_root, retention_days)
+        restantes = sorted(p.name for p in archive_root.iterdir())
+        print(f"archives removidos: {len(removed)}; restantes: {restantes}")
         metrics = data_dir / "collection_metrics.jsonl"
         new_records = read_new_records(metrics, hist)
         print(f"linhas novas lidas: {len(new_records)} (esperado {new})")
@@ -520,6 +649,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="timeout por scraper passado ao CLI (default 60)")
     parser.add_argument("--max-collection-secs", type=float, default=5400.0,
                         help="teto total do subprocesso de coleta em segundos (default 5400)")
+    parser.add_argument("--retention-days", type=_non_negative_int,
+                        default=DEFAULT_RETENTION_DAYS, metavar="N",
+                        help="retencao do archive em dias "
+                        f"(default {DEFAULT_RETENTION_DAYS}; 0 = desligado)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -530,7 +663,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     if args.dry_run:
-        return _run_dry_run()
+        return _run_dry_run(args.retention_days)
 
     root = repo_root()
     data_dir = root / "data"
@@ -541,6 +674,7 @@ def main(argv: list[str] | None = None) -> int:
     log.info("refresh: rotacao antiga -> archive (config=%s)", config_path)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     archive_dir = rotate(data_dir, archive_root, ts)
+    cleanup_archive(archive_root, args.retention_days)
 
     skip_lines = _count_lines(metrics_path)
     proc = run_collection(collection_command(args.timeout), root, args.max_collection_secs)
@@ -557,8 +691,15 @@ def main(argv: list[str] | None = None) -> int:
     report = build_health_report(records)
     log.info("health: %d alertas", len(report["alerts"]))
 
+    disk_pct = disk_usage_pct(data_dir)
+    disk_pct = disk_pct if disk_pct is not None and disk_pct > DISK_WARN_PCT else None
+    if disk_pct is not None:
+        log.warning("disco: filesystem de %s com %d%% de uso (>= %d%%)",
+                    data_dir, disk_pct, DISK_WARN_PCT)
+
     message = build_message(summary, report["alerts"], exit_code,
-                            always_notify=args.always_notify)
+                            always_notify=args.always_notify,
+                            disk_pct=disk_pct)
     if message is None:
         print("Sem anomalia — nenhum envio (anti-spam).")
     else:
