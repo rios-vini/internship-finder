@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from internship_finder.adapters.ats import AtsJobAdapter  # noqa: E402
 from internship_finder.filters import (  # noqa: E402
     PROGRAM_EXCLUSION_PATTERNS,
+    STUDENT_EMPLOYMENT_TYPES,
     STUDENT_TYPE_PATTERNS,
     TYPE_EXCLUSION_PATTERNS,
     infer_country_iso,
@@ -166,6 +167,54 @@ def test_type_exclusion_rules() -> None:
           not is_student_role("Master Maschinenbau - Produktionssysteme dual (m/w/d) ab 01.03.2027"))
 
 
+def test_type_exclusion_en() -> None:
+    print("== exclusao de tipo EN: Apprentice/Apprenticeship (P3 lote 1) ==")
+    # Anti-casos REAIS do dataset (VW/SICK/Infineon/SAP): Azubi em ingles —
+    # exatamente o mesmo perfil dos 'Ausbildung ...' DE ja excluidos (D19/D20).
+    # A exclusao EN vence o marcador forte ``\\bapprentices?\\b`` de
+    # STUDENT_TYPE_PATTERNS (a exclusao roda ANTES da aceitacao por tipo).
+    check("E1. 'Apprentice (f/m/d) Electronics Technician...' excluido (VW real)",
+          not is_student_role(
+              "Apprentice (f/m/d) Electronics Technician for Automation "
+              "Technology"))
+    check("E2. 'Apprentice (f/m/d) Industrial Business Administrator' excluido (VW real)",
+          not is_student_role(
+              "Apprentice (f/m/d) Industrial Business Administrator"))
+    check("E3. exclusao vence employment_type trainee",
+          not is_student_role(
+              "Apprentice (f/m/d) Electronics Technician for Automation "
+              "Technology", None, "trainee"))
+    check("E4. 'Apprenticeship 2027: Mechatronics technician' excluido (SICK real)",
+          not is_student_role(
+              "Apprenticeship 2027: Mechatronics technician (f/m/d)"))
+    check("E5. 'Apprenticeship: Digital Marketing...' excluido (Infineon real)",
+          not is_student_role(
+              "Apprenticeship: Digital Marketing and Communication (f/m/div)"))
+    # Regressao: nenhum marcador de estagio universitario pode ser afetado.
+    check("E6. 'Praktikum Supply Chain' continua aceito",
+          is_student_role("Praktikum Supply Chain"))
+    check("E7. 'Werkstudent im Bereich Data Analytics' continua aceito",
+          is_student_role("Werkstudent im Bereich Data Analytics"))
+
+
+def test_trainee_employment_type() -> None:
+    print("== 'trainee' fora de STUDENT_EMPLOYMENT_TYPES (P3 lote 1) ==")
+    # Trainee generico NAO e marcador forte: com et "trainee" e sem outro
+    # marcador (titulo/descricao), a vaga nao passa.
+    check("T1. 'Trainee (Supply Chain)' com et trainee NAO passa",
+          not is_student_role("Trainee (Supply Chain)", None, "trainee"))
+    check("T2. et trainee sozinho nao basta (sempre False)",
+          not is_student_role("Junior Buyer (m/f/d)", None, "trainee"))
+    # Anti-caso: programas de trainee continuam excluidos (PROGRAM_EXCLUSION).
+    check("T3. 'Graduate Trainee ...' com et trainee continua False",
+          not is_student_role("Graduate Trainee - Procurement", None, "trainee"))
+    check("T4. 'trainee' removido de STUDENT_EMPLOYMENT_TYPES",
+          "trainee" not in STUDENT_EMPLOYMENT_TYPES)
+    # Regressao: employment_type INTERN continua valido sozinho.
+    check("T5. et INTERN sozinho continua valido",
+          is_student_role("Procurement Analyst", None, "INTERN"))
+
+
 def test_location_level() -> None:
     print("== vaga sem localizacao (dois niveis) ==")
     spec_de = parse_country_spec("de")
@@ -236,8 +285,10 @@ def test_consistency() -> None:
           all("praktikum" != p.strip(r"\b") for p in TYPE_EXCLUSION_PATTERNS))
     check("exclusao de tipo nao tem 'studium' solto",
           all("studium" != p.strip(r"\b") for p in TYPE_EXCLUSION_PATTERNS))
-    check("exclusao de tipo tem 15 padroes explicitos",
-          len(TYPE_EXCLUSION_PATTERNS) == 15)
+    check("exclusao de tipo tem 17 padroes explicitos",
+          len(TYPE_EXCLUSION_PATTERNS) == 17)
+    check("exclusao EN de aprendizagem presente (apprentice)",
+          any("apprentice" in p for p in TYPE_EXCLUSION_PATTERNS))
     # Adaptador (flag Job.internship) usa a mesma regra.
     company = Company(ats="smartrecruiters", slug="BoschGroup", name="Bosch Group")
     adapter = AtsJobAdapter()
@@ -388,6 +439,8 @@ def test_consistency() -> None:
 def main() -> int:
     test_type_rules()
     test_type_exclusion_rules()
+    test_type_exclusion_en()
+    test_trainee_employment_type()
     test_location_level()
     test_no_description()
     test_ats_independence()

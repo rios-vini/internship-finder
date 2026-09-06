@@ -86,6 +86,23 @@ SEED = [
 ]
 
 
+def _status_sort_key(rec: dict) -> tuple:
+    """Chave de ordenacao: run_id (string ordenavel) primeiro; fallback timestamp.
+
+    Espelha ``health._sort_key`` (P3 lote 1): registros com ``run_id`` string
+    ordenam antes dos que so tem ``timestamp``; sem ambos, mantem a ordem de
+    chegada (sort estavel). ``run_id``/``timestamp`` nao-string ou vazios sao
+    tratados como ausentes — o status nunca derruba por tipo inesperado.
+    """
+    run_id = rec.get("run_id")
+    if isinstance(run_id, str) and run_id.strip():
+        return (0, run_id)
+    ts = rec.get("timestamp")
+    if isinstance(ts, str) and ts.strip():
+        return (1, ts)
+    return (2, "")
+
+
 class CompanyRegistry:
     """Fonte de verdade das empresas operacionais da coleta.
 
@@ -128,7 +145,10 @@ class CompanyRegistry:
 
         Para cada empresa do registry, agrega os registros ``type: tenant`` que
         carregam aquele ``company``: último ``status``, última data e total de
-        vagas da última coleta. Registros malformados são ignorados sem derrubar.
+        vagas da última coleta. O "último" registro é o mais recente por
+        ``(run_id, timestamp)`` (P3 lote 1, espelho de ``health._sort_key``) —
+        NÃO a última linha do arquivo: JSONL pode chegar fora de ordem.
+        Registros malformados são ignorados sem derrubar.
         Empresas sem nenhum registro aparecem com ``status=None``.
         """
         if not Path(metrics).exists():
@@ -154,7 +174,9 @@ class CompanyRegistry:
             if not rows:
                 status[name] = {"status": None, "last_run": None, "last_collected": None}
                 continue
-            last = rows[-1]  # JSONL append-only: última linha = run mais recente
+            # run mais recente por (run_id, timestamp) — nao por posicao no
+            # arquivo (linhas podem vir fora de ordem; P3 lote 1).
+            last = sorted(rows, key=_status_sort_key)[-1]
             status[name] = {
                 "status": last.get("status"),
                 "last_run": last.get("timestamp"),

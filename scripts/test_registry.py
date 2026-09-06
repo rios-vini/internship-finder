@@ -207,7 +207,7 @@ def test_company_status() -> None:
         json.dumps({"type": "run", "company": "SAP", "status": "ok"}) + "\n"
     )
     st = reg.company_status(p)
-    check("6b. ultima linha da empresa vence", st["Bosch"]["status"] == "error",
+    check("6b. registro mais recente vence", st["Bosch"]["status"] == "error",
           f"{st['Bosch']}")
     check("6c. ultimo estado carrega data/contagem",
           st["Bosch"]["last_run"] == "2026-09-02T00:00:00Z"
@@ -215,6 +215,57 @@ def test_company_status() -> None:
     check("6d. registro nao-tenant ignorado (empresa sem tenant fica None)",
           st["SAP"]["status"] is None)
     check("6e. JSONL malformado nao derruba", len(st) == 39)
+
+
+def test_company_status_run_id_ordering() -> None:
+    print("== company_status por (run_id, timestamp) — nao posicao (P3 lote 1) ==")
+    reg = CompanyRegistry()
+    tmp = tempfile.mkdtemp()
+    p = Path(tmp) / "m.jsonl"
+    # Linhas FORA de ordem no arquivo: o run MAIS RECENTE escrito PRIMEIRO —
+    # a heuristica antiga (ultima linha = mais recente) pegaria o errado.
+    p.write_text(
+        json.dumps({"type": "tenant", "company": "Bosch", "status": "ok",
+                    "collected": 99, "run_id": "2026-09-03T00:00:00Z",
+                    "timestamp": "2026-09-03T00:00:00Z"}) + "\n" +
+        json.dumps({"type": "tenant", "company": "Bosch", "status": "error",
+                    "collected": 0, "run_id": "2026-09-01T00:00:00Z",
+                    "timestamp": "2026-09-01T00:00:00Z"}) + "\n"
+    )
+    st = reg.company_status(p)
+    check("7a. status reflete o run_id MAIS RECENTE (nao a ultima linha)",
+          st["Bosch"]["status"] == "ok", f"{st['Bosch']}")
+    check("7b. ultimo estado carrega dados do run recente",
+          st["Bosch"]["last_run"] == "2026-09-03T00:00:00Z"
+          and st["Bosch"]["last_collected"] == 99)
+
+    # Espelho fiel de health._sort_key: run_id e a chave PRIMARIA; registro sem
+    # run_id (so timestamp) ordena DEPOIS de todos os com run_id — mesmo com
+    # timestamp mais novo — e e o "ultimo" do sort (o escolhido).
+    p2 = Path(tmp) / "m2.jsonl"
+    p2.write_text(
+        json.dumps({"type": "tenant", "company": "Bosch", "status": "ok",
+                    "collected": 99, "run_id": "2026-09-03T00:00:00Z"}) + "\n" +
+        json.dumps({"type": "tenant", "company": "Bosch", "status": "error",
+                    "collected": 0, "run_id": "2026-09-01T00:00:00Z"}) + "\n" +
+        json.dumps({"type": "tenant", "company": "Bosch", "status": "empty",
+                    "collected": 0, "timestamp": "2026-09-05T00:00:00Z"}) + "\n"
+    )
+    st = reg.company_status(p2)
+    check("7c. sem run_id: timestamp-only e o ultimo do sort (espelho do health)",
+          st["Bosch"]["status"] == "empty", f"{st['Bosch']}")
+
+    # Sem run_id nem timestamp: ordem de chegada mantida (ultimo vence).
+    p3 = Path(tmp) / "m3.jsonl"
+    p3.write_text(
+        json.dumps({"type": "tenant", "company": "Bosch", "status": "ok",
+                    "collected": 1}) + "\n" +
+        json.dumps({"type": "tenant", "company": "Bosch", "status": "error",
+                    "collected": 0}) + "\n"
+    )
+    st = reg.company_status(p3)
+    check("7d. sem run_id/timestamp mantem ordem de chegada",
+          st["Bosch"]["status"] == "error", f"{st['Bosch']}")
 
 
 def main() -> int:
@@ -229,6 +280,8 @@ def main() -> int:
     test_cli_bridge()
     print()
     test_company_status()
+    print()
+    test_company_status_run_id_ordering()
     print()
     if FAILURES:
         print(f"FALHAS: {len(FAILURES)} -> {FAILURES}")
