@@ -22,7 +22,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from internship_finder.health import (  # noqa: E402
     CONSECUTIVE_FAILURES,
-    DROP_THRESHOLD,
     MIN_OK_HISTORY_FOR_DROP,
     build_health_report,
 )

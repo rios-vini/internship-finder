@@ -363,7 +363,6 @@ def test_synthetic() -> None:
             description="Support the marketing team with content creation.",
         )
     )
-    sc_bonus = sc.breakdown
     mkt_area = mkt.breakdown
     check("Marketing: area 0", mkt_area["area"] == 0.0)
     check("Marketing: skills 0", mkt_area["skills"] == 0.0)

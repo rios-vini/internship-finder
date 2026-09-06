@@ -237,7 +237,6 @@ def test_real_data() -> None:
 
     # todo par removido deve ter a MESMA chave normalizada (auditoria)
     for winner, loser, label in removed:
-        keys_w = dict(candidate_keys_for_audit := {})
         # reutiliza candidate_keys para auditoria
         from internship_finder.dedup import candidate_keys
         wk = candidate_keys(winner)

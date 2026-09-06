@@ -23,7 +23,6 @@ Uso:  .venv/bin/python scripts/test_hardening.py
 
 from __future__ import annotations
 
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -128,7 +127,6 @@ def test_ach09_sem_titulo() -> None:
 
 def _mock_collect_company(fetch_side_effect) -> tuple[list, dict]:
     """Executa ``collect_company`` com CompanyCollector fake e fetch mockado."""
-    from internship_finder import collectors
     from internship_finder.collectors import ats_scraper
 
     fake_company = make_company()
@@ -145,8 +143,6 @@ def _mock_collect_company(fetch_side_effect) -> tuple[list, dict]:
 
 def test_collect_states() -> None:
     print("== ACH-04: estados SUCCESS/EMPTY/ERROR/TIMEOUT ==")
-    from internship_finder.models.job import Job
-    from internship_finder.collectors import ats_scraper
 
     # 5. SUCCESS: fetch devolve 1 job
     job_dict = {
@@ -311,8 +307,7 @@ def test_metrics_not_found_and_duration() -> None:
 
 def test_p0_deadline() -> None:
     print("== P0: application_deadline ==")
-    from internship_finder.models.job import Job
-    from datetime import datetime, UTC
+    from datetime import datetime
     c = make_company()
     adapter = AtsJobAdapter()
     with_d = adapter.to_job({"title": "Intern", "url": "https://a/1",
