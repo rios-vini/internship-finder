@@ -232,8 +232,8 @@ Flags do CLI:
 | `--all` | desliga os tres filtros de uma vez (copia o conjunto inteiro) |
 | `--dedup` / `--no-dedup` | remove duplicatas da saida (default: ligado) |
 | `--rank` / `--no-rank` | rankeia por compatibilidade com o perfil: score + TOP 20 (default: ligado; `--no-rank` mantem a ordem original) |
-| `--timeout` | teto de segundos por scraper (defensivo: uma empresa que trava nao derruba o resto) |
-| `--limit N` | maximo de vagas por tenant (0 = sem limite) |
+| `--timeout` | teto de segundos por scraper (defensivo: uma empresa que trava nao derruba o resto); valor `<= 0` -> erro claro, exit 2 (P3 #20) |
+| `--limit N` | maximo de vagas por tenant, aplicado APOS a coleta (0 = sem limite); valor negativo -> erro claro, exit 2 (P3 #20) |
 | `--include-descriptions` | busca a descricao por vaga (mais lento em ATS que exigem uma chamada por vaga, ex. SmartRecruiters) |
 | `--metrics PATH` | JSONL de metricas da execucao (modo coleta; default: `data/collection_metrics.jsonl`) |
 | `--sqlite PATH` | modo coleta: persiste o historico de cada vaga (`first_seen`/`last_seen`/`active`/`archived`) em banco `sqlite3` na PATH (default: desligado) |
@@ -379,6 +379,19 @@ employment_type, country_iso, raw`.
   EXCLUIDOS mesmo com `employment_type` "trainee" (regra do dono,
   pos-auditoria — `filters.PROGRAM_EXCLUSION_PATTERNS`).
 - `raw` guarda os campos extras do ATS (sem duplicar a `description`).
+
+### Saida (JSON/CSV) — contrato P3 #20/ACH-18
+
+`save_outputs` grava sempre um par no mesmo caminho de base (`--output
+data/jobs.json` -> `data/jobs.csv`): o **JSON e a fonte completa** (todos os
+campos do Job, incluindo `description`, `raw` e `score_breakdown`); o **CSV e
+a visao tabular** com as 16 colunas de `CSV_COLUMNS` (`id, title, company,
+location, country, country_iso, remote, url, source, external_id,
+employment_type, internship, posted_at, application_deadline, collected_at,
+score`) — `description`/`raw`/`score_breakdown` ficam de fora de proposito
+(texto grande/aninhado). Medido 05/09: jobs.csv com 38.038/38.038 linhas do
+jobs.json (0 ids divergentes); a coluna `remote` foi adicionada em 06/09
+(antes ausente em 100% das linhas).
 
 ## Estrutura
 

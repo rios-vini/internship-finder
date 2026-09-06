@@ -119,10 +119,27 @@ def test_synthetic() -> None:
           is_remote("Munich", True))
     check("is_remote: 'remote' na location",
           is_remote("Remote (Germany)", False))
+    # P3 #20 (ACH-16): o filtro --country remote funciona SEM o campo remote
+    # preenchido (nenhum ATS expoe o campo hoje — medido 0/38.038 em
+    # data/jobs.json), via marcador na location.
+    spec_remote = parse_country_spec("remote")
+    check("matches_country remote: so location com 'remote' aceita",
+          matches_country(None, "Remote (Germany)", None, spec_remote))
+    check("matches_country remote: home office na location aceita",
+          matches_country(None, "Hamburg | Home Office", None, spec_remote))
+    check("matches_country remote: sem marcador rejeita",
+          not matches_country(None, "Stuttgart", None, spec_remote))
 
     # Constantes do dominio.
     check("EUROPE_COUNTRIES contem de/at/ch",
           {"de", "at", "ch"} <= EUROPE_COUNTRIES)
+    # P3 #20 (ACH-19): BY/RU ficam de fora de EUROPE_COUNTRIES (decisao
+    # documentada na docstring — comentario ja dizia; o codigo incluia 'by'
+    # por engano. Medido: 0 vagas reais com ISO 'by'/'ru' em data/jobs.json).
+    check("EUROPE_COUNTRIES NAO contem 'by' (BY excluido, ACH-19)",
+          "by" not in EUROPE_COUNTRIES)
+    check("EUROPE_COUNTRIES NAO contem 'ru' (RU excluido)",
+          "ru" not in EUROPE_COUNTRIES)
     check("COUNTRY_NAMES mapeia 'Germany' -> 'de'",
           COUNTRY_NAMES.get("germany") == "de")
     check("COUNTRY_NAMES mapeia 'Deutschland' -> 'de'",

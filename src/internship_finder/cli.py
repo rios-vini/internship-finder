@@ -63,6 +63,7 @@ CSV_COLUMNS = [
     "location",
     "country",
     "country_iso",
+    "remote",
     "url",
     "source",
     "external_id",
@@ -76,7 +77,16 @@ CSV_COLUMNS = [
 
 
 def save_outputs(jobs: list[Job] | list[dict], output: Path) -> None:
-    """Grava JSON e CSV (CSV derivado do nome do JSON). Aceita Job ou dict."""
+    """Grava JSON e CSV (CSV derivado do nome do JSON). Aceita Job ou dict.
+
+    Contrato (P3 #20/ACH-18, medido em 05/09): JSON = fonte completa (todos
+    os campos do Job, inclusive ``description``/``raw``/``score_breakdown``);
+    CSV = visao tabular com as colunas de CSV_COLUMNS (15 + ``remote`` desde
+    06/09 — antes, ``remote`` ficava de fora em 38.038/38.038 linhas de
+    jobs.csv e 224/224 de eligible_jobs.csv). ``description``/``raw``/
+    ``score_breakdown`` ficam de fora do CSV de proposito (texto grande/
+    aninhado; a fonte de verdade e o JSON).
+    """
     output.parent.mkdir(parents=True, exist_ok=True)
     rows = [j.to_dict() if hasattr(j, "to_dict") else j for j in jobs]
     with output.open("w", encoding="utf-8") as fh:
@@ -313,13 +323,15 @@ def main(argv: list[str] | None = None) -> int:
         "--timeout",
         type=float,
         default=45.0,
-        help="Timeout por scraper (s) — modo coleta",
+        help="Timeout por scraper (s) — modo coleta (deve ser > 0; valor "
+        "invalido -> erro claro, exit 2)",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=0,
-        help="Maximo de vagas por tenant (0 = sem limite) — modo coleta",
+        help="Maximo de vagas por tenant (0 = sem limite; aplicado APOS a "
+        "coleta, por tenant) — modo coleta (negativo -> erro claro, exit 2)",
     )
     parser.add_argument(
         "--include-descriptions",
@@ -428,6 +440,17 @@ def main(argv: list[str] | None = None) -> int:
         parse_country_spec(args.country)
     except ValueError as exc:
         parser.error(str(exc))
+
+    # P3 #20 (ACH-14): valida flags de coleta cedo. Antes, --timeout <= 0 e
+    # --limit negativo eram aceitos silenciosamente com comportamento
+    # indefinido (deadline do subprocesso virava so a margem / slice ``[:-k]``
+    # sutil da lista). Agora: erro claro (exit 2), antes de input/coleta,
+    # como a validacao de --country (P2 #15). Valores validos inalterados;
+    # refresh_daily.py usa --timeout 60 (ok).
+    if args.timeout <= 0:
+        parser.error("--timeout deve ser > 0 (segundos por scraper)")
+    if args.limit < 0:
+        parser.error("--limit deve ser >= 0 (0 = sem limite)")
 
     if args.companies or args.registry:
         names = [n.strip() for n in args.companies.split(",") if n.strip()] if args.companies else []
