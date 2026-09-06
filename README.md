@@ -109,7 +109,9 @@ gravar; rollback = copiar de volta o archive + re-rodar `--health`); (2)
 `--max-collection-secs`, default 5400s); (3) **health** — `build_health_report`
 sobre o JSONL completo pos-run; (4) **alerta** — 1 mensagem por run, alertas
 deduplicados por fonte, disparado quando exit != 0 (coleta falhou/parcial) OU o
-relatorio tem alertas (queda brusca / erro recorrente); sem anomalia, nada e
+relatorio tem alertas (queda brusca / erro recorrente / **zero-return**: uma
+fonte que tinha vagas e passou a responder `empty` por ≥3 runs ok>0 anteriores
+— P2 #10); sem anomalia, nada é
 enviado. `--always-notify` envia o resumo mesmo sem anomalia (digest, opcional).
 
 **Credenciais** (`.env` na raiz — gitignored): `TELEGRAM_BOT_TOKEN` e
