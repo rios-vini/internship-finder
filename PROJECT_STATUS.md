@@ -47,7 +47,7 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): 245 eli
 - Post-audit corrections F1–F3 (parecer A, 2026-08-13)
 - **P0 — Application deadline + hardening ACH-01..09** (PR #8, merged 31/08): `Job.application_deadline` (`datetime|None`, never inferred from `posted_at`), dedup per tenant, IDs without URL, JSONL metrics, exit code 2 on partial failure.
 - **P0.1 — Workday Country/Location Resolver** (PR #9, merged 01/09): `geocoding.py`, cache-first, flag `INTERNSHIP_FINDER_GEOCODING` (OFF), adapter fallback after `infer_country_iso`; +9 Workday DE recovered with the flag on.
-- **P1 #5 — SQLite persistence** (PR #10, merged 01/09): `storage/sqlite_store.py`, flag `--sqlite PATH` (stdlib `sqlite3`), canonical Job schema + `first_seen`/`last_seen`/`active`/`archived`.
+- **P1 #5 — SQLite persistence** (PR #10): `storage/sqlite_store.py`, flag `--sqlite PATH` (stdlib `sqlite3`), canonical Job schema + `first_seen`/`last_seen`/`active`/`archived`.
 - **P1 #3 — CI GitHub Actions** (PR #11): `.github/workflows/ci.yml` runs the standalone suite (`scripts/test_*.py`) on a clean Python 3.12 runner; exit 0 = TUDO OK.
 - **P1 #6 — Observability** (PR #12): `health.py`, flag `--health [PATH]` — JSON report per tenant/ATS over the JSONL + drop/recurring-error alerts.
 - **P1 #7 — Structured error codes** (PR #13): `errors.py` (`CollectionError` + codes), structured queue payload, `error_code` in the JSONL.
@@ -68,7 +68,7 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): 245 eli
 ## Next priorities
 
 - **P3 #20 and P3 #21 are complete** (06/09 — see Completed). Next backlog item:
-  - **P3 #30**: re-evaluate the `ats-scrapers>=0.3.0` range when upstream evolves (gate: new release ≥0.4.0 or install/import failure). **Checked 2026-09-06 (15:01 UTC): PyPI latest is still 0.3.0 (releases 0.1.0/0.2.0/0.3.0), `application_deadline` expose present in the installed module, import OK — gate not fired, range kept, no code change** (details in MASTER_PLAN log). Item stays Next: re-check when upstream releases ≥0.4.0 or an install/import failure appears.
+  - **P3 #30**: re-evaluate the `ats-scrapers>=0.3.0` range when upstream evolves (gate: new release ≥0.4.0 or install/import failure). **Checked 2026-09-06 (19:47 UTC, independent re-check over main): PyPI latest is still 0.3.0 (releases 0.1.0/0.2.0/0.3.0, last upload 02/09), installed venv 0.3.0, `application_deadline` expose present in the installed module (grep 2 hits), import OK, daily refresh log with no install/import failure — gate NOT fired, range kept, zero code change** (details in MASTER_PLAN log). Item stays Next: re-check when upstream releases ≥0.4.0 or an install/import failure appears.
 - Full ranked plan (P0–P4, status ✅/⏳): see `MASTER_PLAN.md` (source of truth).
 
 ## Known limitations
