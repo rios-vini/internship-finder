@@ -99,7 +99,7 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 23 | Expansão internacional (NL/CH/AT → BE/FR/nórdicos/UK) + mais empresas DE (39→60→100) | ⏳ | Depois de estabilizar qualidade; ATS novo só se relevante p/ cobertura. |
 | 24 | Agregadores (LinkedIn/Indeed/Glassdoor) | ⏳ | Depois de persistência + dedup maduro (identidade cross-source é complexa). |
 | 25 | Interface simples (top vagas, filtros, link) | ⏳ | Sem frontend sofisticado; dashboard/lista basta. |
-| 30 | Reavaliar range `>=0.3.0` do ats-scrapers quando o upstream evoluir (maturidade da release) | ⏳ **registrado 04/09** | P3 #19 eliminou a ref de PR `ae0ad53`; restou o range aberto no pyproject. Na próxima release do ats-scrapers (≥0.4.0): revalidar expose de `application_deadline` + suíte e decidir cap (`==0.3.*`) se a API mudar. Gate: nova release observada no PyPI ou falha de install/import. |
+| 30 | Reavaliar range `>=0.3.0` do ats-scrapers quando o upstream evoluir (maturidade da release) | ⏳ **checado 2026-09-06** | P3 #19 eliminou a ref de PR `ae0ad53`; restou o range aberto no pyproject. Na próxima release do ats-scrapers (≥0.4.0): revalidar expose de `application_deadline` + suíte e decidir cap (`==0.3.*`) se a API mudar. Gate: nova release observada no PyPI ou falha de install/import. **Checagem 06/09 19:47 UTC (re-verificação independente): PyPI última release 0.3.0 (releases 0.1.0/0.2.0/0.3.0, upload 02/09) — sem release ≥0.4.0; venv instalado 0.3.0; import OK; expose de `application_deadline` presente na instalação; refresh diário sem falha de install/import → gate NÃO disparado, range `>=0.3.0` mantido, zero mudança de código (caminho B; ver Log de mudanças).** |
 
 ### 🔵 P4 — inteligência (só com dados históricos reais)
 | # | Item | Status | Notas |
@@ -296,6 +296,31 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
   - imports não usados em testes (pyflakes): `test_health.py` DROP_THRESHOLD; `test_hardening.py` `import json`, `from internship_finder import collectors`, 2× `Job`, `ats_scraper`, `UTC` (imports com `# noqa: F401` explícito MANTIDOS — deliberados); `test_registry.py` SEED; `test_sqlite.py` `import sqlite3`.
   - locais não usados: `test_registry.py` `unspecified`; `refresh_daily.py` `n_fail`; `test_dedup.py` `keys_w = dict(candidate_keys_for_audit := {})` (junk walrus); `test_validation.py` `as e`; `test_ranking.py` `sc_bonus`.
   - Array do CI INALTERADO (16) — nenhum teste do array saiu; suíte local 17/17 TUDO OK de cwd scratch (pré e pós); `data/` intocada (stat antes == depois); `__version__`/`CompanyResolver`/`company_status`/4 scripts utilitários mantidos com justificativa (ver relatório exec). Observações registradas: README diz que `company_status` é "exposto pelo `--health`" mas o cli.py não o chama (doc ≠ código, fora do escopo); `filters.py` re-export vivo (COUNTRY_CODES/is_remote) precisaria de `# noqa: F401` num eventual passo de lint; imports `# noqa: F401` deliberados no test_hardening (Job importável no bloco). [#21 ✅]
+- **2026-09-06 (P3 #30)**: **Range `ats-scrapers>=0.3.0` reavaliado — gate NÃO
++  disparado (caminho B): range mantido, zero mudança de código** — checagem
++  independente executada ao vivo em 06/09 **19:47 UTC** com re-verificação feita
++  na hora (a checagem da manhã de 06/09 15:01 UTC segue na branch local não
++  mergeada `feature/p3-30-ats-range`; este registro re-valida as mesmas
++  evidências sobre o main). **PyPI** (`curl -s https://pypi.org/pypi/ats-scrapers/json`):
++  `info.version` = **0.3.0**; releases = `0.1.0, 0.2.0, 0.3.0` — 0.3.0 com 2
++  arquivos, último upload **2026-09-02T20:53:41Z**; **nenhuma release ≥0.4.0
++  existe → critério literal do gate (release ≥0.4.0) NÃO atingido**. **Instalado**:
++  `.venv/bin/pip show ats-scrapers` → Version **0.3.0**; `import
++  ats_scrapers.scrapers.successfactors` OK (path
++  `.venv/lib/python3.12/site-packages/ats_scrapers/scrapers/successfactors.py`);
++  expose de `application_deadline` **presente** no módulo instalado (2
++  ocorrências via grep — critério do CI satisfeito). **Install/import**:
++  `/tmp/refresh_daily.log` (run do cron 06/09 06:00 UTC, arquivo existe, 118 KB)
++  sem nenhuma falha de instalação/importação — únicos erros são os alertas
++  CONHECIDOS do upstream, que não disparam o gate (`moka:bayer/148387`:
++  ScraperError "Moka scraper requires pycryptodome" — limitação do scraper;
++  `successfactors:lidlstiftuP2`: timeout). **Decisão — caminho B do item #30**:
++  checagem registrada, `pyproject.toml` intocado (range `>=0.3.0` mantido), gate
++  continua monitorado (próxima checagem: release ≥0.4.0 no PyPI ou falha real de
++  install/import). Validação: suíte local **17/17 TUDO OK** de cwd scratch;
++  `data/` intocada (stat antes==depois); branches `feature/p3-30-ats-range`
++  (c7e55b6) e `feature/p1-05-sqlite-registro` (abf13df) inalteradas; sem push,
++  sem PR (decisão do dono). [#30 checado ✅ caminho B]
   main `e7604db`, run `33840628495` verde; mergeado 04/09) — `registry.py` com
   `SEED` das 39 empresas (fonte única em código: nome canônico de coleta +
   ATS/tenant de referência + `enabled`; substitui a lista colada do README),

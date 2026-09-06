@@ -68,7 +68,7 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): 245 eli
 ## Next priorities
 
 - **P3 #20 and P3 #21 are complete** (06/09 — see Completed). Next backlog item:
-  - **P3 #30**: re-evaluate the `ats-scrapers>=0.3.0` range when upstream evolves (gate: new release ≥0.4.0 or install/import failure)
+  - **P3 #30**: re-evaluate the `ats-scrapers>=0.3.0` range when upstream evolves (gate: new release ≥0.4.0 or install/import failure). **Checked 2026-09-06 (19:47 UTC, independent re-check over main): PyPI latest is still 0.3.0 (releases 0.1.0/0.2.0/0.3.0, last upload 02/09), installed venv 0.3.0, `application_deadline` expose present in the installed module (grep 2 hits), import OK, daily refresh log with no install/import failure — gate NOT fired, range kept, zero code change** (details in MASTER_PLAN log). Item stays Next: re-check when upstream releases ≥0.4.0 or an install/import failure appears.
 - Full ranked plan (P0–P4, status ✅/⏳): see `MASTER_PLAN.md` (source of truth).
 
 ## Known limitations
