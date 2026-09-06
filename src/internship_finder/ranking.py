@@ -138,9 +138,6 @@ class Score:
     total: float
     breakdown: dict[str, float]
 
-    def to_dict(self) -> dict[str, float]:
-        return {"total": self.total, **self.breakdown}
-
 
 def _matches_any(patterns: list[str], text: str) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)

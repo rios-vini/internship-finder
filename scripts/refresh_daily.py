@@ -302,7 +302,6 @@ def build_message(
             + (f" (dedup −{_fmt(dedup)})" if dedup else "")
         )
     ok = summary.get("ok", {})
-    n_fail = len(summary.get("timeout", [])) + len(summary.get("error", []))
     lines.append(
         f"Tenants: ok {ok.get('count', 0)} ({_fmt(ok.get('collected', 0))} vagas)"
         f" · empty {summary.get('empty', 0)} · timeout {len(summary.get('timeout', []))}"

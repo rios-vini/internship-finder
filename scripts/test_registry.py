@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from internship_finder.registry import (  # noqa: E402
     CompanyRegistry,
     RegistryEntry,
-    SEED,
     registry_names,
 )
 
@@ -67,7 +66,6 @@ def test_seed() -> None:
     bad = [e.name for e in reg.entries
            if not isinstance(e.name, str) or not isinstance(e.enabled, bool)]
     check("1e. name/enabled com tipo esperado em todas", not bad, f"{bad}")
-    unspecified = [e.name for e in reg.entries if e.ats is None and e.tenant is None]
     # tenant e opcional; exigir pelo menos fonte parcial quando conhecida nao e
     # contrato — so garantimos que campos extras nao quebram.
     check("1f. seed determinístico (mesma ordem 2x)",

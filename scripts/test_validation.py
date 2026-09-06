@@ -146,7 +146,7 @@ def test_real_data() -> None:
         try:
             loaded.append(Job(**d))
             ok += 1
-        except ValidationError as e:
+        except ValidationError:
             check(f"Job recarrega sem erro: {d.get('id', '?')}", False)
             return
     for j in loaded:

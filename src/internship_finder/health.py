@@ -25,7 +25,6 @@ de cada uma). Sao arbitrarios por natureza — registrar como limitacao.
 
 from __future__ import annotations
 
-import json
 import sys
 from typing import Any
 

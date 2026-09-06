@@ -318,10 +318,6 @@ def matches_area(title: str, description: str | None = None) -> bool:
 
 from internship_finder.countries import (
     COUNTRY_CODES,
-    EUROPE_COUNTRIES,
-    COUNTRY_NAMES,
-    _country_name_from_location,
-    _iso_token_from_location,
     infer_country_iso,
     is_remote,
     parse_country_spec,
