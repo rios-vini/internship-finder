@@ -10,6 +10,10 @@ um relatorio estruturado (dict JSON-serializavel) com resumo por ``source``
   anteriores. Com historia curta (menos que o gate) NAO alerta.
 - **Erro recorrente**: um source com ``status`` em {timeout, error} nos ultimos
   ``CONSECUTIVE_FAILURES`` runs consecutivos (por ordem de ``run_id``).
+- **Zero-return** (P2 #10): um source cujo run MAIS RECENTE respondeu ``empty``
+  depois de ``MIN_OK_HISTORY_FOR_ZERO_RETURN`` runs ok anteriores com vagas
+  (collected > 0) — regressao de cobertura (tenant que enchia de vagas e
+  passou a responder 0), com gate de historico para nao alarmar em flutuacao.
 
 O relatorio e um dict JSON-serializavel pronto para ``json.dumps``. O consumo
 e defensivo: um registro malformado (JSON invalido, campos ausentes) nunca
@@ -49,6 +53,15 @@ DROP_THRESHOLD = 0.5
 # alerta de erro recorrente. Um unico timeout/erro e comum (rede, site em
 # manutencao); dois consecutivos sugerem um problema sistemico no tenant/ATS.
 CONSECUTIVE_FAILURES = 2
+
+# Numero minimo de runs ok ANTERIORES (com vagas, collected > 0) para um source
+# emitir alerta de zero-return (P2 #10). O ultimo run do source sendo ``empty``
+# depois de uma historia curta (1-2 runs com vagas) pode ser flutucao normal do
+# mercado (vaga aberta/fechada); exigir pelo menos 3 observacoes ok>0 previas
+# separa uma regressao real (tenant que ENCHIA de vagas e voltou 0) de ruido.
+# Espelha o espirito de ``MIN_OK_HISTORY_FOR_DROP``: gate conservador por
+# historico curto. Source empty-consistente (nunca teve ok>0) NUNCA alerta.
+MIN_OK_HISTORY_FOR_ZERO_RETURN = 3
 
 
 def _normalize_duration(value: Any) -> float | None:
@@ -182,6 +195,34 @@ def _detect_drops(rows: list[dict]) -> list[dict]:
     return []
 
 
+def _detect_zero_return(rows: list[dict]) -> list[dict]:
+    """Zero-return: tenant com historico de vagas que voltou a 0 (empty).
+
+    Alerta quando o run MAIS RECENTE do source (por ordem de ``run_id``) tem
+    ``status == "empty"`` E ha pelo menos ``MIN_OK_HISTORY_FOR_ZERO_RETURN``
+    runs ``ok`` anteriores com ``collected > 0``. ``empty`` e legitimamente
+    "tenant respondeu com 0 vagas" (nao e timeout/erro), mas um source que
+    ENCHIA de vagas e passa a responder 0 sugere regressao de cobertura (site
+    quebrado, mudanca de filtro, tenant reposicionado) — nao apenas mercado:
+    por isso o gate de historico, para nao alarmar em flutuacao.
+    """
+    last = rows[-1]
+    if last["status"] != "empty":
+        return []
+    prior_ok = [r for r in rows[:-1] if r["status"] == "ok" and r["collected"] > 0]
+    if len(prior_ok) < MIN_OK_HISTORY_FOR_ZERO_RETURN:
+        return []
+    return [
+        {
+            "type": "zero_return",
+            "source": last["source"],
+            "last_status": "empty",
+            "ok_history": len(prior_ok),
+            "last_ok_collected": prior_ok[-1]["collected"],
+        }
+    ]
+
+
 def _detect_consecutive_failures(rows: list[dict]) -> list[dict]:
     """Erro recorrente: runs mais recentes consecutivos em {timeout, error}.
 
@@ -227,7 +268,7 @@ def build_health_report(
     for src in sorted(by_source):
         rows = by_source[src]
         s = _summary_per_source(rows)
-        s["alerts"] = _detect_drops(rows) + _detect_consecutive_failures(rows)
+        s["alerts"] = _detect_drops(rows) + _detect_consecutive_failures(rows) + _detect_zero_return(rows)
         sources.append(s)
 
     alert_sources = [a for s in sources for a in s["alerts"]]

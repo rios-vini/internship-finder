@@ -236,7 +236,8 @@ def test_real_data() -> None:
     check("real: somente leitura (tamanho inalterado)", path.stat().st_size == size_before)
     # os alertas retornados seguem o schema
     for a in report["alerts"]:
-        check("real: alerta com type valido", a["type"] in ("drop", "recurring_error"))
+        check("real: alerta com type valido",
+              a["type"] in ("drop", "recurring_error", "zero_return"))
         check("real: alerta com fonte", "source" in a)
 
 

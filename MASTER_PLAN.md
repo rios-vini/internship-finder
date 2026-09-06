@@ -79,7 +79,7 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 ### 🟡 P2 — qualidade e automação (após acumular histórico)
 | # | Item | Status | Notas |
 |---|---|---|---|
-| 10 | **Zero-return + anomaly detection** | ⏳ gate: ≥5 execuções persistidas | Sem histórico estatístico hoje; rebaixado de P1. |
+| 10 | **Zero-return + anomaly detection** | ✅ **implementado 05/09** | Gate histórico por source (espelha o drop); 3º tipo de alerta no health: `zero_return` (último run `empty` após ≥3 ok>0). Ver Log de mudanças 05/09. |
 | 11 | **Job validation forte** | ✅ **mergeado 03/09** (PR #16, main 88a9936) — validators pydantic no `Job` (title/url vazios = erro de validação; opcionais vazio→None), `normalize_job_dict` no caminho filtro (4 títulos de borda limpos, baseline 236 ids intacto), adapter com título ausente → `NORMALIZATION_ERROR` (defensivo, 0 ocorrências), `test_validation.py` no CI (run 33695286158 verde). |
 | 12 | **Country/domain module** | ✅ **mergeado 03/09** (PR #17, main 7a4e6c9) — `countries.py` extrai país/localização de `filters.py` (COUNTRY_CODES, EUROPE_COUNTRIES, COUNTRY_NAMES, `_country_name_from_location`, `_iso_token_from_location`, `infer_country_iso`, `is_remote`, `parse_country_spec`, `matches_country` — movidos verbatim), `filters.py` re-exporta (consumidores intactos: ranking/cli/adapters/geocoding), `test_countries.py` no CI (run 33706802355 verde); baseline 236 preservado. |
 | 13 | **Company Registry operacional** + tirar empresas da lógica do CLI | ✅ **mergeado 04/09** (PR #20, main `e7604db`, run `33840628495` verde) — `src/internship_finder/registry.py` com `SEED` das 39 empresas (fonte única em código: nome canônico de coleta + ATS/tenant de referência + `enabled`), `CompanyRegistry` + `company_status` (estado por empresa **derivado do JSONL de métricas**, read-only — registro malformado nunca derruba) e ponte `registry_names` para o CLI; flag `--registry` (coleta usa as ENABLED do registry; com `--companies` restringe a subconjunto, na ordem informada; modo `--companies` puro continua funcionando) — decisão de design: **registry = configuração, status = JSONL** (sem duplicar estado). `test_registry.py` offline/determinístico (seed, enabled, subconjunto, ponte CLI, company_status via tempfile — sem rede/data); **adicionado ao CI** (13 scripts). Docs: README subseção "Registry de empresas" + PROJECT_STATUS + este log (04/09). |
@@ -144,6 +144,36 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-05 (P2 #10)**: **Zero-return + anomaly detection implementado** —
+  o health (P1 #6) ganhou o 3º tipo de alerta que faltava: **`zero_return`**
+  (`src/internship_finder/health.py`, `_detect_zero_return`): uma source cujo
+  run MAIS RECENTE (por `run_id`) respondeu `empty` depois de
+  **`MIN_OK_HISTORY_FOR_ZERO_RETURN = 3`** runs `ok` anteriores com vagas
+  (`collected > 0`) — regressão de cobertura (tenant que enchia de vagas e
+  passou a responder 0), com gate de histórico espelhando o espírito do drop
+  (1–2 oks podem ser flutuação; 3+ ok>0 e depois 0 sugere problema real).
+  `empty` continua legítimo para source empty-consistente (nunca ok>0 → NUNCA
+  alerta — anti-casos `bamboohr:sap`/`smartrecruiters:sap` testados). Decisões:
+  gate por source, não global (o item do plano citava "≥5 execuções
+  persistidas" como pré-requisito de histórico; a detecção funciona com o
+  histórico que existir e amadurece com o cron diário — hoje 4 runs reais no
+  JSONL sanitizado); ok depois de empty = recuperado, sem alerta; alertas
+  coexistindo por fonte (1 por fonte por run, dedup preservado). Fluxo:
+  `build_health_report` inclui o tipo (drop + recurring + zero_return) e a
+  mensagem do `scripts/refresh_daily.py` formata `voltou a zero (empty) após N
+  runs com vagas (último ok: M)` — o Telegram propaga sem mudar o anti-spam.
+  **Calibração com histórico real (baseline antes/depois)**: sobre os 4 runs
+  reais (31/08 37.373→236 · 01/09 ×2 1.084→84 subset · 05/09 38.038→224) o
+  detector dispara **0 alertas de zero-return** (nenhuma source com ok>0 E
+  empty no histórico — baseline limpa; health ativo segue com 1 alerta factual,
+  `successfactors:lidlstiftuP2` recurring). Testes: `scripts/test_zero_return.py`
+  (offline, tempfile, 20 checks: gate satisfeito/curto, limite exato 3,
+  empty-consistente, OK-depois-de-empty, ordem de run_id, coexistência com
+  recurring_error, malformado, bloco real de leitura com 0 zero-return) —
+  **no array do CI** (14→15 scripts); `test_health` bloco real aceita o tipo
+  novo no schema; `test_refresh` +2 checks de formatação. Suíte local 16/16
+  TUDO OK de cwd scratch (15 CI + test_manifest); `data/` intocada (stat
+  antes==depois colado). [#10 ✅]
 - **2026-09-05 (P2 #17)**: **Daily refresh + alertas Telegram implementado** —
   `scripts/refresh_daily.py` (padrão standalone/CLI do repo): (1) **rotação** —
   cópia (não move) de `data/jobs.json`/`.csv`, `data/eligible_jobs.json`/`.csv`

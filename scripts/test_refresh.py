@@ -151,6 +151,24 @@ def test_mensagem_anomalia_presente() -> None:
           (message or "").count("smartrecruiters:other") == 1)
 
 
+def test_mensagem_zero_return() -> None:
+    print("== mensagem com zero-return (P2 #10) ==")
+    summary = rd.summarize_run([_run_record("r1", 391, 43, 2)])
+    alerts = [
+        {"type": "zero_return", "source": "successfactors:jobs",
+         "last_status": "empty", "ok_history": 4, "last_ok_collected": 10},
+    ]
+    message = rd.build_message(summary, alerts, exit_code=0)
+    check("mensagem nao e None", message is not None)
+    check("formato zero-return no texto",
+          "voltou a zero (empty) após 4 runs com vagas (último ok: 10)" in (message or ""))
+    # erro recorrente segue com o formato antigo (sem regressao)
+    message2 = rd.build_message(summary, [{"type": "recurring_error",
+                                           "source": "sr:x", "runs_seq": 2}], exit_code=0)
+    check("formato recurring_error preservado",
+          "sr:x — erro recorrente (2 runs consecutivos)" in (message2 or ""))
+
+
 def test_mensagem_sem_anomalia() -> None:
     print("== sem anomalia -> sem alerta (anti-spam) ==")
     summary = rd.summarize_run([_run_record("r1", 400, 50)])
@@ -256,6 +274,7 @@ def main() -> int:
     test_rotacao()
     test_snapshot_e_resumo()
     test_mensagem_anomalia_presente()
+    test_mensagem_zero_return()
     test_mensagem_sem_anomalia()
     test_env_config()
     test_telegram()

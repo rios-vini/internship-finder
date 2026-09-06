@@ -329,6 +329,11 @@ def build_message(
                     f"• {src} — queda brusca (collected {a.get('collected_atual')} "
                     f"< 50% da mediana {a.get('mediana_anterior')} · {a.get('pct')})"
                 )
+            elif a.get("type") == "zero_return":
+                lines.append(
+                    f"• {src} — voltou a zero (empty) após {a.get('ok_history')} "
+                    f"runs com vagas (último ok: {a.get('last_ok_collected')})"
+                )
             else:
                 lines.append(
                     f"• {src} — erro recorrente ({a.get('runs_seq')} runs consecutivos)"
