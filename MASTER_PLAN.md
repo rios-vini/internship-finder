@@ -63,10 +63,10 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Hager / Boehringer / Lanxess (SuccessFactors XML malformado) / Symrise (join.com 422).
 - 7 títulos de graduação na cauda (SmvP Schaeffler, Bachelor BASF) — fora dos padrões
   aprovados F1; candidatos a extensão futura, não regressão.
-- **Falhas recorrentes monitoradas (refresh diário, exit 2 até resolução)**: `moka:bayer/148387`
-  — FETCH_ERROR "Moka scraper requires pycryptodome" (extra opcional do ats-scrapers não
-  instalado; P3 #36, fonte: Bayer) e `successfactors:lidlstiftuP2` — timeout 85s recorrente
-  (P3 #36, fonte: Lidl). Ambas conhecidas e não-regressões; o health alerta por design.
+- **Falha recorrente restante (refresh diário, exit 2 até decisão)**: `successfactors:lidlstiftuP2`
+  (Lidl) — timeout 85s recorrente (P3 #36, monitorado; reavaliar timeout por fonte quando o
+  upstream evoluir). `moka:bayer/148387` (Bayer) foi RESOLVIDO em 07/09 (P3 #36: pycryptodome
+  no pyproject). Conhecidas e não-regressões; o health alerta por design.
 
 ---
 
@@ -118,8 +118,8 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 32 | SQLite persistente no refresh diário (histórico em produção) | ✅ 06/09 (PR #30) | cron passa `--sqlite data/jobs.db` (first/last_seen/active/archived; `.db` acumulativo, não rotacionado). Pré-requisito dos P4 #27/#29 pronto. |
 | 33 | Lock de reprodutibilidade | ✅ 06/09 (PR #30) | `requirements-lock.txt` na raiz (pip freeze do venv; cabeçalho documentado; fora do CI — pyproject continua a fonte das deps diretas). |
 | 34 | `company_status` exposto no `--health` (fechar doc≠código) | ✅ 06/09 (PR #31) | chave `companies` no relatório do health; README deixou de prometer o que não existia. |
-| 35 | Mensagem do Telegram didática (feedback do dono 07/09) | ⏳ registrado 07/09 | Template em linguagem natural: "X de Y fontes falharam", nomes amigáveis (empresa via `company` do JSONL), códigos de erro traduzidos (timeout/erro) e "recorrente há N runs". Melhora a UX do alerta diário (#17). |
-| 36 | Falhas recorrentes do refresh (exit 2 diário): `moka:bayer/148387` (Bayer, pycryptodome ausente) + `successfactors:lidlstiftuP2` (Lidl, timeout 85s) | ⏳ registrado 07/09 | moka: adicionar `pycryptodome` ao pyproject (padrão do beautifulsoup4 p/ avature); lidl: investigar timeout (aumento? aceitar?) e registrar decisão. Resultado: refresh volta a exit 0 e o alerta fica para anomalias reais. |
+| 35 | Mensagem do Telegram didática (feedback do dono 07/09) | ✅ 07/09 | Template em linguagem natural: "X de Y fontes falharam", nomes amigáveis (empresa via `company` do JSONL), códigos de erro traduzidos (timeout/erro) e "recorrente há N runs". Melhora a UX do alerta diário (#17). |
+| 36 | Falhas recorrentes do refresh (exit 2 diário): `moka:bayer/148387` (Bayer, pycryptodome ausente) + `successfactors:lidlstiftuP2` (Lidl, timeout 85s) | moka ✅ 07/09 · lidl ⏳ monitorado | moka: `pycryptodome>=3.20` no pyproject (precedente beautifulsoup4/avature), venv instalado, import do scraper OK — validação real na coleta do cron seguinte (Bayer volta ao funil). lidl: aceito como limitação monitorada (timeout 85s recorrente; reavaliar timeout por fonte quando o upstream evoluir). |
 
 ### 🔵 P4 — inteligência (só com dados históricos reais)
 | # | Item | Status | Notas |
@@ -167,6 +167,27 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-07 (P3 #35/#36 + ata da auditoria)**: **Mensagem do Telegram didática + pycryptodome
+  (Bayer) + ata da auditoria em docs/** — (a) **#35 mensagem didática**: `build_message`
+  reescrita em linguagem natural — status "X de Y fontes falharam" (exit 0+sem falhas → "✅
+  Coleta concluída"), "Vagas: N brutas → M elegíveis (K duplicata(s) removidas)", "Fontes: A ok
+  (N vagas) · B sem vagas · timeout T · erro E · puladas ... · sem tenant ...", e seção "⚠️
+  Problemas detectados" com nome amigável da empresa (novo `summary["source_names"]`: source →
+  `company` do registro JSONL, povoado no `summarize_run`), códigos de erro traduzidos
+  (`_error_text`: TIMEOUT → "sem resposta a tempo (timeout)", FETCH_ERROR → "erro ao buscar
+  vagas", NORMALIZATION_ERROR, UNKNOWN) e reincidência ("recorrente há N runs", fusionando
+  alerta recurring + falha do run por fonte); alertas recurring SEM falha correspondente mantêm
+  o formato antigo; anti-spam, exit codes e linha de disco inalterados; `test_refresh` +4 checks
+  didáticos (reincidência, tradução do código, nome amigável, contagem de fontes). (b) **#36
+  moka**: `pycryptodome>=3.20` adicionado ao pyproject (precedente: beautifulsoup4 p/ avature),
+  instalado no venv (3.23.0), `requirements-lock.txt` regenerado, `import
+  ats_scrapers.scrapers.moka` + Crypto OK; validação real = coleta do cron seguinte (Bayer volta
+  ao funil). **lidl**: aceito como limitação monitorada (timeout 85s; ver §1). (c) **ata da
+  auditoria**: relatório da auditoria de 06/09 salvo como `docs/ata_auditoria_0609.md` (achados
+  A1–A9, ações PRs #29–#32, pendências herdadas) — antes só existia na conversa; Seção 4 do
+  plano: auditorias viram ata em `docs/ata_*.md`. (d) **PR #33** (squash `6020324`): doc 07/09
+  do estado (Seção 1 re-verificada, funil vivo 31/08–07/09, tabela #35/#36 ⏳). Suíte local
+  17/17 TUDO OK de cwd scratch; `data/` intocada. [#35 ✅][#36 moka ✅ / lidl ⏳]
 - **2026-09-05 (P2 #10)**: **Zero-return + anomaly detection implementado** —
   o health (P1 #6) ganhou o 3º tipo de alerta que faltava: **`zero_return`**
   (`src/internship_finder/health.py`, `_detect_zero_return`): uma source cujo

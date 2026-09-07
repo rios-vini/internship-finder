@@ -345,6 +345,7 @@ def summarize_run(records: list[dict]) -> dict:
         "not_found": 0,
         "timeout": [],
         "error": [],
+        "source_names": {},  # source -> company do registro (nome amigavel, P3 #35)
     }
     for rec in records:
         rtype = rec.get("type")
@@ -359,6 +360,8 @@ def summarize_run(records: list[dict]) -> dict:
             status = rec.get("status")
             source = rec.get("source") or "?"
             code = rec.get("error_code")
+            if source not in summary["source_names"]:
+                summary["source_names"][source] = rec.get("company")
             if status == "ok":
                 summary["ok"]["count"] += 1
                 collected = rec.get("collected")
@@ -384,6 +387,30 @@ def _fmt(n: int) -> str:
 
 # --- mensagem --------------------------------------------------------------
 
+# Traducao didatica dos codigos de erro estruturados (P1 #7 / errors.py) —
+# a UX do alerta (P3 #35) fala portugues, nao codigo.
+ERROR_CODE_TEXT = {
+    "TIMEOUT": "sem resposta a tempo (timeout)",
+    "FETCH_ERROR": "erro ao buscar vagas",
+    "NORMALIZATION_ERROR": "erro ao normalizar dados",
+    "UNKNOWN": "erro desconhecido",
+}
+
+
+def _error_text(code: str | None) -> str:
+    """Traduz um codigo de erro estruturado em linguagem natural."""
+    if not code:
+        return "erro"
+    return ERROR_CODE_TEXT.get(code, f"erro [{code}]")
+
+
+def _friendly_source(source: str, source_names: dict) -> str:
+    """Nome amigavel da fonte: 'Empresa (source)' quando o JSONL do run
+    conhece a empresa (campo ``company``); senao, o proprio source."""
+    name = (source_names or {}).get(source)
+    return f"{name} ({source})" if name else source
+
+
 def build_message(
     summary: dict,
     report_alerts: list[dict],
@@ -395,72 +422,97 @@ def build_message(
     """Monta a mensagem de alerta/digest; ``None`` = nada a enviar (anti-spam:
     sem anomalia, sem falha e sem ``--always-notify``, nao envia).
 
-    ``disk_pct``: percentual de uso do filesystem de ``data/``; quando maior
-    que ``DISK_WARN_PCT`` a mensagem ganha a linha ``⚠️ Disco: N% usado`` e o
-    aviso tambem dispara o envio. Chamadores passam o valor medido (ou None).
-    Alertas deduplicados por fonte (1 por fonte por run)."""
+    Formato didatico (P3 #35, 07/09): status em linguagem natural ("X de Y
+    fontes falharam"), nomes amigaveis de empresa (``company`` do JSONL via
+    ``summary["source_names"]``), codigos de erro traduzidos e reincidencia
+    ("recorrente ha N runs"). ``disk_pct``: percentual de uso do filesystem de
+    ``data/``; quando maior que ``DISK_WARN_PCT`` a mensagem ganha a linha
+    ``⚠️ Disco: N% usado`` e o aviso tambem dispara o envio. Chamadores passam
+    o valor medido (ou None). Alertas deduplicados por fonte (1 por fonte por
+    run)."""
     alerts = sorted(report_alerts, key=lambda a: (a.get("source", ""), a.get("type", "")))
     disk_warning = disk_pct is not None and disk_pct > DISK_WARN_PCT
     if not (always_notify or exit_code != 0 or alerts or disk_warning):
         return None
 
+    source_names = summary.get("source_names") or {}
     lines: list[str] = ["📊 internship-finder · refresh diário"]
-    lines.append(f"run {summary.get('run_id') or '-'} · exit {exit_code}")
+    lines.append(f"run {summary.get('run_id') or '-'}")
     lines.append("")
+
+    ok = summary.get("ok", {})
+    failures = list(dict.fromkeys(
+        list(summary.get("timeout", [])) + list(summary.get("error", []))))
+    n_fail = len(failures)
+    n_sources = (ok.get("count", 0) + summary.get("empty", 0) + n_fail
+                 + summary.get("skipped", 0) + summary.get("not_found", 0))
+
+    if exit_code == 0 and n_fail == 0:
+        lines.append("✅ Coleta concluída")
+    elif exit_code == 1:
+        lines.append("⚠️ Nenhuma vaga elegível encontrada (exit 1)")
+    else:
+        lines.append(f"⚠️ Coleta parcial: {n_fail} de {n_sources} fontes falharam")
+        if exit_code == 124:
+            lines.append("  Detalhe: o run estourou o tempo máximo (exit 124)")
+        elif exit_code not in (0, 2):
+            lines.append(f"  Detalhe: falha de execução do run (exit {exit_code})")
 
     total = summary.get("total_collected")
     if total is not None:
         eligible = summary.get("eligible")
         dedup = summary.get("dedup_removed") or 0
         lines.append(
-            f"Brutas: {_fmt(total)} → eligible {_fmt(eligible or 0)}"
-            + (f" (dedup −{_fmt(dedup)})" if dedup else "")
+            f"Vagas: {_fmt(total)} brutas → {_fmt(eligible or 0)} elegíveis"
+            + (f" ({_fmt(dedup)} duplicata removida)" if dedup == 1
+               else f" ({_fmt(dedup)} duplicatas removidas)" if dedup else "")
         )
-    ok = summary.get("ok", {})
-    lines.append(
-        f"Tenants: ok {ok.get('count', 0)} ({_fmt(ok.get('collected', 0))} vagas)"
-        f" · empty {summary.get('empty', 0)} · timeout {len(summary.get('timeout', []))}"
-        f" · error {len(summary.get('error', []))}"
-        f" · skip {summary.get('skipped', 0)} · not_found {summary.get('not_found', 0)}"
-    )
+    if n_sources:
+        lines.append(
+            f"Fontes: {ok.get('count', 0)} ok ({_fmt(ok.get('collected', 0))} vagas)"
+            f" · {summary.get('empty', 0)} sem vagas"
+            f" · timeout {len(summary.get('timeout', []))}"
+            f" · erro {len(summary.get('error', []))}"
+            f" · puladas {summary.get('skipped', 0)}"
+            f" · sem tenant {summary.get('not_found', 0)}"
+        )
 
-    if exit_code == 1:
-        lines.append("⚠️ Nenhuma vaga eligible / nada coletado (exit 1)")
-    elif exit_code == 2:
-        lines.append("⚠️ Coleta parcial com falhas reais (exit 2)")
-    elif exit_code not in (0, 124):
-        lines.append(f"⚠️ Run falhou (exit {exit_code})")
-    elif exit_code == 124:
-        lines.append("⚠️ Run falhou: subprocesso estourou o teto de tempo (exit 124)")
-
-    if alerts:
+    # Problemas detectados: alertas do health + falhas do run, 1 por fonte
+    # (anti-spam). Alertas recurring ganham o texto traduzido do erro quando a
+    # fonte tambem falhou no run atual.
+    alert_by_source = {a.get("source"): a for a in alerts if a.get("type") == "recurring_error"}
+    problems: list[str] = []
+    seen: set[str] = set()
+    for src, code in failures:
+        text = f"• {_friendly_source(src, source_names)} — {_error_text(code)}"
+        if src in alert_by_source:
+            text += f" · recorrente há {alert_by_source[src].get('runs_seq', '?')} runs"
+        problems.append(text)
+        seen.add(src)
+    for a in alerts:
+        src = a.get("source", "?")
+        if src in seen:
+            continue
+        if a.get("type") == "drop":
+            problems.append(
+                f"• {_friendly_source(src, source_names)} — queda brusca "
+                f"(collected {a.get('collected_atual')} < 50% da mediana "
+                f"{a.get('mediana_anterior')} · {a.get('pct')})"
+            )
+        elif a.get("type") == "zero_return":
+            problems.append(
+                f"• {_friendly_source(src, source_names)} — voltou a zero (empty) após "
+                f"{a.get('ok_history')} runs com vagas (último ok: {a.get('last_ok_collected')})"
+            )
+        else:  # recurring sem falha correspondente no run atual
+            problems.append(
+                f"• {_friendly_source(src, source_names)} — erro recorrente "
+                f"({a.get('runs_seq')} runs consecutivos)"
+            )
+    if problems:
         lines.append("")
-        lines.append("⚠️ Alertas (health):")
-        for a in alerts:
-            src = a.get("source", "?")
-            if a.get("type") == "drop":
-                lines.append(
-                    f"• {src} — queda brusca (collected {a.get('collected_atual')} "
-                    f"< 50% da mediana {a.get('mediana_anterior')} · {a.get('pct')})"
-                )
-            elif a.get("type") == "zero_return":
-                lines.append(
-                    f"• {src} — voltou a zero (empty) após {a.get('ok_history')} "
-                    f"runs com vagas (último ok: {a.get('last_ok_collected')})"
-                )
-            else:
-                lines.append(
-                    f"• {src} — erro recorrente ({a.get('runs_seq')} runs consecutivos)"
-                )
-
-    # Fontes ja sinalizadas nos alertas nao se repetem em "Falhas"
-    # (1 alerta por fonte por run — anti-spam).
-    alert_sources = {a.get("source") for a in alerts}
-    failures = [f for f in dict.fromkeys(summary.get("timeout", []) + summary.get("error", []))
-                if f[0] not in alert_sources]
-    if failures:
-        lines.append("")
-        lines.append("Falhas: " + " · ".join(f"{s} [{c}]" for s, c in failures))
+        lines.append("⚠️ Problemas detectados:")
+        lines.extend(problems)
 
     if disk_warning:
         lines.append("")

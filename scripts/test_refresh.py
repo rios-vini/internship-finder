@@ -151,12 +151,18 @@ def test_mensagem_anomalia_presente() -> None:
     message = rd.build_message(summary, report["alerts"], exit_code=0)
     check("alerta gerado (health detecta)", len(report["alerts"]) == 2)
     check("mensagem nao e None com anomalia", message is not None)
-    check("erro recorrente na mensagem",
-          "smartrecruiters:other" in (message or "") and "erro recorrente" in (message or ""))
+    check("erro recorrente com reincidencia na mensagem",
+          "smartrecruiters:other" in (message or "") and "recorrente há 3 runs" in (message or ""))
+    check("codigo de erro traduzido (UNKNOWN -> erro desconhecido)",
+          "erro desconhecido" in (message or ""))
+    check("nome amigavel da empresa (company do JSONL)",
+          "Acme (smartrecruiters:other)" in (message or ""))
+    check("contagem didatica de fontes falhadas",
+          "2 de 3 fontes falharam" in (message or ""))
     check("queda brusca na mensagem",
           "successfactors:jobs" in (message or "") and "queda brusca" in (message or ""))
-    check("funil e falhas na mensagem",
-          "391" in (message or "") and "TIMEOUT" in (message or ""))
+    check("funil e timeout traduzido na mensagem",
+          "391" in (message or "") and "sem resposta a tempo" in (message or ""))
     check("alertas deduplicados por fonte",
           (message or "").count("smartrecruiters:other") == 1)
 
