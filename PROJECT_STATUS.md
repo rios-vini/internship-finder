@@ -11,21 +11,21 @@ observability (health), CI and standardized requirement tracking in
 
 Current collection scope includes 39 evaluated/operational companies from the E2 expansion.
 
-Latest documented full run (collection of 31/08, reproduced offline by `scripts/coverage.py`):
+Latest documented full run (cron 06/09 06:00 UTC; reproduced offline by `scripts/coverage.py` and the current pipeline):
 
-- 37,373 raw jobs
-- 2,982 student-type jobs
-- 754 target-area jobs
-- 258 Germany-eligible jobs after country filter
-- 236 eligible/ranked jobs after deduplication (22 removed)
-- 19 companies / 14 tenants (source) with eligible jobs
-  (SAP 84, BoschGroup 40, Volkswagen AG 26, Knorr-Bremse 18, BASF SE 15, Bayer 8, Schaeffler 8, Infineon 7, B. Braun 6, Telekom Growthhub 4, Brose 4, careers.dhl.com 4, Uniper 2, Kaufland 2, ZF 2, MAHLE 2, celonis 2, henkel 1, KraussMaffei 1)
+- 37,953 raw jobs
+- 3,080 student-type jobs
+- 752 target-area jobs
+- 246 Germany-eligible jobs after country filter
+- 222 eligible/ranked jobs after deduplication (24 removed, company+title+location)
+- 24 companies / 20 tenants (source) with eligible jobs
+  (SAP 71, BoschGroup 41, Volkswagen AG 20, BASF SE 17, Knorr-Bremse 16, ... — see README coverage table)
 
-ATS (eligible): successfactors 175, smartrecruiters 40, eightfold 14, phenom 4, greenhouse 2, cornerstone 1.
+ATS (eligible): successfactors 150, smartrecruiters 41, eightfold 11, workday 8, phenom 5, ashby 3, greenhouse 3, cornerstone 1.
 
-Scores (measured by `scripts/test_ranking.py` on the current dataset): min 2.00 | mediana 6.38 | max 16.75 · 236/236 `country_iso='de'`.
+Scores (measured 06/09 on the current dataset): min 2.50 | mediana 6.75 | max 16.75 · 222/222 `country_iso='de'`.
 
-With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): 245 eligible (+9 Workday DE).
+With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): historical measurement over the 31/08 snapshot was 245 eligible (+9 Workday DE).
 
 ## Completed
 
@@ -65,17 +65,25 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): 245 eli
 - **P3 #20 — ACH validations, measured first** (06/09): (ACH-18) CSV contract decided — **JSON = complete source, CSV = tabular view**; `remote` column added to `CSV_COLUMNS` (was absent in 38.038/38.038 `jobs.csv` rows and 224/224 eligible rows; `description`/`raw`/`score_breakdown` intentionally stay CSV-out); (ACH-14) `--limit` semantics confirmed post-fetch per tenant (limit=2 → 2/tenant via mock) and the CLI now rejects `--timeout <= 0` / `--limit < 0` with a clear exit-2 error before collection (undefined behavior before: deadline=only margin, `[:-k]` slice); new offline `scripts/test_collect_flags.py` (19 checks) in CI (array 15→16); (ACH-16) `remote` field never populated by any ATS (0/38.038) — filter works via location text (101 markers, 1 remote-eligible), documented no-op; (ACH-17) country vs country_iso 0/38.038 mismatches (same inferred value by adapter construction), measured no-op; (ACH-20) 0 dates in DD.MM.YYYY anywhere (eligible + raw) — "no measured need", no parser; (ACH-19) BY removed from `EUROPE_COUNTRIES` (code contradicted the documented "RU/BY out" rule; 0 real `by` jobs). Local suite 17/17 TUDO OK from scratch cwd; `data/` untouched (stat before==after); funnel reproduced 38.038→224 identical.
 - **P3 #21 — Dead code (ACH-13), reference audit** (06/09): every public symbol in `src/` (73 across 17 modules) and every non-test script was grep-audited repo-wide (src/, scripts/, .github/, docs, README, AGENTS — word-boundary) plus a pyflakes pass (throwaway /tmp venv, project venv untouched). No public symbol ended with 0 references — the minimum was `Score.to_dict` (0 call sites; real serialization is `d["score"] = score.total` / `score_breakdown`). Removed 16 zero-reference items, all behavior-neutral: `Score.to_dict`; unused `import json` in `health.py`; 4 dead re-export names in `filters.py` (`EUROPE_COUNTRIES`, `COUNTRY_NAMES`, `_country_name_from_location`, `_iso_token_from_location` — consumers import from `countries`; `COUNTRY_CODES`/`is_remote` kept, exercised by `test_compat_re_export`); unused imports/locals in 6 test files + `refresh_daily.py` (including `keys_w = dict(candidate_keys_for_audit := {})` walrus junk in test_dedup). Deliberate `# noqa: F401` imports kept (author intent); `CompanyResolver`/`company_status` kept (tested + documented public APIs); `__version__` kept (package convention). CI array unchanged (16); local suite 17/17 TUDO OK before and after from scratch cwd; `data/` untouched (stat before==after). Observation: README states `company_status` is "exposed by `--health`" but `cli.py` does not call it (doc≠code, out of scope).
 
+- **P3 #31 — Corrections batch** (PR #31, merged 06/09, main `c2fcfb2`): Apprentice/Apprenticeship (EN learning programs) excluded like the DE Ausbildung rule (2 real VW jobs left eligible); `trainee` removed from `STUDENT_EMPLOYMENT_TYPES` (generic trainee no longer passes on `employment_type` alone; 0 jobs affected, measured); `read_metrics` skips malformed JSONL lines instead of crashing; `company_status` orders by `(run_id, timestamp)` instead of file position; `--health` now exposes `company_status` under the `companies` key (doc minus code gap closed). Funnel measured: 37,953 -> 3,080 -> 752 -> 246 -> **222** (before the fix: 248 -> 224). Suite 17/17 OK before/after; `data/` untouched.
+- **P3 #30 — Operations batch** (PR #30, merged 06/09, main `d0a3ea1`): daily refresh now collects with `--sqlite data/jobs.db` (first_seen/last_seen/active/archived persisted in production; the `.db` is not rotated); archive cleanup with `--retention-days` (default 14, 0 = off, runs after each rotation); disk usage >80% adds a "⚠️ Disco: N% usado" line to the Telegram message; collection subprocess inherits the caller env; `requirements-lock.txt` added (reproducibility, outside CI). `test_refresh` 43->60 asserts; suite 17/17; `data/` untouched.
+- **P2 #29 — Docs consolidation** (PR #29, merged 06/09, main `9477339`): P1 #5 SQLite registered as implemented (documental drift fixed) + P3 #30 gate checks 15:01 and 19:47 UTC (path B - gate not fired, PyPI still 0.3.0), both recorded in MASTER_PLAN log.
+
 ## Next priorities
 
-- **P3 #20 and P3 #21 are complete** (06/09 — see Completed). Next backlog item:
-  - **P3 #30**: re-evaluate the `ats-scrapers>=0.3.0` range when upstream evolves (gate: new release ≥0.4.0 or install/import failure). **Checked 2026-09-06 (19:47 UTC, independent re-check over main): PyPI latest is still 0.3.0 (releases 0.1.0/0.2.0/0.3.0, last upload 02/09), installed venv 0.3.0, `application_deadline` expose present in the installed module (grep 2 hits), import OK, daily refresh log with no install/import failure — gate NOT fired, range kept, zero code change** (details in MASTER_PLAN log). Item stays Next: re-check when upstream releases ≥0.4.0 or an install/import failure appears.
+- **P3 #20/#21/#29/#30/#31 complete** (06/09 - see Completed). Backlog remainders:
+  - **P3 #22**: data/code separation + Parquet when volume justifies (archive now auto-cleaned - see #30)
+  - **P3 #23**: international expansion + more DE companies (39→60→100) - needs owner scope decision
+  - **P3 #24**: aggregators (LinkedIn/Indeed/Glassdoor) - needs owner scope decision
+  - **P3 #25**: simple interface (top jobs, filters, link) - SQLite is now fed by the daily refresh (prerequisite ready)
+  - **P3 #30**: stays monitored - re-check when upstream releases >=0.4.0 or an install/import failure appears (last check 06/09 19:47 UTC: gate not fired, range kept)
 - Full ranked plan (P0–P4, status ✅/⏳): see `MASTER_PLAN.md` (source of truth).
 
 ## Known limitations
 
 - Some Workday tenants do not expose country information clearly enough for the current country filter (documented; nothing fabricated). **Partially mitigated** by the optional `geocoding.py` fallback (OFF by default; +9 Workday DE when enabled; network geocoding only with the flag on).
 - Some companies/ATS combinations currently fail or are excluded for documented reasons (Hager/Boehringer/Lanxess/Symrise — external limitations from parecer B).
-- Eligible count drift (known, documented): the snapshot in `data/eligible_jobs.json` (collection 31/08) = **236**; the current pipeline with dedup 2.0 (P2 #14) = **232** (4 TRUE duplicates removed by company+title+location — see MASTER_PLAN #14). Snapshot vs pipeline are not comparable 1:1 without re-running collection.
+- Eligible count (current, documented): the daily cron regenerates `data/eligible_jobs.json` (06/09 run: **222** eligible). Older numbers in docs (236/232 from the 31/08 snapshot) are historical; the pipeline output over the current snapshot with the current code is the source of truth (**222**).
 - 7 degree-program titles in the tail (Schaeffler "Studium mit vertiefter Praxis", BASF Bachelor) are pre-existing, outside the approved F1 patterns — candidates for future pattern extension, not a regression.
 
 Data in `data/` is local and gitignored: numbers serve as collection documentation, not as versioned files.

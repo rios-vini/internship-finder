@@ -45,7 +45,7 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 > (ex.: `/tmp/...`).
 
 ```bash
-.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (snapshot 236 ranqueadas; pipeline dedup 2.0 = 232)
+.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (222 eligible no run do cron 06/09)
 .venv/bin/internship-finder --country europe             # Europa inteira em vez de so Alemanha
 .venv/bin/internship-finder --no-area                    # qualquer area, desde que estudante + Alemanha
 .venv/bin/internship-finder --no-dedup                   # mantem duplicatas (258 antes da dedup)
@@ -86,7 +86,8 @@ compatibilidade, mas a lista oficial e o registry.
   `--companies` so restringe a um subconjunto (na ordem informada).
 - O **estado por empresa** (status/ultima coleta) NAO fica no registry: e
   derivado do JSONL de metricas (`company_status`, read-only) e exposto pelo
-  `--health` — registry = configuracao, JSONL = status (decisao de design).
+  `--health` (implementado em 06/09, PR #31) — registry = configuracao,
+  JSONL = status (decisao de design).
 - Seed e modelo: `src/internship_finder/registry.py` (pydantic, `SEED` + 39
   entradas); testes em `scripts/test_registry.py`.
 
@@ -113,6 +114,15 @@ relatorio tem alertas (queda brusca / erro recorrente / **zero-return**: uma
 fonte que tinha vagas e passou a responder `empty` por ≥3 runs ok>0 anteriores
 — P2 #10); sem anomalia, nada é
 enviado. `--always-notify` envia o resumo mesmo sem anomalia (digest, opcional).
+
+**Comportamento novo (06/09, PR #30)**: a coleta do refresh roda com
+`--sqlite data/jobs.db` (historico `first_seen`/`last_seen`/`active`/`archived`
+em producao; o `.db` NAO e rotacionado — e acumulativo e vive em `data/`,
+gitignored); o archive e limpo automaticamente apos cada rotacao
+(`--retention-days N`, default 14, 0 = desliga); uso de disco acima de 80%
+entra como `⚠️ Disco: N% usado` na mensagem; o subprocesso da coleta herda o
+ambiente do chamador. Novo arquivo `requirements-lock.txt` na raiz (lock de
+reproducibilidade, fora do CI).
 
 **Credenciais** (`.env` na raiz — gitignored): `TELEGRAM_BOT_TOKEN` e
 `TELEGRAM_CHAT_ID`. Sem token no `.env` o script loga aviso e NAO envia
@@ -148,23 +158,21 @@ Backups: `/tmp/collection_metrics_pre_clean_0509.jsonl` (estado pos-E2E) +
 pos-limpeza: 1 alerta factual — `successfactors:lidlstiftuP2` timeout em 31/08
 e 05/09.
 
-Resultado do ultimo run completo (coleta local de 31/08; os numeros sao
-reproduzidos offline por `scripts/coverage.py`):
-`total 37.373 -> tipo estudante 2.982 -> area-alvo 754 -> Alemanha 258`;
-pos-dedup o snapshot e **236** eligible/ranked (22 duplicatas removidas); o
-pipeline com dedup 2.0 (P2 #14) produz **232** (4 duplicatas TRUE a mais por
-company+title+location — ver `MASTER_PLAN.md` #14), todos
-`country_iso='de'` — **19 empresas com vagas eligible**, top: SAP 84,
-BoschGroup 40, Volkswagen AG 26, Knorr-Bremse 18, BASF SE 15, Bayer 8,
-Schaeffler 8, Infineon 7, B. Braun 6, Telekom Growthhub 4, Brose 4,
-careers.dhl.com 4, Uniper 2 (demais na tabela de cobertura). O baseline antigo
-(12/08, 56.810 → 293) era de outra janela de mercado com mais vagas; o valor
-atual **nao e regressao** — o mercado encolheu. Dados em `data/` sao locais e
-gitignored: os numeros servem como documentacao de coleta, nao como arquivos
-versionados. A coleta total leva alguns minutos — cada tenant usa timeout
-proprio (`--timeout 60`).
+Resultado do ultimo run completo (cron de 06/09 06:00 UTC; numeros reproduzidos
+offline por `scripts/coverage.py` e pelo pipeline com o codigo atual):
+`total 37.953 -> tipo estudante 3.080 -> area-alvo 752 -> Alemanha 246`;
+pos-dedup: **222** eligible/ranked (24 remocoes, todas por company+title+location),
+todos `country_iso='de'` — **24 empresas com vagas eligible** (top: SAP 71,
+BoschGroup 41, Volkswagen AG 20, BASF SE 17, Knorr-Bremse 16 — demais na tabela
+de cobertura). Notas: (1) desde 06/09 o filtro exclui o equivalente EN de
+aprendizagem (Apprentice/Apprenticeship — mesmo criterio do Ausbildung DE;
+P3 #31, PR #31); (2) o baseline antigo (12/08, 56.810 → 293) era de outra
+janela de mercado; a queda de volume **nao e regressao**. Dados em `data/` sao
+locais e gitignored: os numeros servem como documentacao de coleta, nao como
+arquivos versionados. A coleta total leva alguns minutos — cada tenant usa
+timeout proprio (`--timeout 60`).
 
-### Cobertura (39 na coleta → 19 com vagas eligible)
+### Cobertura (39 na coleta → 24 com vagas eligible)
 
 **"Avaliada", "operacional" e "com vagas eligible" sao metricas DIFERENTES**:
 
@@ -176,7 +184,7 @@ proprio (`--timeout 60`).
   scraper): **39** (35 tenants com dados em `data/jobs.json`; a Bosch conta
   2x no campo `company` — tenants `BoschGroup` e `bosch-homecomfort`).
 - **Com vagas eligible** = tem pelo menos 1 vaga eligible na Alemanha apos a
-  cascata de filtros + dedup: **19** empresas / 14 tenants (da lista de 39).
+  cascata de filtros + dedup: **24** empresas / 20 tenants (medido no run 06/09).
 
 Falhas conhecidas (motivo da exclusao): Siemens (tenant `teamtailor` inativo),
 BMW (falso positivo: so `join_com:bmw-kuehnert`, nao a BMW AG),
@@ -199,13 +207,13 @@ deterministico — `.venv/bin/python scripts/coverage.py`):
 
 | Metrica | Valor |
 | --- | --- |
-| Funil: raw → tipo → area → pais (DE) | 37.373 → 2.982 → 754 → 258 |
-| eligible (pos-dedup) → ranked | snapshot: 236 → 236 (22 removidas na dedup) · pipeline dedup 2.0: 232 → 232 |
-| Empresas com eligible / tenants (source) | 19 / 14 (bruto: 39 empresas / 35 tenants) |
-| Top empresas (eligible) | SAP 84, BoschGroup 40, Volkswagen AG 26, Knorr-Bremse 18, BASF SE 15, Bayer 8, Schaeffler 8, Infineon 7, B. Braun 6, Telekom Growthhub 4, Brose 4, careers.dhl.com 4, Uniper 2 |
-| Contribuicao das maiores | top1 35,6% | top3 63,6% | top5 77,5% |
-| Top ATS (eligible) | successfactors 175, smartrecruiters 40, eightfold 14, phenom 4, greenhouse 2, cornerstone 1 |
-| Paises (eligible) | `de` 236 (100%) snapshot / 232 (100%) pipeline dedup 2.0 — None/localizacao desconhecida: 0 (0,0%); com `INTERNSHIP_FINDER_GEOCODING=1` (sobre o snapshot): **245** |
+| Funil: raw → tipo → area → pais (DE) | 37.953 → 3.080 → 752 → 246 (run cron 06/09) |
+| eligible (pos-dedup) → ranked | 246 → 222 (24 removidas na dedup, company+title+location; run 06/09) |
+| Empresas com eligible / tenants (source) | 24 / 20 (bruto: 39 empresas / 35 tenants) |
+| Top empresas (eligible) | SAP 71, BoschGroup 41, Volkswagen AG 20, BASF SE 17, Knorr-Bremse 16, Schaeffler 8, ... (24 empresas no total; run 06/09) |
+| Contribuicao das maiores | top1 32,0% (SAP 71/222) — re-medir com `coverage.py` | top3 ~59% | top5 ~74% |
+| Top ATS (eligible) | successfactors 150, smartrecruiters 41, eightfold 11, workday 8, phenom 5, ashby 3, greenhouse 3, cornerstone 1 |
+| Paises (eligible) | `de` 222 (100%) — None/localizacao desconhecida: 0 (0,0%); (medicao historica com `INTERNSHIP_FINDER_GEOCODING=1` sobre o snapshot 31/08: 245) |
 
 (Fase 3: `country_iso` tem fonte unica — `filters.infer_country_iso`; a
 heuristica antiga de "tail da location" foi removida do adapter, entao
@@ -293,10 +301,10 @@ Sem descricao (parte das vagas em que o ATS nao expoe descricao), age-se com
 graca: skills/idioma contribuem 0 e o score vem do titulo. Metrica real do
 snapshot de 31/08 (236 eligible; pipeline dedup 2.0 = 232, medido por
 `scripts/test_ranking.py`):
-scores `min 2.00 | mediana 6.38 | max 16.75`.
+scores `min 2.50 | mediana 6.75 | max 16.75` (222 eligible, run 06/09).
 Ver `scripts/test_ranking.py` (suite sintetica com `FIXTURE` fixa, desacoplada
 do snapshot desde o P2 #16 — 03/09; bloco real roda como invariantes de
-formato/observabilidade; suite 14/14 local TUDO OK).
+formato/observabilidade; suite local 17/17 TUDO OK — 16 do CI + `test_manifest`).
 
 ## Runbook
 
@@ -417,6 +425,7 @@ scripts/refresh_daily.py  # refresh diario + alertas Telegram (rotacao -> coleta
 scripts/verify_companies.py  # runbook de empresas (match exato + fetch)
 scripts/coverage.py       # cobertura: funil + empresas/ATS/paises (offline)
 scripts/test_*.py         # suite standalone ([OK]/[FAIL]; exit 0 = TUDO OK) — test_refresh = refresh diario
+requirements-lock.txt      # lock de reprodutibilidade (pip freeze; fora do CI; adicionado 06/09)
 ```
 
 ## Status / Roadmap
