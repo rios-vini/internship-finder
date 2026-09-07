@@ -20,6 +20,9 @@ dependencies = [
     # Scraper avature (Siemens Healthineers, DHL) do ats-scrapers exige
     # beautifulsoup4 (extra opcional); sem ele o fetch falha com ScraperError.
     "beautifulsoup4>=4.12",
+    # Scraper moka (Bayer) do ats-scrapers exige pycryptodome (extra opcional);
+    # sem ele o fetch falha com FETCH_ERROR "requires pycryptodome" (P3 #36, 07/09).
+    "pycryptodome>=3.20",
 ]
 
 [project.scripts]
