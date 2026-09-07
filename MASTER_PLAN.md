@@ -101,6 +101,11 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 25 | Interface simples (top vagas, filtros, link) | ⏳ | Sem frontend sofisticado; dashboard/lista basta. |
 | 30 | Reavaliar range `>=0.3.0` do ats-scrapers quando o upstream evoluir (maturidade da release) | ⏳ **checado 2026-09-06** | P3 #19 eliminou a ref de PR `ae0ad53`; restou o range aberto no pyproject. Na próxima release do ats-scrapers (≥0.4.0): revalidar expose de `application_deadline` + suíte e decidir cap (`==0.3.*`) se a API mudar. Gate: nova release observada no PyPI ou falha de install/import. **Checagem 06/09 19:47 UTC (re-verificação independente): PyPI última release 0.3.0 (releases 0.1.0/0.2.0/0.3.0, upload 02/09) — sem release ≥0.4.0; venv instalado 0.3.0; import OK; expose de `application_deadline` presente na instalação; refresh diário sem falha de install/import → gate NÃO disparado, range `>=0.3.0` mantido, zero mudança de código (caminho B; ver Log de mudanças).** |
 
+| 31 | Retenção do archive + aviso de disco no refresh | ✅ 06/09 (PR #30) | `cleanup_archive` + flag `--retention-days` (default 14; 0 = desliga; roda pós-rotação) + `disk_usage_pct` >80% (log + `⚠️ Disco: N% usado` no Telegram). |
+| 32 | SQLite persistente no refresh diário (histórico em produção) | ✅ 06/09 (PR #30) | cron passa `--sqlite data/jobs.db` (first/last_seen/active/archived; `.db` acumulativo, não rotacionado). Pré-requisito dos P4 #27/#29 pronto. |
+| 33 | Lock de reprodutibilidade | ✅ 06/09 (PR #30) | `requirements-lock.txt` na raiz (pip freeze do venv; cabeçalho documentado; fora do CI — pyproject continua a fonte das deps diretas). |
+| 34 | `company_status` exposto no `--health` (fechar doc≠código) | ✅ 06/09 (PR #31) | chave `companies` no relatório do health; README deixou de prometer o que não existia. |
+
 ### 🔵 P4 — inteligência (só com dados históricos reais)
 | # | Item | Status | Notas |
 |---|---|---|---|
@@ -338,6 +343,11 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 +  `data/` intocada (stat antes==depois); branches `feature/p3-30-ats-range`
 +  (c7e55b6) e `feature/p1-05-sqlite-registro` (abf13df) inalteradas; sem push,
 +  sem PR (decisão do dono). [#30 checado ✅ caminho B]
+- **2026-09-06 (Fechamento orquestrado — PR #29/#30/#31, main `c2fcfb2`)**: **consolidacao das entregas documentais + lote 1 (correcoes P3) + lote 2 (operacoes)**:
+  - **PR #29** (squash `9477339`, docs): merge das 3 branches documentais do dia — P1 #5 registrado como implementado (drift corrigido) + P3 #30 checagens 15:01 e 19:47 UTC (caminho B, gate nao disparado: PyPI segue 0.3.0). CI verde.
+  - **PR #31** (squash `c2fcfb2`, lote 1 — correcoes P3): (a) **Apprentice/Apprenticeship excluidos** — equivalente EN do Ausbildung em `TYPE_EXCLUSION_PATTERNS`; medicao real sobre o run 06/09: funil 248 → **246** (pais) e 224 → **222** (eligible, removidas as 2 vagas reais VW de aprendizagem); filtro de tipo 3.119 → 3.080 (39 vagas EN de aprendiz); anti-testes com titulos reais; (b) **`trainee` removido de `STUDENT_EMPLOYMENT_TYPES`** — Trainee generico nao passa mais so pelo employment_type (medido: 0 jobs reais afetados); (c) **`read_metrics` defensivo** (linha JSONL malformada e pulada, nunca derruba o `--health`); (d) **`company_status` ordena por `(run_id, timestamp)`** (espelha health._sort_key; nao depende da posicao no arquivo); (e) **`--health` expoe `company_status` na chave `companies`** — gap doc≠codigo do README fechado. Suite 17/17 TUDO OK pre/pos; `data/` intocada.
+  - **PR #30** (squash `d0a3ea1`, lote 2 — operacoes): refresh diario coleta com **`--sqlite data/jobs.db`** (historico first/last_seen/active/archived em producao; `.db` nao rotaciona — acumulativo), **`cleanup_archive` + `--retention-days`** (default 14, 0 = desliga, roda pos-rotacao), **aviso de disco >80%** (log + linha na mensagem do Telegram), **subprocesso herda o ambiente do chamador** (antes substituia — `INTERNSHIP_FINDER_GEOCODING=1` no cron agora chega ao CLI), e **`requirements-lock.txt`** novo na raiz (lock de reproducibilidade, fora do CI). `test_refresh` 43→60 asserts; suite 17/17; CI 2 runs verdes + membership conferida.
+  - Novos itens P3 #31-#34 registrados na tabela (todos ✅ 06/09). [#29 ✅][#30 ✅][#31 ✅]
   main `e7604db`, run `33840628495` verde; mergeado 04/09) — `registry.py` com
   `SEED` das 39 empresas (fonte única em código: nome canônico de coleta +
   ATS/tenant de referência + `enabled`; substitui a lista colada do README),
