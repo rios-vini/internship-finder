@@ -1,8 +1,10 @@
 # MASTER_PLAN — Internship Finder (fonte de verdade única)
 
-**Versão:** 2026-08-31 · **Status:** unificado a partir de (1) roadmap original Hermes,
+**Versão:** 2026-09-07 · **Status:** unificado a partir de (1) roadmap original Hermes,
 (2) auditoria OpenHands (ACH-01..21), (3) consolidações das sessões 27–30/08,
-(4) **verificação direta no código/git em 31/08**. Nenhum item entra aqui por memória:
+(4) **verificação direta no código/git em 31/08**; Seção 1 re-verificada em 07/09
+(estado pós-fechamento orquestrado de 06/09 — PRs #29–#32, main `ab822f8`, CI verde,
+0 PRs abertos). Nenhum item entra aqui por memória:
 tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 
 > Regra de leitura: ✅ = verificado feito · ⏳ = pendente · 🔒 = bloqueado por decisão
@@ -12,27 +14,31 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 
 ---
 
-## 1. Estado verificado em 2026-08-31
+## 1. Estado verificado em 2026-09-07
 
 ### Main público (GitHub)
-- `main` = `da81475` (31/08): **PR #8 mergeado** ✅ (`9690c47`). main tem P0
-  deadline + hardening ACH-01..09 + fix metrics + MASTER_PLAN + SQLite desbloqueado.
+- `main` = `ab822f8` (06/09, fechamento orquestrado): PRs #29–#32 mergeados,
+  **CI do main verde, 0 PRs abertos** (verificado 07/09). Marco anterior:
+  `da81475` (31/08, PR #8 = P0 deadline + hardening ACH-01..09 + fix metrics
+  + SQLite desbloqueado).
 
-### Baseline de coleta (31/08, nesta instância)
-- Coleta completa re-executada (39 empresas, `--timeout 60`): **37.373 brutas →
-  236 eligible/ranked (todos `country_iso='de'`)** → `data/jobs.json`,
-  `data/eligible_jobs.json/csv`. Baseline antigo (12/08) era 56.810→293: o
-  **mercado mudou** (menos vagas), não é regressão.
-- **Workday no eligible: 0** — confirma com dados reais a pendência P0.1
-  (tenants Workday alemães seguem sem `country_iso`).
-- **Achado novo**: `scripts/test_ranking.py` tem sanity checks **acoplados a um
-  snapshot de dados (12/08)** — buscam vagas que já não existem no dataset atual
-  (ex.: "Logistik und Supply Chain Design", "SAP Analytics Cloud"). `ranking.py`
-  não mudou desde o MVP (`3307ec5`); o teste quebra por dados, não por código.
-  → Nova pendência (P2): desacoplar `test_ranking.py` de vagas específicas
-  (fixture fixa ou sanity por invariante de regra, não por presença de vaga).
+### Coleta viva (cron diário 06:00 UTC, desde 05/09)
+- O refresh diário roda todo dia (`scripts/refresh_daily.py` + `flock -n` em
+  `/tmp/internship_finder_refresh.lock`): rotação → coleta real do registry
+  (`--registry --timeout 60 --sqlite data/jobs.db`) → `--health` → alerta
+  Telegram em anomalia (exit != 0 OU alertas OU disco >80%; anti-spam).
+- **Runs reais (JSONL sanitizado)**: 31/08 **37.373→236** · 05/09 **38.038→224**
+  · 06/09 **37.953→222** · 07/09 **37.957→220** (dedup −24 em todos — 43/47
+  tenants ok por run; 2 empty). Número vivo: `data/eligible_jobs.json`
+  (regenerado ~06:05 UTC todo dia).
+- **Workday no eligible: 8** (run 06/09, flag OFF) — o resolver P0.1 recupera +9
+  com `INTERNSHIP_FINDER_GEOCODING=1` (OFF por default, rede geocoding).
+- Suíte local: **17/17** (16 CI + `test_manifest` local-only). Baseline original
+  31/08: 37.373→236; baseline antigo (12/08, 56.810→293) era mercado diferente,
+  não regressão. Achado 31/08 (resolvido no P2 #16): `test_ranking.py` estava
+  acoplado ao snapshot de 12/08.
 
-### Painel do PR #8 (histórico — mergeado, manter como registro)
+### Painel do PR #8 (HISTÓRICO — atas do PR #8, 23–31/08; manter como registro)
 | Commit | Data | Conteúdo |
 |---|---|---|
 | `7d3c3dd` | 23/08 | P0 Application Deadline: `Job.application_deadline` (datetime\|None, nunca inferido de `posted_at`), adapter, CSV, JSON, teste; pin upstream `ae0ad53` |
@@ -41,19 +47,26 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 
 ### Pipeline (validado end-to-end, parecer A)
 ```
-56.810 brutas → 3.428 estudante → 777 área → 309 DE → dedup −16 → 293 eligible/ranked
+37.953 brutas → 3.080 estudante → 752 área → 246 DE → dedup −24 → 222 eligible/ranked
 ```
-- 293/293 `country_iso='de'` · scores min 2.00 / mediana 6.00 / max 16.00 · md5 do
-  eligible idêntico em re-execução (determinístico) · Top 20 = 13A/5B/1C/1D.
-- Baseline oficial: **293** (não 389 — 389 é pré-correções F1–F3; README desatualizado).
-- 39 empresas na coleta · 20 com vagas eligible · ATS: successfactors 78%, smartrecruiters,
-  eightfold, cornerstone, phenom, greenhouse; workday 0 eligible (limitação documentada).
+(funil do run 06/09; run 07/09: 37.957 → 220. O funil histórico de 12/08 era
+56.810→293 — mercado mudou, ver §1.)
+- 222/222 `country_iso='de'` · scores min 2.50 / mediana 6.75 / max 16.75 ·
+  determinístico (md5 idêntico em re-execução).
+- 39 empresas na coleta · 24 com vagas eligible no run 06/09 (SAP 71, BoschGroup 41,
+  Volkswagen 20, BASF 17, Knorr-Bremse 16...) · ATS (eligible): successfactors 150,
+  smartrecruiters 41, eightfold 11, workday 8, phenom 5, ashby 3, greenhouse 3,
+  cornerstone 1.
 
 ### Limitações externas conhecidas (não são bugs internos)
-- Workday: API não expõe país confiável p/ vários tenants → vagas DE sem `country_iso`.
+- Workday: API não expõe país confiável p/ vários tenants → vagas DE sem `country_iso` (P0.1 mitigou).
 - Hager / Boehringer / Lanxess (SuccessFactors XML malformado) / Symrise (join.com 422).
 - 7 títulos de graduação na cauda (SmvP Schaeffler, Bachelor BASF) — fora dos padrões
   aprovados F1; candidatos a extensão futura, não regressão.
+- **Falhas recorrentes monitoradas (refresh diário, exit 2 até resolução)**: `moka:bayer/148387`
+  — FETCH_ERROR "Moka scraper requires pycryptodome" (extra opcional do ats-scrapers não
+  instalado; P3 #36, fonte: Bayer) e `successfactors:lidlstiftuP2` — timeout 85s recorrente
+  (P3 #36, fonte: Lidl). Ambas conhecidas e não-regressões; o health alerta por design.
 
 ---
 
@@ -105,6 +118,8 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 | 32 | SQLite persistente no refresh diário (histórico em produção) | ✅ 06/09 (PR #30) | cron passa `--sqlite data/jobs.db` (first/last_seen/active/archived; `.db` acumulativo, não rotacionado). Pré-requisito dos P4 #27/#29 pronto. |
 | 33 | Lock de reprodutibilidade | ✅ 06/09 (PR #30) | `requirements-lock.txt` na raiz (pip freeze do venv; cabeçalho documentado; fora do CI — pyproject continua a fonte das deps diretas). |
 | 34 | `company_status` exposto no `--health` (fechar doc≠código) | ✅ 06/09 (PR #31) | chave `companies` no relatório do health; README deixou de prometer o que não existia. |
+| 35 | Mensagem do Telegram didática (feedback do dono 07/09) | ⏳ registrado 07/09 | Template em linguagem natural: "X de Y fontes falharam", nomes amigáveis (empresa via `company` do JSONL), códigos de erro traduzidos (timeout/erro) e "recorrente há N runs". Melhora a UX do alerta diário (#17). |
+| 36 | Falhas recorrentes do refresh (exit 2 diário): `moka:bayer/148387` (Bayer, pycryptodome ausente) + `successfactors:lidlstiftuP2` (Lidl, timeout 85s) | ⏳ registrado 07/09 | moka: adicionar `pycryptodome` ao pyproject (padrão do beautifulsoup4 p/ avature); lidl: investigar timeout (aumento? aceitar?) e registrar decisão. Resultado: refresh volta a exit 0 e o alerta fica para anomalias reais. |
 
 ### 🔵 P4 — inteligência (só com dados históricos reais)
 | # | Item | Status | Notas |
@@ -144,8 +159,11 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 ## 4. Como este documento é mantido
 - Proposta de mudança de prioridade/item → registro com data + verificação no código
   (nunca por memória de sessão).
-- Tarefas saem daqui direto para o fluxo: **cronograma → prompt-builder → OpenHands →
-  conferir → git** (skill `openhands-orchestration`).
+- Tarefas saem daqui direto para o fluxo: **cronograma → prompt-builder → sessão de
+  execução (`hermes chat -Q -q` em clone separado) → conferir → git → PR → CI → merge**
+  (OpenHands só se necessário; handoff via skill `hermes-session-handoff`).
+- Auditorias/avaliações do repo viram **ata em `docs/ata_*.md`** (não só na conversa):
+  ata da auditoria de 06/09 → `docs/ata_auditoria_0609.md`.
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças

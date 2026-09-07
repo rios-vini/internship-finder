@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 ## Current state
 
@@ -11,13 +11,10 @@ observability (health), CI and standardized requirement tracking in
 
 Current collection scope includes 39 evaluated/operational companies from the E2 expansion.
 
-Latest documented full run (cron 06/09 06:00 UTC; reproduced offline by `scripts/coverage.py` and the current pipeline):
+Latest documented full runs (cron 06:00 UTC; reproduced offline by `scripts/coverage.py` and the current pipeline):
 
-- 37,953 raw jobs
-- 3,080 student-type jobs
-- 752 target-area jobs
-- 246 Germany-eligible jobs after country filter
-- 222 eligible/ranked jobs after deduplication (24 removed, company+title+location)
+- 06/09: 37,953 raw → 3,080 student-type → 752 target-area → 246 Germany-eligible → **222 eligible** (dedup −24)
+- 07/09: **37,957 raw → 220 eligible** (dedup −24; 43 tenants ok / 2 empty / 1 timeout / 1 error — falhas recorrentes conhecidas: moka Bayer + Lidl timeout, ver MASTER_PLAN P3 #36)
 - 24 companies / 20 tenants (source) with eligible jobs
   (SAP 71, BoschGroup 41, Volkswagen AG 20, BASF SE 17, Knorr-Bremse 16, ... — see README coverage table)
 
@@ -77,6 +74,7 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
   - **P3 #24**: aggregators (LinkedIn/Indeed/Glassdoor) - needs owner scope decision
   - **P3 #25**: simple interface (top jobs, filters, link) - SQLite is now fed by the daily refresh (prerequisite ready)
   - **P3 #30**: stays monitored - re-check when upstream releases >=0.4.0 or an install/import failure appears (last check 06/09 19:47 UTC: gate not fired, range kept)
+- **P3 #35** (mensagem didática do Telegram — feedback do dono) e **P3 #36** (falhas recorrentes: pycryptodome/Bayer + timeout/Lidl) registrados 07/09 no MASTER_PLAN.
 - Full ranked plan (P0–P4, status ✅/⏳): see `MASTER_PLAN.md` (source of truth).
 
 ## Known limitations
