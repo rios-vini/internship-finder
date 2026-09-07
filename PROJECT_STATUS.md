@@ -65,6 +65,9 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 - **P3 #31 — Corrections batch** (PR #31, merged 06/09, main `c2fcfb2`): Apprentice/Apprenticeship (EN learning programs) excluded like the DE Ausbildung rule (2 real VW jobs left eligible); `trainee` removed from `STUDENT_EMPLOYMENT_TYPES` (generic trainee no longer passes on `employment_type` alone; 0 jobs affected, measured); `read_metrics` skips malformed JSONL lines instead of crashing; `company_status` orders by `(run_id, timestamp)` instead of file position; `--health` now exposes `company_status` under the `companies` key (doc minus code gap closed). Funnel measured: 37,953 -> 3,080 -> 752 -> 246 -> **222** (before the fix: 248 -> 224). Suite 17/17 OK before/after; `data/` untouched.
 - **P3 #30 — Operations batch** (PR #30, merged 06/09, main `d0a3ea1`): daily refresh now collects with `--sqlite data/jobs.db` (first_seen/last_seen/active/archived persisted in production; the `.db` is not rotated); archive cleanup with `--retention-days` (default 14, 0 = off, runs after each rotation); disk usage >80% adds a "⚠️ Disco: N% usado" line to the Telegram message; collection subprocess inherits the caller env; `requirements-lock.txt` added (reproducibility, outside CI). `test_refresh` 43->60 asserts; suite 17/17; `data/` untouched.
 - **P2 #29 — Docs consolidation** (PR #29, merged 06/09, main `9477339`): P1 #5 SQLite registered as implemented (documental drift fixed) + P3 #30 gate checks 15:01 and 19:47 UTC (path B - gate not fired, PyPI still 0.3.0), both recorded in MASTER_PLAN log.
+- **P3 #35 — Mensagem do Telegram didática** (07/09): template em linguagem natural ("X de Y fontes falharam", nomes de empresa via `company` do JSONL, códigos de erro traduzidos, "recorrente há N runs"); `test_refresh` +4 checks didáticos.
+- **P3 #36 — Falhas recorrentes do refresh** (07/09): `pycryptodome>=3.20` no pyproject resolve `moka:bayer/148387` (Bayer — validação real na coleta do cron seguinte); Lidl timeout aceito como limitação monitorada.
+- **Ata da auditoria 06/09** (07/09): `docs/ata_auditoria_0609.md` — registro permanente dos achados A1–A9 e ações (antes só na conversa).
 
 ## Next priorities
 
@@ -74,7 +77,7 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
   - **P3 #24**: aggregators (LinkedIn/Indeed/Glassdoor) - needs owner scope decision
   - **P3 #25**: simple interface (top jobs, filters, link) - SQLite is now fed by the daily refresh (prerequisite ready)
   - **P3 #30**: stays monitored - re-check when upstream releases >=0.4.0 or an install/import failure appears (last check 06/09 19:47 UTC: gate not fired, range kept)
-- **P3 #35** (mensagem didática do Telegram — feedback do dono) e **P3 #36** (falhas recorrentes: pycryptodome/Bayer + timeout/Lidl) registrados 07/09 no MASTER_PLAN.
+- **P3 #36 (lidl)**: timeout 85s aceito como limitação monitorada — reavaliar quando o ats-scrapers ganhar timeout por fonte ou a Lidl mudar de tenant.
 - Full ranked plan (P0–P4, status ✅/⏳): see `MASTER_PLAN.md` (source of truth).
 
 ## Known limitations
