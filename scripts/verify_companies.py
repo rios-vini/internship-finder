@@ -45,9 +45,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"   OK   {source}: {n} vagas ({dt})")
             for source, dt in summary.get("empty", []):
                 print(f"   EMPTY {source}: 0 vagas ({dt})")
-            for source, err in summary.get("timeout", []):
+            for source, code, err in summary.get("timeout", []):
                 print(f"   TIMEOUT {source}: {err}")
-            for source, err in summary["failed"]:
+            for source, code, err in summary["failed"]:
                 print(f"   FAIL {source}: {err}")
             for source in summary["skipped"]:
                 print(f"   SKIP {source}: sem scraper no pacote")
