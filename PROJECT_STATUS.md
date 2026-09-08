@@ -84,6 +84,7 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
   - **P3 #23**: international expansion + more DE companies (39→60→100) — **DONE 08/09** (39→65, 26 validated; 22 rejected with evidence); next wave BE/FR/Nordics/UK + 65→100 when owner decides scope — see MASTER_PLAN #23
   - **P3 #24**: aggregators (LinkedIn/Indeed/Glassdoor) - needs owner scope decision
   - **P3 #25**: simple interface (top jobs, filters, link) — **DONE 08/09**: `scripts/interface.py` (HTML auto-contido, stdlib, zero deps novas) + `scripts/test_interface.py` no CI (array 16→17) — see MASTER_PLAN #25
+  - **P3 #37**: health agora agrega por (source, company) — **DONE 08/09** (PR #39): elimina falsos drops em tenants compartilhados (phenom:nan 6 companies; successfactors:jobs 9); run 08/09 pós-fix: 1 alerta (só Lidl); CI 17 scripts. See MASTER_PLAN #37
   - **P3 #30**: stays monitored - re-check when upstream releases >=0.4.0 or an install/import failure appears (last check 06/09 19:47 UTC: gate not fired, range kept)
 - **P3 #36 (lidl)**: timeout 85s aceito como limitação monitorada — reavaliar quando o ats-scrapers ganhar timeout por fonte ou a Lidl mudar de tenant.
 - Full ranked plan (P0–P4, status ✅/⏳): see `MASTER_PLAN.md` (source of truth).
