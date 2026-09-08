@@ -36,8 +36,9 @@ class RegistryEntry(BaseModel):
         return self.tenant or ""
 
 
-# --- Seed: as 39 empresas operacionais (12 da validação inicial + 27 da
-# --- expansão E2). Nomes canônicos = consulta real do ``--companies``
+# --- Seed: as 65 empresas operacionais (12 da validação inicial + 27 da
+# --- expansão E2 + 26 da expansão internacional P3 #23: 9 DE + 17 NL/CH/AT).
+# --- Nomes canônicos = consulta real do ``--companies``
 # --- (README.md + docs/empresas_verificacao.md + docs/relatorio_expansao.md).
 # --- Tenant/ATS de referência preenchidos a partir dos docs quando conhecidos;
 # --- ``None`` deixa "a base decide" (find_company resolve o tenant em runtime).
@@ -83,6 +84,36 @@ SEED = [
     RegistryEntry(name="Zeiss Group", ats="workday", tenant="workday:zeissgroup/external"),
     RegistryEntry(name="draegerP", ats="successfactors", tenant="successfactors:draegerP"),
     RegistryEntry(name="Uniper", ats="successfactors", tenant="successfactors:jobs"),
+    # --- 9 da expansão internacional P3 #23 (2026-09-08) — Lote A (DE) ---
+    # Validadas com scripts/verify_companies.py --fetch (match exato + scraper
+    # + fetch real OK >0 vagas); tenant copiado da saída (sem invenção).
+    RegistryEntry(name="Allianz", ats="phenom", tenant="phenom:nan"),
+    RegistryEntry(name="Adidas", ats="moka", tenant="moka:adidas/140456"),
+    RegistryEntry(name="Puma", ats="workday", tenant="workday:puma/jobs_at_puma"),
+    RegistryEntry(name="Hella", ats="cornerstone", tenant="cornerstone:hella"),
+    RegistryEntry(name="Fraunhofer", ats="successfactors", tenant="successfactors:fraunhofer"),
+    RegistryEntry(name="Merck", ats="phenom", tenant="phenom:nan"),
+    RegistryEntry(name="Boehringer Ingelheim", ats="successfactors", tenant="successfactors:BoehringerPRD"),
+    RegistryEntry(name="HelloFresh", ats="greenhouse", tenant="greenhouse:hellofresh"),
+    RegistryEntry(name="Otto", ats="jazzhr", tenant="jazzhr:otto"),
+    # --- 17 da expansão internacional P3 #23 (2026-09-08) — Lote B (NL/CH/AT) ---
+    RegistryEntry(name="Philips", ats="workday", tenant="workday:philips/jobs-and-careers"),
+    RegistryEntry(name="ING", ats="workday", tenant="workday:ing/icsnldgen"),
+    RegistryEntry(name="Heineken", ats="successfactors", tenant="successfactors:C0000032666P"),
+    RegistryEntry(name="Adyen", ats="greenhouse", tenant="greenhouse:adyen"),
+    RegistryEntry(name="Nestlé", ats="successfactors", tenant="successfactors:jobdetails"),
+    RegistryEntry(name="Novartis", ats="workday", tenant="workday:novartis/novartis_careers"),
+    RegistryEntry(name="ABB", ats="workday", tenant="workday:abb/External_Career_Page"),
+    RegistryEntry(name="Red Bull", ats="smartrecruiters", tenant="smartrecruiters:RedBull"),
+    RegistryEntry(name="Roche", ats="workday", tenant="workday:roche/roche-ext"),
+    RegistryEntry(name="Swiss Re", ats="successfactors", tenant="successfactors:careers"),
+    RegistryEntry(name="Schindler", ats="successfactors", tenant="successfactors:job"),
+    RegistryEntry(name="Shell", ats="workday", tenant="workday:shell/shellcareers"),
+    RegistryEntry(name="Unilever", ats="workday", tenant="workday:unilever/unilever_experienced_professionals"),
+    RegistryEntry(name="AkzoNobel", ats="successfactors", tenant="successfactors:careers"),
+    RegistryEntry(name="Rabobank", ats="workday", tenant="workday:rabobank/jobs"),
+    RegistryEntry(name="NXP", ats="workday", tenant="workday:nxp/careers"),
+    RegistryEntry(name="OMV", ats="successfactors", tenant="successfactors:omvagPRD"),
 ]
 
 
