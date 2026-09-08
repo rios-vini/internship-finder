@@ -9,7 +9,13 @@ filtering → dedup → ranking), with SQLite persistence, structured error code
 observability (health), CI and standardized requirement tracking in
 `MASTER_PLAN.md`.
 
-Current collection scope includes 39 evaluated/operational companies from the E2 expansion.
+Current collection scope includes **65 evaluated/operational companies**
+(12 initial + 27 E2 expansion + **26 added 08/09, P3 #23** — Lote A: 9 DE
+(Allianz, Adidas, Puma, Hella, Fraunhofer, Merck, Boehringer Ingelheim,
+HelloFresh, Otto); Lote B: 17 NL/CH/AT (Philips, ING, Heineken, Adyen,
+Nestlé, Novartis, ABB, Red Bull, Roche, Swiss Re, Schindler, Shell,
+Unilever, AkzoNobel, Rabobank, NXP, OMV); all validated with
+`verify_companies.py --fetch` — match exato + scraper + fetch OK).
 
 Latest documented full runs (cron 06:00 UTC; reproduced offline by `scripts/coverage.py` and the current pipeline):
 
@@ -75,9 +81,9 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 
 - **P3 #20/#21/#29/#30/#31 complete** (06/09 - see Completed). Backlog remainders:
   - **P3 #22**: DONE (08/09) — measured, no action (see Completed); reopen if jobs.json > 1GB or read > 10s or data/ > 10GB
-  - **P3 #23**: international expansion + more DE companies (39→60→100) - needs owner scope decision
+  - **P3 #23**: international expansion + more DE companies (39→60→100) — **DONE 08/09** (39→65, 26 validated; 22 rejected with evidence); next wave BE/FR/Nordics/UK + 65→100 when owner decides scope — see MASTER_PLAN #23
   - **P3 #24**: aggregators (LinkedIn/Indeed/Glassdoor) - needs owner scope decision
-  - **P3 #25**: simple interface (top jobs, filters, link) - SQLite is now fed by the daily refresh (prerequisite ready)
+  - **P3 #25**: simple interface (top jobs, filters, link) — **DONE 08/09**: `scripts/interface.py` (HTML auto-contido, stdlib, zero deps novas) + `scripts/test_interface.py` no CI (array 16→17) — see MASTER_PLAN #25
   - **P3 #30**: stays monitored - re-check when upstream releases >=0.4.0 or an install/import failure appears (last check 06/09 19:47 UTC: gate not fired, range kept)
 - **P3 #36 (lidl)**: timeout 85s aceito como limitação monitorada — reavaliar quando o ats-scrapers ganhar timeout por fonte ou a Lidl mudar de tenant.
 - Full ranked plan (P0–P4, status ✅/⏳): see `MASTER_PLAN.md` (source of truth).
