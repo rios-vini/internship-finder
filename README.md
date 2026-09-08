@@ -58,7 +58,7 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
 mesma cascata, gravando o resultado em `data/eligible_jobs.json`. A lista de
 empresas nao e mais colada no comando: vem do **registry** (fonte de verdade
-das 39 empresas em codigo — ver "Registry de empresas" abaixo):
+das 65 empresas em codigo — ver "Registry de empresas" abaixo):
 
 ```bash
 .venv/bin/internship-finder --registry --timeout 60
@@ -70,8 +70,9 @@ python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 
 ### Registry de empresas
 
-As 39 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
-E2) vivem em **codigo**, no `SEED` de `src/internship_finder/registry.py` — a
+As 65 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
+E2 + 26 da expansao 08/09 — ver `docs/` e MASTER_PLAN #23) vivem em **codigo**,
+no `SEED` de `src/internship_finder/registry.py` — a
 fonte de verdade do "quem coleta": nome canonico (a consulta do `--companies`),
 ATS/tenant de referencia e `enabled` (desabilitar tira da coleta sem apagar do
 registry). Nada de lista colada em doc: o `--companies` continua aceito por
@@ -172,17 +173,19 @@ locais e gitignored: os numeros servem como documentacao de coleta, nao como
 arquivos versionados. A coleta total leva alguns minutos — cada tenant usa
 timeout proprio (`--timeout 60`).
 
-### Cobertura (39 na coleta → 24 com vagas eligible)
+### Cobertura (65 na coleta → 24 com vagas eligible)
 
 **"Avaliada", "operacional" e "com vagas eligible" sao metricas DIFERENTES**:
 
 - **Avaliada** = empresa que passou pela verificacao do runbook
   (`docs/empresas_verificacao.md`): match exato na base do `ats-scrapers` e
-  teste do tenant/ATS. Apos a expansao E2 (2026-08-12), sao **39 empresas**
-  operacionais na coleta (12 da validacao inicial + 27 novas).
+  teste do tenant/ATS. Apos a expansao de 08/09 (P3 #23), sao **65 empresas**
+  operacionais na coleta (12 da validacao inicial + 27 novas + 26 novas 08/09).
 - **Operacional** = retorna vagas no fetch real (tenant ativo, ATS com
-  scraper): **39** (35 tenants com dados em `data/jobs.json`; a Bosch conta
-  2x no campo `company` — tenants `BoschGroup` e `bosch-homecomfort`).
+  scraper): **39** no snapshot 07/09 (35 tenants com dados em `data/jobs.json`;
+  a Bosch conta 2x no campo `company` — tenants `BoschGroup` e
+  `bosch-homecomfort`). **Re-medir no run 06:00 pós-expansão #23** (65 no
+  registry).
 - **Com vagas eligible** = tem pelo menos 1 vaga eligible na Alemanha apos a
   cascata de filtros + dedup: **24** empresas / 20 tenants (medido no run 06/09).
 
@@ -209,7 +212,7 @@ deterministico — `.venv/bin/python scripts/coverage.py`):
 | --- | --- |
 | Funil: raw → tipo → area → pais (DE) | 37.953 → 3.080 → 752 → 246 (run cron 06/09) |
 | eligible (pos-dedup) → ranked | 246 → 222 (24 removidas na dedup, company+title+location; run 06/09) |
-| Empresas com eligible / tenants (source) | 24 / 20 (bruto: 39 empresas / 35 tenants) |
+| Empresas com eligible / tenants (source) | 24 / 20 (bruto snapshot 07/09: 39 empresas / 35 tenants; registry pós-#23: 65) |
 | Top empresas (eligible) | SAP 71, BoschGroup 41, Volkswagen AG 20, BASF SE 17, Knorr-Bremse 16, Schaeffler 8, ... (24 empresas no total; run 06/09) |
 | Contribuicao das maiores | top1 32,0% (SAP 71/222) — re-medir com `coverage.py` | top3 ~59% | top5 ~74% |
 | Top ATS (eligible) | successfactors 150, smartrecruiters 41, eightfold 11, workday 8, phenom 5, ashby 3, greenhouse 3, cornerstone 1 |
@@ -363,6 +366,17 @@ arquivos gravados (`data/eligible_jobs.json`/`.csv` com campo `score`).
 > Validacao/saidas gravam em `data/` por default (local, gitignored); para nao
 > depender de `data/`, use `--output PATH`/`--filter-output PATH`/`--metrics PATH`.
 
+**Interface** (P3 #25, 08/09) — leitura amigavel das vagas ranqueadas, sem servidor:
+```bash
+.venv/bin/python scripts/interface.py                # HTML em /tmp/interface.html (top 25 por score)
+.venv/bin/python scripts/interface.py --top 50 --company sap --keyword student --output -
+.venv/bin/python scripts/interface.py --db data/jobs.db   # SQLite (sem score: ordena por last_seen)
+```
+Pagina HTML auto-contida (CSS/JS inline, zero dependencia nova): top N por score,
+filtros `--company`/`--keyword`/`--country`, URL clicavel, breakdown do score em
+badges. Filtragem client-side do browser e so ocultacao sobre o conjunto ja
+filtrado na geracao; a logica testada e a do script (`scripts/test_interface.py`).
+
 ## Modelo `Job` (canonico, pydantic)
 
 `id, source, title, company, location, country, remote, url, description,
@@ -424,6 +438,7 @@ scripts/collect_jobs.py   # atalho p/ rodar sem instalar
 scripts/refresh_daily.py  # refresh diario + alertas Telegram (rotacao -> coleta -> health -> alerta)
 scripts/verify_companies.py  # runbook de empresas (match exato + fetch)
 scripts/coverage.py       # cobertura: funil + empresas/ATS/paises (offline)
+scripts/interface.py      # interface simples: top vagas ranqueadas + filtros (HTML stdlib; P3 #25)
 scripts/test_*.py         # suite standalone ([OK]/[FAIL]; exit 0 = TUDO OK) — test_refresh = refresh diario
 requirements-lock.txt      # lock de reprodutibilidade (pip freeze; fora do CI; adicionado 06/09)
 ```
