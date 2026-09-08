@@ -39,13 +39,13 @@ def check(name: str, cond: bool) -> None:
 
 
 def _tenant(run_id: str, source: str, status: str, collected: int,
-            duration=None, ats: str | None = None) -> dict:
+            duration=None, ats: str | None = None, company: str = "Acme") -> dict:
     """Registro tenant minimo e valido para os casos sinteticos."""
     return {
         "type": "tenant",
         "run_id": run_id,
         "timestamp": run_id,
-        "company": "Acme",
+        "company": company,
         "source": source,
         "ats": ats or source.split(":", 1)[0],
         "status": status,
@@ -187,6 +187,53 @@ def test_run_id_fora_de_ordem() -> None:
     check("sem alerta por mediana", len(drop) == 0)
 
 
+def test_tenant_compartilhado_por_empresa() -> None:
+    print("== tenant compartilhado: serie por (source, company) — P3 #37 ==") 
+    # Mesmo tenant phenom:nan usado por 2 empresas (como no run real 08/09:
+    # DHL 8.5-8.8k + ABB/Allianz/Merck/Philips/Roche 0.4-2k no MESMO run).
+    # Alpha tem historico ok longo; Beta entra com 1 run novo de valor baixo.
+    # ANTES da correcao o detector pegava o ultimo registro da source (Beta)
+    # contra a mediana dos ok anteriores (Alpha) -> falso "queda brusca".
+    rows = [
+        _tenant("2026-09-01T01:00:00Z", "phenom:nan", "ok", 8000, company="Alpha"),
+        _tenant("2026-09-01T02:00:00Z", "phenom:nan", "ok", 8200, company="Alpha"),
+        _tenant("2026-09-01T03:00:00Z", "phenom:nan", "ok", 8100, company="Alpha"),
+        _tenant("2026-09-01T04:00:00Z", "phenom:nan", "ok", 8050, company="Alpha"),
+        _tenant("2026-09-01T05:00:00Z", "phenom:nan", "ok", 300, company="Beta"),
+    ]
+    report = build_health_report(rows)
+    drops = [a for a in report["alerts"] if a["type"] == "drop"]
+    check("empresa nova (1 run, valor baixo) NAO alarma queda", len(drops) == 0)
+    alpha = [s for s in report["sources"] if s.get("company") == "Alpha"]
+    beta = [s for s in report["sources"] if s.get("company") == "Beta"]
+    check("series separadas por (source, company)", len(alpha) == 1 and len(beta) == 1)
+    check("serie Alpha preserva o proprio historico",
+          len(alpha) == 1 and alpha[0]["last_collected"] == 8050
+          and alpha[0]["ok_runs"] == 4)
+    # queda REAL dentro da MESMA (source, company) continua sendo detectada
+    rows_drop = [
+        _tenant("2026-09-01T01:00:00Z", "phenom:nan", "ok", 8000, company="Alpha"),
+        _tenant("2026-09-01T02:00:00Z", "phenom:nan", "ok", 8200, company="Alpha"),
+        _tenant("2026-09-01T03:00:00Z", "phenom:nan", "ok", 8100, company="Alpha"),
+        _tenant("2026-09-01T04:00:00Z", "phenom:nan", "ok", 8050, company="Alpha"),
+        _tenant("2026-09-01T05:00:00Z", "phenom:nan", "ok", 200, company="Alpha"),
+    ]
+    report2 = build_health_report(rows_drop)
+    drops2 = [a for a in report2["alerts"] if a["type"] == "drop"]
+    check("queda real na mesma (source, company) ALARMA", len(drops2) == 1)
+    if drops2:
+        check("alerta de queda carrega source do tenant", drops2[0]["source"] == "phenom:nan")
+        check("alerta de queda carrega company da serie", drops2[0]["company"] == "Alpha")
+        check("mediana calculada so com a serie da empresa",
+              drops2[0]["mediana_anterior"] == 8100 and drops2[0]["collected_atual"] == 200)
+    # compat: registro antigo SEM company cai em (source, "") — serie propria
+    legacy = _tenant("2026-09-01T06:00:00Z", "legacy:tenant", "ok", 7)
+    del legacy["company"]
+    report3 = build_health_report([legacy])
+    check("registro sem company cai em (source, '')",
+          len(report3["sources"]) == 1 and report3["sources"][0].get("company") == "")
+
+
 def test_read_metrics_defensivo() -> None:
     print("== read_metrics defensivo: linha malformada nao derruba (P3 lote 1) ==")
     from internship_finder.metrics import read_metrics
@@ -312,6 +359,7 @@ def main() -> int:
     test_registro_malformado()
     test_jsonl_vazio()
     test_run_id_fora_de_ordem()
+    test_tenant_compartilhado_por_empresa()
     test_read_metrics_defensivo()
     test_cli_health_tempfile()
     test_cli()
