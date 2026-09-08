@@ -2,15 +2,17 @@
 
 Consome o JSONL de metricas de execucao (``data/collection_metrics.jsonl``,
 ver ``internship_finder.metrics``), produzido pelo modo coleta do CLI, e gera
-um relatorio estruturado (dict JSON-serializavel) com resumo por ``source``
-(tenant) e por ATS, alem de dois alertas:
+um relatorio estruturado (dict JSON-serializavel) com resumo por serie
+``source`` (tenant) + ``company`` (P3 #37: tenants sao compartilhados entre
+empresas — a serie temporal e por ``(source, company)``; registros antigos
+sem ``company`` caem em ``(source, "")``) e por ATS, alem de dois alertas:
 
-- **Queda brusca**: um source cujo ultimo run terminou ``ok`` mas coletou menos
+- **Queda brusca**: uma serie cujo ultimo run terminou ``ok`` mas coletou menos
   que ``DROP_THRESHOLD`` da mediana dos ``MIN_OK_HISTORY_FOR_DROP`` runs ok
   anteriores. Com historia curta (menos que o gate) NAO alerta.
-- **Erro recorrente**: um source com ``status`` em {timeout, error} nos ultimos
+- **Erro recorrente**: uma serie com ``status`` em {timeout, error} nos ultimos
   ``CONSECUTIVE_FAILURES`` runs consecutivos (por ordem de ``run_id``).
-- **Zero-return** (P2 #10): um source cujo run MAIS RECENTE respondeu ``empty``
+- **Zero-return** (P2 #10): uma serie cujo run MAIS RECENTE respondeu ``empty``
   depois de ``MIN_OK_HISTORY_FOR_ZERO_RETURN`` runs ok anteriores com vagas
   (collected > 0) — regressao de cobertura (tenant que enchia de vagas e
   passou a responder 0), com gate de historico para nao alarmar em flutuacao.
@@ -127,9 +129,15 @@ def _tenant_records(records: list[dict], warnings: list[str]) -> list[dict]:
         if not isinstance(status, str):
             _warn(idx, "status invalido")
             continue
+        # company (P3 #37): tenants sao compartilhados entre empresas — a serie
+        # temporal e por (source, company). Registros antigos sem o campo caem
+        # em "" (compat).
+        company = rec.get("company")
+        company = company.strip() if isinstance(company, str) else ""
         output.append(
             {
                 "source": source,
+                "company": company,
                 "ats": (rec.get("ats") if isinstance(rec.get("ats"), str) else (source.split(":", 1)[0] if ":" in source else source)),
                 "run_id": run_id,
                 "timestamp": timestamp,
@@ -149,7 +157,7 @@ def _sort_key(rec: dict) -> tuple:
 
 
 def _summary_per_source(rows: list[dict]) -> dict:
-    """Resumo por source (tenant): ultimo estado + medias dos runs ok."""
+    """Resumo por serie (source, company): ultimo estado + medias dos runs ok."""
     ok_rows = [r for r in rows if r["status"] == "ok"]
     last = rows[-1]
     if ok_rows:
@@ -159,6 +167,7 @@ def _summary_per_source(rows: list[dict]) -> dict:
         med_duration = None
     return {
         "source": last["source"],
+        "company": last.get("company", ""),
         "last_status": last["status"],
         "last_collected": last["collected"],
         "last_duration": last["duration"],
@@ -170,7 +179,9 @@ def _summary_per_source(rows: list[dict]) -> dict:
 
 
 def _detect_drops(rows: list[dict]) -> list[dict]:
-    """Queda brusca no ultimo run ok de um source, com gate de historico."""
+    """Queda brusca no ultimo run ok de uma serie (source, company), com gate
+    de historico. ``source`` continua sendo o tenant; ``company`` identifica a
+    empresa da serie ("" em registros antigos sem o campo)."""
     ok_rows = [r for r in rows if r["status"] == "ok"]
     if len(ok_rows) <= MIN_OK_HISTORY_FOR_DROP:
         return []
@@ -186,6 +197,7 @@ def _detect_drops(rows: list[dict]) -> list[dict]:
             {
                 "type": "drop",
                 "source": last["source"],
+                "company": last.get("company", ""),
                 "mediana_anterior": median,
                 "collected_atual": last["collected"],
                 "pct": round(pct, 3),
@@ -215,6 +227,7 @@ def _detect_zero_return(rows: list[dict]) -> list[dict]:
         {
             "type": "zero_return",
             "source": last["source"],
+            "company": last.get("company", ""),
             "last_status": "empty",
             "ok_history": len(prior_ok),
             "last_ok_collected": prior_ok[-1]["collected"],
@@ -226,20 +239,30 @@ def _detect_consecutive_failures(rows: list[dict]) -> list[dict]:
     """Erro recorrente: runs mais recentes consecutivos em {timeout, error}.
 
     Conta a sequencia CONSECUTIVA de falhas a partir do run mais recente
-    (por ordem de ``run_id``) e somente alerta quando essa sequencia chega a
-    ``CONSECUTIVE_FAILURES``. ``runs_seq`` traz o tamanho real da sequencia
-    (ex.: 3 falhas -> ``runs_seq`` 3), nao apenas o limiar.
+    (por ordem de ``run_id``) da serie (source, company) e somente alerta
+    quando essa sequencia chega a ``CONSECUTIVE_FAILURES``. ``runs_seq`` traz
+    o tamanho real da sequencia (ex.: 3 falhas -> ``runs_seq`` 3), nao apenas
+    o limiar. ``company`` = empresa do run de falha mais recente.
     """
     count = 0
     source = None
+    company = None
     for r in reversed(rows):
         if r["status"] in ("timeout", "error"):
             count += 1
             source = r["source"]
+            company = r.get("company", "")
         else:
             break
     if count >= CONSECUTIVE_FAILURES and source is not None:
-        return [{"type": "recurring_error", "source": source, "runs_seq": count}]
+        return [
+            {
+                "type": "recurring_error",
+                "source": source,
+                "company": company or "",
+                "runs_seq": count,
+            }
+        ]
     return []
 
 
@@ -257,15 +280,22 @@ def build_health_report(
     if warnings is not None:
         warnings.extend(_warnings)
 
-    by_source: dict[str, list[dict]] = {}
+    by_series: dict[tuple[str, str], list[dict]] = {}
     for rec in tenants:
-        by_source.setdefault(rec["source"], []).append(rec)
-    for rows in by_source.values():
+        # Serie temporal por chave composta (source, company) — P3 #37.
+        # Tenants sao COMPARTILHADOS entre empresas (ex.: phenom:nan com 6
+        # companies no mesmo run 08/09): agregar so por source mistura
+        # historicos de empresas diferentes e o ultimo registro da source
+        # (empresa A) e comparado contra a mediana de outra (empresa B) ->
+        # falso alerta de queda. Registros antigos sem company caem em "".
+        key = (rec["source"], rec.get("company", ""))
+        by_series.setdefault(key, []).append(rec)
+    for rows in by_series.values():
         rows.sort(key=_sort_key)
 
     sources = []
-    for src in sorted(by_source):
-        rows = by_source[src]
+    for (src, company) in sorted(by_series):
+        rows = by_series[(src, company)]
         s = _summary_per_source(rows)
         s["alerts"] = _detect_drops(rows) + _detect_consecutive_failures(rows) + _detect_zero_return(rows)
         sources.append(s)
