@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-07
+Last updated: 2026-09-08
 
 ## Current state
 
@@ -69,10 +69,12 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 - **P3 #36 — Falhas recorrentes do refresh** (07/09): `pycryptodome>=3.20` no pyproject resolve `moka:bayer/148387` (Bayer — validação real na coleta do cron seguinte); Lidl timeout aceito como limitação monitorada.
 - **Ata da auditoria 06/09** (07/09): `docs/ata_auditoria_0609.md` — registro permanente dos achados A1–A9 e ações (antes só na conversa).
 
+- **P3 #22 — Data/code separation + Parquet + chunking: measured, no action** (08/09; full numbers in the MASTER_PLAN log): `jobs.json` is 114MB (37,957 jobs, ~3KB/job) and loads in 828ms; 3 consecutive runs show ~0% daily growth (38,038→37,953→37,957; churn ~116 ids/day, net ~0 — only the cumulative `jobs.db` grows, ~+0.13GB/year); real format measurements: gzip −9 = 14.4MB, parquet-zstd = 12.2MB, SQLite read 358ms, parquet-zstd read 52ms. Fixed thresholds declared before measuring (parquet only if JSON ≥1GB or read >10s; data repo only if `data/` ≥10GB or disk >75%; chunking only if a future #25 interface payload >10MB) — none hit, so no new dependency (pyarrow/pandas/duckdb stay out), JSON/CSV/SQLite contracts untouched, cron/refresh untouched. Reopen condition recorded in MASTER_PLAN #22. `data/` untouched; suite 17/17 OK from scratch cwd.
+
 ## Next priorities
 
 - **P3 #20/#21/#29/#30/#31 complete** (06/09 - see Completed). Backlog remainders:
-  - **P3 #22**: data/code separation + Parquet when volume justifies (archive now auto-cleaned - see #30)
+  - **P3 #22**: DONE (08/09) — measured, no action (see Completed); reopen if jobs.json > 1GB or read > 10s or data/ > 10GB
   - **P3 #23**: international expansion + more DE companies (39→60→100) - needs owner scope decision
   - **P3 #24**: aggregators (LinkedIn/Indeed/Glassdoor) - needs owner scope decision
   - **P3 #25**: simple interface (top jobs, filters, link) - SQLite is now fed by the daily refresh (prerequisite ready)
@@ -84,7 +86,7 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 
 - Some Workday tenants do not expose country information clearly enough for the current country filter (documented; nothing fabricated). **Partially mitigated** by the optional `geocoding.py` fallback (OFF by default; +9 Workday DE when enabled; network geocoding only with the flag on).
 - Some companies/ATS combinations currently fail or are excluded for documented reasons (Hager/Boehringer/Lanxess/Symrise — external limitations from parecer B).
-- Eligible count (current, documented): the daily cron regenerates `data/eligible_jobs.json` (06/09 run: **222** eligible). Older numbers in docs (236/232 from the 31/08 snapshot) are historical; the pipeline output over the current snapshot with the current code is the source of truth (**222**).
+- Eligible count (current, documented): the daily cron regenerates `data/eligible_jobs.json` (**07/09 run: 220 eligible** — declared numeric drift: this status previously cited 222 from the 06/09 run; the pipeline output over the current live snapshot is 220, mirroring MASTER_PLAN). Older numbers in docs (236/232 from the 31/08 snapshot) are historical.
 - 7 degree-program titles in the tail (Schaeffler "Studium mit vertiefter Praxis", BASF Bachelor) are pre-existing, outside the approved F1 patterns — candidates for future pattern extension, not a regression.
 
 Data in `data/` is local and gitignored: numbers serve as collection documentation, not as versioned files.
