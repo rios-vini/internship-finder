@@ -8,8 +8,25 @@ O adapter extrai campos por cadeias de fallback (``url``/``apply_url``/
 
 Alem dos campos basicos, o adapter preenche os campos novos do modelo
 canonico: ``external_id``, ``employment_type``, ``country_iso``,
-``posted_at`` (quando o ATS expoe), ``id`` (derivado de external_id ou
-hash da URL) e a flag ``internship`` (heuristica de ``filters``).
+``posted_at`` (quando o ATS expoe), ``id`` (derivado da tripla
+empresa + tenant + external_id — P1.1) e a flag ``internship``
+(heuristica de ``filters``).
+
+**Identidade do Job (P1.1).** A identidade de uma vaga e:
+
+    identidade da empresa + tenant ATS + identidade externa
+
+O ``source`` (``ats:slug``) identifica apenas o TENANT ATS, e o mesmo
+tenant pode ser compartilhado por varias empresas (ex.:
+``successfactors:jobs`` cobre SAP/ZF/Kaufland/Schaeffler/...;
+``phenom:nan`` cobre DHL/Allianz/Merck/...). Cada empresa numera seus
+``external_id`` de forma independente DENTRO do tenant, entao
+``source:external_id`` sozinho NAO identifica uma vaga. O prefixo de
+empresa entra no ID (e no escopo da dedup) usando o campo canonico
+``company`` do Job — estavel por construcao (fonte: ATS, com fallback
+em ``Company.name``/``Company.query``) e validado empiricamente estavel
+entre runs no dataset real. A ``Company`` do dominio alimenta o valor
+via fallback; nao ha segunda abstracao de identidade.
 """
 
 from __future__ import annotations
@@ -85,6 +102,11 @@ class AtsJobAdapter:
         # vazio hoje (0 ocorrencias em data/jobs.json), entao e defensivo.
         title = self._first(data, _FIELDS["title"]) or ""
         company_name = self._first(data, _FIELDS["company"]) or company.name or company.query
+        # Identidade empresarial do Job: valor canonico normalizado (strip) que
+        # vai TANTO para ``Job.company`` quanto para o prefixo do ``id`` (P1.1).
+        # Garante que id e dedup escopem pela MESMA identidade de empresa.
+        company_identity = (company_name or "").strip()
+        source = company.source
         url_raw = self._first_str(data, _FIELDS["url"])
         # Sem URL de vaga real, ``url`` fica vazio (nao fabrica uma URL de
         # careers): uma URL generica identica para todos os jobs da empresa
@@ -122,15 +144,16 @@ class AtsJobAdapter:
 
         return Job(
             id=self._make_id(
-                company,
+                company_identity,
+                source,
                 external_id,
                 url,
                 url_is_fallback=url_is_fallback,
                 discriminator=(title, location),
             ),
-            source=company.source,
+            source=source,
             title=title,
-            company=company_name,
+            company=company_identity or None,
             location=location,
             country=country_iso,
             url=url,
@@ -147,34 +170,50 @@ class AtsJobAdapter:
 
     @staticmethod
     def _make_id(
-        company: Company,
+        company_identity: str,
+        source: str,
         external_id: str | None,
         url: str,
         *,
         url_is_fallback: bool = False,
         discriminator: tuple[str, ...] = (),
     ) -> str:
-        """ID estavel: ``source:external_id`` ou ``source:hash(url)``.
+        """ID estavel e unico entre empresas: ``<company>|<source>:<external_id>``.
 
-        Quando ha ``external_id``, o ID e ``source:external_id`` (unico por
-        tenant). Sem ``external_id``, o ID e o hash da URL real da vaga. Se
-        o ATS nao forneceu URL (``url`` vazio — URL de careers nao e URL de
-        vaga e nao deve servir de identidade), o hash da URL vazia seria o
-        mesmo para todos os jobs da empresa. Nesse caso (e somente nele)
-        inclui-se campos discriminantes estaveis do job (titulo/localizacao)
-        no hash, para distinguir vagas diferentes mantendo determinismo
-        (mesmo job -> mesmo ID). Se nem isso distinguir (titulo e
-        localizacao vazios), nao ha identidade segura possivel — a colisao e
-        aceita como limite (os jobs sao semanticamente indistinguiveis).
+        A identidade de uma vaga e a tripla (empresa, tenant ATS, identidade
+        externa) — P1.1. O ``source`` identifica apenas o tenant ATS, e o
+        mesmo tenant pode ser COMPARTILHADO por varias empresas (ex.:
+        ``successfactors:jobs`` cobre SAP/ZF/Kaufland/...; ``phenom:nan``
+        cobre DHL/Allianz/Merck/...). Cada empresa numera seus
+        ``external_id`` de forma independente DENTRO do tenant — por isso
+        ``source:external_id`` sozinho colide entre empresas diferentes e o
+        prefixo de empresa entra no ID. ``company_identity`` e o valor ja
+        normalizado (strip) que tambem vai para ``Job.company`` — o ID e a
+        dedup escopam pela MESMA identidade.
+
+        Formato (um so, deterministico, estavel entre execucoes):
+        - com ``external_id``: ``<company>|<source>:<external_id>``;
+        - sem ``external_id``: ``<company>|<source>:<hash(url)>`` — hash
+          sha1 (16 hex) da URL real da vaga, mesmo fallback de antes agora
+          escopado pela empresa. Se o ATS nao forneceu URL (``url`` vazio —
+          URL de careers nao e URL de vaga e nao deve servir de identidade),
+          o hash da URL vazia seria o mesmo para todos os jobs da empresa;
+          nesse caso (e somente nele) inclui-se campos discriminantes
+          estaveis do job (titulo/localizacao) no hash, para distinguir vagas
+          diferentes mantendo determinismo (mesmo job -> mesmo ID). Se nem
+          isso distinguir (titulo e localizacao vazios), nao ha identidade
+          segura possivel — a colisao e aceita como limite (os jobs sao
+          semanticamente indistinguiveis).
         """
+        token = f"{company_identity}|{source}" if (company_identity or source) else ""
         if external_id:
-            return f"{company.source}:{external_id}"
+            return f"{token}:{external_id}"
         if url_is_fallback:
             for field in discriminator:
                 if field:
                     url = f"{url}|{field}"
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
-        return f"{company.source}:{digest}"
+        return f"{token}:{digest}"
 
     @staticmethod
     def _parse_dt(value: str | None) -> datetime | None:

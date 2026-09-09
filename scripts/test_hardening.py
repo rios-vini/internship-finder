@@ -67,6 +67,16 @@ def test_dedup_external_id_scope() -> None:
     out, _, _ = deduplicate([a, c])
     check("2. external_id igual no mesmo tenant -> 1 vaga", len(out) == 1)
 
+    # P1.1: o MESMO tenant compartilhado por empresas diferentes nao pode
+    # deduplicar — o mesmo external_id da Empresa A e da Empresa B sao vagas
+    # distintas (cada empresa numera seus ids de forma independente).
+    same_tenant_other_company = {
+        "id": "4", "source": "successfactors:acme", "external_id": "12345",
+        "title": "Intern", "company": "Another", "url": "https://a/4",
+        "location": "Berlin, DE"}
+    out, _, _ = deduplicate([a, same_tenant_other_company])
+    check("3. mesmo tenant + external_id, empresas diff -> 2 vagas", len(out) == 2)
+
 
 def test_ach08_no_url_id() -> None:
     print("== ACH-08: deduplicacao sem URL/external_id ==")
@@ -93,9 +103,10 @@ def test_ach08_no_url_id() -> None:
     except ValidationError:
         check("3d. vaga sem URL -> rejeitada (P2 #11)", True)
 
-    # com external_id, o ID e preservado (nao-regressao)
+    # com external_id, o ID e a tripla empresa|tenant:external_id (P1.1)
     je = adapter.to_job({"title": "Intern", "url": "https://x/1", "external_id": "R7"}, c)
-    check("3e. com external_id, id = source:external_id", je.id == "greenhouse:acme:R7")
+    check("3e. com external_id, id = company|source:external_id",
+          je.id == "Acme|greenhouse:acme:R7")
 
 
 def test_ach09_sem_titulo() -> None:
