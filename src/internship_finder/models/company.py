@@ -17,5 +17,12 @@ class Company(BaseModel):
 
     @property
     def source(self) -> str:
-        """Identificador composto usado como ``Job.source``."""
+        """Identificador composto do TENANT ATS usado como ``Job.source``.
+
+        Representa a ORIGEM TECNICA da vaga (coleta/troubleshooting), NAO a
+        identidade da empresa: o mesmo tenant pode ser compartilhado por varias
+        empresas (ex.: ``successfactors:jobs`` cobre SAP/ZF/Kaufland/...;
+        ``phenom:nan`` cobre DHL/Allianz/Merck/...). A identidade empresarial
+        da vaga e o campo ``company`` do Job (P1.1).
+        """
         return f"{self.ats}:{self.slug}"

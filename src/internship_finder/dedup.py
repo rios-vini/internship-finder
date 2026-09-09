@@ -5,9 +5,16 @@ ordem de confiabilidade (a primeira que bater decide):
 
 1. ``external_id`` (ou ``id``) do ATS — identidade oficial da vaga no sistema
    de origem (SmartRecruiters publica ids globais; SuccessFactors ids numericos
-   longos). Quando presente e o sinal mais forte.
+   longos). Quando presente e o sinal mais forte. **Escopada pela identidade
+   empresarial + origem (``company`` + ``source``)**: o mesmo valor de
+   ``external_id`` em empresas diferentes representa vagas DIFERENTES — mesmo
+   DENTRO do mesmo tenant ATS compartilhado (P1.1: ``successfactors:jobs``
+   cobre SAP/ZF/Kaufland/...; cada empresa numera seus ids de forma
+   independente dentro do tenant).
 2. URL normalizada — sem fragmento, sem barra final, casefold (a query e
-   mantida: eightfold carrega o id da vaga nela).
+   mantida: eightfold carrega o id da vaga nela). Tambem escopada pela
+   empresa (P1.1): uma URL identica em empresas diferentes nao pode fazer a
+   Empresa B remover a vaga da Empresa A.
 3. ``company + titulo normalizado + localizacao normalizada`` — fallback para
    quando nao ha id/URL confiavel (ou quando a mesma vaga foi publicada com
    outro id, ex.: versoes EN/DE de um mesmo cargo, ou repostagens).
@@ -155,7 +162,7 @@ KEY_COMPANY_TITLE_LOCATION = "company+title+location"
 KEY_LABELS = [KEY_EXTERNAL_ID, KEY_URL, KEY_COMPANY_TITLE_LOCATION]
 
 
-def candidate_keys(job: dict[str, Any]) -> list[tuple[str, str | tuple[str, str, str]]]:
+def candidate_keys(job: dict[str, Any]) -> list[tuple[str, str | tuple[str, str] | tuple[str, str, str]]]:
     """Chaves candidatas de uma vaga, da mais confiavel para a menos.
 
     A primeira chave que colidir com uma vaga ja vista decide a duplicata
@@ -164,19 +171,29 @@ def candidate_keys(job: dict[str, Any]) -> list[tuple[str, str | tuple[str, str,
     existem ou nao batem). A chave (c) exige titulo E localizacao nao vazios:
     sem localizacao, titulos iguais em cidades diferentes seriam fundidos.
 
-    A chave (a) e ESCOPADA pela origem (``source``): o mesmo valor de
-    ``external_id`` em empresas/ATS diferentes representa vagas DIFERENTES
-    (cada tenant numera seus ids de forma independente) — usar so o
-    ``external_id`` colapsaria vagas de tenants distintos. Quando nao ha
-    ``external_id``, usa-se o ``id`` canonico do job (ja ``source:...`` no
-    pipeline, portanto unico por tenant).
+    A chave (a) e escopada pela IDENTIDADE EMPRESARIAL + origem (``company``
+    + ``source``): o mesmo valor de ``external_id`` em empresas diferentes
+    representa vagas DIFERENTES — mesmo DENTRO de um tenant ATS compartilhado
+    (P1.1: ``successfactors:jobs`` cobre SAP/ZF/Kaufland/...; cada tenant
+    numera seus ids de forma independente POR EMPRESA). ``company`` e a mesma
+    identidade que prefixa o ``Job.id`` (``<company>|<source>:...``) — o
+    mesmo job nao pode ser considerado duplicata de outro so porque
+    ``source == source`` e ``external_id == external_id``. A chave (b) (URL)
+    tambem e escopada pela empresa: URL identica em empresas diferentes nao
+    funde. Quando nao ha ``external_id``, usa-se o ``id`` canonico do job (ja
+    ``<company>|<source>:...`` no pipeline, portanto unico por empresa+tenant).
     """
-    keys: list[tuple[str, str | tuple[str, str, str]]] = []
+    keys: list[tuple[str, str | tuple[str, str] | tuple[str, str, str]]] = []
 
+    # Mesma normalizacao do prefixo do ``Job.id``: strip, SEM casefold (a
+    # identidade de empresa preserva a forma exibida; casefold aqui
+    # divergiria do token do id e quebraria a dedup dentro da mesma empresa).
+    company = (job.get("company") or "").strip()
     source = str(job.get("source") or "").strip()
     ext = job.get("external_id")
     if ext:
-        key = f"{source}:{str(ext).strip()}" if source else str(ext).strip()
+        scope = f"{company}|{source}" if (company or source) else ""
+        key = f"{scope}:{str(ext).strip()}" if scope else str(ext).strip()
         keys.append((KEY_EXTERNAL_ID, key))
     else:
         job_id = job.get("id")
@@ -185,7 +202,7 @@ def candidate_keys(job: dict[str, Any]) -> list[tuple[str, str | tuple[str, str,
 
     url = normalize_url(job.get("url"))
     if url:
-        keys.append((KEY_URL, url))
+        keys.append((KEY_URL, (company, url)))
 
     company = (job.get("company") or "").strip().casefold()
     title = normalize_title(job.get("title"))

@@ -11,9 +11,11 @@ cada vaga registra:
 
 O schema espelha o Job canonico (``src/internship_finder/models/job.py``) mais
 esses quatro campos de vida. **A identidade da vaga e o campo ``id`` do Job** —
-estavel por construcao (o hardening ACH-08 garantiu ids sem dependencia de
-URL/external_id). Por isso a chave primaria e ``id`` (TEXT) e o upsert e feito
-por ele.
+``<company>|<source>:<external_id>`` (ou hash da URL quando nao ha
+``external_id``), estavel por construcao e UNICA entre empresas mesmo em tenant
+ATS compartilhado (P1.1: duas empresas no mesmo tenant com o mesmo
+``external_id`` produzem ids diferentes porque o prefixo de empresa difere). Por
+isso a chave primaria e ``id`` (TEXT) e o upsert e feito por ele.
 
 A persistencia roda **no processo pai**, apos o merge dos jobs vindos dos
 subprocessos do scraper (escritor unico; sqlite nao e usado em subprocesso).

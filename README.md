@@ -383,8 +383,15 @@ filtrado na geracao; a logica testada e a do script (`scripts/test_interface.py`
 internship, posted_at, collected_at, application_deadline, external_id,
 employment_type, country_iso, raw`.
 
-- `source` e `ats:slug` do tenant (ex.: `smartrecruiters:BoschGroup`).
-- `id` deriva de `external_id` (ou hash da URL) prefixado pelo `source`.
+- `source` e `ats:slug` do TENANT (origem tecnica; ex.:
+  `smartrecruiters:BoschGroup`). O mesmo tenant pode ser compartilhado por
+  varias empresas (ex.: `successfactors:jobs` cobre SAP/ZF/Kaufland/...;
+  `phenom:nan` cobre DHL/Allianz/Merck/...) — `source` NAO identifica a
+  empresa (P1.1).
+- `id` = `<company>|<source>:<external_id>` (ou `<company>|<source>:<hash da
+  URL>` sem `external_id`) — identidade escopada por empresa + tenant ATS:
+  duas empresas no MESMO tenant com o MESMO `external_id` produzem ids
+  diferentes, estaveis e deterministicos.
 - `application_deadline` (`datetime|None`) e preenchido pelo adapter **quando o
   ATS expoe a data explicitamente**; permanece `None` caso contrario e **nunca**
   e inferido de `posted_at` (regra do dono).

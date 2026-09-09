@@ -62,8 +62,11 @@ class Job(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    id: str
-    source: str  # identificador da origem, ex.: "smartrecruiters:BoschGroup"
+    id: str  # identidade estavel da vaga: "<company>|<source>:<external_id>"
+    #          (ou "<company>|<source>:<hash(url)>" sem external_id) — P1.1.
+    #          Escopada por empresa: duas empresas no MESMO tenant ATS com o
+    #          MESMO external_id produzem ids diferentes.
+    source: str  # identificador da origem/tenant ATS, ex.: "smartrecruiters:BoschGroup"
     title: str
     company: str
     location: str | None = None
