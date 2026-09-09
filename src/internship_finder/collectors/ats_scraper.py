@@ -238,6 +238,11 @@ def collect_company(
         "failed": [],
         "skipped": [],
         "not_found": False,
+        # Identidade efetiva da empresa por tenant (P1.2): usado pelo lifecycle
+        # do SQLite para escopar o archive em unidades EMPTY (sem jobs para
+        # derivar ``job.company``). Para OK, o ``job.company`` dos jobs e a
+        # mesma identidade (P1.1: empresa + tenant ATS).
+        "companies": {},
     }
     if not companies:
         log.warning("[%s] nao encontrada na base (match exato)", name)
@@ -249,6 +254,7 @@ def collect_company(
         if not collector.has_scraper(company):
             log.warning("[%s] %s sem scraper registrado; pulando", name, company.source)
             summary["skipped"].append(company.source)
+            summary["companies"][company.source] = company.name or company.query
             continue
         t0 = time.time()
         try:
@@ -261,9 +267,12 @@ def collect_company(
             if converted:
                 jobs.extend(converted)
                 summary["ok"].append((company.source, len(converted), f"{dt:.1f}s"))
+                # Identidade efetiva da empresa observada nos jobs (P1.1).
+                summary["companies"][company.source] = converted[0].company
                 log.info("[%s] %s: %d vagas em %.1fs", name, company.source, len(converted), dt)
             else:
                 summary["empty"].append((company.source, f"{dt:.1f}s"))
+                summary["companies"][company.source] = company.name or company.query
                 log.info("[%s] %s: 0 vagas (EMPTY) em %.1fs", name, company.source, dt)
         except CollectionError as exc:
             code = exc.code if exc.code else UNKNOWN

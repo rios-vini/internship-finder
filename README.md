@@ -247,7 +247,7 @@ Flags do CLI:
 | `--limit N` | maximo de vagas por tenant, aplicado APOS a coleta (0 = sem limite); valor negativo -> erro claro, exit 2 (P3 #20) |
 | `--include-descriptions` | busca a descricao por vaga (mais lento em ATS que exigem uma chamada por vaga, ex. SmartRecruiters) |
 | `--metrics PATH` | JSONL de metricas da execucao (modo coleta; default: `data/collection_metrics.jsonl`) |
-| `--sqlite PATH` | modo coleta: persiste o historico de cada vaga (`first_seen`/`last_seen`/`active`/`archived`) em banco `sqlite3` na PATH (default: desligado) |
+| `--sqlite PATH` | modo coleta: persiste o historico de cada vaga (`first_seen`/`last_seen`/`active`/`archived`) em banco `sqlite3` na PATH (default: desligado). **P1.2**: o lifecycle (archive de nao-vistos) e atualizado POR UNIDADE de coleta confiavel `(company, source)` — empresas/tenants com timeout/erro/not_found nao tem vagas arquivadas (ausencia observada != ausencia por falha de coleta) |
 | `--health [PATH]` | modo health (unico quando presente): relatorio JSON por tenant/ATS sobre o JSONL de metricas + alertas; arquivo inexistente -> erro no stderr e exit != 0 |
 | `--verbose` | log DEBUG |
 
