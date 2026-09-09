@@ -235,6 +235,20 @@ def _parse_duration(duration: str | None) -> float | None:
         return None
 
 
+def _unit_identity(job: Job | dict) -> tuple[str | None, str | None]:
+    """Identidade (company, source) de um job para o lifecycle (P1.2).
+
+    Aceita ``Job`` (producao, retorno de ``collect_company``) ou dict (mocks
+    legados de teste). Devolve ``(None, None)`` quando a identidade nao pode
+    ser derivada — o CLI entao nao cria unidade (conservador: nao arquiva).
+    """
+    if isinstance(job, Job):
+        return job.company, job.source
+    company = job.get("company") if isinstance(job, dict) else None
+    source = job.get("source") if isinstance(job, dict) else None
+    return company or None, source or None
+
+
 def _split_summary_error(item: tuple) -> tuple[str, str | None, str]:
     """Desempacota uma entrada de ``summary``[``timeout``|``failed``].
 
@@ -473,6 +487,13 @@ def main(argv: list[str] | None = None) -> int:
         metrics_path = Path(args.metrics or "data/collection_metrics.jsonl")
         all_jobs: list[Job] = []
         summaries: list[tuple[str, dict]] = []
+        # Unidades de coleta confiavel (P1.2): (company, source, jobs) de
+        # tenants que terminaram em OK/EMPTY. Tenants que falharam
+        # (timeout/error/not_found/skipped) NAO entram — a ausencia deles no
+        # run nunca arquiva as vagas da unidade (ausencia observada !=
+        # ausencia por falha de coleta). Preenchida no loop e consumida pelo
+        # bloco --sqlite.
+        collection_units: list[tuple[str, str, list[Job]]] = []
         for name in names:
             jobs, summary = collect_company(
                 name,
@@ -482,6 +503,25 @@ def main(argv: list[str] | None = None) -> int:
             )
             summaries.append((name, summary))
             all_jobs.extend(jobs)
+            # Identifica as unidades bem-sucedidas desta empresa. A company
+            # efetiva vem dos jobs (para OK) ou do mapeamento do summary (para
+            # EMPTY); o escopo (company, source) e a identidade P1.1 do Job.
+            companies = summary.get("companies", {})
+            ok_sources = {src for src, *_ in summary["ok"]}
+            empty_sources = {src for src, *_ in summary.get("empty", [])}
+            by_unit: dict[tuple[str, str], list[Job]] = {}
+            for j in jobs:
+                company_id, source = _unit_identity(j)
+                if company_id and source:
+                    by_unit.setdefault((company_id, source), []).append(j)
+            for (company_id, source), unit_jobs in by_unit.items():
+                if source in ok_sources:
+                    collection_units.append((company_id, source, unit_jobs))
+            # EMPTY: coleta valida com 0 vagas -> arquiva a unidade inteira.
+            for source in empty_sources:
+                collection_units.append(
+                    (companies.get(source) or name, source, [])
+                )
             print(f"Found {len(jobs)} jobs for {name}")
             for j in jobs[:15]:
                 print(f"  - {j}")
@@ -536,12 +576,16 @@ def main(argv: list[str] | None = None) -> int:
         # nada muda — comportamento identico ao atual. Uma falha de escrita
         # nunca derruba a coleta: qualquer erro (caminho inacessivel, disco
         # cheio, etc.) e logado e o run segue.
+        # P1.2: o lifecycle e atualizado POR UNIDADE de coleta confiavel
+        # (company, source). Unidades com timeout/erro/not_found nao entram em
+        # ``collection_units`` e, portanto, nao tem nenhuma vaga arquivada —
+        # ausencia observada != ausencia causada por falha de coleta.
         if args.sqlite:
             sqlite_path = Path(args.sqlite)
             try:
                 sqlite_path.parent.mkdir(parents=True, exist_ok=True)
                 with SqliteStore(sqlite_path) as store:
-                    stats = store.run(all_jobs)
+                    stats = store.run_units(collection_units)
                 print(
                     f"\n=== SQLite {sqlite_path}: {len(all_jobs)} vagas no run "
                     f"({stats['inserted']} novas, {stats['reactivated']} "

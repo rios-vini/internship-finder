@@ -19,8 +19,14 @@ isso a chave primaria e ``id`` (TEXT) e o upsert e feito por ele.
 
 A persistencia roda **no processo pai**, apos o merge dos jobs vindos dos
 subprocessos do scraper (escritor unico; sqlite nao e usado em subprocesso).
-Uma falha de escrita nunca derruba a coleta: ``run`` captura a excecao de
-``sqlite3``, loga e segue.
+Uma falha de escrita nunca derruba a coleta: ``run_units`` captura a excecao
+de ``sqlite3`` por unidade, loga e segue.
+
+**Lifecycle por unidade de coleta (P1.2).** O archive ``not_seen`` e SEMPRE
+escopado pela unidade ``(company, source)`` (a identidade do Job P1.1). Uma
+vaga so e arquivada quando a sua propria unidade foi coletada com sucesso
+neste run e ela nao veio; tenants/empresas que falharam nao produzem archive
+(ausencia observada != ausencia causada por falha de coleta).
 """
 
 from __future__ import annotations
@@ -117,8 +123,10 @@ class SqliteStore:
     """Escritor/leitor unico do historico de vagas em um banco sqlite3.
 
     Seguro para uso exclusivo no processo pai (apos o merge). A conexao usa WAL
-    e ``row_factory`` para linha-dict. ``run`` aplica o run completo num unico
-    commit (transacao por run).
+    e ``row_factory`` para linha-dict. ``run_units`` persiste cada unidade de
+    coleta ``(company, source)`` num commit proprio (transacao por unidade:
+    upsert + archive scoped persistem juntos; uma falha numa unidade nao
+    derruba as demais).
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -206,15 +214,38 @@ class SqliteStore:
         return "reactivated" if was_archived else "updated"
 
     def run(self, jobs: Iterable[Job]) -> dict[str, int]:
-        """Persiste um run de coleta completo.
+        """Compat com a API antiga (testes): todas as unidades presentes no
+        lote sao tratadas como coletadas com sucesso.
 
-        Faz upsert de todas as vagas vistas agora; depois arquiva
-        (``active=0, archived=1``) as que estavam ativas e NAO vieram neste run.
-        Um unico commit ao final (transacao por run). Devolve
-        ``{"inserted": n, "reactivated": n}``.
+        Agrupa os jobs por ``(company, source)`` e delega para ``run_units``
+        — o archive e SEMPRE scoped por unidade, nunca global. Empresas
+        ausentes do lote NAO sao arquivadas (P1.2: ausencia observada !=
+        ausencia por falha de coleta).
+        """
+        by_unit: dict[tuple[str, str], list[Job]] = {}
+        for job in jobs:
+            by_unit.setdefault((job.company, job.source), []).append(job)
+        return self.run_units(
+            (company, source, unit_jobs)
+            for (company, source), unit_jobs in by_unit.items()
+        )
 
-        Uma falha de escrita (``sqlite3.Error``) e logada e nao lanca
-        (a coleta continua).
+    def run_units(self, units: Iterable[tuple[str, str, Iterable[Job]]]) -> dict[str, int]:
+        """Persiste um run de coleta POR UNIDADE de coleta confiavel (P1.2).
+
+        Cada unidade e ``(company, source, jobs)`` — a menor granularidade para
+        a qual o sistema consegue afirmar que realizou uma coleta completa e
+        valida (a identidade do Job escopada por empresa + tenant ATS, P1.1).
+
+        **Regra do lifecycle:** unidades que falharam (timeout/error/not_found)
+        NAO devem ser passadas aqui — a ausencia de uma unidade no run nunca
+        arquiva as vagas dela. Para cada unidade passada: upsert dos jobs
+        vistos agora + archive ``not_seen`` SCOPED a ``(company, source)`` num
+        unico commit (atomicidade por unidade: upsert e lifecycle da mesma
+        unidade persistem juntos ou nenhum dos dois). Uma falha de escrita
+        numa unidade e logada e nao derruba as demais (a coleta continua).
+
+        Devolve ``{"inserted": n, "reactivated": n}`` agregado.
         """
         inserted = 0
         reactivated = 0
@@ -224,32 +255,44 @@ class SqliteStore:
                 self._error or "conexao fechada",
             )
             return {"inserted": inserted, "reactivated": reactivated}
-        try:
-            ids_now: set[str] = set()
-            for job in jobs:
-                status = self._upsert(job)
-                if status == "inserted":
-                    inserted += 1
-                elif status == "reactivated":
-                    reactivated += 1
-                ids_now.add(job.id)
-            self._archive_not_seen(ids_now)
-            self._conn.commit()
-        except sqlite3.Error as exc:
-            self._conn.rollback()
-            log.error("sqlite falhou ao persistir run: %s", exc)
+        for company, source, jobs in units:
+            try:
+                ids_now: set[str] = set()
+                for job in jobs:
+                    status = self._upsert(job)
+                    if status == "inserted":
+                        inserted += 1
+                    elif status == "reactivated":
+                        reactivated += 1
+                    ids_now.add(job.id)
+                self._archive_not_seen(company, source, ids_now)
+                self._conn.commit()
+            except sqlite3.Error as exc:
+                self._conn.rollback()
+                log.error(
+                    "sqlite falhou ao persistir unidade %s/%s: %s",
+                    company, source, exc,
+                )
         return {"inserted": inserted, "reactivated": reactivated}
 
-    def _archive_not_seen(self, ids_seen: set[str]) -> None:
-        """Active=1 que nao veio neste run -> active=0, archived=1."""
+    def _archive_not_seen(self, company: str, source: str, ids_seen: set[str]) -> None:
+        """Active=1 da UNIDADE (company, source) que nao veio -> active=0, archived=1.
+
+        Nunca toca jobs de outras empresas/tenants (mesmo compartilhando o
+        mesmo tenant — P1.1): o escopo e sempre a identidade completa.
+        """
+        base = (
+            "UPDATE jobs SET active=0, archived=1 "
+            "WHERE active=1 AND company=? AND source=?"
+        )
         if not ids_seen:
-            self._conn.execute("UPDATE jobs SET active=0, archived=1 WHERE active=1")
+            # 0 jobs observados com sucesso (EMPTY): arquiva toda a unidade.
+            self._conn.execute(base, (company, source))
             return
         placeholders = ",".join("?" * len(ids_seen))
         self._conn.execute(
-            f"UPDATE jobs SET active=0, archived=1 WHERE active=1 "
-            f"AND id NOT IN ({placeholders})",
-            tuple(sorted(ids_seen)),
+            base + f" AND id NOT IN ({placeholders})",
+            (company, source, *sorted(ids_seen)),
         )
 
     def get(self, job_id: str) -> sqlite3.Row | None:

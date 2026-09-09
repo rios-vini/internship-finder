@@ -192,12 +192,15 @@ def test_sqlite_and_lifecycle() -> None:
         check("caso 5: ambos ativos no run em que apareceram",
               row_a["active"] == 1 and row_b["active"] == 1)
 
-        # --- Caso 6: run2 so ve B -> A arquivado; B novo (first_seen proprio) ---
+        # --- Caso 6 (P1.2): run2 coleta somente B -> A NAO e arquivado ---
+        # (A nao foi coletado neste run; ausencia observada != ausencia por
+        # falha de coleta. O archive e escopado a unidade (B, source).)
         stats2 = store.run([job_b])
         row_a2 = store.get(job_a.id)
         row_b2 = store.get(job_b.id)
         check("caso 6: B repetido nao e novo (updated)", stats2["inserted"] == 0)
-        check("caso 6: A arquivado (nao veio no run2)", row_a2["archived"] == 1)
+        check("caso 6: A preservado quando nao coletado (P1.2)",
+              row_a2["archived"] == 0 and row_a2["active"] == 1)
         check("caso 6: B permanece ativo", row_b2["active"] == 1)
         check("caso 6: first_seen de B e o run DELE (nao herdou o de A)",
               _from_iso(row_b["first_seen"]) == t2,
@@ -205,6 +208,13 @@ def test_sqlite_and_lifecycle() -> None:
         check("caso 6: first_seen de A imutavel (nao sobrescrito por B)",
               _from_iso(row_a2["first_seen"]) == t1,
               f"{_from_iso(row_a2['first_seen'])!r}")
+
+        # --- run2b: A coletada com sucesso e ZERO vagas -> A arquivado ---
+        # (diferenca entre "nao coletado" e "coletado com ausencia real")
+        store.run_units([("A", TENANT, [])])
+        row_a2b = store.get(job_a.id)
+        check("caso 6b: A arquivado quando coleta de A OK com 0 vagas",
+              row_a2b["archived"] == 1 and row_a2b["active"] == 0)
 
         # --- run3: A volta; B segue ativo; historico preservado por empresa ---
         job_a3 = make_seen_job("A", t3, "https://a/1")
