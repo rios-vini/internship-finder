@@ -207,7 +207,9 @@ def test_sqlite_and_lifecycle() -> None:
               f"{_from_iso(row_a2['first_seen'])!r}")
 
         # --- run3: A volta; B segue ativo; historico preservado por empresa ---
-        stats3 = store.run([job_a, job_b])
+        job_a3 = make_seen_job("A", t3, "https://a/1")
+        job_b3 = make_seen_job("B", t3, "https://b/1")
+        stats3 = store.run([job_a3, job_b3])
         row_a3 = store.get(job_a.id)
         row_b3 = store.get(job_b.id)
         store.close()
