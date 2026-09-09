@@ -10,7 +10,9 @@ aviso de disco com mock de ``shutil.disk_usage``), anti-spam/exit codes,
 config .env, Telegram (url + decisao sem token + send com mock), comando do
 subprocesso (com ``--sqlite data/jobs.db``), env herdado do subprocesso e
 dry-run que nao toca ``data/`` (stat antes x depois; bloco real com SKIP
-quando ``data/`` ausente — padrao CI).
+quando ``data/`` ausente — padrao CI). Propagacao do exit code da coleta ao
+processo (P1.3): 0/1/2/124 retornados por ``main`` E observaveis no processo
+(harness subprocesso), com Telegram/health/run_info executados antes do fim.
 
 Uso:
 
@@ -390,6 +392,84 @@ def test_dry_run_nao_toca_data() -> None:
     check("data/ intocada (mtime+size iguais)", before == after)
 
 
+def test_exit_code_propagado() -> None:
+    print("== P1.3: exit code capturado e propagado ao fim do fluxo ==")
+    for code in (0, 1, 2, 124):
+        with tempfile.TemporaryDirectory(prefix="t_exit_") as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            data_dir.mkdir()
+            (data_dir / "collection_metrics.jsonl").write_text("", encoding="utf-8")
+
+            calls: dict = {"notify": [], "health": []}
+            original_root = rd.repo_root
+            original_report = rd.build_health_report
+
+            def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+                return subprocess.CompletedProcess(args[0], code)
+
+            def fake_notify(config, message, *, dry_run) -> dict:
+                calls["notify"].append((message, dry_run))
+                return {"sent": True}
+
+            def report_wrapper(records, warnings=None):
+                calls["health"].append(len(records))
+                return original_report(records, warnings)
+
+            rd.repo_root = lambda: root
+            try:
+                with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                     mock.patch.object(rd, "notify_or_log", side_effect=fake_notify), \
+                     mock.patch.object(rd, "build_health_report", side_effect=report_wrapper):
+                    rc = rd.main(["--config", str(root / ".env")])
+            finally:
+                rd.repo_root = original_root
+
+            check(f"exit {code}: main retorna {code}", rc == code)
+            check(f"exit {code}: health executado antes do fim", calls["health"] == [0])
+            if code == 0:
+                check("exit 0: sem envio (anti-spam preservado)", calls["notify"] == [])
+            else:
+                check(f"exit {code}: telegram executado antes do fim",
+                      len(calls["notify"]) == 1 and calls["notify"][0][1] is False)
+            infos = sorted((data_dir / "archive").rglob("run_info.json"))
+            check(f"exit {code}: run_info.json gravado no archive", len(infos) == 1)
+            info = json.loads(infos[0].read_text(encoding="utf-8"))
+            check(f"exit {code}: run_info registra exit_code == {code}",
+                  info.get("exit_code") == code)
+
+
+def test_exit_code_processo_observavel() -> None:
+    print("== P1.3: exit code observavel do processo (o que cron/systemd leem) ==")
+    scripts = Path(__file__).resolve().parent
+    src = scripts.parent / "src"
+    for code in (0, 1, 2, 124):
+        harness = (
+            "import subprocess, sys, tempfile\n"
+            "from pathlib import Path\n"
+            f"sys.path.insert(0, {str(scripts)!r})\n"
+            f"sys.path.insert(0, {str(src)!r})\n"
+            "import refresh_daily as rd\n"
+            "root = Path(tempfile.mkdtemp(prefix='t_exitproc_'))\n"
+            "(root / 'data').mkdir()\n"
+            "(root / 'data' / 'collection_metrics.jsonl').write_text('', encoding='utf-8')\n"
+            "rd.repo_root = lambda: root\n"
+            "def fake_run(*a, **k):\n"
+            f"    return subprocess.CompletedProcess(a[0], {code})\n"
+            "def fake_notify(config, message, *, dry_run):\n"
+            '    return {"sent": True}\n'
+            "rd.run_collection = fake_run\n"
+            "rd.notify_or_log = fake_notify\n"
+            "raise SystemExit(rd.main(['--config', str(root / '.env')]))\n"
+        )
+        proc = subprocess.run([sys.executable, "-c", harness],
+                              capture_output=True, text=True, timeout=60)
+        check(f"processo com coleta exit {code} termina com {code}",
+              proc.returncode == code)
+        check(f"exit {code}: sem traceback no stderr (falha real nao mascarada)",
+              "Traceback" not in proc.stderr)
+
+
 def main() -> int:
     test_rotacao()
     test_snapshot_e_resumo()
@@ -403,6 +483,8 @@ def main() -> int:
     test_limpeza_archive()
     test_aviso_disco()
     test_dry_run_nao_toca_data()
+    test_exit_code_propagado()
+    test_exit_code_processo_observavel()
     print()
     if FAILURES:
         print(f"FALHAS: {len(FAILURES)} -> {FAILURES}")

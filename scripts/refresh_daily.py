@@ -29,7 +29,9 @@ Fluxo:
    archived no ``data/jobs.db`` (idempotente; falha de escrita nunca derruba
    a coleta; o ``jobs.db`` NAO e rotacionado — historico acumulativo). Exit
    0 = ok; 1 = nada eligible/coletado; 2 = parcial com falhas reais (dados
-   salvos).
+   salvos). O exit code final do refresh e o do subprocesso (P1.3): 0/1/2,
+   ou 124 quando o teto de tempo e estourado — o cron/systemd distingue
+   sucesso de falha.
 3. **Health** — ``build_health_report`` sobre o conteudo COMPLETO do JSONL
    apos o run (defensivo: malformados nunca derrubam). Os registros do run
    atual sao isolados por snapshot de linhas (antes x depois), sem adivinhar
@@ -767,7 +769,11 @@ def main(argv: list[str] | None = None) -> int:
                         result.get("reason") or result.get("error") or "desconhecido")
 
     _archive_run_info(archive_dir, summary, len(report["alerts"]))
-    return 0
+    # P1.3: o exit code final e o da coleta (0/1/2; 124 = teto estourado).
+    # Toda a observabilidade (health/metricas/Telegram/limpeza/run_info) ja
+    # rodou acima — so o status entregue ao SO muda. Antes o refresh sempre
+    # terminava em 0 e o cron/systemd interpretavam falha como sucesso.
+    return exit_code
 
 
 if __name__ == "__main__":
