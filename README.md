@@ -309,6 +309,17 @@ Ver `scripts/test_ranking.py` (suite sintetica com `FIXTURE` fixa, desacoplada
 do snapshot desde o P2 #16 — 03/09; bloco real roda como invariantes de
 formato/observabilidade; suite local 17/17 TUDO OK — 16 do CI + `test_manifest`).
 
+**Medicao do ranking (P2.5, 11/09/2026)**: benchmark versionado com **59 vagas
+reais rotuladas manualmente** (`benchmarks/ranking_benchmark_v1.json`).
+Resultado: universo 260 eligible com **96,5% das vagas empatadas**, concordancia
+ordinal 82,5% (tau +0,65 — o ranking tem sinal real), mas **67% das vagas
+empatadas da amostra em grupos com qualidade humana diferente** → decisao
+**Caso C (baixa resolucao real)**: calibracao justificada, redesign/embeddings/ML
+sem evidencia. Metodologia, metricas e hipoteses de calibracao (H1 descricao
+ausente, H2 language, H3 desempate): `docs/ranking_benchmark.md`. Relatorio
+reproduzivel: `.venv/bin/python scripts/ranking_benchmark.py`; reproduzir o
+benchmark em snapshot novo: `scripts/make_ranking_benchmark.py refresh`.
+
 ## Runbook
 
 ### Como adicionar empresas
