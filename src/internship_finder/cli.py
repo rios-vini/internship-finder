@@ -41,7 +41,10 @@ import argparse
 import csv
 import json
 import logging
+import os
+import stat
 import sys
+import tempfile
 from pathlib import Path
 
 from internship_finder.collectors.ats_scraper import collect_company
@@ -76,6 +79,47 @@ CSV_COLUMNS = [
 ]
 
 
+def _write_json_atomic(rows: list[dict], output: Path) -> None:
+    """Grava ``rows`` como JSON em ``output`` com substituicao atomica.
+
+    Serializa num arquivo temporario no MESMO diretorio do destino (mesmo
+    filesystem -> ``os.replace`` atomico, sem risco de EXDEV) e so entao
+    substitui o final. Garantia: o JSON final nunca fica truncado/parcial —
+    em qualquer falha de escrita ele continua sendo o arquivo valido
+    anterior; em sucesso, vira o novo completo de uma vez (quem ler nunca
+    ve uma versao pela metade). Em falha, o temporario e removido.
+
+    Sem ``fsync`` de proposito: a garantia que o projeto exige e contra
+    escrita parcial (crash de processo, erro de I/O, disco cheio durante a
+    geracao), nao durabilidade contra queda de energia — os dados sao
+    regenerados a cada run e o ``rotate`` do refresh ja preserva o snapshot
+    anterior no archive. ``mkstemp`` cria com 0600; o modo do arquivo final
+    reproduz o comportamento do ``open("w")`` atual (preserva o modo do
+    arquivo existente na substituicao; 0666 & umask para arquivo novo).
+    """
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{output.name}.", suffix=".tmp", dir=output.parent)
+    tmp_path = Path(tmp_name)
+    try:
+        if output.exists():
+            os.chmod(tmp_path, stat.S_IMODE(output.stat().st_mode))
+        else:
+            umask = os.umask(0)
+            os.umask(umask)
+            os.chmod(tmp_path, 0o666 & ~umask)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(rows, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, output)
+    except BaseException:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError as unlink_exc:
+            log.warning("temporario de %s nao removido apos falha: %s",
+                        output, unlink_exc)
+        raise
+
+
 def save_outputs(jobs: list[Job] | list[dict], output: Path) -> None:
     """Grava JSON e CSV (CSV derivado do nome do JSON). Aceita Job ou dict.
 
@@ -86,11 +130,15 @@ def save_outputs(jobs: list[Job] | list[dict], output: Path) -> None:
     jobs.csv e 224/224 de eligible_jobs.csv). ``description``/``raw``/
     ``score_breakdown`` ficam de fora do CSV de proposito (texto grande/
     aninhado; a fonte de verdade e o JSON).
+
+    A escrita do JSON e ATOMICA (``_write_json_atomic``: tempfile no mesmo
+    diretorio + ``os.replace``) — se a geracao falhar no meio, o arquivo
+    final existente permanece valido e inalterado (nunca truncado). O CSV
+    segue com o comportamento atual.
     """
     output.parent.mkdir(parents=True, exist_ok=True)
     rows = [j.to_dict() if hasattr(j, "to_dict") else j for j in jobs]
-    with output.open("w", encoding="utf-8") as fh:
-        json.dump(rows, fh, ensure_ascii=False, indent=2)
+    _write_json_atomic(rows, output)
     csv_path = output.with_suffix(".csv")
     with csv_path.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=CSV_COLUMNS, extrasaction="ignore")
