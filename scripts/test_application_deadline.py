@@ -11,6 +11,17 @@ normalizacao no adapter:
 - ``posted_at`` nunca vira deadline (nao se infere de outras datas);
 - serializacao (to_dict) inclui o campo;
 - dedup nao usa o deadline como chave.
+- (P1.4) deadline real preservado mesmo que coincida com ``posted_at + 30 dias``
+  -- nunca remover por heuristica. Contexto do achado: varios tenants
+  SuccessFactors publicam no feed RSS Google Merchant (``<host>/sitemal.xml``)
+  o campo ``g:expiration_date`` com UM unico valor por feed, igual a
+  ``data do feed + 30 dias``, para TODAS as vagas (ex.: feed de 10/09 ->
+  ``2026-10-10``; feed de 11/09 -> ``2026-10-11``). E um horizonte de validade
+  gerado pela PLATAFORMA (a fonte), nao um prazo definido pelo empregador;
+  mas, por proveniencia, VEM DA FONTE. O scraper (ats-scrapers 0.3.0) apenas
+  parseia ``g:expiration_date``; este adapter apenas mapeia/parseia. Nenhuma
+  camada soma +30 dias. Remover por heuristica violaria este contrato (um
+  prazo real que coincida com +30 dias seria apagado).
 
 Uso:
     .venv/bin/python scripts/test_application_deadline.py
@@ -130,6 +141,33 @@ def test_serialization() -> None:
     check("to_dict com None", job_none.to_dict()["application_deadline"] is None)
 
 
+def test_caso1_deadline_real_2026_10_15() -> None:
+    print("== Caso 1 (P1.4): deadline real fornecido e preservado ==")
+    job = adapt(base_item(application_deadline="2026-10-15"))
+    check("deadline 2026-10-15 preservado",
+          job.application_deadline == datetime(2026, 10, 15))
+
+
+def test_caso3_no_infer_plus30() -> None:
+    print("== Caso 3 (P1.4): nao inferir +30 dias ==")
+    # posted_at presente, deadline ausente: None — nunca posted_at + 30 dias.
+    job = adapt(base_item(posted_at="2026-09-07"))
+    check("posted_at sem deadline -> None", job.application_deadline is None)
+    check("NUNCA inferido 2026-10-07 (posted_at+30)",
+          job.application_deadline != datetime(2026, 10, 7))
+
+
+def test_caso4_preserve_deadline_equal_plus30() -> None:
+    print("== Caso 4 (P1.4): deadline real que coincide com +30 dias e preservado ==")
+    # Guarda contra uma futura heuristica que detecte 'posted_at + 30 dias'
+    # e apague o valor. A origem do campo determina a validade — um deadline
+    # explicitamente fornecido pela fonte e preservado mesmo que coincida com
+    # +30 dias.
+    job = adapt(base_item(posted_at="2026-09-07", application_deadline="2026-10-07"))
+    check("deadline explicito 2026-10-07 preservado (nao removido por +30d)",
+          job.application_deadline == datetime(2026, 10, 7))
+
+
 def test_dedup_ignores_deadline() -> None:
     print("== dedup nao usa deadline ==")
     base = {
@@ -164,6 +202,9 @@ def main() -> int:
     test_invalid_is_none()
     test_posted_at_not_deadline()
     test_serialization()
+    test_caso1_deadline_real_2026_10_15()
+    test_caso3_no_infer_plus30()
+    test_caso4_preserve_deadline_equal_plus30()
     test_dedup_ignores_deadline()
     print()
     if FAILURES:
