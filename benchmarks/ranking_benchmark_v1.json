@@ -1,0 +1,1217 @@
+{
+  "schema_version": 1,
+  "benchmark": "Ranking v1 — medicao do ranking heuristico antes de qualquer calibracao (P2.5)",
+  "snapshot": {
+    "source_file": "data/eligible_jobs.json",
+    "run_date": "2026-09-11",
+    "note": "Run cron 11/09 06:00 UTC — 260 eligible (funil 60.256 brutas). Ordenacao = score desc -> title -> company -> id (ja aplicada no arquivo)."
+  },
+  "labels_order": [
+    "otima",
+    "boa",
+    "aceitavel",
+    "ruim",
+    "falso_positivo"
+  ],
+  "labeling": {
+    "date": "2026-09-11",
+    "by": "rotulagem manual de revisao (orquestracao; revisavel pelo dono)",
+    "rubric": {
+      "otima": "Estagio/Working Student com area-alvo no titulo E conteudo real (SC/Procurement/Analytics/Automacao/Dados) E ambiente EN",
+      "boa": "Area-alvo clara, mas 1 dimensao fraca: sem descricao, sem sinal de ingles, area generica, ou funcao adjacente com dados",
+      "aceitavel": "Aderencia parcial: area tangente/indireta, dev/data-eng fora do nucleo, tese com tema relevante, HiWi",
+      "ruim": "Passou nos filtros, aderencia marginal: tema incidental, forma tese pura, RH/vendas",
+      "falso_positivo": "NAO deveria estar no eligible: programa de graduacao dual, trainee/LDP de graduados, cargo full-time regular, candidatura espontanea"
+    },
+    "question": "Quao adequada esta vaga e para o objetivo do projeto/perfil? (nao: quanto eu gosto do score)"
+  },
+  "sampling": [
+    "T1: Top 12 do ranking (scores 16.75..12.0) — frente do TOP 20 visto pelo dono",
+    "T2: 8 maiores grupos de empate (7.5x33, 5.5x28, 6.75x26, 4.75x24, 6.0x21, 8.0x17, 4.0x17, 10.0x13) — ate 3 membros com empresas distintas, na ordem do ranking",
+    "T3: Vagas sem marcador forte de tipo (score_breakdown.type==0) — 6 espalhadas pelo range de score (candidatas a falso positivo)",
+    "T4: Ultimas 8 posicoes do ranking (scores 3.0..1.0) — cauda",
+    "T5: Casos especiais conhecidos: programas de graduacao (Bachelor/Studium mit vertiefter Praxis) e area alta — complemento sob demanda"
+  ],
+  "jobs": [
+    {
+      "rank": 1,
+      "id": "SAP|successfactors:jobs:1428734133",
+      "title": "Working Student (f/m/d): Operations Team for SAP's Data & Analytics",
+      "company": "SAP",
+      "location": "Walldorf, DE, 69190",
+      "employment_type": null,
+      "url": "https://jobs.sap.com/job/Walldorf-Working-Student-%28fmd%29-Operations-Team-for-SAP's-Data-&-Analytics-69190/1428734133/",
+      "score": 16.75,
+      "score_breakdown": {
+        "area": 12.0,
+        "skills": 0.75,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Analytics de negocios na org Data & Analytics da SAP (custos, Excel/VBA); funcao de apoio operacional, fora do nucleo SC/Compra"
+    },
+    {
+      "rank": 2,
+      "id": "Bayer|successfactors:jobs:1429117133",
+      "title": "Praktikant*in Analytics Advisory & Data Democratization / SC&L Analytics (alle Geschlechter)",
+      "company": "Bayer",
+      "location": "Leverkusen, Nordrhein-Westfalen, DE",
+      "employment_type": null,
+      "url": "https://jobs.bayer.com/job/Leverkusen-Praktikantin-Analytics-Advisory-&-Data-Democratization-SC&L-Analytics-%28alle-Geschlechter%29-Nord/1429117133/",
+      "score": 13.75,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 2.25,
+        "language": 1.5,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "otima",
+      "justification": "SC&L Analytics/Reporting transversal a divisoes; planning, inventory, automacao, data governance — nucleo exato do perfil"
+    },
+    {
+      "rank": 3,
+      "id": "BoschGroup|smartrecruiters:BoschGroup:744000136455353",
+      "title": "Pflichtpraktikum Logistik - Schwerpunkt Data & Analytics",
+      "company": "BoschGroup",
+      "location": "Immenstadt im Allgäu, BY, de",
+      "employment_type": "FULL_TIME",
+      "url": "https://jobs.smartrecruiters.com/BoschGroup/744000136455353",
+      "score": 13.5,
+      "score_breakdown": {
+        "area": 12.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": -0.5
+      },
+      "label": "boa",
+      "justification": "Titulo nucleo (Logistica + Data & Analytics), mas sem descricao — conteudo/idioma nao verifiableis"
+    },
+    {
+      "rank": 4,
+      "id": "BoschGroup|smartrecruiters:BoschGroup:744000141914929",
+      "title": "Praktikum in der Logistik - Data & Analytics",
+      "company": "BoschGroup",
+      "location": "Lohr am Main, BY, de",
+      "employment_type": "FULL_TIME",
+      "url": "https://jobs.smartrecruiters.com/BoschGroup/744000141914929",
+      "score": 13.5,
+      "score_breakdown": {
+        "area": 12.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": -0.5
+      },
+      "label": "boa",
+      "justification": "Mesma vaga da #3 (Bosch Logistik D&A) em outro site; sem descricao"
+    },
+    {
+      "rank": 5,
+      "id": "Bayer|successfactors:jobs:1429117033",
+      "title": "Internship Analytics Advisory & Data Democratization / SC&L Analytics (all genders)",
+      "company": "Bayer",
+      "location": "Leverkusen, North Rhine Westfalia, DE",
+      "employment_type": null,
+      "url": "https://jobs.bayer.com/job/Leverkusen-Internship-Analytics-Advisory-&-Data-Democratization-SC&L-Analytics-%28all-genders%29-Nort/1429117033/",
+      "score": 13.0,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 1.5,
+        "language": 1.5,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "otima",
+      "justification": "Mesma vaga da #2 em ingles; conteudo SC&L Analytics completo (EN)"
+    },
+    {
+      "rank": 6,
+      "id": "Knorr-Bremse|successfactors:knorrbremsP2:1423890733",
+      "title": "Praktikant Purchasing Controlling, Data Analytics, Supplier Management (m/f/d)",
+      "company": "Knorr-Bremse",
+      "location": "München, DE, 80809",
+      "employment_type": null,
+      "url": "https://careers.knorr-bremse.com/job/M%C3%BCnchen-Praktikant-Purchasing-Controlling%2C-Data-Analytics%2C-Supplier-Management-%28mfd%29-80809/1423890733/",
+      "score": 12.75,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.75,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "otima",
+      "justification": "Purchasing Controlling + Data Analytics + Supplier Management no titulo; descricao EN; nucleo exato"
+    },
+    {
+      "rank": 7,
+      "id": "Volkswagen AG|successfactors:VWAGLPPROD10:1427423533",
+      "title": "Praktikum / Abschlussarbeit Customer Data Analytics & AI (w/m/d)",
+      "company": "Volkswagen AG",
+      "location": "Wolfsburg, DE, 38436",
+      "employment_type": null,
+      "url": "https://jobs.volkswagen-group.com/Volkswagen/job/Wolfsburg-Praktikum-Abschlussarbeit-Customer-Data-Analytics-&-AI-%28wmd%29-38436/1427423533/",
+      "score": 12.75,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.75,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "otima",
+      "justification": "Data Analytics & IA em engenharia (eletrificacao VW); analytics nucleo, empresa top"
+    },
+    {
+      "rank": 8,
+      "id": "SAP|successfactors:jobs:1387969433",
+      "title": "Working Student (f/m/d) - Software Development for SAP Sailing Analytics",
+      "company": "SAP",
+      "location": "Walldorf, DE, 69190",
+      "employment_type": null,
+      "url": "https://jobs.sap.com/job/Walldorf-Working-Student-%28fmd%29-Software-Development-for-SAP-Sailing-Analytics-69190/1387969433/",
+      "score": 12.75,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.75,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "'Sailing Analytics' e PRODUTO SAP; a funcao e dev Java/security/full-stack — 'analytics' so no nome"
+    },
+    {
+      "rank": 9,
+      "id": "B. Braun Melsungen AG|successfactors:bbraunprd:1171013001",
+      "title": "Hochschulpraktikum (w/m/d) im Bereich  Prozessoptimierung im Einkauf",
+      "company": "B. Braun Melsungen AG",
+      "location": "Melsungen, DE",
+      "employment_type": null,
+      "url": "https://jobs.bbraun.com/job/Melsungen-Hochschulpraktikum-%28wmd%29-im-Bereich-Prozessoptimierung-im-Einkauf/1171013001/",
+      "score": 12.0,
+      "score_breakdown": {
+        "area": 10.0,
+        "skills": 0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Einkauf com otimizacao de processos; sem sinal de ingles na vaga"
+    },
+    {
+      "rank": 10,
+      "id": "BoschGroup|smartrecruiters:BoschGroup:744000147439805",
+      "title": "Praktikum Beschaffungsplanung in der Logistik (Supply Chain)",
+      "company": "BoschGroup",
+      "location": "Ansbach, Mittelfranken, de",
+      "employment_type": "INTERN",
+      "url": "https://jobs.smartrecruiters.com/BoschGroup/744000147439805",
+      "score": 12.0,
+      "score_breakdown": {
+        "area": 10.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Beschaffung + Logistik + Supply Chain no titulo; sem descricao"
+    },
+    {
+      "rank": 11,
+      "id": "Infineon|eightfold:infineon:HRC1780405",
+      "title": "Werkstudent - Logistik / Supply Chain (w/m/div)",
+      "company": "Infineon",
+      "location": "Dresden, SN, DE",
+      "employment_type": null,
+      "url": "https://infineon.eightfold.ai/careers/job/563808971922747",
+      "score": 12.0,
+      "score_breakdown": {
+        "area": 10.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Logistica/Supply Chain nucleo; sem descricao"
+    },
+    {
+      "rank": 12,
+      "id": "SAP|successfactors:jobs:1434973333",
+      "title": "Working Student (f/m/d) - Operations & Automation for SAP Signavio Value Accelerators",
+      "company": "SAP",
+      "location": "Berlin, DE, 10557",
+      "employment_type": null,
+      "url": "https://jobs.sap.com/job/Berlin-Working-Student-%28fmd%29-Operations-&-Automation-for-SAP-Signavio-Value-Accelerators-10557/1434973333/",
+      "score": 12.0,
+      "score_breakdown": {
+        "area": 6.0,
+        "skills": 1.5,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.5,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Operations & Automation (Power Automate, melhoria continua) — automacao real, sem SC/compra"
+    },
+    {
+      "rank": 23,
+      "id": "Fraunhofer-Gesellschaft|successfactors:fraunhofer:1427321533",
+      "title": "Internship / Thesis - Sensory Analytics and Technologies (all genders)",
+      "company": "Fraunhofer-Gesellschaft",
+      "location": "Freising, DE, 85354",
+      "employment_type": null,
+      "url": "https://jobs.fraunhofer.de/job/Freising-Internship-Thesis-Sensory-Analytics-and-Technologies-%28all-genders%29-85354/1427321533/",
+      "score": 10.0,
+      "score_breakdown": {
+        "area": 6.0,
+        "skills": 0,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "ruim",
+      "justification": "'Sensory Analytics' = analise sensorial de alimentos (odor/gosto), NAO data analytics; termo de area enganoso no titulo"
+    },
+    {
+      "rank": 24,
+      "id": "Telekom Growthhub|eightfold:telekom-growthhub:799850",
+      "title": "Internship AI & Data Analytics",
+      "company": "Telekom Growthhub",
+      "location": "BN, NRW, DE",
+      "employment_type": null,
+      "url": "https://telekom-growthhub.eightfold.ai/careers/job/563465374549716",
+      "score": 10.0,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "AI & Data Analytics no titulo; sem descricao"
+    },
+    {
+      "rank": 25,
+      "id": "Bayer|eightfold:bayer:878737",
+      "title": "Internship Analytics Advisory & Data Democratization / SC&L Analytics (all genders)",
+      "company": "Bayer",
+      "location": "Leverkusen,North Rhine Westfalia,Germany",
+      "employment_type": null,
+      "url": "https://talent.bayer.com/careers/job/562949978309688",
+      "score": 10.0,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "otima",
+      "justification": "Mesma vaga da #5 (Bayer SC&L Analytics) SEM descricao — mesma vaga em 3 posicoes (2 DE / 5 EN / 25 EN sem desc)"
+    },
+    {
+      "rank": 27,
+      "id": "Telekom Growthhub|eightfold:telekom-growthhub:563465374435380",
+      "title": "Praktikum / Flexikum AI & Data Analytics in der Strategieberatung",
+      "company": "Telekom Growthhub",
+      "location": "BN, NRW, DE",
+      "employment_type": null,
+      "url": "https://telekom-growthhub.eightfold.ai/careers/job/563465374435380",
+      "score": 10.0,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "AI & Data Analytics em estrategia/consultoria; sem descricao"
+    },
+    {
+      "rank": 31,
+      "id": "nxp|workday:nxp/careers:R-10064061",
+      "title": "Working Student (f/m/d) Program Analytics & Process Automation",
+      "company": "nxp",
+      "location": "Hamburg",
+      "employment_type": null,
+      "url": "https://nxp.wd3.myworkdayjobs.com/careers/job/Hamburg/Working-Student--f-m-d--Program-Analytics---Process-Automation_R-10064061",
+      "score": 10.0,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Program Analytics & Process Automation no titulo; sem descricao"
+    },
+    {
+      "rank": 32,
+      "id": "Infineon|eightfold:infineon:HRC1766466",
+      "title": "Working Student - Corporate Real Estate, Digitalization & Data Analytics (f/m/div)",
+      "company": "Infineon",
+      "location": "Munich, BY, DE",
+      "employment_type": null,
+      "url": "https://infineon.eightfold.ai/careers/job/563808971878317",
+      "score": 10.0,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "Data Analytics em Corporate Real Estate; analytics provavelmente periferico; sem descricao"
+    },
+    {
+      "rank": 33,
+      "id": "zeissgroup|workday:zeissgroup/external:JR_1048222",
+      "title": "Working Student Data Analytics (f/m/x)",
+      "company": "zeissgroup",
+      "location": "Oberkochen",
+      "employment_type": null,
+      "url": "https://zeissgroup.wd3.myworkdayjobs.com/external/job/Oberkochen/Werksstudent-Diagnose-und-Monitoring--m-w-x-_JR_1048222-1",
+      "score": 10.0,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Data Analytics puro no titulo; sem descricao"
+    },
+    {
+      "rank": 35,
+      "id": "sartorius|workday:sartorius/sartoriuscareers:R41242",
+      "title": "Working Student Product Development Process Automation (x|w|m)",
+      "company": "sartorius",
+      "location": "Guxhagen",
+      "employment_type": null,
+      "url": "https://sartorius.wd3.myworkdayjobs.com/sartoriuscareers/job/Guxhagen/Working-Student-Product-Development-Process-Automation--x-w-m-_R41242-2",
+      "score": 10.0,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Process Automation no titulo (em dev de produto); sem descricao"
+    },
+    {
+      "rank": 36,
+      "id": "BoschGroup|smartrecruiters:BoschGroup:744000148680064",
+      "title": "Pflichtpraktikum Data Engineering & Data Analytics im Akustik-Testing",
+      "company": "BoschGroup",
+      "location": "Bühlertal, BW, de",
+      "employment_type": "FULL_TIME",
+      "url": "https://jobs.smartrecruiters.com/BoschGroup/744000148680064",
+      "score": 9.5,
+      "score_breakdown": {
+        "area": 8.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": -0.5
+      },
+      "label": "boa",
+      "justification": "Data Engineering & Analytics real, dominio acustica/testing; FULL_TIME e rotulo do ATS"
+    },
+    {
+      "rank": 41,
+      "id": "ZF Friedrichshafen AG|successfactors:jobs:1416244333",
+      "title": "Pflichtpraktikant*in Fertigungssteuerung / Vertrieb / Beschaffung (m/w/d)",
+      "company": "ZF Friedrichshafen AG",
+      "location": "Friedrichshafen, BW, DE, 88046",
+      "employment_type": null,
+      "url": "https://jobs.zf.com/job/Friedrichshafen-Pflichtpraktikantin-Fertigungssteuerung-Vertrieb-Beschaffung-%28mwd%29-BW-88046/1416244333/",
+      "score": 9.0,
+      "score_breakdown": {
+        "area": 6.0,
+        "skills": 0,
+        "language": 2.0,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "Beschaffung diluido num mix com producao/vendas (Fertigungssteuerung/Vertrieb); sinal de compra fraco"
+    },
+    {
+      "rank": 48,
+      "id": "covestro|workday:covestro/cov_external:JR-2026-01596",
+      "title": "Intern (m/f/d) in Procurement – with salary details",
+      "company": "covestro",
+      "location": "Leverkusen",
+      "employment_type": null,
+      "url": "https://covestro.wd3.myworkdayjobs.com/cov_external/job/Leverkusen/Intern--m-f-d--in-Procurement---with-salary-details_JR-2026-01596",
+      "score": 8.0,
+      "score_breakdown": {
+        "area": 6.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Intern in Procurement; sem descricao"
+    },
+    {
+      "rank": 49,
+      "id": "careers.dhl.com|phenom:nan:AV-374900",
+      "title": "Intern Global Belonging (m/f/d) Communication Design & Analytics",
+      "company": "careers.dhl.com",
+      "location": "Bonn, Nordrhein-Westfalen, Germany",
+      "employment_type": null,
+      "url": "https://careers.dhl.com/job/AV-374900",
+      "score": 8.0,
+      "score_breakdown": {
+        "area": 6.0,
+        "skills": 0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "Analytics em Comunicacao/D&I (Global Belonging); fora do nucleo"
+    },
+    {
+      "rank": 50,
+      "id": "nestleHRprdRMK|successfactors:jobdetails:1429247633",
+      "title": "Praktikant (m/w/d) im Bereich „Prozessoptimierung/Digitalisierung  -  Operational Excellence\"",
+      "company": "nestleHRprdRMK",
+      "location": "Singen, DE",
+      "employment_type": null,
+      "url": "https://jobdetails.nestle.com/job/Singen-Praktikant-%28mwd%29-im-Bereich-%E2%80%9EProzessoptimierungDigitalisierung-Operational-Excellence/1429247633/",
+      "score": 8.0,
+      "score_breakdown": {
+        "area": 4.0,
+        "skills": 0,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Digitalizacao/Processos (M365 Power Platform) em planta alimenticia; exige DE+EN; sem SC"
+    },
+    {
+      "rank": 65,
+      "id": "BoschGroup|smartrecruiters:BoschGroup:744000144711789",
+      "title": "Internship in the Strategic Purchasing for Turned Parts",
+      "company": "BoschGroup",
+      "location": "Elchingen, BY, de",
+      "employment_type": "FULL_TIME",
+      "url": "https://jobs.smartrecruiters.com/BoschGroup/744000144711789",
+      "score": 7.5,
+      "score_breakdown": {
+        "area": 6.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": -0.5
+      },
+      "label": "boa",
+      "justification": "Strategic Purchasing; sem descricao"
+    },
+    {
+      "rank": 82,
+      "id": "SAP|successfactors:jobs:1270207301",
+      "title": "PhD Internship (f/m/d) - AI Research - Foundation Models on Structured Data",
+      "company": "SAP",
+      "location": "Berlin, DE, 10557",
+      "employment_type": null,
+      "url": "https://jobs.sap.com/job/Berlin-PhD-Internship-%28fmd%29-AI-Research-Foundation-Models-on-Structured-Data-10557/1270207301/",
+      "score": 7.5,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 1.5,
+        "language": 1.5,
+        "type": 1.0,
+        "location": 1.5,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "PhD internship em pesquisa ML (foundation models); exige PhD — nao e estagio padrao do perfil"
+    },
+    {
+      "rank": 83,
+      "id": "Knorr-Bremse|successfactors:knorrbremsP2:1284233301",
+      "title": "Praktikanten (m/w/d) im Bereich Logistik",
+      "company": "Knorr-Bremse",
+      "location": "Aldersbach, DE, 94501",
+      "employment_type": null,
+      "url": "https://careers.knorr-bremse.com/job/Aldersbach-Praktikanten-%28mwd%29-im-Bereich-Logistik-94501/1284233301/",
+      "score": 7.5,
+      "score_breakdown": {
+        "area": 4.0,
+        "skills": 0,
+        "language": 1.5,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Logistica nucleo, mas funcao generica sem analytics/dados"
+    },
+    {
+      "rank": 101,
+      "id": "nestleHRprdRMK|successfactors:jobdetails:1433472933",
+      "title": "Trainee Operations Controlling (m/w/d)",
+      "company": "nestleHRprdRMK",
+      "location": "Hamburg, DE",
+      "employment_type": null,
+      "url": "https://jobdetails.nestle.com/job/Hamburg-Trainee-Operations-Controlling-%28mwd%29/1433472933/",
+      "score": 7.0,
+      "score_breakdown": {
+        "area": 4.0,
+        "skills": 0,
+        "language": 2.0,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "Trainee Operations Controlling = programa trainee FULL-TIME para graduados (Vollzeit/unbefristet) — nao e vaga de estudante"
+    },
+    {
+      "rank": 103,
+      "id": "B. Braun Melsungen AG|successfactors:bbraunprd:1376794233",
+      "title": "Hochschulpraktikum (w/m/d) Sustainability Reporting & Controlling",
+      "company": "B. Braun Melsungen AG",
+      "location": "Melsungen, DE",
+      "employment_type": null,
+      "url": "https://jobs.bbraun.com/job/Melsungen-Hochschulpraktikum-%28wmd%29-Sustainability-Reporting-&-Controlling/1376794233/",
+      "score": 6.75,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0.75,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Sustainability Reporting & Controlling (CSRD) com dados/SAP/agile — reporting/controlling nucleo"
+    },
+    {
+      "rank": 104,
+      "id": "celonis|greenhouse:celonis:7990983003",
+      "title": "Intern Deployment Engineer - Data & AI",
+      "company": "celonis",
+      "location": "Munich, Germany",
+      "employment_type": null,
+      "url": "https://job-boards.greenhouse.io/celonis/jobs/7990983003?gh_jid=7990983003",
+      "score": 6.75,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0.75,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "Celonis (process mining relevante), mas funcao deployment engineer, nao analise"
+    },
+    {
+      "rank": 106,
+      "id": "SAP|successfactors:jobs:1427816733",
+      "title": "Intern/Thesis/Working Student (f/m/d) - Evaluating and Improving LLM-based SE Solutions in SAP HANA",
+      "company": "SAP",
+      "location": "Walldorf, DE, 69190",
+      "employment_type": null,
+      "url": "https://jobs.sap.com/job/Walldorf-InternThesisWorking-Student-%28fmd%29-Evaluating-and-Improving-LLM-based-SE-Solutions-in-SAP-HANA-69190/1427816733/",
+      "score": 6.75,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0.75,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "Avaliar LLMs p/ SAP HANA — pesquisa dev/ML; fora do nucleo"
+    },
+    {
+      "rank": 129,
+      "id": "ZF Friedrichshafen AG|successfactors:jobs:1420319533",
+      "title": "B.A. Business Administration - Fachbereich Logistics Engineering (m/w/d) ab 01.09.2027",
+      "company": "ZF Friedrichshafen AG",
+      "location": "Langenhagen, NI, DE, 30855",
+      "employment_type": null,
+      "url": "https://jobs.zf.com/job/Langenhagen-B_A_-Business-Administration-Fachbereich-Logistics-Engineering-%28mwd%29-ab-01_09_2027-NI-30855/1420319533/",
+      "score": 6.5,
+      "score_breakdown": {
+        "area": 4.0,
+        "skills": 0,
+        "language": 1.5,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "Duales Studium (B.A. Business Administration) — programa de graduacao, nao estagio"
+    },
+    {
+      "rank": 135,
+      "id": "Telekom Growthhub|eightfold:telekom-growthhub:916775",
+      "title": "Internship / Flexiship in Core Operations, HR Germany & Global Tech",
+      "company": "Telekom Growthhub",
+      "location": "BN, NRW, DE",
+      "employment_type": null,
+      "url": "https://telekom-growthhub.eightfold.ai/careers/job/563465374518999",
+      "score": 6.0,
+      "score_breakdown": {
+        "area": 4.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "ruim",
+      "justification": "Internship Core Operations/HR Germany & Global Tech; fora do nucleo; sem descricao"
+    },
+    {
+      "rank": 136,
+      "id": "BoschGroup|smartrecruiters:BoschGroup:744000148452349",
+      "title": "Internship AI Engineering Intern - Manufacturing & Logistics",
+      "company": "BoschGroup",
+      "location": "Berlin, BE, de",
+      "employment_type": "FULL_TIME",
+      "url": "https://jobs.smartrecruiters.com/BoschGroup/744000148452349",
+      "score": 6.0,
+      "score_breakdown": {
+        "area": 4.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.5,
+        "penalties": -0.5
+      },
+      "label": "boa",
+      "justification": "AI Engineering em Manufacturing & Logistics; nucleo+IA no titulo; sem descricao"
+    },
+    {
+      "rank": 137,
+      "id": "hellofresh|greenhouse:hellofresh:8172859",
+      "title": "Menu Planner Working Student (all genders)",
+      "company": "hellofresh",
+      "location": "Berlin, Berlin, Germany",
+      "employment_type": null,
+      "url": "https://careers.hellofresh.com/global/en/job/8172859?gh_jid=8172859",
+      "score": 6.0,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 1.5,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.5,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "'Menu Planner' no titulo, mas conteudo: python, supply chain ponta-a-ponta, otimizacao/automacao, reporting — dados reais"
+    },
+    {
+      "rank": 156,
+      "id": "Volkswagen AG|successfactors:VWAGLPPROD10:1404868333",
+      "title": "Business Analyst HR, Defense, Truck & Bus (w/m/d)",
+      "company": "Volkswagen AG",
+      "location": "Ingolstadt, DE, 85049",
+      "employment_type": null,
+      "url": "https://jobs.volkswagen-group.com/Volkswagen-Group-Services/job/Ingolstadt-Business-Analyst-HR%2C-Defense%2C-Truck-&-Bus-%28wmd%29-85049/1404868333/",
+      "score": 5.75,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0.75,
+        "language": 2.0,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "Business Analyst HR 'Berufserfahrene/Regulaer' — cargo full-time para profissionais, nao estudante"
+    },
+    {
+      "rank": 157,
+      "id": "BASF SE|successfactors:basf:1431033433",
+      "title": "Internship Sustainable Weed Management / Drone Data (m/f/d)",
+      "company": "BASF SE",
+      "location": "Köln, DE",
+      "employment_type": null,
+      "url": "https://basf.jobs/dark_green_agri/job/K%C3%B6ln-Internship-Sustainable-Weed-Management-Drone-Data-%28mfd%29/1431033433/",
+      "score": 5.5,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0,
+        "language": 1.5,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "ruim",
+      "justification": "Drone Data/weeds: agronomia; 'data' incidental; exige estudo em plant science"
+    },
+    {
+      "rank": 158,
+      "id": "BoschGroup|smartrecruiters:BoschGroup:744000148156729",
+      "title": "Pflichtpraktikum im Bereich Logistik",
+      "company": "BoschGroup",
+      "location": "Salzgitter, NDS, de",
+      "employment_type": "FULL_TIME",
+      "url": "https://jobs.smartrecruiters.com/BoschGroup/744000148156729",
+      "score": 5.5,
+      "score_breakdown": {
+        "area": 4.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": -0.5
+      },
+      "label": "boa",
+      "justification": "Logistica nucleo; generica; sem descricao"
+    },
+    {
+      "rank": 168,
+      "id": "roche|workday:roche/roche-ext:202608-122317",
+      "title": "Praktikum im Bereich: Recruitment Strategy & Operations (m/w/d)",
+      "company": "roche",
+      "location": "Mannheim",
+      "employment_type": "FULL_TIME",
+      "url": "https://roche.wd3.myworkdayjobs.com/roche-ext/job/Mannheim/Praktikum-im-Bereich--Recruitment-Strategy---Operations--m-w-d-_202608-122317-1",
+      "score": 5.5,
+      "score_breakdown": {
+        "area": 4.0,
+        "skills": 0.0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": -0.5
+      },
+      "label": "ruim",
+      "justification": "Recruitment Strategy & Operations (RH) — fora do nucleo"
+    },
+    {
+      "rank": 187,
+      "id": "Fraunhofer-Gesellschaft|successfactors:fraunhofer:1384378533",
+      "title": "Gestalte die Zukunft im Bereich Data Insights - Front End - als stud. Hilfskraft (all genders)",
+      "company": "Fraunhofer-Gesellschaft",
+      "location": "Stuttgart, DE, 70569",
+      "employment_type": null,
+      "url": "https://jobs.fraunhofer.de/job/Stuttgart-Gestalte-die-Zukunft-im-Bereich-Data-Insights-Front-End-als-stud_-Hilfskraft-%28all-genders%29-70569/1384378533/",
+      "score": 5.0,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0,
+        "language": 2.0,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "HiWi em Data Insights, mas front-end/visualizacao (Unity/JS); dados tangentes"
+    },
+    {
+      "rank": 188,
+      "id": "SAP|successfactors:jobs:1431011933",
+      "title": "DH_SAP iXp Intern (w/m/d) - Partner-Driven Vertrieb für den Corporate Bereich",
+      "company": "SAP",
+      "location": "Walldorf, DE, 69190",
+      "employment_type": null,
+      "url": "https://jobs.sap.com/job/Walldorf-DH_SAP-iXp-Intern-%28wmd%29-Partner-Driven-Vertrieb-f%C3%BCr-den-Corporate-Bereich-69190/1431011933/",
+      "score": 4.75,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0.75,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "ruim",
+      "justification": "iXp Intern em Vendas (Vertrieb) — marketing/sales; fora do nucleo"
+    },
+    {
+      "rank": 189,
+      "id": "Bayer|successfactors:jobs:1431453233",
+      "title": "Internship OSR Breeding (all genders)",
+      "company": "Bayer",
+      "location": "Monheim, North Rhine Westfalia, DE",
+      "employment_type": null,
+      "url": "https://jobs.bayer.com/job/Monheim-Internship-OSR-Breeding-%28all-genders%29-Nort/1431453233/",
+      "score": 4.75,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0.75,
+        "language": 2.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "Titulo 'OSR Breeding' (agricultura), conteudo: extracao de dados/LLM/warehouse— dados e automacao reais sob titulo errado"
+    },
+    {
+      "rank": 190,
+      "id": "www.careers.philips.com|phenom:nan:583821",
+      "title": "Werkstudent Finance & Reporting (all genders)",
+      "company": "www.careers.philips.com",
+      "location": "Hamburg, Hamburg, Germany",
+      "employment_type": null,
+      "url": "https://www.careers.philips.com/job/583821",
+      "score": 4.75,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0.75,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "Finance & Reporting — reporting presente; dominio financeiro"
+    },
+    {
+      "rank": 212,
+      "id": "BASF SE|successfactors:basf:1383532633",
+      "title": "Bachelor of Engineering - Elektrotechnik - Schwerpunkt Automatisierungstechnik (m/w/d)",
+      "company": "BASF SE",
+      "location": "Ludwigshafen am Rhein, DE, 67056",
+      "employment_type": null,
+      "url": "https://basf.jobs/BASF_Azubi/job/Ludwigshafen-am-Rhein-Bachelor-of-Engineering-Elektrotechnik-Schwerpunkt-Automatisierungstechnik-%28mwd%29-67056/1383532633/",
+      "score": 4.5,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0,
+        "language": 1.5,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "Duales Studium (B.Eng Elektrotechnik/Automatisierung) — programa de graduacao, nao estagio"
+    },
+    {
+      "rank": 219,
+      "id": "SAP|successfactors:jobs:1430058733",
+      "title": "AI Native Developer Retail Applications (f/m/d) (AI & Mobile Products) (Garching bei München (Munich), DE, 85748)",
+      "company": "SAP",
+      "location": "Garching bei München (Munich), DE, 85748",
+      "employment_type": null,
+      "url": "https://jobs.sap.com/job/Garching-bei-M%C3%BCnchen-%28Munich%29-AI-Native-Developer-Retail-Applications-%28fmd%29-%28AI-&-Mobile-Products%29-85748/1430058733/",
+      "score": 4.0,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 3.0,
+        "language": 0.0,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "AI Native Developer = dev full-time regular (nao estudante); entrou por skills python/cloud na descricao"
+    },
+    {
+      "rank": 220,
+      "id": "careers.allianz.com|phenom:nan:104555",
+      "title": "Intern (m/f/d) - Allianz Services - Data & AI Engineering",
+      "company": "careers.allianz.com",
+      "location": "Unterföhring (bei München), Germany",
+      "employment_type": null,
+      "url": "https://careers.allianz.com/job/104555",
+      "score": 4.0,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "boa",
+      "justification": "Intern Data & AI Engineering (CI/CD, modelagem, dados) — nucleo dados/engenharia"
+    },
+    {
+      "rank": 222,
+      "id": "careers.dhl.com|phenom:nan:AV-293901",
+      "title": "Intern (m/f/d) in the Human Resources Group Functions Data & Systems department",
+      "company": "careers.dhl.com",
+      "location": "Bonn, Nordrhein-Westfalen, Germany",
+      "employment_type": null,
+      "url": "https://careers.dhl.com/job/AV-293901",
+      "score": 4.0,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "HR Data & Systems intern; dados de RH, fora do nucleo; sem conteudo"
+    },
+    {
+      "rank": 248,
+      "id": "Fraunhofer-Gesellschaft|successfactors:fraunhofer:1378421233",
+      "title": "Bachelorarbeit/ Semesterarbeit: Automatisierungspotentialanalyse",
+      "company": "Fraunhofer-Gesellschaft",
+      "location": "Augsburg, DE, 86159",
+      "employment_type": null,
+      "url": "https://jobs.fraunhofer.de/job/Augsburg-Bachelorarbeit-Semesterarbeit-Automatisierungspotentialanalyse-86159/1378421233/",
+      "score": 3.0,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0,
+        "language": 0.0,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "Tese/HiWi em automacao industrial (Automatisierungspotentialanalyse) — tema relevante, forma tese"
+    },
+    {
+      "rank": 249,
+      "id": "Fraunhofer-Gesellschaft|successfactors:fraunhofer:1388207333",
+      "title": "Bachelorarbeit/Semesterarbeit: Automatisierungspotenzialen - Where to automate?",
+      "company": "Fraunhofer-Gesellschaft",
+      "location": "Augsburg, DE, 86159",
+      "employment_type": null,
+      "url": "https://jobs.fraunhofer.de/job/Augsburg-BachelorarbeitSemesterarbeit-Automatisierungspotenzialen-Where-to-automate-86159/1388207333/",
+      "score": 3.0,
+      "score_breakdown": {
+        "area": 2.0,
+        "skills": 0,
+        "language": 0.0,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "Idem #248 (mesma vaga, variante de titulo)"
+    },
+    {
+      "rank": 252,
+      "id": "BASF SE|successfactors:basf:1418777333",
+      "title": "Bachelor of Arts Betriebswirt:in VWA (m/w/d)",
+      "company": "BASF SE",
+      "location": "Münster, DE, 48165",
+      "employment_type": null,
+      "url": "https://basf.jobs/TSA_apprentice/job/M%C3%BCnster-Bachelor-of-Arts-Betriebswirtin-VWA-%28mwd%29-48165/1418777333/",
+      "score": 2.5,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0,
+        "language": 1.5,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "Duales Studium (B.A. Betriebswirt VWA) — programa de graduacao, nao estagio"
+    },
+    {
+      "rank": 253,
+      "id": "BASF SE|successfactors:basf:1383006333",
+      "title": "Bachelor of Science - International Business Administration & Information Technology (m/w/d)",
+      "company": "BASF SE",
+      "location": "Ludwigshafen am Rhein, DE, 67056",
+      "employment_type": null,
+      "url": "https://basf.jobs/BASF_Azubi/job/Ludwigshafen-am-Rhein-Bachelor-of-Science-International-Business-Administration-&-Information-Technology-%28mwd%29-67056/1383006333/",
+      "score": 2.5,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0,
+        "language": 1.5,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "Duales Studium (B.Sc Int. Business & IT) — programa de graduacao, nao estagio"
+    },
+    {
+      "rank": 254,
+      "id": "BASF SE|successfactors:basf:1383006833",
+      "title": "Bachelor of Science - International Business Administration (m/w/d)",
+      "company": "BASF SE",
+      "location": "Ludwigshafen am Rhein, DE, 67056",
+      "employment_type": null,
+      "url": "https://basf.jobs/BASF_Azubi/job/Ludwigshafen-am-Rhein-Bachelor-of-Science-International-Business-Administration-%28mwd%29-67056/1383006833/",
+      "score": 2.5,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0,
+        "language": 1.5,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "Duales Studium (B.Sc Int. Business) — programa de graduacao, nao estagio"
+    },
+    {
+      "rank": 255,
+      "id": "Bayer|successfactors:jobs:1389411533",
+      "title": "LDP Associate (all genders)",
+      "company": "Bayer",
+      "location": "Leverkusen, North Rhine Westfalia, DE",
+      "employment_type": null,
+      "url": "https://jobs.bayer.com/job/Leverkusen-LDP-Associate-%28all-genders%29-Nort/1389411533/",
+      "score": 2.5,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0,
+        "language": 1.5,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "LDP Associate = Leadership Development Program de graduados (mestrado/PhD) — nao estudante atual"
+    },
+    {
+      "rank": 256,
+      "id": "Schaeffler Technologies AG & Co. KG|successfactors:jobs:1412248233",
+      "title": "Studium mit vertiefter Praxis (TH) -  Wirtschaftsingenieurwesen  (d/m/w) 2027",
+      "company": "Schaeffler Technologies AG & Co. KG",
+      "location": "Schweinfurt, DE, 97421",
+      "employment_type": null,
+      "url": "https://jobs.schaeffler.com/job/Schweinfurt-Studium-mit-vertiefter-Praxis-%28TH%29-Wirtschaftsingenieurwesen-%28dmw%29-2027-97421/1412248233/",
+      "score": 2.5,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0,
+        "language": 1.5,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "Studium mit vertiefter Praxis — programa de graduacao dual (2027)"
+    },
+    {
+      "rank": 257,
+      "id": "Schaeffler Technologies AG & Co. KG|successfactors:jobs:1412211933",
+      "title": "Studium mit vertiefter Praxis (TH) - Betriebswirtschaftslehre (d/m/w) 2027",
+      "company": "Schaeffler Technologies AG & Co. KG",
+      "location": "Schweinfurt, DE, 97421",
+      "employment_type": null,
+      "url": "https://jobs.schaeffler.com/job/Schweinfurt-Studium-mit-vertiefter-Praxis-%28TH%29-Betriebswirtschaftslehre-%28dmw%29-2027-97421/1412211933/",
+      "score": 2.5,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0,
+        "language": 1.5,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "Studium mit vertiefter Praxis (BWL) — programa de graduacao dual (2027)"
+    },
+    {
+      "rank": 258,
+      "id": "careers.allianz.com|phenom:nan:104631",
+      "title": "Intern in Real Estate Portfolio Management (f/m/d)",
+      "company": "careers.allianz.com",
+      "location": "München, Germany",
+      "employment_type": null,
+      "url": "https://careers.allianz.com/job/104631",
+      "score": 2.0,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "Real estate portfolio com BI/automacao/AI citados; dominio tangente"
+    },
+    {
+      "rank": 259,
+      "id": "Fraunhofer-Gesellschaft|successfactors:fraunhofer:1293773901",
+      "title": "STUDENTISCHE HILFSKRAFT im Bereich Informationsvisualisierung und Interaktion",
+      "company": "Fraunhofer-Gesellschaft",
+      "location": "Bonn, DE, 53113",
+      "employment_type": null,
+      "url": "https://jobs.fraunhofer.de/job/Bonn-STUDENTISCHE-HILFSKRAFT-im-Bereich-Informationsvisualisierung-und-Interaktion-53113/1293773901/",
+      "score": 2.0,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0,
+        "language": 0.0,
+        "type": 1.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "aceitavel",
+      "justification": "HiWi Informationsvisualisierung/XR analytics — visualizacao de dados tangente"
+    },
+    {
+      "rank": 260,
+      "id": "Fraunhofer-Gesellschaft|successfactors:fraunhofer:1227795201",
+      "title": "Initiativbewerbung wissenschaftliche / Hilfskräfte all genders",
+      "company": "Fraunhofer-Gesellschaft",
+      "location": "Alzenau, DE, 63755",
+      "employment_type": null,
+      "url": "https://jobs.fraunhofer.de/job/Alzenau-Initiativbewerbung-wissenschaftliche-Hilfskr%C3%A4fte-all-genders-63755/1227795201/",
+      "score": 1.0,
+      "score_breakdown": {
+        "area": 0.0,
+        "skills": 0,
+        "language": 0.0,
+        "type": 0.0,
+        "location": 1.0,
+        "penalties": 0.0
+      },
+      "label": "falso_positivo",
+      "justification": "'Initiativbewerbung' (candidatura espontanea) — nao e uma vaga"
+    }
+  ]
+}
