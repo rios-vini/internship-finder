@@ -321,7 +321,8 @@ snapshot de 31/08 (236 eligible; pipeline dedup 2.0 = 232, medido por
 scores `min 2.50 | mediana 6.75 | max 16.75` (222 eligible, run 06/09).
 Ver `scripts/test_ranking.py` (suite sintetica com `FIXTURE` fixa, desacoplada
 do snapshot desde o P2 #16 — 03/09; bloco real roda como invariantes de
-formato/observabilidade; suite local 17/17 TUDO OK — 16 do CI + `test_manifest`).
+formato/observabilidade; suite local 17/17 TUDO OK — 16 do CI + o probe manual
+`scripts/manifest_probe.py`).
 
 **Medicao do ranking (P2.5, 11/09/2026)**: benchmark versionado com **59 vagas
 reais rotuladas manualmente** (`benchmarks/ranking_benchmark_v1.json`).

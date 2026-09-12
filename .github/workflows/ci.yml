@@ -11,10 +11,11 @@
 # com a FIXTURE fixa (18 jobs sinteticos) no CI e NAO depende de snapshot: o
 # bloco real e skipado sem `data/` e nao ha allowlist de falhas conhecidas.
 #
-# EXCLUSAO: scripts/test_manifest.py NAO entra na suite do CI. O manifesto das
-# empresas do ats-scrapers vive fora do repo (requisicao de rede externa a
-# storage.stapply.ai) — em runner limpo isso e instavel e nao-deterministico;
-# o teste roda localmente (no VPS, com a base acessivel) e segue fora do CI.
+# EXCLUSAO: scripts/manifest_probe.py NAO entra na suite do CI. E um probe
+# manual (prints, sem assertions) que consulta o manifest externo das
+# empresas do ats-scrapers (requisicao de rede a storage.stapply.ai) — em
+# runner limpo isso e instavel e nao-deterministico; o probe roda localmente
+# (no VPS, com a base acessivel) e segue fora do CI.
 #
 # EXCLUSAO (limpeza 05/09): test_fetch.py, test_find_company.py e test_resolver.py
 # foram REMOVIDOS do repo e do array — eram smokes de rede SEM assertions (prints +
@@ -92,8 +93,9 @@ jobs:
       # passo = 1 se QUALQUER teste falhar. (Com a decisao (a) do item 2, nao ha
       # dados em CI: test_dedup e test_ranking skipam o bloco real e terminam
       # "TUDO OK"; test_ranking tambem roda a FIXTURE fixa do P2 #16 — nao ha
-      # allowlist de falhas conhecidas. test_manifest fica FORA do array: depende
-      # de rede externa (manifest do ats-scrapers em storage.stapply.ai).
+      # allowlist de falhas conhecidas. manifest_probe.py (probe manual, sem
+      # assertions) fica FORA do array: depende de rede externa (manifest do
+      # ats-scrapers em storage.stapply.ai).
       - name: Run standalone test scripts
         run: |
           set +e
