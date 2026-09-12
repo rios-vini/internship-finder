@@ -23,11 +23,11 @@
 # (test_registry/test_errors) ou runbook (scripts/verify_companies.py).
 #
 # DECISAO item 1 (ats-scrapers, P3 #19 desde 04/09): release PyPI 0.3.0
-# (02/09/2026) contem o expose de application_deadline (PR #268). Instalar
-# "ats-scrapers>=0.3.0" do PyPI elimina a dependencia da ref de PR ae0ad53
-# (so existia como refs/pull/268/head; clone + checkout falhava em runner
-# limpo). O passo de verify abaixo valida o expose na versao instalada ANTES
-# de instalar o projeto com --no-deps.
+# (02/09/2026) contem o expose de application_deadline (PR #268). A dependencia
+# e DECLARADA no pyproject ("ats-scrapers>=0.3.0") e o pip a resolve do PyPI no
+# `pip install -e .` — sem instalacao manual separada (eliminou a ref de PR
+# ae0ad53, so existia como refs/pull/268/head; clone + checkout falhava em
+# runner limpo). O passo de verify abaixo valida o expose na versao instalada.
 
 name: CI
 
@@ -58,21 +58,17 @@ jobs:
       - name: Upgrade pip
         run: python -m pip install --upgrade pip setuptools wheel
 
-      # ats-scrapers 0.3.0 (release PyPI 02/09/2026, P3 #19): instalacao direta do
-      # PyPI substitui o tarball da ref de PR ae0ad53 (instavel em clone fresco) e
-      # elimina o risco de instalacao fresca voltar ao 0.2.0 sem expose.
-      - name: Install ats-scrapers (PyPI >=0.3.0)
+      # Instalacao do projeto COM as dependencias declaradas no pyproject.toml
+      # (fonte de verdade): o pip resolve e instala ats-scrapers>=0.3.0 (PyPI),
+      # requests, pydantic, beautifulsoup4 e pycryptodome a partir do pyproject —
+      # sem lista manual duplicada e sem --no-deps. O CI testa uma instalacao
+      # limpa equivalente a de um usuario (Setup do README: .venv/bin/pip
+      # install -e .).
+      - name: Install project with declared dependencies
         run: |
-          python -m pip install "ats-scrapers>=0.3.0"
+          python -m pip install -e .
 
-      # Dependencias do projeto + o proprio pacote. O projeto instala com
-      # --no-deps (ats-scrapers ja instalado como fonte confiavel acima).
-      - name: Install project deps and package (editable)
-        run: |
-          python -m pip install "requests>=2.31" "pydantic>=2.0" "beautifulsoup4>=4.12"
-          python -m pip install -e . --no-deps
-
-      # Valida o expose na versao instalada (agora a release 0.3.0 do PyPI).
+      # Valida o expose na versao instalada (resolvida via pyproject do PyPI).
       - name: Verify application_deadline expose in installed ats-scrapers
         run: |
           SF=$(python -c "import ats_scrapers.scrapers.successfactors as s; print(s.__file__)")
@@ -83,6 +79,14 @@ jobs:
             echo "ERRO: application_deadline ausente no pacote instalado"
             exit 1
           fi
+
+      # pycryptodome e dependencia declarada do pyproject (exigencia do scraper
+      # moka — Bayer, P3 #36) e chega ao ambiente SO atraves do passo de
+      # instalacao acima; runner limpo nao o pre-instala. Confirma a presenca no
+      # ambiente de CI (sem listas manuais — o pyproject e a fonte).
+      - name: Verify pycryptodome installed (declared dependency)
+        run: |
+          python -c "import Crypto; print('OK: pycryptodome em', Crypto.__file__)"
 
       # Suite standalone. Cada script imprime [OK]/[FAIL] real no log. Exit code do
       # passo = 1 se QUALQUER teste falhar. (Com a decisao (a) do item 2, nao ha
