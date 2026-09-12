@@ -13,7 +13,10 @@ e ranking — o resultado final do CLI) e imprime, em texto legivel:
   ``ranked_jobs.json`` separado; ``ranked`` aqui e o proprio eligible.
 - **Empresas**: empresas distintas (campo ``company``) e tenants (campo
   ``source``) no conjunto eligible, vagas por empresa (desc), contribuicao das
-  maiores (top 1/3/5 e a maior em %).
+  maiores (top 1/3/5 e a maior em %). Com zero vagas elegiveis
+  (``eligible_jobs.json = []`` — estado valido do pipeline, que termina com
+  exit 1 do CLI quando o filtro nao acha nada), ``top1 = 0`` (maximo sobre
+  conjunto vazio), nenhuma empresa e representada e os percentuais viram ``-``.
 - **ATS**: vagas por ATS (prefixo do ``source`` ate ``:``).
 - **Paises**: vagas por ``country_iso`` (ordenado) e % de
   None/localizacao desconhecida.
@@ -46,9 +49,18 @@ def pct(part: int, total: int) -> str:
     return f"{100.0 * part / total:.1f}%" if total else "-"
 
 
-def main() -> int:
-    jobs = load("jobs.json")
-    eligible = load("eligible_jobs.json")
+def main(jobs: list[dict] | None = None, eligible: list[dict] | None = None) -> int:
+    """Imprime o relatorio de coverage e retorna 0 (exit code do script).
+
+    ``jobs``/``eligible`` podem ser injetados (uso dos testes); sem eles, os
+    arquivos de ``data/`` sao lidos como antes. ``eligible_jobs.json = []`` e
+    um estado valido (o pipeline sai com 1 quando o filtro nao acha vagas) —
+    o relatorio cobre o caso com metricas nulas em vez de falhar.
+    """
+    if jobs is None:
+        jobs = load("jobs.json")
+    if eligible is None:
+        eligible = load("eligible_jobs.json")
 
     # --- Funil (recomputado com a cascata real; sem rede) ---
     _, c_tipo = select_eligible(jobs, student=True, area=False, country="all")
@@ -80,7 +92,9 @@ def main() -> int:
           f"{len({j['source'] for j in jobs})} tenants com dados")
     for company, n in by_company.most_common():
         print(f"    {n:>4}  {company}")
-    top1 = by_company.most_common(1)[0][1]
+    # 0 empresas -> maior empresa nao existe; maximo sobre conjunto vazio = 0
+    # (nenhuma empresa representada; percentuais viram "-" via ``pct``).
+    top1 = by_company.most_common(1)[0][1] if by_company else 0
     top3 = sum(n for _, n in by_company.most_common(3))
     top5 = sum(n for _, n in by_company.most_common(5))
     print(f"  contribuicao das maiores: top1 {pct(top1, eligible_n)} | "
