@@ -1,3 +1,14 @@
+"""Probe manual do manifest do ats-scrapers — NAO e um teste automatizado.
+
+Consulta o manifest externo (storage.stapply.ai) e imprime estatisticas do
+acervo de empresas/ATS servido pelo pacote ats-scrapers. Sem assertions, sem
+uso no CI: e uma verificacao manual/operacional para conferir a acessibilidade
+do manifest e inspecionar rapidamente as stats expostas (total, por ATS,
+tamanho dos parquet, etc.).
+
+Uso:  python scripts/manifest_probe.py
+"""
+
 import httpx
 from time import perf_counter
 
