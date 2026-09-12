@@ -14,6 +14,10 @@ Cobre ``scripts/interface.py``:
 - ``render_html``: HTML auto-contido (doctype, CSS inline, JS vanilla inline
   SEM atributo src), tudo escapado (título com ``<script>`` nao injeta),
   URL clicavel com score/breakdown/empresa/local/pais/desde;
+- ``_safe_url``/href (P2.3): so scheme http/https vira ``<a href>``
+  (case-insensitive); javascript:/data:/file:/ftp:/mailto:/tel:, URL sem
+  scheme e malformada viram titulo sem link; escaping HTML permanece
+  depois da validacao;
 - ``main``: E2E off-line (tempfile, sem rede, sem ``data/``) — --top corta,
   --output '-' vai pro stdout, filtros via CLI, default de ``data/`` do CWD
   com fallback JSON->DB e erro claro quando nada existe, validacoes
@@ -278,6 +282,61 @@ def test_render_html() -> None:
     check("data first_seen exibida (desde)", "2026-09-07" in page3)
 
 
+def _job_row(url: str, title: str = "Vaga X") -> dict:
+    """Dict minimo de vaga para exercitar o ``_row_html`` (caminho render)."""
+    return {"id": "x", "title": title, "company": "Co", "location": "L",
+            "country_iso": "de", "url": url, "score": 1.0,
+            "score_breakdown": None, "description": None}
+
+
+def test_url_scheme() -> None:
+    print("== scheme de URL no href (P2.3: somente http/https) ==")
+    ok = [
+        "https://example.com/job/123",
+        "http://example.com/job/123",
+        "HTTPS://example.com",
+        "Http://example.com/x?a=1&b=2",
+    ]
+    for u in ok:
+        check(f"permite {u}", interface._safe_url(u) == u)
+    bad = [
+        "javascript:alert(1)", "JaVaScRiPt:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "file:///tmp/test", "ftp://example.com/file",
+        "mailto:test@example.com", "tel:+4912345678",
+        "example.com/job/123", "//example.com/x", "not a url",
+        "http://[::1",  # malformada: o parser rejeita
+    ]
+    for u in bad:
+        check(f"rejeita {u!r}", interface._safe_url(u) is None)
+    check("rejeita vazio/None/so espacos",
+          interface._safe_url(None) is None and interface._safe_url("") is None
+          and interface._safe_url("   ") is None)
+    check("aceita com bordas de espaco (strip antes do parse)",
+          interface._safe_url("  https://example.com/job/1  ") == "https://example.com/job/1")
+    mixed = [
+        _job_row("https://example.com/job/123", "Boa"),
+        _job_row("javascript:alert(1)", "Ruim"),
+        _job_row("data:text/html,<b>ola</b>", "Feia"),
+        _job_row("mailto:test@example.com", "Mail"),
+        _job_row("file:///tmp/test", "Arq"),
+        _job_row("ftp://example.com/file", "Ftp"),
+    ]
+    page = _render(mixed)
+    check("https vira link clicavel", 'href="https://example.com/job/123"' in page)
+    check("scheme rejeitado nao vira href",
+          all(f'href="{s}' not in page for s in
+              ["javascript:", "data:", "mailto:", "file:", "ftp:", "tel:"]))
+    check("titulo de vaga rejeitada aparece sem link",
+          all(t in page for t in ["Ruim", "Feia", "Mail", "Arq", "Ftp"]))
+    evil = {"id": "e", "title": "Escape", "company": "Co", "location": "L",
+            "country_iso": "de", "url": "https://example.com/?next=javascript:alert(1)&x=1",
+            "score": 1.0, "score_breakdown": None, "description": None}
+    page2 = _render([evil])
+    check("URL http/https com & continua escapada apos validar scheme",
+          'href="https://example.com/?next=javascript:alert(1)&amp;x=1"' in page2)
+
+
 def test_main() -> None:
     print("== main (E2E off-line) ==")
     with tempfile.TemporaryDirectory() as td:
@@ -369,6 +428,7 @@ def main() -> int:
     test_apply_filters()
     test_load_db()
     test_render_html()
+    test_url_scheme()
     test_main()
     print()
     if FAILURES:
