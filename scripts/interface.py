@@ -54,6 +54,7 @@ import sqlite3
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -170,6 +171,33 @@ def _fmt_bool(value) -> str | None:
     return None
 
 
+# P2.3: schemes aceitos em ``href`` — navegadores executam javascript:/data:/
+# no contexto da pagina; aqui so link http/https vira ``<a href>``.
+_ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
+
+
+def _safe_url(value) -> str | None:
+    """URL aceitavel para ``href``: somente scheme http/https (nao prefixo).
+
+    Rejeita (retorna ``None``) qualquer outro scheme — javascript:, data:,
+    file:, ftp:, mailto:, tel:... — alem de ausencia de scheme (URL relativa)
+    e URLs malformadas que o parser rejeita. Comparacao de scheme sem
+    diferenciar maiusculas. Nao valida a URL alem do scheme: o destino
+    continua passando pelo ``html.escape`` existente (validar scheme ->
+    escape -> gerar href).
+    """
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        scheme = urlsplit(text).scheme
+    except ValueError:
+        return None
+    return text if scheme.casefold() in _ALLOWED_URL_SCHEMES else None
+
+
 def _breakdown_badges(job: dict) -> str:
     """Badges do ``score_breakdown`` (explica o porque do topo) + extras."""
     parts: list[str] = []
@@ -201,9 +229,15 @@ def _breakdown_badges(job: dict) -> str:
 
 
 def _row_html(rank: int, job: dict) -> str:
-    """Uma linha da tabela (tudo escapado; URL clicavel, abre em nova aba)."""
+    """Uma linha da tabela (tudo escapado; URL clicavel, abre em nova aba).
+
+    P2.3: a URL so vira ``href`` apos validar o scheme (somente http/https,
+    via ``_safe_url``); scheme rejeitado segue o fluxo de URL vazia — o
+    titulo aparece sem link. O escaping HTML continua aplicado depois da
+    validacao (validar scheme -> escape -> gerar href).
+    """
     title = html.escape(str(job.get("title") or "(sem titulo)"))
-    url = html.escape(str(job.get("url") or ""))
+    url = html.escape(_safe_url(job.get("url")) or "")
     company = html.escape(str(job.get("company") or "—"))
     location = html.escape(str(job.get("location") or "—"))
     country = html.escape(str(job.get("country_iso") or "—"))
