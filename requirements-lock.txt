@@ -1,3 +1,21 @@
+# requirements-lock.txt — snapshot do ambiente resolvido (gerado por `pip freeze`; NAO edite a mao).
+#
+# Gerado em: 2026-09-12 (UTC) — na revisao 26d2f98 (HEAD do repo na geracao).
+# Como regenerar (na raiz do repo, com o venv do projeto ativo):
+#   .venv/bin/python -m pip freeze > requirements-lock.txt
+#
+# O QUE ESTE ARQUIVO E / NAO E:
+# - E um SNAPSHOT congelado do ambiente (pip freeze) na data da geracao, para
+#   reproducao exata quando necessario. Inclui TODOS os pacotes do ambiente,
+#   inclusive os que NAO sao dependencias declaradas do projeto (ex.: ferramentas
+#   instaladas manualmente) e o proprio projeto quando instalado em modo editable
+#   (linha "-e git+...", que referencia o commit do checkout na geracao).
+# - NAO e um lock declarativo moderno (nao equivale a uv.lock / poetry.lock /
+#   Pipfile.lock): nao e a fonte primaria das dependencias e NAO e usado pelo CI
+#   nem pela instalacao padrao (CI e Setup instalam via `pip install -e .`).
+# - O pyproject.toml e a FONTE DE VERDADE das dependencias do projeto (declaradas
+#   + restricoes de versao). Reproduzir o ambiente: `pip install -r requirements-lock.txt`
+#   (opcional; a instalacao normal nao depende deste arquivo).
 annotated-types==0.8.0
 anyio==4.14.2
 ats-scrapers==0.3.0
@@ -8,12 +26,13 @@ h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
 idna==3.19
--e git+https://github.com/rios-vini/internship-finder.git@8742520c3903a558c1b1198cc3cc4c677e113aa4#egg=internship_finder
+-e git+https://github.com/rios-vini/internship-finder.git@26d2f989f644c0e969435b402f349c2631e11907#egg=internship_finder
 numpy==2.5.2
 pandas==3.0.5
 pycryptodome==3.23.0
 pydantic==2.13.4
 pydantic_core==2.46.4
+pyflakes==3.4.0
 python-dateutil==2.9.0.post0
 requests==2.34.2
 six==1.17.0

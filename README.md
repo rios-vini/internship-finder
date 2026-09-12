@@ -22,6 +22,20 @@ python3 -m venv .venv
 
 Requer Python **>= 3.12** (testado em 3.12; vale para 3.13/3.14).
 
+### Dependencias do projeto vs snapshot do ambiente
+
+Dois arquivos na raiz com papeis diferentes (nao confundir):
+
+- **`pyproject.toml`** — a fonte de verdade das dependencias do projeto
+  (declaradas + restricoes de versao). A instalacao padrao (`pip install -e .`,
+  acima) e o CI resolvem as dependencias a partir dele.
+- **`requirements-lock.txt`** — snapshot congelado do ambiente resolvido
+  (`pip freeze` do venv), para reproducao exata do ambiente quando necessario.
+  Nao e um lock declarativo moderno (uv.lock/poetry.lock), nao e a fonte primaria
+  das dependencias e nao e usado pelo CI nem pela instalacao padrao. Regenerar na
+  raiz do repo com `.venv/bin/python -m pip freeze > requirements-lock.txt`
+  (o cabecalho do arquivo documenta isso).
+
 ## Como rodar
 
 O CLI tem tres modos: **filtro** (default), **coleta** (`--companies`) e **health** (`--health`).
@@ -122,8 +136,8 @@ em producao; o `.db` NAO e rotacionado — e acumulativo e vive em `data/`,
 gitignored); o archive e limpo automaticamente apos cada rotacao
 (`--retention-days N`, default 14, 0 = desliga); uso de disco acima de 80%
 entra como `⚠️ Disco: N% usado` na mensagem; o subprocesso da coleta herda o
-ambiente do chamador. Novo arquivo `requirements-lock.txt` na raiz (lock de
-reproducibilidade, fora do CI).
+ambiente do chamador. Novo arquivo `requirements-lock.txt` na raiz (snapshot de
+reproducibilidade via pip freeze, fora do CI).
 
 **Credenciais** (`.env` na raiz — gitignored): `TELEGRAM_BOT_TOKEN` e
 `TELEGRAM_CHAT_ID`. Sem token no `.env` o script loga aviso e NAO envia
@@ -458,7 +472,7 @@ scripts/verify_companies.py  # runbook de empresas (match exato + fetch)
 scripts/coverage.py       # cobertura: funil + empresas/ATS/paises (offline)
 scripts/interface.py      # interface simples: top vagas ranqueadas + filtros (HTML stdlib; P3 #25)
 scripts/test_*.py         # suite standalone ([OK]/[FAIL]; exit 0 = TUDO OK) — test_refresh = refresh diario
-requirements-lock.txt      # lock de reprodutibilidade (pip freeze; fora do CI; adicionado 06/09)
+requirements-lock.txt      # snapshot do ambiente (pip freeze; fora do CI; deps = pyproject.toml)
 ```
 
 ## Status / Roadmap
