@@ -32,6 +32,12 @@ Fluxo:
    salvos). O exit code final do refresh e o do subprocesso (P1.3): 0/1/2,
    ou 124 quando o teto de tempo e estourado — o cron/systemd distingue
    sucesso de falha.
+2b. **Backup do jobs.db (P3)** — snapshot consistente via backup API do
+   sqlite3 (stdlib) para ``data/backups/jobs-<ts>.db`` (artefato standalone,
+   sem sidecars WAL); retencao simples ``--backup-retention-days`` (default
+   14, 0 desliga) aplicada em seguida. Falha NUNCA derruba o run nem muda o
+   exit code: e logada e (se houver envio) entra na mensagem como
+   ``⚠️ Backup do jobs.db falhou: ...``.
 3. **Health** — ``build_health_report`` sobre o conteudo COMPLETO do JSONL
    apos o run (defensivo: malformados nunca derrubam). Os registros do run
    atual sao isolados por snapshot de linhas (antes x depois), sem adivinhar
@@ -50,8 +56,8 @@ Fluxo:
 Flags:
 
 - ``--dry-run``: sem rede, sem escrever em ``data/`` — usa um tempdir com
-  dados sinteticos (rotacao + limpeza + health + mensagem validados; a
-  mensagem e impressa, nada e enviado). Exit 0.
+  dados sinteticos (rotacao + limpeza + backup do jobs.db + health +
+  mensagem validados; a mensagem e impressa, nada e enviado). Exit 0.
 - ``--config PATH``: arquivo de configuracao (default ``.env`` na raiz;
   formato ``CHAVE=VALOR``, ``#`` comenta).
 - ``--always-notify``: envia o resumo mesmo sem anomalia (digest; documentado,
@@ -63,6 +69,8 @@ Flags:
   mensagem "run falhou (timeout do subprocesso)".
 - ``--retention-days N``: retencao do archive em dias (default 14; ``0`` =
   desligado; negativo rejeitado com erro claro via argparse).
+- ``--backup-retention-days N``: retencao dos backups do jobs.db em dias
+  (default 14; ``0`` = desligado; mesma politica do archive).
 
 Concorrencia: o cron usa ``flock -n`` (ver README) para nunca sobrepor runs;
 este script nao reimplementa lock.
@@ -81,6 +89,7 @@ import json
 import logging
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -91,6 +100,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from internship_finder.health import build_health_report  # reuso — sem camada nova
+from internship_finder.storage.sqlite_backup import (  # backup do jobs.db (P3)
+    BACKUP_DIR_NAME,
+    backup_jobs_db,
+    cleanup_backups,
+)
 
 log = logging.getLogger("refresh_daily")
 
@@ -115,6 +129,10 @@ DISK_WARN_PCT = 80
 
 # Retencao default do archive em dias (--retention-days).
 DEFAULT_RETENTION_DAYS = 14
+
+# Retencao default dos backups do jobs.db em dias (--backup-retention-days).
+# Mesma politica do archive: simples, documentada, sem lifecycle complexo.
+DEFAULT_BACKUP_RETENTION_DAYS = 14
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
@@ -421,6 +439,7 @@ def build_message(
     *,
     always_notify: bool = False,
     disk_pct: int | None = None,
+    backup_error: str | None = None,
 ) -> str | None:
     """Monta a mensagem de alerta/digest; ``None`` = nada a enviar (anti-spam:
     sem anomalia, sem falha e sem ``--always-notify``, nao envia).
@@ -435,7 +454,7 @@ def build_message(
     run)."""
     alerts = sorted(report_alerts, key=lambda a: (a.get("source", ""), a.get("type", "")))
     disk_warning = disk_pct is not None and disk_pct > DISK_WARN_PCT
-    if not (always_notify or exit_code != 0 or alerts or disk_warning):
+    if not (always_notify or exit_code != 0 or alerts or disk_warning or backup_error):
         return None
 
     source_names = summary.get("source_names") or {}
@@ -520,6 +539,9 @@ def build_message(
     if disk_warning:
         lines.append("")
         lines.append(f"⚠️ Disco: {disk_pct}% usado")
+    if backup_error:
+        lines.append("")
+        lines.append(f"⚠️ Backup do jobs.db falhou: {backup_error}")
     return "\n".join(lines)
 
 
@@ -598,6 +620,17 @@ def _seed_dry_run(data_dir: Path) -> tuple[int, int]:
     (data_dir / "eligible_jobs.csv").write_text(
         "id,title,score\nsf:1,Working Student Supply Chain,6.0\n", encoding="utf-8")
 
+    # jobs.db sintetico (historico SQLite) para o dry-run exercitar o backup
+    # do passo 2b sem tocar no data/ real.
+    db = data_dir / "jobs.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("CREATE TABLE jobs (id TEXT PRIMARY KEY, title TEXT NOT NULL)")
+    conn.executemany(
+        "INSERT INTO jobs (id, title) VALUES (?, ?)",
+        [("sf:1", "Working Student Supply Chain"), ("sf:2", "Intern Analytics")])
+    conn.commit()
+    conn.close()
+
     def tenant(rid: str, source: str, status: str, collected: int,
                company: str = "Acme", error_code: str | None = None) -> dict:
         return {
@@ -658,6 +691,16 @@ def _run_dry_run(retention_days: int = DEFAULT_RETENTION_DAYS) -> int:
         metrics = data_dir / "collection_metrics.jsonl"
         new_records = read_new_records(metrics, hist)
         print(f"linhas novas lidas: {len(new_records)} (esperado {new})")
+        print("== backup do jobs.db (passo 2b do refresh) ==")
+        try:
+            bk = backup_jobs_db(data_dir / "jobs.db")
+            print(f"backup criado: {bk}")
+        except Exception as exc:  # noqa: BLE001 — dry-run reporta e segue
+            print(f"backup do jobs.db FALHOU: {type(exc).__name__}: {exc}")
+        removed_bk = cleanup_backups(
+            data_dir / BACKUP_DIR_NAME, retention_days)
+        print(f"backups removidos pela retencao ({retention_days}d): "
+              f"{len(removed_bk)}")
         summary = summarize_run(new_records)
         print("resumo:", json.dumps(summary, ensure_ascii=False, default=str))
         records = read_new_records(metrics, 0)
@@ -708,6 +751,10 @@ def main(argv: list[str] | None = None) -> int:
                         default=DEFAULT_RETENTION_DAYS, metavar="N",
                         help="retencao do archive em dias "
                         f"(default {DEFAULT_RETENTION_DAYS}; 0 = desligado)")
+    parser.add_argument("--backup-retention-days", type=_non_negative_int,
+                        default=DEFAULT_BACKUP_RETENTION_DAYS, metavar="N",
+                        help="retencao dos backups do jobs.db em dias "
+                        f"(default {DEFAULT_BACKUP_RETENTION_DAYS}; 0 = desligado)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -735,6 +782,30 @@ def main(argv: list[str] | None = None) -> int:
     proc = run_collection(collection_command(args.timeout), root, args.max_collection_secs)
     exit_code = proc.returncode
 
+    # 2b. Backup do jobs.db (P3): snapshot consistente pos-coleta, via backup
+    # API do sqlite3 (stdlib). Falha NUNCA derruba o run nem muda o exit code
+    # — e reportada no log e (se houver envio) na mensagem do Telegram.
+    # Banco ausente (ex.: primeiro run) NAO e falha: nada a copiar, pula.
+    backup_error: str | None = None
+    jobs_db = data_dir / "jobs.db"
+    if jobs_db.exists():
+        try:
+            backup_path = backup_jobs_db(jobs_db)
+            log.info("backup do jobs.db criado: %s", backup_path)
+        except Exception as exc:  # noqa: BLE001 — backup e operacional, nao critico
+            backup_error = f"{type(exc).__name__}: {exc}"
+            log.error("backup do jobs.db FALHOU: %s", backup_error)
+    else:
+        log.info("sem %s; backup do jobs.db pulado", jobs_db)
+    try:
+        removed_backups = cleanup_backups(
+            data_dir / BACKUP_DIR_NAME, args.backup_retention_days)
+        if removed_backups:
+            log.info("backup cleanup: %d backup(s) removido(s)",
+                     len(removed_backups))
+    except Exception as exc:  # noqa: BLE001 — limpeza nunca derruba o run
+        log.error("backup cleanup falhou: %s", exc)
+
     new_records = read_new_records(metrics_path, skip_lines)
     summary = summarize_run(new_records)
     summary["_exit_code"] = exit_code
@@ -754,7 +825,8 @@ def main(argv: list[str] | None = None) -> int:
 
     message = build_message(summary, report["alerts"], exit_code,
                             always_notify=args.always_notify,
-                            disk_pct=disk_pct)
+                            disk_pct=disk_pct,
+                            backup_error=backup_error)
     if message is None:
         print("Sem anomalia — nenhum envio (anti-spam).")
     else:

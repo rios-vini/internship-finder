@@ -152,6 +152,49 @@ reproducibilidade via pip freeze, fora do CI).
 (nunca crasha). Envio via Bot API `sendMessage` (stdlib, sem dependencia
 nova); falha de rede do envio e logada, nao derruba o refresh.
 
+### Backup do jobs.db (P3)
+
+O historico SQLite (`data/jobs.db`, first_seen/last_seen/active/archived) tem
+**backup proprio** a cada run do refresh — o `.db` e acumulativo e nao
+rotaciona, entao merece snapshot independente do archive de JSONs.
+
+- **Onde**: `data/backups/jobs-<timestamp>.db` (`jobs-YYYYMMDDTHHMMSSZ.db`,
+  UTC — multiplos backups com historico ordenavel). `data/` e gitignored.
+- **Mecanismo**: backup API do sqlite3 (`sqlite3.Connection.backup()`,
+  stdlib), com a origem aberta **read-only** — snapshot CONSISTENTE mesmo com
+  o banco em uso, sem risco para o banco principal (nunca e escrito pela
+  rotina). O artefato sai em `journal_mode=DELETE`: **um unico arquivo SQLite
+  standalone**, sem sidecars `-wal`/`-shm`, validado por `PRAGMA quick_check`
+  antes do nome final (escrita atomica: temporario + rename).
+- **Automatico**: apos a coleta de cada refresh (`scripts/refresh_daily.py`).
+  Falha de backup NUNCA derruba o run nem muda o exit code — e logada e
+  entra como `⚠️ Backup do jobs.db falhou: ...` na mensagem do Telegram (so
+  quando ha envio no run).
+- **Manual**:
+  ```bash
+  .venv/bin/python scripts/backup_db.py                              # data/jobs.db -> data/backups/
+  .venv/bin/python scripts/backup_db.py --db data/jobs.db --retention-days 14  # + limpeza
+  .venv/bin/python scripts/backup_db.py --dry-run                    # so mostra destino
+  ```
+  Exit 0 = backup criado (imprime o caminho); 2 = falha (stderr claro, banco
+  principal intocado). No script manual a retencao e OPCIONAL (default 0 =
+  nao apaga nada) — backup manual nao deve apagar historico por surpresa.
+- **Retencao**: simples e documentada, mesma politica do archive —
+  `--backup-retention-days N` no refresh (default **14** dias; `0` desliga;
+  negativo rejeitado); nomes fora do formato `jobs-*.db` sao preservados com
+  aviso. Sem lifecycle complexo (deliberado).
+- **Restauracao manual**: parar o refresh (ou garantir que nada esta
+  escrevendo no banco) e sobrescrever o banco com o backup:
+  ```bash
+  cp data/backups/jobs-<timestamp>.db data/jobs.db
+  ```
+  O arquivo e um SQLite normal e utilizavel; o `SqliteStore` reativa o WAL no
+  proximo open. Recomendado conferir com
+  `.venv/bin/python -c "import sqlite3; print(sqlite3.connect('data/jobs.db').execute('PRAGMA integrity_check').fetchone())"`.
+- **Limitação**: a origem pode ganhar sidecars `-wal`/`-shm` transientes
+  durante o snapshot (comportamento WAL normal do SQLite; somem quando a
+  proxima conexao de escrita fecha). O backup em si e sempre um arquivo unico.
+
 **Cron** (instalado no VPS, 05/09): diario as 06:00 UTC, com `flock -n`
 (nao sobrepoe runs; se o anterior ainda roda, o novo e pulado):
 

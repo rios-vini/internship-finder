@@ -24,6 +24,7 @@ import argparse
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -361,6 +362,118 @@ def test_aviso_disco() -> None:
         check("disco inacessivel -> None, sem crash", rd.disk_usage_pct(Path("/tmp/xyz")) is None)
 
 
+def _make_jobs_db(path: Path) -> bytes:
+    """Cria um jobs.db sintetico (1 linha) e devolve seu conteudo bruto."""
+    conn = sqlite3.connect(str(path))
+    conn.execute("CREATE TABLE jobs (id TEXT PRIMARY KEY, title TEXT NOT NULL)")
+    conn.execute("INSERT INTO jobs (id, title) VALUES ('sf:1', 'Working Student')")
+    conn.commit()
+    conn.close()
+    return path.read_bytes()
+
+
+def test_backup_integrado() -> None:
+    print("== P3: backup do jobs.db executado no fluxo do refresh ==")
+    with tempfile.TemporaryDirectory(prefix="t_bkint_") as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir()
+        (data_dir / "collection_metrics.jsonl").write_text("", encoding="utf-8")
+        db_bytes = _make_jobs_db(data_dir / "jobs.db")
+
+        calls: dict = {"notify": []}
+        original_root = rd.repo_root
+
+        def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+            return subprocess.CompletedProcess(args[0], 0)
+
+        def fake_notify(config, message, *, dry_run) -> dict:
+            calls["notify"].append((message, dry_run))
+            return {"sent": True}
+
+        rd.repo_root = lambda: root
+        try:
+            with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "notify_or_log", side_effect=fake_notify):
+                rc = rd.main(["--config", str(root / ".env")])
+        finally:
+            rd.repo_root = original_root
+
+        check("main retorna exit 0 (coleta ok)", rc == 0)
+        backups = sorted((data_dir / "backups").glob("jobs-*.db"))
+        check("backup do jobs.db criado em data/backups/", len(backups) == 1)
+        if backups:
+            size_ok = backups[0].stat().st_size > 0
+            conn = sqlite3.connect(str(backups[0]))
+            rows = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+            conn.close()
+            check("backup valido com os dados esperados",
+                  size_ok and rows == 1)
+        check("sem anomalia -> nenhum envio (anti-spam preservado)",
+              calls["notify"] == [])
+        check("jobs.db principal intacto (bytes iguais)",
+              (data_dir / "jobs.db").read_bytes() == db_bytes)
+
+
+def test_backup_falha_reportada() -> None:
+    print("== P3: falha de backup reportada, jamais derruba o run ==")
+    with tempfile.TemporaryDirectory(prefix="t_bkfail_") as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir()
+        (data_dir / "collection_metrics.jsonl").write_text("", encoding="utf-8")
+        db_bytes = _make_jobs_db(data_dir / "jobs.db")
+
+        calls: dict = {"notify": []}
+        original_root = rd.repo_root
+
+        def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+            return subprocess.CompletedProcess(args[0], 0)
+
+        def fake_notify(config, message, *, dry_run) -> dict:
+            calls["notify"].append((message, dry_run))
+            return {"sent": True}
+
+        rd.repo_root = lambda: root
+        try:
+            with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "notify_or_log", side_effect=fake_notify), \
+                 mock.patch.object(rd, "backup_jobs_db",
+                                   side_effect=OSError("disco cheio")):
+                rc = rd.main(["--config", str(root / ".env")])
+        finally:
+            rd.repo_root = original_root
+
+        check("backup falhou mas o run termina exit 0 (nada derruba)",
+              rc == 0)
+        check("falha dispara o envio (reportada, mesmo exit 0)",
+              len(calls["notify"]) == 1)
+        msg = calls["notify"][0][0] if calls["notify"] else ""
+        check("mensagem identifica o backup falho",
+              "Backup do jobs.db falhou" in msg and "disco cheio" in msg)
+        check("nenhum backup parcial criado",
+              not (data_dir / "backups").exists()
+              or sorted((data_dir / "backups").iterdir()) == [])
+        check("jobs.db principal intacto (bytes iguais)",
+              (data_dir / "jobs.db").read_bytes() == db_bytes)
+
+
+def test_message_backup_error() -> None:
+    print("== P3: build_message com backup_error ==")
+    summary = rd.summarize_run([_run_record("r1", 400, 50)])
+    check("sem backup_error preserva anti-spam (exit 0, sem alertas -> None)",
+          rd.build_message(summary, [], 0) is None)
+    check("backup_error dispara envio mesmo sem anomalia",
+          rd.build_message(summary, [], 0, backup_error="OSError: x") is not None)
+    check("linha de backup falho na mensagem",
+          "⚠️ Backup do jobs.db falhou: OSError: x"
+          in (rd.build_message(summary, [], 0, backup_error="OSError: x") or ""))
+    msg2 = rd.build_message(summary, [], 2, backup_error="OSError: x")
+    check("coexiste com anomalia de coleta (exit 2)",
+          msg2 is not None and "parcial" in msg2
+          and "Backup do jobs.db falhou" in msg2)
+
+
 def _data_snapshot(data_dir: Path) -> dict:
     snap = {}
     if not data_dir.exists():
@@ -482,6 +595,9 @@ def main() -> int:
     test_env_subprocesso_herdado()
     test_limpeza_archive()
     test_aviso_disco()
+    test_backup_integrado()
+    test_backup_falha_reportada()
+    test_message_backup_error()
     test_dry_run_nao_toca_data()
     test_exit_code_propagado()
     test_exit_code_processo_observavel()
