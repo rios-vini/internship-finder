@@ -103,6 +103,14 @@ compatibilidade, mas a lista oficial e o registry.
   derivado do JSONL de metricas (`company_status`, read-only) e exposto pelo
   `--health` (implementado em 06/09, PR #31) — registry = configuracao,
   JSONL = status (decisao de design).
+- A **consistencia Registry x runtime** (tenant declarado x tenant que o
+  runtime efetivamente resolve/coleta) e verificada por empresa pelo
+  `--health` na secao `registry_consistency` (classificacao por empresa:
+  `consistent` / `drift` / `multi` / `dynamic` / `not_found` / `no_data` —
+  logica pura em `src/internship_finder/registry.py`, testes em
+  `scripts/test_registry_consistency.py`). Medido em 12/09/2026: 0 drift;
+  52 consistent, 10 multi (declarado presente com cobertura extra) e
+  3 dynamic (None declarado, resolucao pela base).
 - Seed e modelo: `src/internship_finder/registry.py` (pydantic, `SEED` com as
   65 entradas operacionais); testes em `scripts/test_registry.py`.
 
