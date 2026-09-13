@@ -54,7 +54,12 @@ from internship_finder.health import build_health_report
 from internship_finder.metrics import read_metrics, utcnow_iso, write_metrics
 from internship_finder.models.job import Job, normalize_job_dict
 from internship_finder.ranking import rank_jobs
-from internship_finder.registry import CompanyRegistry, registry_names
+from internship_finder.registry import (
+    CompanyRegistry,
+    latest_run_tenants,
+    registry_names,
+    tenant_consistency_report,
+)
 from internship_finder.storage.sqlite_store import SqliteStore
 
 log = logging.getLogger("internship_finder")
@@ -488,7 +493,17 @@ def main(argv: list[str] | None = None) -> int:
         # P3 lote 1: expoe o estado por empresa (CompanyRegistry.company_status,
         # read-only e defensivo) na chave "companies" — fecha o gap doc x codigo
         # (o README ja documenta essa exposicao no relatorio do --health).
-        report["companies"] = CompanyRegistry().company_status(health_path)
+        registry = CompanyRegistry()
+        report["companies"] = registry.company_status(health_path)
+        # P2: consistencia Registry x runtime — tenant declarado no registry x
+        # tenants efetivamente resolvidos no run mais recente do JSONL, por
+        # empresa (configuracao x resultado real). Divergencia (declarado X,
+        # runtime so Y) aparece como status "drift"; None declarado e resolucao
+        # dinamica valida ("dynamic"); sem dados -> "no_data". Reusa o fluxo de
+        # health (mesmos records) — sem sistema paralelo.
+        report["registry_consistency"] = tenant_consistency_report(
+            registry.entries, latest_run_tenants(records)
+        )
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 0
 

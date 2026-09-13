@@ -12,6 +12,11 @@ o estado por tenant com o nome da empresa. O registry apenas materializa o
 agregado por empresa de forma read-only e defensiva (registro malformado nunca
 derruba). Assim o estado operacional tem uma única fonte (o JSONL) e o registry
 expõe a **configuração** (quais empresas, habilitadas, tenant de referência).
+
+A **consistência** entre o tenant declarado no registry e o tenant que o
+runtime de fato resolve/coleta é verificável por ``tenant_consistency_report``
+(configuração x resultado real, classificação por empresa — ver docstring da
+função) e exposta pelo ``--health`` (chave ``registry_consistency``).
 """
 
 from __future__ import annotations
@@ -218,3 +223,139 @@ def registry_names(registry: CompanyRegistry, names: list[str] | None = None) ->
     devolve a interseção na ordem informada.
     """
     return [e.name for e in registry.enabled(names)]
+
+
+# --- Consistencia Registry x runtime (P2: tenant declarado x tenant real) ---
+
+# Status da classificacao por empresa (chaves do relatorio de consistencia):
+#  - "consistent"  — tenant declarado == unica resolucao do runtime (normal);
+#  - "drift"       — tenant DECLARADO (nao-None) ausente das resolucoes do
+#    runtime: o registry diz X e o runtime resolve/coleta so Y — divergencia;
+#  - "multi"       — declarado presente entre N>1 resolucoes: o registry nao
+#    declara ser exaustivo, so referencia; coleta extra e informativa, nao e
+#    erro;
+#  - "dynamic"     — declarado ``None`` e o runtime resolveu: resolucao
+#    dinamica deliberada (a base decide), NAO e drift;
+#  - "not_found"   — o runtime nao resolveu nenhum tenant para a empresa
+#    (sem match exato na base);
+#  - "no_data"     — nenhuma informacao de runtime para a empresa (ex.: ainda
+#    nao coletada no run de referencia).
+TENANT_CONSISTENT = "consistent"
+TENANT_DRIFT = "drift"
+TENANT_DYNAMIC = "dynamic"
+TENANT_MULTI = "multi"
+TENANT_NOT_FOUND = "not_found"
+TENANT_NO_DATA = "no_data"
+
+
+def tenant_consistency_status(
+    declared_tenant: str | None,
+    runtime_sources: list[str],
+) -> str:
+    """Classifica o tenant declarado no registry contra os tenants resolvidos.
+
+    Regra central: so existe DRIFT quando o registry declara um tenant
+    explicito e o runtime resolve ALGO diferente — listas vazias sao
+    ``not_found`` (sem resolucao nao ha o que comparar; o erro original de
+    coleta continua visivel no JSONL via status ``not_found``, nao e mascarado)
+    e ``None`` declarado e sempre ``dynamic`` (resolveu) ou ``not_found``
+    (nao resolveu) — nunca drift. Tenants compartilhados entre empresas nao
+    afetam a classificacao: ela consome so a resolucao DA empresa.
+    """
+    sources = [s for s in (runtime_sources or [])
+               if isinstance(s, str) and s.strip()]
+    if not sources:
+        return TENANT_NOT_FOUND
+    if declared_tenant is None:
+        return TENANT_DYNAMIC
+    if declared_tenant not in sources:
+        return TENANT_DRIFT
+    return TENANT_MULTI if len(sources) > 1 else TENANT_CONSISTENT
+
+
+def tenant_consistency_report(
+    entries: list[RegistryEntry],
+    runtime_tenants: dict[str, list[str]],
+) -> list[dict]:
+    """Relatorio de consistencia Registry x runtime, por empresa.
+
+    ``runtime_tenants`` mapeia o nome canonico da empresa -> tenants
+    (``ats:slug``) resolvidos pelo runtime no ponto de referencia (ex.: os
+    registros ``type: tenant`` do run mais recente do JSONL de metricas via
+    ``latest_run_tenants``, ou a resolucao viva de ``find_company``).
+
+    Empresa AUSENTE do dict = ``no_data`` (sem informacao de runtime); presente
+    com lista vazia = ``not_found`` (resolvida e nao encontrada).
+
+    A identidade da comparacao e POR EMPRESA (nome canonico do registry),
+    nunca ``source`` isolado como identidade global: o MESMO tenant pode ser
+    compartilhado por varias empresas (ex.: ``successfactors:jobs`` cobre
+    SAP/ZF/Kaufland/...; ``phenom:nan`` cobre DHL/Allianz/Merck/...) e a
+    classificacao de uma empresa nunca depende do que outra coletou.
+
+    Devolve uma linha por entrada (ordem do registry, deterministica), com
+    ``company``, ``ats``, ``registry_tenant``, ``runtime_tenants`` (ordenado)
+    e ``status`` — JSON-serializavel.
+    """
+    report: list[dict] = []
+    for e in entries:
+        sources = runtime_tenants.get(e.name)
+        if sources is None:
+            status = TENANT_NO_DATA
+        else:
+            status = tenant_consistency_status(e.tenant, sources)
+        report.append(
+            {
+                "company": e.name,
+                "ats": e.ats,
+                "registry_tenant": e.tenant,
+                "runtime_tenants": sorted(
+                    s for s in (sources or []) if isinstance(s, str) and s.strip()
+                ),
+                "status": status,
+            }
+        )
+    return report
+
+
+def latest_run_tenants(records: list[dict]) -> dict[str, list[str]]:
+    """Tenants resolvidos pelo runtime no run MAIS RECENTE dos ``records``.
+
+    Consome os registros ``type: tenant`` do JSONL de metricas: agrupa por
+    ``company`` os ``source`` (``ats:slug``) do run com o ``run_id`` maior
+    (ISO 8601 ordena cronologicamente). Registrar de ``not_found`` (sem
+    ``source``) marca a empresa com lista vazia — distinto de empresa sem
+    nenhum registro (ausente do dict). Malformados sao ignorados, nunca
+    derrubam (mesmo espirito do health). Deduplica sources por empresa.
+    """
+    latest: str | None = None
+    for r in records:
+        if not isinstance(r, dict) or r.get("type") != "tenant":
+            continue
+        rid = r.get("run_id")
+        if isinstance(rid, str) and rid and (latest is None or rid > latest):
+            latest = rid
+    if latest is None:
+        return {}
+    out: dict[str, list[str]] = {}
+    for r in records:
+        if not isinstance(r, dict) or r.get("type") != "tenant":
+            continue
+        if r.get("run_id") != latest:
+            continue
+        company = r.get("company")
+        if not (isinstance(company, str) and company):
+            continue
+        source = r.get("source")
+        if isinstance(source, str) and source.strip():
+            sources = out.setdefault(company, [])
+            if source not in sources:
+                sources.append(source)
+        elif r.get("status") == "not_found":
+            # Convencao do CLI: ``not_found`` grava a empresa SEM tenant
+            # (``source`` vazio) — marca a empresa com lista vazia, para o
+            # relatorio distinguir de "sem dados". Registro sem source e sem
+            # status ``not_found`` e malformado/legado: ignorado (o health
+            # tambem o ignora).
+            out.setdefault(company, [])
+    return out
