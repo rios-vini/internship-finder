@@ -30,11 +30,6 @@ class RegistryEntry(BaseModel):
     tenant: str | None = None  # tenant de referência na base (ex.: "successfactors:jobs")
     enabled: bool = True  # false desabilita a empresa sem removê-la do registry
 
-    @property
-    def source(self) -> str:
-        """Identificador composto de tenant quando disponível (``ats:slug``)."""
-        return self.tenant or ""
-
 
 # --- Seed: as 65 empresas operacionais (12 da validação inicial + 27 da
 # --- expansão E2 + 26 da expansão internacional P3 #23: 9 DE + 17 NL/CH/AT).

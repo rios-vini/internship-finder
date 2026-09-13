@@ -103,8 +103,8 @@ compatibilidade, mas a lista oficial e o registry.
   derivado do JSONL de metricas (`company_status`, read-only) e exposto pelo
   `--health` (implementado em 06/09, PR #31) — registry = configuracao,
   JSONL = status (decisao de design).
-- Seed e modelo: `src/internship_finder/registry.py` (pydantic, `SEED` + 39
-  entradas); testes em `scripts/test_registry.py`.
+- Seed e modelo: `src/internship_finder/registry.py` (pydantic, `SEED` com as
+  65 entradas operacionais); testes em `scripts/test_registry.py`.
 
 ### Daily refresh (P2 #17)
 
@@ -196,10 +196,10 @@ timeout proprio (`--timeout 60`).
   teste do tenant/ATS. Apos a expansao de 08/09 (P3 #23), sao **65 empresas**
   operacionais na coleta (12 da validacao inicial + 27 novas + 26 novas 08/09).
 - **Operacional** = retorna vagas no fetch real (tenant ativo, ATS com
-  scraper): **39** no snapshot 07/09 (35 tenants com dados em `data/jobs.json`;
-  a Bosch conta 2x no campo `company` — tenants `BoschGroup` e
-  `bosch-homecomfort`). **Re-medir no run 06:00 pós-expansão #23** (65 no
-  registry).
+  scraper): **39** no snapshot 07/09 (**pré-expansão #23** — 35 tenants com
+  dados em `data/jobs.json`; a Bosch conta 2x no campo `company` — tenants
+  `BoschGroup` e `bosch-homecomfort`). Re-medição feita no 1º run com 65
+  empresas (08/09 — ver MASTER_PLAN #37 e o Log de mudanças de 08/09).
 - **Com vagas eligible** = tem pelo menos 1 vaga eligible na Alemanha apos a
   cascata de filtros + dedup: **24** empresas / 20 tenants (medido no run 06/09).
 
@@ -465,7 +465,7 @@ src/internship_finder/
 ├── errors.py       # codigos de erro estruturados (CollectionError + classificador)
 ├── health.py       # relatorio de health por tenant/ATS sobre o JSONL + alertas
 ├── geocoding.py    # fallback de pais por cidade (cache-first; flag OFF por default)
-├── registry.py     # CompanyRegistry: fonte unica das 39 empresas de coleta (SEED, P2 #13)
+├── registry.py     # CompanyRegistry: fonte unica das 65 empresas de coleta (SEED, P2 #13)
 └── cli.py          # entry point `internship-finder` (filtro default + coleta)
 scripts/collect_jobs.py   # atalho p/ rodar sem instalar
 scripts/refresh_daily.py  # refresh diario + alertas Telegram (rotacao -> coleta -> health -> alerta)
