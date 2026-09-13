@@ -170,7 +170,7 @@ def test_cli_bridge() -> None:
           called == ["SAP", "Bosch"], f"{called}")
     check("5c. output gravado", Path(f"{tmp}/j1.json").exists())
 
-    # (b) --registry sem --companies usa TODAS as ENABLED (39)
+    # (b) --registry sem --companies usa TODAS as ENABLED (65)
     called.clear()
     with patch.object(cli, "collect_company", side_effect=_collect_track):
         rc = cli.main(["--registry", "--output", f"{tmp}/j2.json",
