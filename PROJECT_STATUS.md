@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-08
+Last updated: 2026-09-14
 
 ## Current state
 
@@ -17,16 +17,16 @@ Nestlé, Novartis, ABB, Red Bull, Roche, Swiss Re, Schindler, Shell,
 Unilever, AkzoNobel, Rabobank, NXP, OMV); all validated with
 `verify_companies.py --fetch` — match exato + scraper + fetch OK).
 
-Latest documented full runs (cron 06:00 UTC; reproduced offline by `scripts/coverage.py` and the current pipeline):
+Latest documented full runs (cron 06:00 UTC; reproduced offline by `scripts/coverage.py` and the current pipeline). **Current snapshot = 14/09 run**; earlier runs below are historical records:
 
-- 06/09: 37,953 raw → 3,080 student-type → 752 target-area → 246 Germany-eligible → **222 eligible** (dedup −24)
-- 07/09: **37,957 raw → 220 eligible** (dedup −24; 43 tenants ok / 2 empty / 1 timeout / 1 error — falhas recorrentes conhecidas: moka Bayer + Lidl timeout, ver MASTER_PLAN P3 #36)
-- 24 companies / 20 tenants (source) with eligible jobs
-  (SAP 71, BoschGroup 41, Volkswagen AG 20, BASF SE 17, Knorr-Bremse 16, ... — see README coverage table)
+- **14/09 (current): 60,222 raw → 281 filtered → 257 eligible (dedup −24)** — registry at **65 companies**; CI suite **23/23 scripts — 958 checks — 0 failures**; P1–P3 of this batch **closed and verified** (see Completed and Next priorities)
+- 06/09 (histórico): 37,953 raw → 3,080 student-type → 752 target-area → 246 Germany-eligible → **222 eligible** (dedup −24)
+- 07/09 (histórico): **37,957 raw → 220 eligible** (dedup −24; 43 tenants ok / 2 empty / 1 timeout / 1 error — falhas recorrentes conhecidas: moka Bayer + Lidl timeout, ver MASTER_PLAN P3 #36)
+- Companies/tenants with eligible jobs and the ATS breakdown below were measured on the 06/09–07/09 runs (histórico; the ATS figures sum to the 06/09 total of 222):
+  - 24 companies / 20 tenants (source) with eligible jobs (SAP 71, BoschGroup 41, Volkswagen AG 20, BASF SE 17, Knorr-Bremse 16, ... — see README coverage table)
+  - ATS (eligible): successfactors 150, smartrecruiters 41, eightfold 11, workday 8, phenom 5, ashby 3, greenhouse 3, cornerstone 1.
 
-ATS (eligible): successfactors 150, smartrecruiters 41, eightfold 11, workday 8, phenom 5, ashby 3, greenhouse 3, cornerstone 1.
-
-Scores (measured 06/09 on the current dataset): min 2.50 | mediana 6.75 | max 16.75 · 222/222 `country_iso='de'`.
+Scores (measured 06/09 — histórico): min 2.50 | mediana 6.75 | max 16.75 · 222/222 `country_iso='de'`.
 
 With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): historical measurement over the 31/08 snapshot was 245 eligible (+9 Workday DE).
 
@@ -77,9 +77,11 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 
 - **P3 #22 — Data/code separation + Parquet + chunking: measured, no action** (08/09; full numbers in the MASTER_PLAN log): `jobs.json` is 114MB (37,957 jobs, ~3KB/job) and loads in 828ms; 3 consecutive runs show ~0% daily growth (38,038→37,953→37,957; churn ~116 ids/day, net ~0 — only the cumulative `jobs.db` grows, ~+0.13GB/year); real format measurements: gzip −9 = 14.4MB, parquet-zstd = 12.2MB, SQLite read 358ms, parquet-zstd read 52ms. Fixed thresholds declared before measuring (parquet only if JSON ≥1GB or read >10s; data repo only if `data/` ≥10GB or disk >75%; chunking only if a future #25 interface payload >10MB) — none hit, so no new dependency (pyarrow/pandas/duckdb stay out), JSON/CSV/SQLite contracts untouched, cron/refresh untouched. Reopen condition recorded in MASTER_PLAN #22. `data/` untouched; suite 17/17 OK from scratch cwd.
 - **P2.5 — Benchmark do ranking: medido, NÃO alterado** (11/09; PR #45): `benchmarks/ranking_benchmark_v1.json` (59 vagas reais do run 11/09 rotuladas manualmente: 5 ótima / 22 boa / 15 aceitável / 5 ruim / 12 falso positivo; justificativa + URL por vaga) + análise stdlib reproduzível. **Resultado**: universo 260 eligible (run 11/09/2026) com **96,5% das vagas empatadas** (39 scores distintos; maior grupo 7.5×33); concordância ordinal **82,5%** em 1.289 pares (tau +0,651 — o ranking tem sinal real); **67% das vagas empatadas da amostra em grupos com qualidade humana diferente** (até 3 níveis no mesmo score). **Decisão: Caso C — baixa resolução real**, sem evidência para redesign; hipóteses de calibração (H1 descrição ausente custa 3,0–3,75 pts na mesma vaga; H2 `language` não discrimina — FP 1,33 ≈ ótima 1,40; H3 desempate alfabético arbitrário; H4 FPs = gap de FILTRO, fora do ranking) em `docs/ranking_benchmark.md`. Ferramentas: `scripts/ranking_benchmark.py` (relatório determinístico), `scripts/make_ranking_benchmark.py` (refresh/validate — nunca grava benchmark inválido); `scripts/test_ranking_benchmark.py` no CI (19→20 scripts). Suíte local 20/20 TUDO OK de cwd scratch; `data/` intocada. Nenhum peso/formula/regra alterado.
+- **Batch 12–13/09 (PRs #48–#53, merged)**: CI passa a instalar dependências via `pyproject.toml` — sem lista manual nem `--no-deps` (#48); papel do `requirements-lock.txt` documentado como snapshot, não lock declarativo (#49); `test_manifest.py` renomeado para `manifest_probe.py` — probe manual (rede), fora da suíte do CI (#50); `coverage.py` suporta zero vagas elegíveis sem `IndexError` (#51); escopo do registry consolidado 39/60 → 65 + `RegistryEntry.source` removido (#52); detecção de drift entre tenant do registry e tenant resolvido (#53). Com P3 #40 (backup do jobs.db, 13/09) e o README pós-auditoria com a suite 23/23 (#55), fecham a leva P1–P3 desta auditoria.
 
 ## Next priorities
 
+- **P1–P3 desta leva: fechados e comprovados (auditoria 14/09)** — não existe defeito técnico conhecido em aberto. O que permanece abaixo é **monitoramento** de itens externos/operacionais (Lidl timeout, gate de versão do `ats-scrapers`) e **decisões futuras de escopo/produto** (P3 #24, próxima onda de expansão) — não dívida técnica aberta.
 - **P3 #20/#21/#29/#30/#31 complete** (06/09 - see Completed). Backlog remainders:
   - **P3 #22**: DONE (08/09) — measured, no action (see Completed); reopen if jobs.json > 1GB or read > 10s or data/ > 10GB
   - **P3 #23**: international expansion + more DE companies (39→60→100) — **DONE 08/09** (39→65, 26 validated; 22 rejected with evidence); next wave BE/FR/Nordics/UK + 65→100 when owner decides scope — see MASTER_PLAN #23
@@ -93,10 +95,11 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 
 ## Known limitations
 
+- Nenhum item abaixo é defeito técnico conhecido em aberto — são limitações documentadas, fatores externos ou itens de monitoramento (comprovado pela auditoria final de 14/09).
 - Some Workday tenants do not expose country information clearly enough for the current country filter (documented; nothing fabricated). **Partially mitigated** by the optional `geocoding.py` fallback (OFF by default; +9 Workday DE when enabled; network geocoding only with the flag on).
 - **`application_deadline` em tenants SuccessFactors (P1.4, provado por origem — NÃO é bug):** o feed RSS de Google Merchant (`<host>/sitemal.xml`) publica `g:expiration_date` com **um único valor por feed, igual a `data do feed + 30 dias`, aplicado a todas** as vagas (ex.: feed 11/09 → `2026-10-11`). Trata-se de um horizonte de validade gerado pela própria plataforma (a fonte), não de um prazo de candidatura definido pelo empregador. **O valor VEM DA FONTE**: ats-scrapers 0.3.0 só parseia `g:expiration_date` e o adapter deste projeto só mapeia/parseia — nenhuma camada soma +30 dias nem aplica default. Verificado por reprodução em 4 feeds (SAP/Kaufland/ZF/AkzoNobel) e por auditoria de código. Por isso **não se remove** o valor por heurística de `+30 dias`/frequência (um prazo real que coincida com +30 seria apagado); a interface deve tratar esse campo em SuccessFactors como "providenciado pela fonte", não como prazo garantido do empregador.
 - Some companies/ATS combinations currently fail or are excluded for documented reasons (Hager/Boehringer/Lanxess/Symrise — external limitations from parecer B).
-- Eligible count (current, documented): the daily cron regenerates `data/eligible_jobs.json` (**07/09 run: 220 eligible** — declared numeric drift: this status previously cited 222 from the 06/09 run; the pipeline output over the current live snapshot is 220, mirroring MASTER_PLAN). Older numbers in docs (236/232 from the 31/08 snapshot) are historical.
+- Eligible count (current, documented): the daily cron regenerates `data/eligible_jobs.json` (**14/09 run: 257 eligible** — 60,222 raw → 281 filtered, dedup −24, per the final audit). Historical figures: 07/09 → 220 and 06/09 → 222 (the 222→220 drift was documented in the 07/09 update); older numbers in docs (236/232 from the 31/08 snapshot) are historical.
 - 7 degree-program titles in the tail (Schaeffler "Studium mit vertiefter Praxis", BASF Bachelor) are pre-existing, outside the approved F1 patterns — candidates for future pattern extension, not a regression.
 
 Data in `data/` is local and gitignored: numbers serve as collection documentation, not as versioned files.

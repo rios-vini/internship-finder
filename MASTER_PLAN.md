@@ -1,11 +1,13 @@
 # MASTER_PLAN — Internship Finder (fonte de verdade única)
 
-**Versão:** 2026-09-07 · **Status:** unificado a partir de (1) roadmap original Hermes,
+**Versão:** 2026-09-14 · **Status:** unificado a partir de (1) roadmap original Hermes,
 (2) auditoria OpenHands (ACH-01..21), (3) consolidações das sessões 27–30/08,
 (4) **verificação direta no código/git em 31/08**; Seção 1 re-verificada em 07/09
 (estado pós-fechamento orquestrado de 06/09 — PRs #29–#32, main `ab822f8`, CI verde,
-0 PRs abertos). Nenhum item entra aqui por memória:
-tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
+0 PRs abertos) e em **14/09** (auditoria final — leva P1–P3, PRs #40–#55, main
+`9ee080f`, CI 23/23, 958 checks, 0 falhas; funil 60.222 → 257). Nenhum item entra
+aqui por memória: tudo foi conferido em `git log`, `git status`, grep no `src/`,
+execução da suíte (14/09) ou nos docs.
 
 > Regra de leitura: ✅ = verificado feito · ⏳ = pendente · 🔒 = bloqueado por decisão
 > do dono · ❌ = descartado com motivo. Fonte da verdade de execução: este arquivo +
@@ -14,29 +16,38 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 
 ---
 
-## 1. Estado verificado em 2026-09-07
+## 1. Estado verificado em 2026-09-14
 
 ### Main público (GitHub)
-- `main` = `ab822f8` (06/09, fechamento orquestrado): PRs #29–#32 mergeados,
-  **CI do main verde, 0 PRs abertos** (verificado 07/09). Marco anterior:
-  `da81475` (31/08, PR #8 = P0 deadline + hardening ACH-01..09 + fix metrics
-  + SQLite desbloqueado).
+- `main` = `9ee080f` (14/09, PR #55 = docs README pós-auditoria): leva P1–P3
+  da auditoria final mergeada (PRs #40–#55), **CI do main verde — 23/23
+  scripts, 958 checks, 0 falhas** (suíte re-executada em 14/09), **probe
+  manual separado** (`manifest_probe.py`, fora do CI). Marcos anteriores:
+  `ab822f8` (06/09, fechamento orquestrado PRs #29–#32), `da81475` (31/08,
+  PR #8 = P0 deadline + hardening ACH-01..09 + fix metrics + SQLite
+  desbloqueado).
 
 ### Coleta viva (cron diário 06:00 UTC, desde 05/09)
 - O refresh diário roda todo dia (`scripts/refresh_daily.py` + `flock -n` em
   `/tmp/internship_finder_refresh.lock`): rotação → coleta real do registry
-  (`--registry --timeout 60 --sqlite data/jobs.db`) → `--health` → alerta
-  Telegram em anomalia (exit != 0 OU alertas OU disco >80%; anti-spam).
-- **Runs reais (JSONL sanitizado)**: 31/08 **37.373→236** · 05/09 **38.038→224**
-  · 06/09 **37.953→222** · 07/09 **37.957→220** (dedup −24 em todos — 43/47
-  tenants ok por run; 2 empty). Número vivo: `data/eligible_jobs.json`
-  (regenerado ~06:05 UTC todo dia).
-- **Workday no eligible: 8** (run 06/09, flag OFF) — o resolver P0.1 recupera +9
-  com `INTERNSHIP_FINDER_GEOCODING=1` (OFF por default, rede geocoding).
-- Suíte local: **17/17** (16 CI + `test_manifest` local-only). Baseline original
-  31/08: 37.373→236; baseline antigo (12/08, 56.810→293) era mercado diferente,
-  não regressão. Achado 31/08 (resolvido no P2 #16): `test_ranking.py` estava
-  acoplado ao snapshot de 12/08.
+  (`--registry --timeout 60 --sqlite data/jobs.db`) → backup automático do
+  SQLite (`data/backups/`, P3 #40) → `--health` → alerta Telegram em anomalia
+  (exit != 0 OU alertas OU disco >80%; anti-spam). Exit code do subprocesso
+  propagado ao SO (0/1/2/124) e teto total `--max-collection-secs` (default
+  5400 s = 90 min) implementados e validados (P1.3 / P3.7).
+- **Último run real (14/09)**: **60.222 brutas → 257 eligible** (funil abaixo;
+  77 unidades ok · 5 empty · 1 timeout — Lidl, limitação conhecida). Runs
+  anteriores (JSONL sanitizado): 31/08 **37.373→236** · 05/09 **38.038→224** ·
+  06/09 **37.953→222** · 07/09 **37.957→220**. Número vivo:
+  `data/eligible_jobs.json` (regenerado ~06:05 UTC todo dia).
+- **Workday no eligible: 15** (run 14/09, flag OFF) — o resolver P0.1 segue
+  OFF por default; a re-inferência de país via location recupera Workday no
+  filtro.
+- Suíte: **23/23 scripts no CI, 958 checks, 0 falhas** (re-executada 14/09) +
+  **probe manual separado** (`manifest_probe.py`, não é teste — fora do CI).
+  Baseline original 31/08: 37.373→236; baseline antigo (12/08, 56.810→293) era
+  mercado diferente, não regressão. Achado 31/08 (resolvido no P2 #16):
+  `test_ranking.py` estava acoplado ao snapshot de 12/08.
 
 ### Painel do PR #8 (HISTÓRICO — atas do PR #8, 23–31/08; manter como registro)
 | Commit | Data | Conteúdo |
@@ -47,25 +58,71 @@ tudo foi conferido em `git log`, `git status`, grep no `src/` ou nos docs.
 
 ### Pipeline (validado end-to-end, parecer A)
 ```
-37.953 brutas → 3.080 estudante → 752 área → 246 DE → dedup −24 → 222 eligible/ranked
+60.222 brutas → 5.010 estudante → 1.020 área → 281 DE → dedup −24 → 257 eligible/ranked
 ```
-(funil do run 06/09; run 07/09: 37.957 → 220. O funil histórico de 12/08 era
-56.810→293 — mercado mudou, ver §1.)
-- 222/222 `country_iso='de'` · scores min 2.50 / mediana 6.75 / max 16.75 ·
-  determinístico (md5 idêntico em re-execução).
-- 39 empresas na coleta (pré-expansão #23; registry atual: 65) · 24 com vagas eligible no run 06/09 (SAP 71, BoschGroup 41,
-  Volkswagen 20, BASF 17, Knorr-Bremse 16...) · ATS (eligible): successfactors 150,
-  smartrecruiters 41, eightfold 11, workday 8, phenom 5, ashby 3, greenhouse 3,
-  cornerstone 1.
+(funil do run 14/09, reproduzido read-only sobre `data/jobs.json`; funis
+históricos: 06/09 37.953 → 222 · 07/09 37.957 → 220 · 12/08 56.810→293 era
+mercado diferente, ver §1.)
+- 257/257 `country_iso='de'` · scores min 1.0 / mediana 6.0 / max 16.75 ·
+  determinístico (md5 idêntico em re-execução — re-verificado 14/09).
+- 65 empresas no registry · 34 com vagas eligible no run 14/09 (SAP 75,
+  BoschGroup 44, Volkswagen AG 15, BASF SE 15, Knorr-Bremse 13,
+  Fraunhofer-Gesellschaft 10...) · ATS (eligible): successfactors 154,
+  smartrecruiters 44, phenom 18, workday 15, eightfold 13, greenhouse 8,
+  ashby 4, cornerstone 1.
+
+### Estado técnico P1–P3 (leva da auditoria final — encerrada e comprovada em 14/09)
+- **Identidade Company/tenant/Job** (P1.1, PR #40, 09/09): `Job.id` escopado por
+  empresa + tenant + external ID — `<company>|<source>:<external_id>`
+  (fallback `<company>|<source>:<hash(url)>`); empresas diferentes no mesmo
+  tenant compartilhado convivem sem colisão; dedup, SQLite (PK `id`) e
+  lifecycle herdam o isolamento; `source` continua sendo só o tenant.
+- **SQLite lifecycle por unidade de coleta** (P1.2, PR #41): archive/
+  `archive_not_seen` roda somente sobre a unidade concluída com sucesso —
+  timeout/erro da unidade **nunca arquiva** as vagas dela (ex.: A=3 ok e
+  B=timeout → B permanece ativo).
+- **Exit code do refresh** (P1.3, PR #42): códigos `0/1/2/124` (CLI 0→0,
+  1→1, 2→2, estouro do teto→124) propagados ao SO pelo `refresh_daily.py`;
+  rotação/health/Telegram continuam executando independentemente.
+- **`application_deadline`** (P1.4, PR #43): origem confirmada na **fonte**
+  (SuccessFactors injeta `g:expiration_date` +30d no sitemap); o pipeline só
+  propaga o valor — nenhuma síntese/inferência no projeto; contrato coberto
+  por testes.
+- **Atomicidade dos outputs** (P2.1, PR #44): JSONs finais escritos via
+  temp+`os.replace` (falha nunca trunca o arquivo anterior); CSV segue
+  **não-atômico** — classificado como melhoria opcional de baixa severidade,
+  não pendência da leva.
+- **CI/dependências** (P2.2, PR #48): instalação `pip install -e .` resolve
+  as deps declaradas no pyproject (sem `--no-deps` nem lista manual);
+  `pycryptodome` + `ats-scrapers>=0.3.0` verificados no runner.
+- **URL scheme da interface** (P2.3, PR #47): somente `http/https` aceitos
+  nos hrefs; `javascript:`/`data:`/demais rejeitados (validação de scheme,
+  não só html.escape).
+- **Ranking** (P2.5, PR #45, 11/09): benchmark real (59 vagas rotuladas,
+  concordância ordinal 82,5%, tau +0,651) e determinismo comprovado; pesos
+  atuais **preservados** (Caso C — sem redesign).
+- **Coverage com zero eligible** (P3.3, PR #51): `coverage.py` não quebra
+  com IndexError quando não há vagas elegíveis.
+- **`RegistryEntry.source`** (P3.4, PR #52): campo removido do modelo.
+- **Lock/dependências** (P3.5, PR #49): `requirements-lock.txt` documentado
+  como **snapshot** do ambiente resolvido (não é lock declarativo);
+  pyproject é a fonte de verdade.
+- **Backup do SQLite** (P3.6, PR #54, 13/09): automático no refresh (passo
+  2b, `data/backups/jobs-<ts>.db`) via backup API; falha não derruba o run
+  nem altera exit code; retenção espelha o archive (default 14d).
+- **Teto de timeout do refresh** (P3.7): `--max-collection-secs` default
+  **5400 s / 90 min** implementado e validado (0 estouros na produção
+  06–14/09).
 
 ### Limitações externas conhecidas (não são bugs internos)
-- Workday: API não expõe país confiável p/ vários tenants → vagas DE sem `country_iso` (P0.1 mitigou).
-- Hager / Boehringer / Lanxess (SuccessFactors XML malformado) / Symrise (join.com 422).
-- 7 títulos de graduação na cauda (SmvP Schaeffler, Bachelor BASF) — fora dos padrões
-  aprovados F1; candidatos a extensão futura, não regressão.
-- **Falha recorrente restante (refresh diário, exit 2 até decisão)**: `successfactors:lidlstiftuP2`
-  (Lidl) — timeout 85s recorrente (P3 #36, monitorado; reavaliar timeout por fonte quando o
-  upstream evoluir). `moka:bayer/148387` (Bayer) foi RESOLVIDO em 07/09 (P3 #36: pycryptodome
+- Workday: API não expõe país confiável p/ vários tenants → vagas DE sem
+  `country_iso` na fonte (P0.1 mitigou; re-inferência via location no filtro).
+- 4 títulos de graduação na cauda do eligible 14/09 (Bachelor BASF) — fora
+  dos padrões aprovados F1; candidatos a extensão futura, não regressão.
+- **Falha recorrente restante (refresh diário, exit 2 até decisão)**:
+  `successfactors:lidlstiftuP2` (Lidl) — timeout 85s recorrente (P3 #36,
+  monitorado; reavaliar timeout por fonte quando o upstream evoluir).
+  `moka:bayer/148387` (Bayer) foi RESOLVIDO em 07/09 (P3 #36: pycryptodome
   no pyproject). Conhecidas e não-regressões; o health alerta por design.
 
 ---
