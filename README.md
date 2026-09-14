@@ -499,7 +499,10 @@ employment_type, internship, posted_at, application_deadline, collected_at,
 score`) — `description`/`raw`/`score_breakdown` ficam de fora de proposito
 (texto grande/aninhado). Medido 05/09: jobs.csv com 38.038/38.038 linhas do
 jobs.json (0 ids divergentes); a coluna `remote` foi adicionada em 06/09
-(antes ausente em 100% das linhas).
+(antes ausente em 100% das linhas). **Ambos** (JSON e CSV) sao escritos com
+substituicao atomica (temporario no mesmo diretorio + `os.replace`, ver
+`_write_atomic` em cli.py): falha na geracao preserva o arquivo final
+anterior intacto, sem temporarios residuais.
 
 ## Estrutura
 

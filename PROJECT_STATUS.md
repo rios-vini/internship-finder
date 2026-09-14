@@ -43,8 +43,8 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 - Country filtering
 - Deduplication
 - Ranking
-- JSON output
-- CSV output
+- JSON output (atomic write)
+- CSV output (atomic write)
 - E2 company expansion
 - 39-company collection scope (E2 expansion, 2026-08-12 — **historical**; expanded to 65 on 08/09, P3 #23)
 - Post-audit corrections F1–F3 (parecer A, 2026-08-13)
