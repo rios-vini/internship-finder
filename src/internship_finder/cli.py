@@ -45,7 +45,9 @@ import os
 import stat
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
+from typing import TextIO
 
 from internship_finder.collectors.ats_scraper import collect_company
 from internship_finder.dedup import deduplicate
@@ -84,15 +86,22 @@ CSV_COLUMNS = [
 ]
 
 
-def _write_json_atomic(rows: list[dict], output: Path) -> None:
-    """Grava ``rows`` como JSON em ``output`` com substituicao atomica.
+def _write_atomic(output: Path, write: Callable[[TextIO], None]) -> None:
+    """Grava ``output`` com substituicao atomica, delegando a serializacao.
 
-    Serializa num arquivo temporario no MESMO diretorio do destino (mesmo
-    filesystem -> ``os.replace`` atomico, sem risco de EXDEV) e so entao
-    substitui o final. Garantia: o JSON final nunca fica truncado/parcial —
-    em qualquer falha de escrita ele continua sendo o arquivo valido
-    anterior; em sucesso, vira o novo completo de uma vez (quem ler nunca
-    ve uma versao pela metade). Em falha, o temporario e removido.
+    ``write(fh)`` recebe o handle de texto (UTF-8) do arquivo temporario e
+    deve escrever TODO o conteudo. A mecanica e a mesma para JSON e CSV:
+
+    1. arquivo temporario no MESMO diretorio do destino (mesmo filesystem ->
+       ``os.replace`` atomico, sem risco de EXDEV);
+    2. escreve tudo no temporario;
+    3. fecha (a saida do ``with``);
+    4. substitui o final com ``os.replace``.
+
+    Garantia: o arquivo final nunca fica truncado/parcial — em qualquer falha
+    de escrita ou substituicao ele continua sendo o arquivo valido anterior;
+    em sucesso, vira o novo completo de uma vez (quem ler nunca ve uma versao
+    pela metade). Em falha, o temporario e removido.
 
     Sem ``fsync`` de proposito: a garantia que o projeto exige e contra
     escrita parcial (crash de processo, erro de I/O, disco cheio durante a
@@ -114,7 +123,7 @@ def _write_json_atomic(rows: list[dict], output: Path) -> None:
             os.umask(umask)
             os.chmod(tmp_path, 0o666 & ~umask)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(rows, fh, ensure_ascii=False, indent=2)
+            write(fh)
         os.replace(tmp_path, output)
     except BaseException:
         try:
@@ -123,6 +132,32 @@ def _write_json_atomic(rows: list[dict], output: Path) -> None:
             log.warning("temporario de %s nao removido apos falha: %s",
                         output, unlink_exc)
         raise
+
+
+def _write_json_atomic(rows: list[dict], output: Path) -> None:
+    """Grava ``rows`` como JSON em ``output`` com substituicao atomica.
+
+    Encapsula o formato JSON sobre ``_write_atomic`` (tempfile no mesmo
+    diretorio + ``os.replace``). Ver ``_write_atomic`` para as garantias.
+    """
+    _write_atomic(
+        output,
+        lambda fh: json.dump(rows, fh, ensure_ascii=False, indent=2),
+    )
+
+
+def _dump_csv(fh: TextIO, rows: list[dict]) -> None:
+    """Escreve ``rows`` como CSV tabular no handle ``fh`` (formato fixo).
+
+    Contrato ACH-18: apenas as colunas de ``CSV_COLUMNS`` (``description``/
+    ``raw``/``score_breakdown`` ficam de fora de proposito — texto grande/
+    aninhado; a fonte de verdade e o JSON). ``extrasaction="ignore"`` mantem
+    o comportamento atual para dicts com campos fora do contrato.
+    """
+    writer = csv.DictWriter(fh, fieldnames=CSV_COLUMNS, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
 
 
 def save_outputs(jobs: list[Job] | list[dict], output: Path) -> None:
@@ -136,20 +171,16 @@ def save_outputs(jobs: list[Job] | list[dict], output: Path) -> None:
     ``score_breakdown`` ficam de fora do CSV de proposito (texto grande/
     aninhado; a fonte de verdade e o JSON).
 
-    A escrita do JSON e ATOMICA (``_write_json_atomic``: tempfile no mesmo
-    diretorio + ``os.replace``) — se a geracao falhar no meio, o arquivo
-    final existente permanece valido e inalterado (nunca truncado). O CSV
-    segue com o comportamento atual.
+    Ambos JSON e CSV sao escritos com substituicao ATOMICA (``_write_atomic``:
+    tempfile no mesmo diretorio + ``os.replace``) — se a geracao falhar no
+    meio, o arquivo final existente permanece valido e inalterado (nunca
+    truncado), e o temporario e removido.
     """
     output.parent.mkdir(parents=True, exist_ok=True)
     rows = [j.to_dict() if hasattr(j, "to_dict") else j for j in jobs]
     _write_json_atomic(rows, output)
     csv_path = output.with_suffix(".csv")
-    with csv_path.open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=CSV_COLUMNS, extrasaction="ignore")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(row)
+    _write_atomic(csv_path, lambda fh: _dump_csv(fh, rows))
     log.info("salvos: %s e %s", output, csv_path)
 
 
