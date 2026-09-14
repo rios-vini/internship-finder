@@ -89,9 +89,10 @@ mercado diferente, ver §1.)
   propaga o valor — nenhuma síntese/inferência no projeto; contrato coberto
   por testes.
 - **Atomicidade dos outputs** (P2.1, PR #44): JSONs finais escritos via
-  temp+`os.replace` (falha nunca trunca o arquivo anterior); CSV segue
-  **não-atômico** — classificado como melhoria opcional de baixa severidade,
-  não pendência da leva.
+  temp+`os.replace` (falha nunca trunca o arquivo anterior); **CSV também
+  atômico desde 14/09 (PR #57)** — mesma mecanica `_write_atomic` (temp no
+  mesmo diretório + `os.replace`), fechando o último item
+  "PARCIALMENTE IMPLEMENTADO" da auditoria.
 - **CI/dependências** (P2.2, PR #48): instalação `pip install -e .` resolve
   as deps declaradas no pyproject (sem `--no-deps` nem lista manual);
   `pycryptodome` + `ats-scrapers>=0.3.0` verificados no runner.
