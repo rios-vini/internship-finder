@@ -256,12 +256,14 @@ timeout proprio (`--timeout 60`).
 
 Falhas conhecidas (motivo da exclusao): Siemens (tenant `teamtailor` inativo),
 BMW (falso positivo: so `join_com:bmw-kuehnert`, nao a BMW AG),
-Mercedes-Benz e ThyssenKrupp (sem match exato na base), Adidas (ATS `moka` sem
-scraper no pacote). **Na expansao E2**: Hager Group, Boehringer Ingelheim e
-Lanxess (SuccessFactors devolve XML malformado), Symrise (API join.com 422);
-identidades excluidas por decisao: ifm (join 422), Metro e Otto (falsos
-positivos), E.ON (sem match), Kuehne+Nagel (suica — fora do escopo "empresas
-alemas"), GFT (0 vagas no momento). Limitacao de dados: **Workday** (Covestro,
+Mercedes-Benz e ThyssenKrupp (sem match exato na base). **Na expansao E2**:
+Hager Group, Boehringer Ingelheim e Lanxess (SuccessFactors devolve XML
+malformado), Symrise (API join.com 422); identidades excluidas por decisao:
+ifm (join 422), Metro (falso positivo), E.ON (sem match), Kuehne+Nagel (suica
+— fora do escopo "empresas alemas"), GFT (0 vagas no momento). Adidas e Otto
+**nao sao mais exclusoes atuais**: a Adidas coleta normalmente (run 13/09 com
+**74 vagas** coletadas) e a Otto esta no registry (`jazzhr:otto`),
+participando da coleta. Limitacao de dados: **Workday** (Covestro,
 Evonik, Zalando e as novas Trumpf/Sartorius/DATEV/Zeiss/Hellmann/Fresenius)
 nao expoe codigo de pais nas localizacoes alemas — vagas alemas desses tenants
 ficam sem `country_iso` e o filtro de pais nao as inclui. **Mitigacao
@@ -372,8 +374,8 @@ snapshot de 31/08 (236 eligible; pipeline dedup 2.0 = 232, medido por
 scores `min 2.50 | mediana 6.75 | max 16.75` (222 eligible, run 06/09).
 Ver `scripts/test_ranking.py` (suite sintetica com `FIXTURE` fixa, desacoplada
 do snapshot desde o P2 #16 — 03/09; bloco real roda como invariantes de
-formato/observabilidade; suite local 17/17 TUDO OK — 16 do CI + o probe manual
-`scripts/manifest_probe.py`).
+formato/observabilidade; suite local 23/23 TUDO OK — 23 do CI + o probe manual
+`scripts/manifest_probe.py`, que nao faz parte da suite do CI).
 
 **Medicao do ranking (P2.5, 11/09/2026)**: benchmark versionado com **59 vagas
 reais rotuladas manualmente** (`benchmarks/ranking_benchmark_v1.json`).
@@ -410,8 +412,8 @@ parecida errada). Passos:
    `https://zalando.wd3.myworkdayjobs.com/zalandositewd`).
 
 3. **Teste o status real do tenant** (alguns existem na base mas estao
-   inativos/devolvem 0 vagas — ex.: Siemens/teamtailor → erro, Adidas/moka →
-   sem scraper no pacote):
+   inativos/devolvem 0 vagas — ex.: Siemens/teamtailor → erro, Mercedes-Benz
+   → NONE (sem match exato na base)):
    ```bash
    .venv/bin/python scripts/verify_companies.py "ZF,Bayer" --fetch --timeout 60
    ```
