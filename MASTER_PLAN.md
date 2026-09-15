@@ -4,8 +4,8 @@
 (2) auditoria OpenHands (ACH-01..21), (3) consolidações das sessões 27–30/08,
 (4) **verificação direta no código/git em 31/08**; Seção 1 re-verificada em 07/09
 (estado pós-fechamento orquestrado de 06/09 — PRs #29–#32, main `ab822f8`, CI verde,
-0 PRs abertos) e em **14/09** (auditoria final — leva P1–P3, PRs #40–#55, main
-`9ee080f`, CI 23/23, 958 checks, 0 falhas; funil 60.222 → 257). Nenhum item entra
+0 PRs abertos) e em **14/09** (auditoria final — leva P1–P3, PRs #40–#57, main
+`da271a2`, CI 23/23, 958 checks, 0 falhas; funil 60.222 → 257). Nenhum item entra
 aqui por memória: tudo foi conferido em `git log`, `git status`, grep no `src/`,
 execução da suíte (14/09) ou nos docs.
 
@@ -19,11 +19,12 @@ execução da suíte (14/09) ou nos docs.
 ## 1. Estado verificado em 2026-09-14
 
 ### Main público (GitHub)
-- `main` = `9ee080f` (14/09, PR #55 = docs README pós-auditoria): leva P1–P3
-  da auditoria final mergeada (PRs #40–#55), **CI do main verde — 23/23
+- `main` = `da271a2` (14/09, PR #57 = escrita atômica do CSV): leva P1–P3
+  da auditoria final mergeada (PRs #40–#57), **CI do main verde — 23/23
   scripts, 958 checks, 0 falhas** (suíte re-executada em 14/09), **probe
   manual separado** (`manifest_probe.py`, fora do CI). Marcos anteriores:
-  `ab822f8` (06/09, fechamento orquestrado PRs #29–#32), `da81475` (31/08,
+  `9ee080f` (14/09, PR #55 = docs README pós-auditoria), `ab822f8` (06/09,
+  fechamento orquestrado PRs #29–#32), `da81475` (31/08,
   PR #8 = P0 deadline + hardening ACH-01..09 + fix metrics + SQLite
   desbloqueado).
 
@@ -118,7 +119,8 @@ mercado diferente, ver §1.)
 ### Limitações externas conhecidas (não são bugs internos)
 - Workday: API não expõe país confiável p/ vários tenants → vagas DE sem
   `country_iso` na fonte (P0.1 mitigou; re-inferência via location no filtro).
-- 4 títulos de graduação na cauda do eligible 14/09 (Bachelor BASF) — fora
+- 6 títulos de graduação na cauda do eligible 14/09 (4 Bachelor BASF + 2
+  "Studium mit vertiefter Praxis" Schaeffler) — fora
   dos padrões aprovados F1; candidatos a extensão futura, não regressão.
 - **Falha recorrente restante (refresh diário, exit 2 até decisão)**:
   `successfactors:lidlstiftuP2` (Lidl) — timeout 85s recorrente (P3 #36,
