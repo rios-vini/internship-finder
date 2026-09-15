@@ -59,7 +59,7 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 > (ex.: `/tmp/...`).
 
 ```bash
-.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (222 eligible no run do cron 06/09)
+.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (257 eligible no run do cron 14/09)
 .venv/bin/internship-finder --country europe             # Europa inteira em vez de so Alemanha
 .venv/bin/internship-finder --no-area                    # qualquer area, desde que estudante + Alemanha
 .venv/bin/internship-finder --no-dedup                   # mantem duplicatas (258 antes da dedup)
@@ -224,12 +224,12 @@ Backups: `/tmp/collection_metrics_pre_clean_0509.jsonl` (estado pos-E2E) +
 pos-limpeza: 1 alerta factual — `successfactors:lidlstiftuP2` timeout em 31/08
 e 05/09.
 
-Resultado do ultimo run completo (cron de 06/09 06:00 UTC; numeros reproduzidos
+Resultado do ultimo run completo (cron de 14/09 06:00 UTC; numeros reproduzidos
 offline por `scripts/coverage.py` e pelo pipeline com o codigo atual):
-`total 37.953 -> tipo estudante 3.080 -> area-alvo 752 -> Alemanha 246`;
-pos-dedup: **222** eligible/ranked (24 remocoes, todas por company+title+location),
-todos `country_iso='de'` — **24 empresas com vagas eligible** (top: SAP 71,
-BoschGroup 41, Volkswagen AG 20, BASF SE 17, Knorr-Bremse 16 — demais na tabela
+`total 60.222 -> tipo estudante 5.010 -> area-alvo 1.020 -> Alemanha 281`;
+pos-dedup: **257** eligible/ranked (24 remocoes, todas por company+title+location),
+todos `country_iso='de'` — **34 empresas com vagas eligible** (top: SAP 75,
+BoschGroup 44, Volkswagen AG 15, BASF SE 15, Knorr-Bremse 13 — demais na tabela
 de cobertura). Notas: (1) desde 06/09 o filtro exclui o equivalente EN de
 aprendizagem (Apprentice/Apprenticeship — mesmo criterio do Ausbildung DE;
 P3 #31, PR #31); (2) o baseline antigo (12/08, 56.810 → 293) era de outra
@@ -238,7 +238,7 @@ locais e gitignored: os numeros servem como documentacao de coleta, nao como
 arquivos versionados. A coleta total leva alguns minutos — cada tenant usa
 timeout proprio (`--timeout 60`).
 
-### Cobertura (65 na coleta → 24 com vagas eligible)
+### Cobertura (65 na coleta → 34 com vagas eligible)
 
 **"Avaliada", "operacional" e "com vagas eligible" sao metricas DIFERENTES**:
 
@@ -252,18 +252,20 @@ timeout proprio (`--timeout 60`).
   `BoschGroup` e `bosch-homecomfort`). Re-medição feita no 1º run com 65
   empresas (08/09 — ver MASTER_PLAN #37 e o Log de mudanças de 08/09).
 - **Com vagas eligible** = tem pelo menos 1 vaga eligible na Alemanha apos a
-  cascata de filtros + dedup: **24** empresas / 20 tenants (medido no run 06/09).
+  cascata de filtros + dedup: **34** empresas / 26 tenants (medido no run 14/09).
 
 Falhas conhecidas (motivo da exclusao): Siemens (tenant `teamtailor` inativo),
 BMW (falso positivo: so `join_com:bmw-kuehnert`, nao a BMW AG),
 Mercedes-Benz e ThyssenKrupp (sem match exato na base). **Na expansao E2**:
-Hager Group, Boehringer Ingelheim e Lanxess (SuccessFactors devolve XML
-malformado), Symrise (API join.com 422); identidades excluidas por decisao:
+Hager Group e Lanxess (SuccessFactors devolve XML malformado), Symrise (API
+join.com 422); identidades excluidas por decisao:
 ifm (join 422), Metro (falso positivo), E.ON (sem match), Kuehne+Nagel (suica
-— fora do escopo "empresas alemas"), GFT (0 vagas no momento). Adidas e Otto
-**nao sao mais exclusoes atuais**: a Adidas coleta normalmente (run 13/09 com
-**74 vagas** coletadas) e a Otto esta no registry (`jazzhr:otto`),
-participando da coleta. Limitacao de dados: **Workday** (Covestro,
+— fora do escopo "empresas alemas"), GFT (0 vagas no momento). Adidas, Otto e
+Boehringer Ingelheim **nao sao mais exclusoes atuais**: a Adidas coleta
+normalmente (run 13/09 com **74 vagas** coletadas), a Otto esta no registry
+(`jazzhr:otto`) e a Boehringer coleta via `successfactors:BoehringerPRD`
+(run 14/09: **462 vagas** coletadas), todas participando da coleta.
+Limitacao de dados: **Workday** (Covestro,
 Evonik, Zalando e as novas Trumpf/Sartorius/DATEV/Zeiss/Hellmann/Fresenius)
 nao expoe codigo de pais nas localizacoes alemas — vagas alemas desses tenants
 ficam sem `country_iso` e o filtro de pais nao as inclui. **Mitigacao
@@ -277,13 +279,13 @@ deterministico — `.venv/bin/python scripts/coverage.py`):
 
 | Metrica | Valor |
 | --- | --- |
-| Funil: raw → tipo → area → pais (DE) | 37.953 → 3.080 → 752 → 246 (run cron 06/09) |
-| eligible (pos-dedup) → ranked | 246 → 222 (24 removidas na dedup, company+title+location; run 06/09) |
-| Empresas com eligible / tenants (source) | 24 / 20 (bruto snapshot 07/09: 39 empresas / 35 tenants; registry pós-#23: 65) |
-| Top empresas (eligible) | SAP 71, BoschGroup 41, Volkswagen AG 20, BASF SE 17, Knorr-Bremse 16, Schaeffler 8, ... (24 empresas no total; run 06/09) |
-| Contribuicao das maiores | top1 32,0% (SAP 71/222) — re-medir com `coverage.py` | top3 ~59% | top5 ~74% |
-| Top ATS (eligible) | successfactors 150, smartrecruiters 41, eightfold 11, workday 8, phenom 5, ashby 3, greenhouse 3, cornerstone 1 |
-| Paises (eligible) | `de` 222 (100%) — None/localizacao desconhecida: 0 (0,0%); (medicao historica com `INTERNSHIP_FINDER_GEOCODING=1` sobre o snapshot 31/08: 245) |
+| Funil: raw → tipo → area → pais (DE) | 60.222 → 5.010 → 1.020 → 281 (run cron 14/09) |
+| eligible (pos-dedup) → ranked | 281 → 257 (24 removidas na dedup, company+title+location; run 14/09) |
+| Empresas com eligible / tenants (source) | 34 / 26 (bruto run 14/09: 69 empresas / 63 tenants com dados; registry: 65) |
+| Top empresas (eligible) | SAP 75, BoschGroup 44, Volkswagen AG 15, BASF SE 15, Knorr-Bremse 13, Fraunhofer-Gesellschaft 10, Schaeffler 9, ... (34 empresas no total; run 14/09) |
+| Contribuicao das maiores | top1 29,2% (SAP 75/257) | top3 52,1% | top5 63,0% |
+| Top ATS (eligible) | successfactors 154, smartrecruiters 44, phenom 18, workday 15, eightfold 13, greenhouse 8, ashby 4, cornerstone 1 |
+| Paises (eligible) | `de` 257 (100%) — None/localizacao desconhecida: 0 (0,0%); (medicao historica com `INTERNSHIP_FINDER_GEOCODING=1` sobre o snapshot 31/08: 245) |
 
 (Fase 3: `country_iso` tem fonte unica — `filters.infer_country_iso`; a
 heuristica antiga de "tail da location" foi removida do adapter, entao
@@ -371,7 +373,7 @@ Sem descricao (parte das vagas em que o ATS nao expoe descricao), age-se com
 graca: skills/idioma contribuem 0 e o score vem do titulo. Metrica real do
 snapshot de 31/08 (236 eligible; pipeline dedup 2.0 = 232, medido por
 `scripts/test_ranking.py`):
-scores `min 2.50 | mediana 6.75 | max 16.75` (222 eligible, run 06/09).
+scores `min 1.0 | mediana 6.0 | max 16.75` (257 eligible, run 14/09).
 Ver `scripts/test_ranking.py` (suite sintetica com `FIXTURE` fixa, desacoplada
 do snapshot desde o P2 #16 — 03/09; bloco real roda como invariantes de
 formato/observabilidade; suite local 23/23 TUDO OK — 23 do CI + o probe manual
