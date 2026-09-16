@@ -72,7 +72,7 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
 mesma cascata, gravando o resultado em `data/eligible_jobs.json`. A lista de
 empresas nao e mais colada no comando: vem do **registry** (fonte de verdade
-das 65 empresas em codigo — ver "Registry de empresas" abaixo):
+das 87 empresas em codigo — ver "Registry de empresas" abaixo):
 
 ```bash
 .venv/bin/internship-finder --registry --timeout 60
@@ -84,9 +84,11 @@ python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 
 ### Registry de empresas
 
-As 65 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
-E2 + 26 da expansao 08/09 — ver `docs/` e MASTER_PLAN #23) vivem em **codigo**,
-no `SEED` de `src/internship_finder/registry.py` — a
+As 87 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
+E2 + 25 da expansao 08/09 — P3 #23, Otto removida em 15/09 — + 17 da expansao
+de cobertura 15/09 + 6 da auditoria 16/09 — ver `docs/` e MASTER_PLAN #23 e o
+Log de mudanças) vivem em **codigo**, no `SEED` de
+`src/internship_finder/registry.py` — a
 fonte de verdade do "quem coleta": nome canonico (a consulta do `--companies`),
 ATS/tenant de referencia e `enabled` (desabilitar tira da coleta sem apagar do
 registry). Nada de lista colada em doc: o `--companies` continua aceito por
@@ -112,7 +114,7 @@ compatibilidade, mas a lista oficial e o registry.
   52 consistent, 10 multi (declarado presente com cobertura extra) e
   3 dynamic (None declarado, resolucao pela base).
 - Seed e modelo: `src/internship_finder/registry.py` (pydantic, `SEED` com as
-  65 entradas operacionais); testes em `scripts/test_registry.py`.
+  87 entradas operacionais); testes em `scripts/test_registry.py`.
 
 ### Daily refresh (P2 #17)
 
@@ -238,33 +240,40 @@ locais e gitignored: os numeros servem como documentacao de coleta, nao como
 arquivos versionados. A coleta total leva alguns minutos — cada tenant usa
 timeout proprio (`--timeout 60`).
 
-### Cobertura (65 na coleta → 34 com vagas eligible)
+### Cobertura (87 na coleta → 47 com vagas eligible)
 
 **"Avaliada", "operacional" e "com vagas eligible" sao metricas DIFERENTES**:
 
 - **Avaliada** = empresa que passou pela verificacao do runbook
   (`docs/empresas_verificacao.md`): match exato na base do `ats-scrapers` e
-  teste do tenant/ATS. Apos a expansao de 08/09 (P3 #23), sao **65 empresas**
-  operacionais na coleta (12 da validacao inicial + 27 novas + 26 novas 08/09).
+  teste do tenant/ATS. Apos as expansoes de 15/09 e 16/09, sao **87 empresas**
+  operacionais na coleta (12 da validacao inicial + 27 novas + 25 da expansao
+  08/09, Otto removida 15/09 + 17 de cobertura 15/09 + 6 da auditoria 16/09).
 - **Operacional** = retorna vagas no fetch real (tenant ativo, ATS com
   scraper): **39** no snapshot 07/09 (**pré-expansão #23** — 35 tenants com
   dados em `data/jobs.json`; a Bosch conta 2x no campo `company` — tenants
   `BoschGroup` e `bosch-homecomfort`). Re-medição feita no 1º run com 65
-  empresas (08/09 — ver MASTER_PLAN #37 e o Log de mudanças de 08/09).
+  empresas (08/09 — ver MASTER_PLAN #37 e o Log de mudanças de 08/09); run
+  16/09 (81 empresas): **86 empresas / 76 tenants com dados**.
 - **Com vagas eligible** = tem pelo menos 1 vaga eligible na Alemanha apos a
-  cascata de filtros + dedup: **34** empresas / 26 tenants (medido no run 14/09).
+  cascata de filtros + dedup: **47** empresas / 35 tenants (medido no run 16/09).
 
 Falhas conhecidas (motivo da exclusao): Siemens (tenant `teamtailor` inativo),
-BMW (falso positivo: so `join_com:bmw-kuehnert`, nao a BMW AG),
-Mercedes-Benz e ThyssenKrupp (sem match exato na base). **Na expansao E2**:
-Hager Group e Lanxess (SuccessFactors devolve XML malformado), Symrise (API
-join.com 422); identidades excluidas por decisao:
-ifm (join 422), Metro (falso positivo), E.ON (sem match), Kuehne+Nagel (suica
-— fora do escopo "empresas alemas"), GFT (0 vagas no momento). Adidas, Otto e
+Mercedes-Benz e ThyssenKrupp (sem match exato na base). BMW entra somente como
+**BMW AG** (16/09, `successfactors:jobs` jobs.bmwgroup.com) — a consulta "BMW"
+sozinha continua falso positivo (`join_com:bmw-kuehnert`). **Expansao E2**:
+Symrise (API join.com 422), Hager Group e Lanxess ja RESOLVIDAS (adicionadas
+15/09; o "XML malformado" era limitacao do pin antigo do ats-scrapers);
+identidades excluidas por decisao:
+ifm (join 422), Metro (falso positivo), E.ON (sem match), GFT
+(0 vagas + FP `icims:gannettfleming`). Kuehne+Nagel (suica) entrou em 15/09
+via `phenom:nan` (multi; cornerstone DNS-fail recorrente por run, esperado).
+Adidas e
 Boehringer Ingelheim **nao sao mais exclusoes atuais**: a Adidas coleta
-normalmente (run 13/09 com **74 vagas** coletadas), a Otto esta no registry
-(`jazzhr:otto`) e a Boehringer coleta via `successfactors:BoehringerPRD`
-(run 14/09: **462 vagas** coletadas), todas participando da coleta.
+normalmente (run 13/09 com **74 vagas** coletadas), a Boehringer coleta via
+`successfactors:BoehringerPRD` (run 14/09: **462 vagas** coletadas), todas
+participando da coleta; **Otto foi REMOVIDA em 15/09** (falso positivo —
+`jazzhr:otto` = otto.applytojob.com, nao e o Otto Group; nao readicionar).
 Limitacao de dados: **Workday** (Covestro,
 Evonik, Zalando e as novas Trumpf/Sartorius/DATEV/Zeiss/Hellmann/Fresenius)
 nao expoe codigo de pais nas localizacoes alemas — vagas alemas desses tenants
@@ -279,13 +288,13 @@ deterministico — `.venv/bin/python scripts/coverage.py`):
 
 | Metrica | Valor |
 | --- | --- |
-| Funil: raw → tipo → area → pais (DE) | 60.222 → 5.010 → 1.020 → 281 (run cron 14/09) |
-| eligible (pos-dedup) → ranked | 281 → 257 (24 removidas na dedup, company+title+location; run 14/09) |
-| Empresas com eligible / tenants (source) | 34 / 26 (bruto run 14/09: 69 empresas / 63 tenants com dados; registry: 65) |
-| Top empresas (eligible) | SAP 75, BoschGroup 44, Volkswagen AG 15, BASF SE 15, Knorr-Bremse 13, Fraunhofer-Gesellschaft 10, Schaeffler 9, ... (34 empresas no total; run 14/09) |
-| Contribuicao das maiores | top1 29,2% (SAP 75/257) | top3 52,1% | top5 63,0% |
-| Top ATS (eligible) | successfactors 154, smartrecruiters 44, phenom 18, workday 15, eightfold 13, greenhouse 8, ashby 4, cornerstone 1 |
-| Paises (eligible) | `de` 257 (100%) — None/localizacao desconhecida: 0 (0,0%); (medicao historica com `INTERNSHIP_FINDER_GEOCODING=1` sobre o snapshot 31/08: 245) |
+| Funil: raw → tipo → area → pais (DE) | 69.586 → 5.813 → 1.167 → 355 (run cron 16/09, 81 empresas) |
+| eligible (pos-dedup) → ranked | 355 → 331 (24 removidas na dedup, company+title+location; run 16/09) |
+| Empresas com eligible / tenants (source) | 47 / 35 (bruto run 16/09: 86 empresas / 76 tenants com dados; registry: 87) |
+| Top empresas (eligible) | SAP 74, BoschGroup 47, Volkswagen AG 19, Fraunhofer-Gesellschaft 19, BASF SE 16, Knorr-Bremse 14, Liebherr 13, STIHL 12, ... (47 empresas no total; run 16/09) |
+| Contribuicao das maiores | top1 22,4% (SAP 74/331) | top3 42,3% | top5 52,9% |
+| Top ATS (eligible) | successfactors 210, smartrecruiters 50, phenom 22, workday 16, eightfold 13, cornerstone 10, greenhouse 6, ashby 4 |
+| Paises (eligible) | `de` 331 (100%) — None/localizacao desconhecida: 0 (0,0%); (medicao historica com `INTERNSHIP_FINDER_GEOCODING=1` sobre o snapshot 31/08: 245) |
 
 (Fase 3: `country_iso` tem fonte unica — `filters.infer_country_iso`; a
 heuristica antiga de "tail da location" foi removida do adapter, entao
@@ -523,7 +532,7 @@ src/internship_finder/
 ├── errors.py       # codigos de erro estruturados (CollectionError + classificador)
 ├── health.py       # relatorio de health por tenant/ATS sobre o JSONL + alertas
 ├── geocoding.py    # fallback de pais por cidade (cache-first; flag OFF por default)
-├── registry.py     # CompanyRegistry: fonte unica das 65 empresas de coleta (SEED, P2 #13)
+├── registry.py     # CompanyRegistry: fonte unica das 87 empresas de coleta (SEED, P2 #13)
 └── cli.py          # entry point `internship-finder` (filtro default + coleta)
 scripts/collect_jobs.py   # atalho p/ rodar sem instalar
 scripts/refresh_daily.py  # refresh diario + alertas Telegram (rotacao -> coleta -> health -> alerta)
