@@ -6,7 +6,10 @@ Funcoes puras (sem dependencia de CLI/modelos) usadas tanto pelo adapter
 Regras de negocio (dono):
 - Tipo aceito: Internship, Intern, Working Student, Student Worker, Student
   Internship, Industrial Internship, Praktikum, Werkstudent, iXp, estagio e
-  equivalentes internacionais (gyakornok, staz, stazh, becario...).
+  equivalentes internacionais (gyakornok, staz, stazh, becario...). Teses
+  academicas entram como posicao estudantil (Abschlussarbeit,
+  Bachelor-/Masterarbeit, Semester-/Studienarbeit, Bachelor's/Master's
+  thesis — regra do dono, pos-auditoria 15/09).
   Graduate/absolvent NAO (perfil e de estudante atual, nao recem-formado).
 - Programas de trainee EXCLUIDOS (regra do dono, pos-auditoria): Graduate
   Trainee, Management Trainee, Junior Managers Program e JMP. A exclusao do
@@ -17,7 +20,8 @@ Regras de negocio (dono):
 - Tipos NAO compativeis com estagio/working student universitario EXCLUIDOS
   (regra do dono, Fase 1 das correcoes pos-auditoria): Duales Studium (e
   equivalentes: Dualer Student/Student:in, Dualer Master, Duale Hochschule,
-  Dual Study, "Praktikum im Rahmen des Dualen Studiums"), Ausbildung /
+  Dual Study, "Praktikum im Rahmen des Dualen Studiums"), Studium mit
+  vertiefter Praxis (pos-auditoria 15/09), Ausbildung /
   Berufsausbildung (aprendizagem profissional) e o equivalente EN
   Apprentice/Apprenticeship (P3 lote 1), Schul-/Schuelerpraktikum e
   estagios escolares ("Praktikum fuer Schueler:innen",
@@ -38,6 +42,10 @@ Regras de negocio (dono):
 - Area-alvo com heuristica de pontuacao (sem ML): titulo e mais forte que
   descricao; termo "relacionado" sozinho nao basta; "sap"/"erp"/"data"
   (fracos) so relevam combinados. Relevante se pontuacao >= AREA_MIN_SCORE.
+  Vocabulario de analise de dados CONTROLADO (pos-auditoria 15/09): "data
+  science", "data analysis", "datenanalyse" e "business analyst" em RELATED
+  — so os compostos; "data"/"analyst"/"analysis"/"business" soltos
+  continuam de fora.
 - Pais configuravel: ISO alpha-2, "europe", "remote" ou "all" (sem filtro).
   ``country_iso`` e a fonte primaria; fallback para ``country`` e, por fim,
   para codigo ISO de 2 letras presente na ``location`` (ex.: SAP usa
@@ -80,6 +88,15 @@ STUDENT_TYPE_PATTERNS = [
     r"\bpraktikant",
     r"\bixp\b",
     r"\bduales studium",
+    # Teses academicas (regra do dono, pos-auditoria 15/09): Abschlussarbeit,
+    # Bachelor-/Masterarbeit (e com hifen), Semester-/Studienarbeit,
+    # Bachelor's/Master's thesis (apostrofo ASCII ou tipografico). Tese e
+    # SEMPRE posicao estudantil. So os COMPOSTOS explicitos — nunca
+    # "Bachelor"/"Master"/"Studium"/"Student"/"Trainee" soltos (programas de
+    # graduacao nao sao estagio; "Student" generico nao e marcador).
+    r"\b(abschluss|bachelor|master|semester|studien)[- ]?arbeit\b",
+    r"\bbachelor[’']s thesis\b",
+    r"\bmaster[’']s thesis\b",
     # BR: estagio/estagiario.
     r"\best[áa]gio\b",
     r"\bestagi[áa]ri[oa]s?\b",
@@ -135,6 +152,12 @@ TYPE_EXCLUSION_PATTERNS = [
     r"\bdual\w* hochschule",
     # "Dualer Master (M.Eng.)" — mestrado dual, nao estagio.
     r"\bdual\w* master",
+    # "Studium mit vertiefter Praxis" (SmVdP): programa de graduacao (inicio
+    # 2027, DHBW/TH) — mesma classe do Duales Studium. Auditoria 15/09: 4/4
+    # medidos eram graduacao e 2 vazavam para o eligible via marcador de tipo
+    # na DESCRICAO (leakage) — a exclusao no TITULO vence a descricao rica
+    # ("Praktikum"/"Bachelor"/"Student" na descricao nao ressuscitam a vaga).
+    r"\bstudium mit vertiefter praxis\b",
     # Ausbildung / Berufsausbildung: aprendizagem profissional (Azubi), nao
     # estagio universitario. "Ausbildung zum/als ...", "Ausbildungsplatz",
     # "Berufsausbildung", "Schwerpunkt kaufmaennische Berufsausbildung".
@@ -277,6 +300,10 @@ AREA_RELATED = [
     r"\bpurchasing operations\b",
     r"\bdigital operations\b",
     r"\bbusiness analytics\b",
+    r"\bdata science\b",
+    r"\bdata analysis\b",
+    r"\bdatenanalyse\b",  # DE: data analysis
+    r"\bbusiness analyst\b",
     r"\bcontinuous improvement\b",
     r"\bprocess improvement\b",
     r"\bprozessoptimierung",  # DE: process improvement
