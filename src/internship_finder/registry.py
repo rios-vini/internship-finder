@@ -36,10 +36,12 @@ class RegistryEntry(BaseModel):
     enabled: bool = True  # false desabilita a empresa sem removê-la do registry
 
 
-# --- Seed: as 65 empresas operacionais (12 da validação inicial + 27 da
-# --- expansão E2 + 26 da expansão internacional P3 #23: 9 DE + 17 NL/CH/AT).
+# --- Seed: 87 empresas operacionais (12 da validação inicial + 27 da
+# --- expansão E2 + 25 da expansão internacional P3 #23: 8 DE + 17 NL/CH/AT
+# --- + 17 da expansão de cobertura 15/09/2026 + 6 da auditoria 16/09/2026).
 # --- Nomes canônicos = consulta real do ``--companies``
-# --- (README.md + docs/empresas_verificacao.md + docs/relatorio_expansao.md).
+# --- (README.md + docs/empresas_verificacao.md + docs/relatorio_expansao.md +
+# --- docs da auditoria de cobertura 15/09 + auditoria próxima onda 16/09).
 # --- Tenant/ATS de referência preenchidos a partir dos docs quando conhecidos;
 # --- ``None`` deixa "a base decide" (find_company resolve o tenant em runtime).
 SEED = [
@@ -84,9 +86,11 @@ SEED = [
     RegistryEntry(name="Zeiss Group", ats="workday", tenant="workday:zeissgroup/external"),
     RegistryEntry(name="draegerP", ats="successfactors", tenant="successfactors:draegerP"),
     RegistryEntry(name="Uniper", ats="successfactors", tenant="successfactors:jobs"),
-    # --- 9 da expansão internacional P3 #23 (2026-09-08) — Lote A (DE) ---
+    # --- 8 da expansão internacional P3 #23 (2026-09-08) — Lote A (DE) ---
     # Validadas com scripts/verify_companies.py --fetch (match exato + scraper
     # + fetch real OK >0 vagas); tenant copiado da saída (sem invenção).
+    # Otto (jazzhr:otto) REMOVIDA em 15/09: falso positivo — otto.applytojob.com
+    # não é o Otto Group (auditoria de cobertura; ver seção J.8).
     RegistryEntry(name="Allianz", ats="phenom", tenant="phenom:nan"),
     RegistryEntry(name="Adidas", ats="moka", tenant="moka:adidas/140456"),
     RegistryEntry(name="Puma", ats="workday", tenant="workday:puma/jobs_at_puma"),
@@ -95,7 +99,6 @@ SEED = [
     RegistryEntry(name="Merck", ats="phenom", tenant="phenom:nan"),
     RegistryEntry(name="Boehringer Ingelheim", ats="successfactors", tenant="successfactors:BoehringerPRD"),
     RegistryEntry(name="HelloFresh", ats="greenhouse", tenant="greenhouse:hellofresh"),
-    RegistryEntry(name="Otto", ats="jazzhr", tenant="jazzhr:otto"),
     # --- 17 da expansão internacional P3 #23 (2026-09-08) — Lote B (NL/CH/AT) ---
     RegistryEntry(name="Philips", ats="workday", tenant="workday:philips/jobs-and-careers"),
     RegistryEntry(name="ING", ats="workday", tenant="workday:ing/icsnldgen"),
@@ -114,6 +117,51 @@ SEED = [
     RegistryEntry(name="Rabobank", ats="workday", tenant="workday:rabobank/jobs"),
     RegistryEntry(name="NXP", ats="workday", tenant="workday:nxp/careers"),
     RegistryEntry(name="OMV", ats="successfactors", tenant="successfactors:omvagPRD"),
+    # --- 17 da expansão de cobertura (2026-09-15, auditoria de cobertura) ---
+    # Validadas AO VIVO em 15/09 com scripts/verify_companies.py --fetch (match
+    # exato + scraper + fetch real); tenant copiado da RESOLUÇÃO REAL do runtime
+    # (find_company), não do nome amigável — o tenant declarado precisa existir
+    # no conjunto resolvido para o relatório de consistência não apontar drift.
+    # Nomes canônicos = consulta de coleta (slug quando o nome natural não
+    # resolve exato: BAUHAUS->bahagag, MediaMarkt->mediasatur, About You->
+    # aboutyougmbh).
+    RegistryEntry(name="Liebherr", ats="successfactors", tenant="successfactors:LiMySLive"),
+    RegistryEntry(name="STIHL", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Simon-Kucher", ats="cornerstone", tenant="cornerstone:simon-kucher"),
+    RegistryEntry(name="bahagag", ats="successfactors", tenant="successfactors:bahagag"),
+    RegistryEntry(name="BCG", ats="bamboohr", tenant="bamboohr:bcg"),
+    RegistryEntry(name="mediasatur", ats="successfactors", tenant="successfactors:mediasatur"),
+    RegistryEntry(name="Tchibo", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="HORNBACH", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="aboutyougmbh", ats="smartrecruiters", tenant="smartrecruiters:aboutyougmbh"),
+    RegistryEntry(name="Hager Group", ats="successfactors", tenant="successfactors:HagerGroup"),
+    RegistryEntry(name="Lanxess", ats="successfactors", tenant="successfactors:lanxessP"),
+    RegistryEntry(name="Linde", ats="cornerstone", tenant="cornerstone:linde"),
+    RegistryEntry(name="Sonepar", ats="successfactors", tenant="successfactors:career"),
+    RegistryEntry(name="Flix", ats="greenhouse", tenant="greenhouse:flix"),
+    RegistryEntry(name="Kuehne+Nagel", ats="phenom", tenant="phenom:nan"),
+    RegistryEntry(name="Vattenfall", ats="smartrecruiters", tenant="smartrecruiters:Vattenfall"),
+    RegistryEntry(name="4flow", ats="workday", tenant="workday:4flow/4flow"),
+    # --- 6 da auditoria de cobertura 16/09/2026 (próxima onda) ---
+    # Identidades validadas AO VIVO em 16/09 (fetch real read-only; ver
+    # /home/ubuntu/auditoria_proxima_onda_2026-09-16.md). BMW AG, Jobs Festo,
+    # Wacker e Webasto Jobportal COMPARTILHAM successfactors:jobs mas têm URLs
+    # de manifest distintas (jobs.bmwgroup.com / jobs.festo.com /
+    # jobs.wacker.com / jobs.webasto.com) — o coletor desambigua por URL
+    # (URL_SLUG_ATS), nunca pelo slug genérico "jobs" (padrão
+    # STIHL/Tchibo/HORNBACH 15/09; regra da auditoria 16/09).
+    # Nome canônico = nome EXATO do manifest quando ele não resolve pelo nome
+    # natural (Jobs Festo, Webasto Jobportal, Wacker) — nunca deduzir a
+    # empresa pelo slug compartilhado. SMA resolve também o tenant oracle
+    # `fa-exow-saasfaprod1/cx_1` (slug incompleto p/ o oracle; identidade não
+    # confirmada — NÃO é esta entrada): FETCH_ERROR recorrente esperado por
+    # run, unidade falha nunca entra no SQLite/lifecycle (P1.2).
+    RegistryEntry(name="BMW AG", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="SMA", ats="successfactors", tenant="successfactors:sma"),
+    RegistryEntry(name="Jobs Festo", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Wacker", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Webasto Jobportal", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Roland Berger", ats="smartrecruiters", tenant="smartrecruiters:rolandberger"),
 ]
 
 

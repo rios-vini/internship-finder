@@ -288,7 +288,7 @@ def test_cli_health_integration() -> None:
                 "source": source, "ats": (source.split(":", 1)[0] if source else ""),
                 "status": status, "collected": 1 if status == "ok" else 0}
 
-    # Fixture com o REGISTRY REAL (65 empresas): SAP consistent, Bayer multi,
+    # Fixture com o REGISTRY REAL (87 empresas): SAP consistent, Bayer multi,
     # Bosch drift (runtime resolveu so workday:zzz, declarado e BoschGroup),
     # Trumpf dynamic (None declarado), Allianz consistent, Adidas no_data.
     lines = [
@@ -311,7 +311,7 @@ def test_cli_health_integration() -> None:
     section = report.get("registry_consistency")
     check("9a. exit 0 no modo health", rc == 0, f"rc={rc}")
     check("9b. secao registry_consistency presente no relatorio",
-          isinstance(section, list) and len(section) == 65,
+          isinstance(section, list) and len(section) == 87,
           f"n={len(section) if isinstance(section, list) else None}")
     by = {r["company"]: r for r in section}
     check("9c. SAP -> consistent", by["SAP"]["status"] == "consistent")
