@@ -1,13 +1,15 @@
 # MASTER_PLAN — Internship Finder (fonte de verdade única)
 
-**Versão:** 2026-09-14 · **Status:** unificado a partir de (1) roadmap original Hermes,
+**Versão:** 2026-09-16 · **Status:** unificado a partir de (1) roadmap original Hermes,
 (2) auditoria OpenHands (ACH-01..21), (3) consolidações das sessões 27–30/08,
 (4) **verificação direta no código/git em 31/08**; Seção 1 re-verificada em 07/09
 (estado pós-fechamento orquestrado de 06/09 — PRs #29–#32, main `ab822f8`, CI verde,
-0 PRs abertos) e em **14/09** (auditoria final — leva P1–P3, PRs #40–#57, main
-`da271a2`, CI 23/23, 958 checks, 0 falhas; funil 60.222 → 257). Nenhum item entra
+0 PRs abertos), em **14/09** (auditoria final — leva P1–P3, PRs #40–#57, main
+`da271a2`, CI 23/23, 958 checks, 0 falhas; funil 60.222 → 257) e em **16/09**
+(expansão de cobertura 65→87 — PR #59, main `82e131c`, CI 23/23, 1.009 checks,
+0 falhas; funil 69.586 → 331). Nenhum item entra
 aqui por memória: tudo foi conferido em `git log`, `git status`, grep no `src/`,
-execução da suíte (14/09) ou nos docs.
+execução da suíte (16/09) ou nos docs.
 
 > Regra de leitura: ✅ = verificado feito · ⏳ = pendente · 🔒 = bloqueado por decisão
 > do dono · ❌ = descartado com motivo. Fonte da verdade de execução: este arquivo +
@@ -16,14 +18,16 @@ execução da suíte (14/09) ou nos docs.
 
 ---
 
-## 1. Estado verificado em 2026-09-14
+## 1. Estado verificado em 2026-09-16
 
 ### Main público (GitHub)
-- `main` = `da271a2` (14/09, PR #57 = escrita atômica do CSV): leva P1–P3
-  da auditoria final mergeada (PRs #40–#57), **CI do main verde — 23/23
-  scripts, 958 checks, 0 falhas** (suíte re-executada em 14/09), **probe
+- `main` = `82e131c` (16/09, PR #59 = expansão de cobertura 65→87 + filtros
+  pós-auditoria 15/09): registry com **87 empresas** (ondas 15/09 e 16/09 —
+  ver Log de mudanças abaixo), **CI do main/PR verde — 23/23 scripts,
+  1.009 checks, 0 falhas** (suíte re-executada em 16/09), **probe
   manual separado** (`manifest_probe.py`, fora do CI). Marcos anteriores:
-  `9ee080f` (14/09, PR #55 = docs README pós-auditoria), `ab822f8` (06/09,
+  `da271a2` (14/09, PR #57 = escrita atômica do CSV), `9ee080f` (14/09,
+  PR #55 = docs README pós-auditoria), `ab822f8` (06/09,
   fechamento orquestrado PRs #29–#32), `da81475` (31/08,
   PR #8 = P0 deadline + hardening ACH-01..09 + fix metrics + SQLite
   desbloqueado).
@@ -36,15 +40,16 @@ execução da suíte (14/09) ou nos docs.
   (exit != 0 OU alertas OU disco >80%; anti-spam). Exit code do subprocesso
   propagado ao SO (0/1/2/124) e teto total `--max-collection-secs` (default
   5400 s = 90 min) implementados e validados (P1.3 / P3.7).
-- **Último run real (14/09)**: **60.222 brutas → 257 eligible** (funil abaixo;
-  77 unidades ok · 5 empty · 1 timeout — Lidl, limitação conhecida). Runs
-  anteriores (JSONL sanitizado): 31/08 **37.373→236** · 05/09 **38.038→224** ·
-  06/09 **37.953→222** · 07/09 **37.957→220**. Número vivo:
-  `data/eligible_jobs.json` (regenerado ~06:05 UTC todo dia).
-- **Workday no eligible: 15** (run 14/09, flag OFF) — o resolver P0.1 segue
+- **Último run real (16/09, 1º com 81 empresas + filtros 15/09)**: **69.586
+  brutas → 331 eligible** (funil abaixo; 86 empresas/76 tenants com dados,
+  47/35 com eligible; as 6 novas da onda 16/09 entram no run 17/09). Runs
+  anteriores (JSONL sanitizado): 14/09 **60.222→257** · 07/09 **37.957→220** ·
+  06/09 **37.953→222** · 05/09 **38.038→224** · 31/08 **37.373→236**. Número
+  vivo: `data/eligible_jobs.json` (regenerado ~06:05 UTC todo dia).
+- **Workday no eligible: 16** (run 16/09, flag OFF) — o resolver P0.1 segue
   OFF por default; a re-inferência de país via location recupera Workday no
   filtro.
-- Suíte: **23/23 scripts no CI, 958 checks, 0 falhas** (re-executada 14/09) +
+- Suíte: **23/23 scripts no CI, 1.009 checks, 0 falhas** (re-executada 16/09) +
   **probe manual separado** (`manifest_probe.py`, não é teste — fora do CI).
   Baseline original 31/08: 37.373→236; baseline antigo (12/08, 56.810→293) era
   mercado diferente, não regressão. Achado 31/08 (resolvido no P2 #16):
@@ -59,18 +64,19 @@ execução da suíte (14/09) ou nos docs.
 
 ### Pipeline (validado end-to-end, parecer A)
 ```
-60.222 brutas → 5.010 estudante → 1.020 área → 281 DE → dedup −24 → 257 eligible/ranked
+69.586 brutas → 5.813 estudante → 1.167 área → 355 DE → dedup −24 → 331 eligible/ranked
 ```
-(funil do run 14/09, reproduzido read-only sobre `data/jobs.json`; funis
-históricos: 06/09 37.953 → 222 · 07/09 37.957 → 220 · 12/08 56.810→293 era
+(funil do run 16/09 com 81 empresas, reproduzido read-only sobre
+`data/jobs.json`; funis históricos: 14/09 60.222 → 257 · 06/09 37.953 → 222 ·
+07/09 37.957 → 220 · 12/08 56.810→293 era
 mercado diferente, ver §1.)
-- 257/257 `country_iso='de'` · scores min 1.0 / mediana 6.0 / max 16.75 ·
-  determinístico (md5 idêntico em re-execução — re-verificado 14/09).
-- 65 empresas no registry · 34 com vagas eligible no run 14/09 (SAP 75,
-  BoschGroup 44, Volkswagen AG 15, BASF SE 15, Knorr-Bremse 13,
-  Fraunhofer-Gesellschaft 10...) · ATS (eligible): successfactors 154,
-  smartrecruiters 44, phenom 18, workday 15, eightfold 13, greenhouse 8,
-  ashby 4, cornerstone 1.
+- 331/331 `country_iso='de'` · scores min 1.0 / mediana 6.0 / max 17.5 ·
+  determinístico (md5 idêntico em re-execução — re-verificado 16/09).
+- 87 empresas no registry · 47 com vagas eligible no run 16/09 (SAP 74,
+  BoschGroup 47, Volkswagen AG 19, Fraunhofer-Gesellschaft 19, BASF SE 16,
+  Knorr-Bremse 14, Liebherr 13, STIHL 12...) · ATS (eligible): successfactors
+  210, smartrecruiters 50, phenom 22, workday 16, eightfold 13, cornerstone
+  10, greenhouse 6, ashby 4.
 
 ### Estado técnico P1–P3 (leva da auditoria final — encerrada e comprovada em 14/09)
 - **Identidade Company/tenant/Job** (P1.1, PR #40, 09/09): `Job.id` escopado por
@@ -156,7 +162,7 @@ mercado diferente, ver §1.)
 | 10 | **Zero-return + anomaly detection** | ✅ **implementado 05/09** | Gate histórico por source (espelha o drop); 3º tipo de alerta no health: `zero_return` (último run `empty` após ≥3 ok>0). Ver Log de mudanças 05/09. |
 | 11 | **Job validation forte** | ✅ **mergeado 03/09** (PR #16, main 88a9936) — validators pydantic no `Job` (title/url vazios = erro de validação; opcionais vazio→None), `normalize_job_dict` no caminho filtro (4 títulos de borda limpos, baseline 236 ids intacto), adapter com título ausente → `NORMALIZATION_ERROR` (defensivo, 0 ocorrências), `test_validation.py` no CI (run 33695286158 verde). |
 | 12 | **Country/domain module** | ✅ **mergeado 03/09** (PR #17, main 7a4e6c9) — `countries.py` extrai país/localização de `filters.py` (COUNTRY_CODES, EUROPE_COUNTRIES, COUNTRY_NAMES, `_country_name_from_location`, `_iso_token_from_location`, `infer_country_iso`, `is_remote`, `parse_country_spec`, `matches_country` — movidos verbatim), `filters.py` re-exporta (consumidores intactos: ranking/cli/adapters/geocoding), `test_countries.py` no CI (run 33706802355 verde); baseline 236 preservado. |
-| 13 | **Company Registry operacional** + tirar empresas da lógica do CLI | ✅ **mergeado 04/09** (PR #20, main `e7604db`, run `33840628495` verde) — `src/internship_finder/registry.py` com `SEED` das 39 empresas à época (hoje: 65; fonte única em código: nome canônico de coleta + ATS/tenant de referência + `enabled`), `CompanyRegistry` + `company_status` (estado por empresa **derivado do JSONL de métricas**, read-only — registro malformado nunca derruba) e ponte `registry_names` para o CLI; flag `--registry` (coleta usa as ENABLED do registry; com `--companies` restringe a subconjunto, na ordem informada; modo `--companies` puro continua funcionando) — decisão de design: **registry = configuração, status = JSONL** (sem duplicar estado). `test_registry.py` offline/determinístico (seed, enabled, subconjunto, ponte CLI, company_status via tempfile — sem rede/data); **adicionado ao CI** (13 scripts). Docs: README subseção "Registry de empresas" + PROJECT_STATUS + este log (04/09). |
+| 13 | **Company Registry operacional** + tirar empresas da lógica do CLI | ✅ **mergeado 04/09** (PR #20, main `e7604db`, run `33840628495` verde) — `src/internship_finder/registry.py` com `SEED` das 39 empresas à época (hoje: 87; fonte única em código: nome canônico de coleta + ATS/tenant de referência + `enabled`), `CompanyRegistry` + `company_status` (estado por empresa **derivado do JSONL de métricas**, read-only — registro malformado nunca derruba) e ponte `registry_names` para o CLI; flag `--registry` (coleta usa as ENABLED do registry; com `--companies` restringe a subconjunto, na ordem informada; modo `--companies` puro continua funcionando) — decisão de design: **registry = configuração, status = JSONL** (sem duplicar estado). `test_registry.py` offline/determinístico (seed, enabled, subconjunto, ponte CLI, company_status via tempfile — sem rede/data); **adicionado ao CI** (13 scripts). Docs: README subseção "Registry de empresas" + PROJECT_STATUS + este log (04/09). |
 | 14 | **Dedup 2.0 textual** | ✅ **mergeado 03/09** (PR #19, main `4ed28d8`) — medição real no dataset (03/09): 12 pares candidatos EN/DE, 4 da MESMA vaga com marcadores diferentes escapavam (Knorr `Praktikant`≈`Working Student` Purchasing Controlling, SAP `Intern`≈`Working Student` Bid Council, VW `Praktikum`≈`Werkstudentin/Werkstudent` Analytics After Sales, MAHLE `Internship`≈`Praktikum` Lead-Buying — conteúdo 1:1); `TYPE_EQUIVALENCES` estendida com regex de fronteira de palavra (`praktikums?`/`praktikanten?`/`interns?`/`internships?` → working student) + colapso de repetidas na bag (`Werkstudentin / Werkstudent`); `Pflichtpraktikum` NÃO é atingido (obrigatório ≠ voluntário, anti-teste), trainee fora do domínio; description NÃO entrou no fingerprint (0 pares exigiram — ruído/falso positivo); `test_dedup` +casos reais medidos e anti-casos; `test_countries` desacoplado do número mágico `236` (invariante subconjunto + observabilidade do delta, autorizado pelo dono — precedente #16); baseline 236→232 (4 duplicatas TRUE por company+title+location), suíte local 16/16, CI run `33799148404` verde. |
 | 15 | **Padronizar `--country de/europe/all`** (ACH-11) | ✅ **implementado 05/09** — `parse_country_spec` agora VALIDA a spec (token não-ISO ou spec vazia → `ValueError` claro; `all` canônico, `world`/`any` mantidos por compat), e o CLI valida cedo (`parser.error`, exit 2). Antes: `--country xx` → 0 vagas silencioso e `de,xx` ignorava o token inválido; agora erro claro. Filtro INALTERADO p/ specs válidas (baseline `--country de` → 232 ids idênticos lista-a-lista; `europe` 371 / `all` 31006 / `remote` 1 idênticos). `test_countries` +21 checks. |
 | 16 | **Desacoplar `test_ranking.py` do snapshot de dados** | ✅ **mergeado 03/09** (PR #18, main b82ff8e) — `FIXTURE` fixa (18 jobs sintéticos) + `test_fixture_ranking()` (regras no nível do rank: topo de área-alvo, sem senior/head/director, A-grade por área no TOP N, presales SCM com area≥6 sem penalidade, SAP Analytics Cloud mascarado na 2ª metade, marketing sem área fora do top 25%, JMP/trainee penalizado); bloco real reduzido a invariantes de formato + observabilidade; `test_synthetic`/`test_determinism` intactos (50→51 checks); suíte 16/16 local + determinismo 2x; CI run 33727053547 verde. |
@@ -232,6 +238,8 @@ mercado diferente, ver §1.)
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-16 (onda da auditoria próxima onda — registry 81→87, PR #59, squash `82e131c`, CI verde com membership 23/23 — 1.009 checks; 0 PRs)**: **+6 empresas** no SEED, nomes exatos do manifest (BMW AG `sf:jobs` jobs.bmwgroup.com; SMA `sf:sma` sma.jobs; Jobs Festo, Wacker, Webasto Jobportal `sf:jobs` jobs.festo/wacker/webasto.com; Roland Berger `smartrecruiters:rolandberger`). Padrão do tenant compartilhado: BMW/Festo/Wacker/Webasto seguem o caso STIHL/Tchibo/HORNBACH — o coletor desambigua por URL (`URL_SLUG_ATS`), nunca por slug genérico `jobs`; `Company.source` continua o tenant; health agrega por `(source, company)`; Job IDs escopados por empresa (P1.1). **Fetch real read-only validado** (funil oficial): BMW AG 886→485→149→85→**82 eligible** (auditoria 878→81; drift de mercado +1), SMA 128→20→6→5→**5**, Jobs Festo 126→15→2→1→**1**, Wacker 114→0, Webasto Jobportal 198→0, Roland Berger 199→0 → global 1.650→605→162→91→**88** (dedup −3). Zero cross-tenant collision (1.651 ids únicos), 0 duplicação indevida; `--health` real: 87 linhas, 0 drift, 6 no_data (novas ainda não no cron). **SMA documentado**: resolve também `oracle:fa-exow-saasfaprod1/cx_1` (slug incompleto p/ oracle; identidade não confirmada) → FETCH_ERROR recorrente esperado por run, NÃO silenciado (unidade falha nunca entra no SQLite/lifecycle). Otto segue fora (FP). Sem commit/PR na entrega — dono autorizou merge em 16/09. [#onda 16/09 ✅]
+- **2026-09-15 (expansão de cobertura — registry 65→81 + filtros pós-auditoria; implementada no working tree, mergeada em 16/09 via PR #59)**: **+17 empresas** (Liebherr `sf:LiMySLive`, STIHL/Tchibo/HORNBACH `sf:jobs` nome-exato desambigua URL, Simon-Kucher `cornerstone:simon-kucher`, bahagag/BAUHAUS, BCG `bamboohr:bcg`, mediasatur/MediaMarkt, aboutyougmbh/About You, Hager Group, Lanxess, Linde, Sonepar, Flix, Kuehne+Nagel, Vattenfall, 4flow); **Otto removida** (`jazzhr:otto` = otto.applytojob.com, FP — não readicionar). **Filtros**: teses acadêmicas (Abschlussarbeit/Bachelor-/Masterarbeit/Semester-/Studienarbeit/Bachelor's/Master's thesis) como tipo estudantil (+3–5 eligible, FP~0); exclusão SmVdP (Studium mit vertiefter Praxis — limpa FPs Schaeffler); vocabulário CONTROLADO de dados em `AREA_RELATED` (data science/data analysis/datenanalyse/business analyst, peso 0.5; `data`/`analyst` soltos fora). 1º run real com 81 (16/09 06:00): **69.586→331 eligible** (15/09: 60.220→276 — expansão +55 no 1º run). GFT/KION/Siemens/Symrise ficam pós-upstream; Rhenus exige fix `URL_SLUG_ATS`+adp. [#onda 15/09 ✅]
 - **2026-09-13 (P3 #40 — backup simples do jobs.db; PR #54, squash `e07b7e9`, CI verde push+pull_request+main com membership 23/23 conferida; 0 PRs, branches limpas)**: **mecanismo**: snapshot via backup API nativa do sqlite3 (`sqlite3.Connection.backup()`, stdlib) com a origem aberta **read-only** — snapshot consistente mesmo com o banco em uso, sem escrita na origem; artefato **standalone** (`PRAGMA journal_mode=DELETE` no destino consolida WAL herdado e elimina sidecars `-wal`/`-shm` — backup é UM arquivo, portável, restaurado por `cp`); escrita atômica (mkstemp no mesmo diretório + `os.replace`) com cleanup de temporários+sidecars em QUALQUER falha; validação mínima `PRAGMA quick_check == "ok"` ANTES do nome final; `FileNotFoundError` claro para origem ausente. **Onde/rotina**: `data/backups/jobs-YYYYMMDDTHHMMSSZ.db` (UTC) — automático no `refresh_daily.py` (passo 2b, pós-coleta; banco ausente no 1º run = pula com log, NÃO é falha) e manual via `scripts/backup_db.py` (exit 0 = backup criado / 2 = falha clara no stderr; retenção OPCIONAL default 0). **Falha**: NUNCA derruba o run nem altera o exit code (P1.3): `build_message` ganhou `backup_error=` keyword-only — dispara o envio e adiciona `⚠️ Backup do jobs.db falhou: ...` (mesmo padrão do aviso de disco; `None` preserva anti-spam). **Retenção**: simples, espelhando o archive — `--backup-retention-days` no refresh (default 14; `0` desliga; negativo rejeitado); nomes fora do formato `jobs-*.db` preservados com warning; sem lifecycle complexo (deliberado). **Testes**: novo `scripts/test_db_backup.py` (36 checks offline, array CI **22→23**) cobrindo os 6 cenários obrigatórios (backup válido; conteúdo esperado; independente — conexão nova, sem sidecars, sobrevive à remoção da origem; não altera a origem — dados+stat antes==depois; falha não destrói/substitui o principal — origem ausente/inválida/dir bloqueado com `PermissionError`, origem byte-idêntica pós-falha, zero residuais; nomes distintos por momento) + retenção + restauração documentada; `test_refresh.py` +3 blocos (backup no fluxo com banco real em tempdir, falha reportada via envio, `build_message` com `backup_error`). Validações: suíte local **24/24** (23 CI + manifest probe) de cwd scratch; `data/` real intocada (stat 60 arquivos antes==depois); dry-run exercita o passo novo (tempdir); **escala real**: `scripts/backup_db.py` sobre o `jobs.db` de produção (**372 MB, 125.073 linhas**) → backup em **6,3s**, `quick_check`+`integrity_check` ok, diretório sem sidecars. **Decisões**: (a) mecanismo = backup API nativa (não cópia crua — WAL tornaria cópia inconsistente; sem `VACUUM INTO` por ser menos conhecido/disponível em toda versão do sqlite3 do Python); (b) artefato em DELETE mode (não WAL) = arquivo único utilizável por qualquer leitor; (c) origem aberta RO = garantia estrutural de que o banco principal nunca é escrito pela rotina; (d) retenção espelhada no archive (14d) = mesma pegada e mesma política, documentada; (e) falha de backup = warning operacional (like disco), não muda exit — exit code continua refletindo SÓ a coleta (P1.3). **Limitação documentada**: a origem pode ganhar sidecars `-wal`/`-shm` transientes durante o snapshot (comportamento WAL normal; consumidos/limpos pela próxima conexão de escrita do CLI; o backup em si é sempre um arquivo único). [#40 ✅]
 - **2026-09-11 (P2.5 — benchmark do ranking: MEDIDO, NÃO ALTERADO; PR #45, branch `feature/p2-5-ranking-benchmark`)**: tarefa de medição pura — benchmark pequeno com **59 vagas reais** do run 11/09 (eligible 260) rotuladas manualmente por revisão do conteúdo (título+descrição; justificativa por vaga; crítica de perfis), amostra estratificada e determinística (topo 12, 8 maiores grupos de empate ×3 com empresas distintas, sem-marcador-de-tipo, cauda 8, casos especiais — NÃO top-20-only). Labels: 5 ótima / 22 boa / 15 aceitável / 5 ruim / 12 falso positivo. **Resultados (run 11/09/2026, 260 eligible)**: (a) **distribuição** — 39 scores distintos, **96,5% das vagas empatadas** (maior grupo 7.5×33; location constante +1.0 e componentes de poucos valores → espaço grosseiro por construção); (b) **qualidade vs posição** — média ótima 12,45 vs falso positivo 3,65; **concordância ordinal 82,5% em 1.289 pares, tau +0,651** → o ranking TEM sinal real (não está quebrado); (c) **empates** — 9/14 grupos da amostra mistos (labels diferentes), 67% das vagas empatadas da amostra em grupos mistos, dispersão até 3 níveis no mesmo score → **os empates escondem diferenças reais em ~2/3 dos casos**; (d) **componentes** — `area` (título) é o discriminador dominante na direção certa (ótima 8,0 → FP 1,0); `language` **não discrimina** (FP 1,33 ≈ ótima 1,40; boilerplate "englisch"/título EN); `type`=0 separa FP; `location` constante; (e) **falhas-padrão** — MESMA vaga Bayer SC&L Analytics em 3 posições (ranks 2 DE 13,75 / 5 EN 13,0 / 25 EN sem desc 10,0): ausência de descrição custa 3,0–3,75 pts (distorção não-semântica, dedup não fundiu); "Sensory Analytics" (análise sensorial de alimentos) = 10,0 — falso "analytics"; desempate alfabético pôs FP (AI Native Developer) acima de boa (Allianz Intern) no mesmo score 4.0; FP com score alto via area+language (Trainee 7,0; Duales Studium 6,5); ótima subestimada ("Menu Planner" com python+SC no conteúdo, area 0 no título). **DECISÃO: Caso C (baixa resolução real) com componentes de Caso B** — evidência suficiente para uma tarefa de CALIBRAÇÃO RESTRITA (hipóteses H1 descrição ausente/agrupamento; H2 peso de language; H3 desempate documentado; H4 — fora do ranking — FPs são gap de FILTRO: trainee/duales Studies sem "dual"/Berufserfahrene/Limited employment/Initiativbewerbung), **sem evidência para redesign** (embeddings/ML/novos pesos fora). Nada de comportamento alterado (pesos/fórmula/desempate/filtros intocados; ranking continua a referência). **Artefatos**: `benchmarks/ranking_benchmark_v1.json` (45 KB; versionado; rótulos+justificativas+snapshot congelado), `src/internship_finder/ranking_benchmark.py` (funções puras stdlib: validação, distribuição, concordância Kendall-like sem deps, tie_analysis, perfis de componente, inversões, `refresh_benchmark`), `scripts/ranking_benchmark.py` (relatório determinístico), `scripts/make_ranking_benchmark.py` (refresh/validate; nunca grava inválido), `scripts/test_ranking_benchmark.py` (51 checks offline; CI 19→20), `docs/ranking_benchmark.md` (metodologia+métricas+resultado+decisão). Suíte local **20/20 TUDO OK** de cwd scratch; `data/` intocada (stat antes==depois). Determinismo provado: relatório byte-idêntico em 2 execuções. [#39 ✅]
 - **2026-09-10 (P1.4 — application_deadline massivo em SuccessFactors: ACHADO, SEM AÇÃO DE COMPORTAMENTO)**: auditoria de alta prioridade acusou ~16.337/37.957 vagas brutas (run 07/09) com o MESMO `application_deadline` = `data da coleta + 30 dias`, concentrado em SuccessFactors (e 148/220 no eligible). **Investigação por evidência → origem = A FONTE, não o pipeline.** (1) Dado vivo (10/09): 20.686/60.256 brutas com `2026-10-10T00:00:00`, 100% de tenants `successfactors:*` (14), 23 hosts de recruiting-marketing, `collected_at` 10/09 06:00 → `10-10` = coleta+30; o valor já está no dict `raw` (serialização do Job do ats-scrapers). (2) Reprodução do feed real (`<host>/sitemal.xml`) de 4 tenants (jobs.sap.com 1015, jobs.kaufland.com 8926, jobs.zf.com 822, careers.akzonobel.com 262 vagas): cada feed tem UM ÚNICO `g:expiration_date` (Google Merchant ns) para TODAS as vagas, valor `data do feed + 30 dias` (em 11/09: `2026-10-11`). (3) Código instalado (ats-scrapers 0.3.0, `successfactors.py`): `application_deadline = _parse_expiration_date(item.findtext("g:expiration_date"))` — SÓ parse do campo do feed; **NENHUM `timedelta`/default/+30** no módulo (modelo upstream até documenta que pode ser "platform-generated validity horizon"). (4) Adapter (`adapters/ats.py`): `_parse_dt(_first_str(...deadline...))` — mapeia/passeia, sem inferência; grep no `src/` inteiro: **zero** lógica de +30/inferência de deadline. **Conclusão**: o valor NÃO é criado por ats-scrapers nem pelo internship-finder — existe literalmente na resposta da fonte (o SuccessFactors injeta um horizonte de validade default de +30 dias em `g:expiration_date` para todas as postings do feed). É um valor fornecido pela fonte (fielmente transmitido pelas duas camadas), ainda que semanticamente seja um default da plataforma, não um prazo do empregador. **Caso A da tarefa → NÃO alterar comportamento** (remover por heurística de +30/frequência é explicitamente proibido e apagaria prazo real legítimo). Dados existentes: N... [truncated]
