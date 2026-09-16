@@ -15,12 +15,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from internship_finder.adapters.ats import AtsJobAdapter  # noqa: E402
 from internship_finder.filters import (  # noqa: E402
+    AREA_PRIMARY,
+    AREA_RELATED,
     PROGRAM_EXCLUSION_PATTERNS,
     STUDENT_EMPLOYMENT_TYPES,
     STUDENT_TYPE_PATTERNS,
     TYPE_EXCLUSION_PATTERNS,
     infer_country_iso,
     is_student_role,
+    matches_area,
     matches_country,
     parse_country_spec,
 )
@@ -285,10 +288,29 @@ def test_consistency() -> None:
           all("praktikum" != p.strip(r"\b") for p in TYPE_EXCLUSION_PATTERNS))
     check("exclusao de tipo nao tem 'studium' solto",
           all("studium" != p.strip(r"\b") for p in TYPE_EXCLUSION_PATTERNS))
-    check("exclusao de tipo tem 17 padroes explicitos",
-          len(TYPE_EXCLUSION_PATTERNS) == 17)
+    check("exclusao de tipo tem 18 padroes explicitos",
+          len(TYPE_EXCLUSION_PATTERNS) == 18)
     check("exclusao EN de aprendizagem presente (apprentice)",
           any("apprentice" in p for p in TYPE_EXCLUSION_PATTERNS))
+    # Pos-auditoria 15/09: SmVdP na exclusao, teses nos marcadores fortes e
+    # vocabulario controlado de analise de dados (so compostos explicitos).
+    check("16. SmVdP presente nas exclusoes de tipo",
+          any("vertiefter praxis" in p for p in TYPE_EXCLUSION_PATTERNS))
+    check("17. padroes de tese presentes nos marcadores fortes",
+          any("arbeit" in p for p in STUDENT_TYPE_PATTERNS)
+          and any("thesis" in p for p in STUDENT_TYPE_PATTERNS))
+    check("18a. data science/analysis/datenanalyse/analyst em RELATED",
+          r"\bdata science\b" in AREA_RELATED
+          and r"\bdata analysis\b" in AREA_RELATED
+          and r"\bdatenanalyse\b" in AREA_RELATED
+          and r"\bbusiness analyst\b" in AREA_RELATED)
+    check("18b. palavras soltas NAO entram em PRIMARY/RELATED",
+          not any(p in (r"\bdata\b", r"\banalyst\b", r"\banalysis\b",
+                        r"\bbusiness\b", r"\bstudent\b")
+                  for p in AREA_PRIMARY + AREA_RELATED))
+    check("18c. vocabulario controlado de dados e todo RELATED (peso de descricao 0.5, nao 1.0)",
+          not any(p == r"\bdata science\b" for p in AREA_PRIMARY)
+          and r"\bdata science\b" in AREA_RELATED)
     # Adaptador (flag Job.internship) usa a mesma regra.
     company = Company(ats="smartrecruiters", slug="BoschGroup", name="Bosch Group")
     adapter = AtsJobAdapter()
@@ -436,11 +458,136 @@ def test_consistency() -> None:
           infer_country_iso(location="Lafayette, IN") == "in")
 
 
+def test_theses_type() -> None:
+    print("== teses academicas como tipo estudantil (A/B, pos-auditoria 15/09) ==")
+    # A. Uniper real (auditoria): Master's Thesis in Strategic Procurement.
+    check("A1. 'Master's Thesis in Strategic Procurement' e estudante",
+          is_student_role(
+              "Master's Thesis in Strategic Procurement - Direction for a New "
+              "Business Segment (f/m/d)"))
+    # B. Fraunhofer real: Bachelorarbeit: Automatisierungspotentialanalyse.
+    check("B. 'Bachelorarbeit: Automatisierungspotentialanalyse' e estudante",
+          is_student_role(
+              "Bachelorarbeit/ Semesterarbeit: Automatisierungspotentialanalyse"))
+    # Variantes DE: compostos com e sem hifen; ingles com apostrofo ASCII e
+    # tipografico.
+    check("TA2. 'Abschlussarbeit (BA/MA) im Bereich Einkauf' e estudante",
+          is_student_role("Abschlussarbeit (BA/MA) im Bereich Einkauf"))
+    check("TA3. 'Master-Arbeit (m/w/d) - Logistik' e estudante (hifen)",
+          is_student_role("Master-Arbeit (m/w/d) - Logistik"))
+    check("TA4. 'Studienarbeit: Prozessoptimierung' e estudante",
+          is_student_role("Studienarbeit: Prozessoptimierung"))
+    check("TA5. 'Semesterarbeit Supply Chain' e estudante",
+          is_student_role("Semesterarbeit Supply Chain"))
+    check("TA6. 'Bachelor's Thesis: Stress Analysis...' e estudante (ASCII)",
+          is_student_role(
+              "Bachelor's Thesis: Stress Analysis of USP Laser Structuring"))
+    check("TA7. 'Master\u2019s thesis in Technology Management' e estudante (tipografico)",
+          is_student_role("Master\u2019s thesis in Technology Management"))
+    # Nao aceitar genericamente: Bachelor/Master/Studium/Student/Trainee.
+    check("TA8. 'Bachelor of Science BWL' solto NAO e marcador",
+          not is_student_role("Bachelor of Science Betriebswirtschaftslehre"))
+    check("TA9. 'Master Maschinenbau - Produktionssysteme' solto NAO e marcador",
+          not is_student_role("Master Maschinenbau - Produktionssysteme"))
+    check("TA10. 'Studium der Wirtschaftsinformatik' solto NAO e marcador",
+          not is_student_role("Studium der Wirtschaftsinformatik"))
+    check("TA11. 'Student (m/w/d) Finance' solto NAO e marcador",
+          not is_student_role("Student (m/w/d) Finance"))
+    check("TA12. 'Trainee - Finance' solto NAO e marcador",
+          not is_student_role("Trainee - Finance", None, "FULL_TIME"))
+
+
+def test_smvdp_exclusion() -> None:
+    print("== exclusao SmVdP (C/I, pos-auditoria 15/09) ==")
+    # C. Schaeffler real (auditoria): programa de graduacao — hoje no eligible.
+    check("C1. 'Studium mit vertiefter Praxis (TH) ...' excluido",
+          not is_student_role(
+              "Studium mit vertiefter Praxis (TH) - Wirtschaftsingenieurwesen "
+              "(d/m/w) 2027"))
+    check("C2. 'Studium mit vertiefter Praxis 2027: Bachelor of Science ...' excluido (Roche real)",
+          not is_student_role(
+              "Studium mit vertiefter Praxis 2027: Bachelor of Science, "
+              "Wirtschaftsinformatik"))
+    # I. Descricao rica com 'Praktikum'/'Bachelor'/'Student' NAO ressuscita.
+    check("I1. SmVdP + descricao estudantil continua excluido",
+          not is_student_role(
+              "Studium mit vertiefter Praxis (TH) - Betriebswirtschaftslehre "
+              "(d/m/w) 2027",
+              "Ein Praktikum im Rahmen des Studiums ... Bachelor of Science ... "
+              "Student (m/w/d) ..."))
+    check("I2. SmVdP + employment_type 'intern' continua excluido",
+          not is_student_role(
+              "Studium mit vertiefter Praxis (TH) - Maschinenbau (d/m/w) 2027",
+              None, "intern"))
+    # D. Duales Studium segue excluido (regressao da Fase 1).
+    check("D1. 'Duales Studium BWL' continua excluido",
+          not is_student_role("Duales Studium BWL - Logistik (B.A.) 2027"))
+    check("D2. Duales Studium + descricao rica continua excluido",
+          not is_student_role(
+              "Duales Studium: Bachelor of Science, Data Science und "
+              "K\u00fcnstliche Intelligenz 2027 (w/m/d)",
+              "Praxisphasen ... Praktikum ..."))
+    # Regressao: estagios universitarios normais continuam aceitos.
+    check("S1. 'Werkstudent im Bereich Data Analytics' continua aceito",
+          is_student_role("Werkstudent im Bereich Data Analytics"))
+    check("S2. 'Praktikum im Einkauf' continua aceito",
+          is_student_role("Praktikum im Einkauf"))
+
+
+def test_area_controlled_vocab() -> None:
+    print("== area: vocabulario controlado de dados (E-H, pos-auditoria 15/09) ==")
+    # E. Bosch real: Praktikum Data Science na fabricacao.
+    check("E1. 'Praktikum im Bereich Data Science' passa area",
+          matches_area(
+              "Praktikum im Bereich Data Science in der Fertigung (w/m/div.)"))
+    check("E2. 'Internship Data Science in Manufacturing' passa area",
+          matches_area("Internship Data Science in Manufacturing"))
+    # F. Zeiss real: Working Student ... Data Analysis (soh 'automation' fraco
+    # nao passava 1,5; 'data analysis' RELATED soma ate 3,0).
+    check("F1. 'Working Student ... Data Analysis' passa area (Zeiss real)",
+          matches_area(
+              "Working Student Automation, Software Development & Data Analysis "
+              "(f/m/x)"))
+    check("F2. 'Working Student in Data Analysis and Logistics Support' passa (Bosch real)",
+          matches_area("Working Student in Data Analysis and Logistics Support"))
+    check("F3. 'Praktikum Datenanalyse' passa area (DE)",
+          matches_area("Praktikum Datenanalyse (m/w/d)"))
+    check("F4. 'Business Analyst Intern' passa area (composto controlado)",
+          matches_area("Business Analyst Intern (f/m/d)"))
+    # G. 'analyst' solto continua de fora: Sales Analyst Intern NAO passa.
+    check("G. 'Sales Analyst Intern' NAO passa area",
+          not matches_area("Sales Analyst Intern"))
+    # H. 'data' solto continua de fora: Data Center / Data Warehouse NAO passam.
+    check("H1. 'Data Center Technician Intern' NAO passa area",
+          not matches_area("Data Center Technician (m/f/d)"))
+    check("H2. 'Data Warehouse Intern' NAO passa area",
+          not matches_area("Data Warehouse Intern (m/w/d)"))
+    # Regressao: termos de area existentes continuam valendo (threshold 1,5).
+    check("A1. 'Praktikum Supply Chain' passa area",
+          matches_area("Praktikum Supply Chain"))
+    check("A2. 'Werkstudent im Bereich Data Analytics' passa area",
+          matches_area("Werkstudent im Bereich Data Analytics"))
+    check("A3. descricao 'data science' soma (RELATED 0.5) com sinal fraco do titulo",
+          matches_area(
+              "Praktikum Automation (m/w/d)",
+              "Konzeption von Data Science Loesungen"))
+    # Guarda da decisao pos-auditoria: descricao 'data science' SOZINHA nao
+    # cruza 1,5 (0.5 RELATED) — foi o que manteve Biostatistiker (Fraunhofer)
+    # e Projektmanager (VW) FORA do eligible (2 FPs medidos).
+    check("A4. descricao 'data science' sozinha NAO passa (0.5 < 1.5)",
+          not matches_area(
+              "Praktikant (m/w/d)",
+              "Konzeption von Data Science Loesungen"))
+
+
 def main() -> int:
     test_type_rules()
     test_type_exclusion_rules()
     test_type_exclusion_en()
     test_trainee_employment_type()
+    test_theses_type()
+    test_smvdp_exclusion()
+    test_area_controlled_vocab()
     test_location_level()
     test_no_description()
     test_ats_independence()

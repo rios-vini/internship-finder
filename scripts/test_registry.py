@@ -2,7 +2,7 @@
 
 Cobre, offline e deterministicamente (sem rede, sem ler/gravar em data/):
 
-1. seed correto: 65 empresas, nomes canonicos e campos esperados.
+1. seed correto: 87 empresas, nomes canonicos e campos esperados.
 2. ``enabled`` default True; desabilitar remove da selecao sem remover do seed.
 3. selecao de subconjunto via ``enabled(names=...)`` preservando a ordem.
 4. ``registry_names`` (ponte registry -> lista do CLI) com e sem subconjunto.
@@ -31,20 +31,29 @@ from internship_finder.registry import (  # noqa: E402
 
 FAILURES: list[str] = []
 
-CANONICAL_65 = [
-    "Bosch", "SAP", "Continental", "ZF", "Bayer", "BASF", "Henkel", "Infineon",
-    "Zalando", "Delivery Hero", "Covestro", "Evonik", "DHL", "Hellmann", "Lidl",
-    "Kaufland", "VWAGLPPROD10", "Schaeffler", "Mahle", "Trumpf", "SICK AG",
-    "Voith", "knorrbremsP2", "brosefahrz", "Phoenix Contact", "KraussMaffei",
-    "kronesag", "bbraunprd", "Sartorius", "freseniusglobal", "Deutsche Telekom",
-    "Celonis", "DATEV", "Statista", "Scout24", "Siemens Healthineers",
-    "Zeiss Group", "draegerP", "Uniper",
-    # --- expansão internacional P3 #23 (2026-09-08): 9 DE + 17 NL/CH/AT ---
-    "Allianz", "Adidas", "Puma", "Hella", "Fraunhofer", "Merck",
-    "Boehringer Ingelheim", "HelloFresh", "Otto",
-    "Philips", "ING", "Heineken", "Adyen", "Nestlé", "Novartis", "ABB",
-    "Red Bull", "Roche", "Swiss Re", "Schindler", "Shell", "Unilever",
-    "AkzoNobel", "Rabobank", "NXP", "OMV",
+CANONICAL_87 = [
+    "4flow", "ABB", "Adidas", "Adyen",
+    "AkzoNobel", "Allianz", "BASF", "BCG",
+    "BMW AG", "Bayer", "Boehringer Ingelheim", "Bosch",
+    "Celonis", "Continental", "Covestro", "DATEV",
+    "DHL", "Delivery Hero", "Deutsche Telekom", "Evonik",
+    "Flix", "Fraunhofer", "HORNBACH", "Hager Group",
+    "Heineken", "Hella", "Hellmann", "HelloFresh",
+    "Henkel", "ING", "Infineon", "Jobs Festo",
+    "Kaufland", "KraussMaffei", "Kuehne+Nagel", "Lanxess",
+    "Lidl", "Liebherr", "Linde", "Mahle",
+    "Merck", "NXP", "Nestlé", "Novartis",
+    "OMV", "Philips", "Phoenix Contact", "Puma",
+    "Rabobank", "Red Bull", "Roche", "Roland Berger",
+    "SAP", "SICK AG", "SMA", "STIHL",
+    "Sartorius", "Schaeffler", "Schindler", "Scout24",
+    "Shell", "Siemens Healthineers", "Simon-Kucher", "Sonepar",
+    "Statista", "Swiss Re", "Tchibo", "Trumpf",
+    "Unilever", "Uniper", "VWAGLPPROD10", "Vattenfall",
+    "Voith", "Wacker", "Webasto Jobportal", "ZF",
+    "Zalando", "Zeiss Group", "aboutyougmbh", "bahagag",
+    "bbraunprd", "brosefahrz", "draegerP", "freseniusglobal",
+    "knorrbremsP2", "kronesag", "mediasatur",
 ]
 
 
@@ -58,16 +67,16 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 # 1. seed
 # ---------------------------------------------------------------------------
 def test_seed() -> None:
-    print("== seed: 65 empresas canonicas ==")
+    print("== seed: 87 empresas canonicas ==")
     reg = CompanyRegistry()
     names = [e.name for e in reg.entries]
-    check("1a. seed tem 65 empresas", len(names) == 65, f"n={len(names)}")
+    check("1a. seed tem 87 empresas", len(names) == 87, f"n={len(names)}")
     check("1b. nomes canonicos identicos ao README/docs",
-          names == sorted(CANONICAL_65),
+          names == sorted(CANONICAL_87),
           "ordem alfabetica do registry != lista canonica")
     check("1c. nomes unicos", len(set(names)) == len(names))
-    missing = [n for n in CANONICAL_65 if reg.get(n) is None]
-    check("1d. todas as 65 canonicas presentes", not missing, f"faltam {missing}")
+    missing = [n for n in CANONICAL_87 if reg.get(n) is None]
+    check("1d. todas as 87 canonicas presentes", not missing, f"faltam {missing}")
     # campos esperados
     bad = [e.name for e in reg.entries
            if not isinstance(e.name, str) or not isinstance(e.enabled, bool)]
@@ -87,8 +96,8 @@ def test_enabled_default() -> None:
     check("2a. todas habilitadas por default",
           all(e.enabled for e in reg.entries),
           f"{sum(1 for e in reg.entries if not e.enabled)} desabilitadas")
-    check("2b. enabled() retorna as 65",
-          len(reg.enabled()) == 65, f"n={len(reg.enabled())}")
+    check("2b. enabled() retorna as 87",
+          len(reg.enabled()) == 87, f"n={len(reg.enabled())}")
     # desabilitar remove da selecao, mantendo a entrada no registry
     row = RegistryEntry(name="Zzz", enabled=False)
     reg2 = CompanyRegistry([row])
@@ -121,7 +130,7 @@ def test_registry_names() -> None:
     print("== registry_names ==")
     reg = CompanyRegistry()
     allnames = registry_names(reg)
-    check("4a. sem subconjunto devolve as 65", len(allnames) == 65,
+    check("4a. sem subconjunto devolve as 87", len(allnames) == 87,
           f"n={len(allnames)}")
     subset = registry_names(reg, ["BaYer", "bosch"])
     check("4b. subset preserva ordem e ignora nao encontrados",
@@ -170,14 +179,14 @@ def test_cli_bridge() -> None:
           called == ["SAP", "Bosch"], f"{called}")
     check("5c. output gravado", Path(f"{tmp}/j1.json").exists())
 
-    # (b) --registry sem --companies usa TODAS as ENABLED (65)
+    # (b) --registry sem --companies usa TODAS as ENABLED (87)
     called.clear()
     with patch.object(cli, "collect_company", side_effect=_collect_track):
         rc = cli.main(["--registry", "--output", f"{tmp}/j2.json",
                        "--filter-output", f"{tmp}/e2.json",
                        "--metrics", f"{tmp}/m2.jsonl"])
-    check("5d. --registry default usa as 65 ENABLED", rc == 0
-          and len(called) == 65, f"rc={rc} n={len(called)}")
+    check("5d. --registry default usa as 87 ENABLED", rc == 0
+          and len(called) == 87, f"rc={rc} n={len(called)}")
     check("5e. selecao ENABLED = seed alfabetico (sem duplicatas)",
           called == [e.name for e in CompanyRegistry().entries], f"{called[:5]}...")
 
@@ -200,7 +209,7 @@ def test_company_status() -> None:
     # arquivo inexistente -> tudo None sem quebrar
     st = reg.company_status("/tmp/nao_existe_metrics_xyz.jsonl")
     check("6a. sem JSONL -> status None para todas", st["Bosch"]["status"] is None
-          and len(st) == 65)
+          and len(st) == 87)
 
     tmp = tempfile.mkdtemp()
     p = Path(tmp) / "m.jsonl"
@@ -220,7 +229,7 @@ def test_company_status() -> None:
           and st["Bosch"]["last_collected"] == 0)
     check("6d. registro nao-tenant ignorado (empresa sem tenant fica None)",
           st["SAP"]["status"] is None)
-    check("6e. JSONL malformado nao derruba", len(st) == 65)
+    check("6e. JSONL malformado nao derruba", len(st) == 87)
 
 
 def test_company_status_run_id_ordering() -> None:
