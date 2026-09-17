@@ -36,9 +36,10 @@ class RegistryEntry(BaseModel):
     enabled: bool = True  # false desabilita a empresa sem removê-la do registry
 
 
-# --- Seed: 87 empresas operacionais (12 da validação inicial + 27 da
+# --- Seed: 96 empresas operacionais (12 da validação inicial + 27 da
 # --- expansão E2 + 25 da expansão internacional P3 #23: 8 DE + 17 NL/CH/AT
-# --- + 17 da expansão de cobertura 15/09/2026 + 6 da auditoria 16/09/2026).
+# --- + 17 da expansão de cobertura 15/09/2026 + 6 da auditoria 16/09/2026
+# --- + 9 da auditoria próxima fronteira 17/09/2026).
 # --- Nomes canônicos = consulta real do ``--companies``
 # --- (README.md + docs/empresas_verificacao.md + docs/relatorio_expansao.md +
 # --- docs da auditoria de cobertura 15/09 + auditoria próxima onda 16/09).
@@ -162,6 +163,29 @@ SEED = [
     RegistryEntry(name="Wacker", ats="successfactors", tenant="successfactors:jobs"),
     RegistryEntry(name="Webasto Jobportal", ats="successfactors", tenant="successfactors:jobs"),
     RegistryEntry(name="Roland Berger", ats="smartrecruiters", tenant="smartrecruiters:rolandberger"),
+    # --- 9 da auditoria próxima fronteira (2026-09-17, READ-ONLY; relatório
+    # --- /home/ubuntu/auditoria_proxima_fronteira_2026-09-17.md) ---
+    # Validadas AO VIVO em 17/09 com fetch real read-only (manifest 80.390
+    # empresas; funil oficial student/área/pais): todas com eligible DE>0
+    # medido. Nome canônico = nome EXATO do manifest quando o nome natural
+    # resolve falso positivo ou zero (regra da auditoria 16/09): "audibene /
+    # hear.com" desambigua das 4 entradas audibene (join/personio/teamtailor
+    # também existem) e "cbs Corporate Business Solutions GmbH" evita o FP
+    # workable:cbs-9 (name "CBS"). O match EXATO do CompanyCollector
+    # short-circuita o fallback token, então homônimas com name diferente não
+    # entram na coleta (Picnic→só greenhouse:teampicnic, não "Picnic
+    # Delivery"; Engelhart→só greenhouse, não join.com "Engelhart & Dirr";
+    # Holzland Becker→só recruitee, não softgarden "Manfred Scherf
+    # Holzfachhandel"). Tenants copiados da RESOLUÇÃO REAL do runtime.
+    RegistryEntry(name="Picnic", ats="greenhouse", tenant="greenhouse:teampicnic"),
+    RegistryEntry(name="AIXTRON SE", ats="softgarden", tenant="softgarden:aixtron"),
+    RegistryEntry(name="CarOnSale", ats="greenhouse", tenant="greenhouse:caronsale"),
+    RegistryEntry(name="cbs Corporate Business Solutions GmbH", ats="recruitee", tenant="recruitee:cbsconsulting"),
+    RegistryEntry(name="CURRENTA GRUPPE", ats="recruitee", tenant="recruitee:currentagruppe"),
+    RegistryEntry(name="Engelhart", ats="greenhouse", tenant="greenhouse:engelhart"),
+    RegistryEntry(name="Holzland Becker", ats="recruitee", tenant="recruitee:holzlandbecker"),
+    RegistryEntry(name="Miebach Consulting GmbH", ats="recruitee", tenant="recruitee:miebachconsulting"),
+    RegistryEntry(name="audibene / hear.com", ats="greenhouse", tenant="greenhouse:audibenehearcom"),
 ]
 
 
