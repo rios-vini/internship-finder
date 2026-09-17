@@ -288,8 +288,8 @@ def test_consistency() -> None:
           all("praktikum" != p.strip(r"\b") for p in TYPE_EXCLUSION_PATTERNS))
     check("exclusao de tipo nao tem 'studium' solto",
           all("studium" != p.strip(r"\b") for p in TYPE_EXCLUSION_PATTERNS))
-    check("exclusao de tipo tem 18 padroes explicitos",
-          len(TYPE_EXCLUSION_PATTERNS) == 18)
+    check("exclusao de tipo tem 20 padroes explicitos",
+          len(TYPE_EXCLUSION_PATTERNS) == 20)
     check("exclusao EN de aprendizagem presente (apprentice)",
           any("apprentice" in p for p in TYPE_EXCLUSION_PATTERNS))
     # Pos-auditoria 15/09: SmVdP na exclusao, teses nos marcadores fortes e
@@ -580,6 +580,64 @@ def test_area_controlled_vocab() -> None:
               "Konzeption von Data Science Loesungen"))
 
 
+def test_bachelor_degree_exclusion() -> None:
+    print("== exclusao grau de graduacao Bachelor (B, pos-auditoria 15/09) ==")
+    # B1-B4. Falsos positivos reais medidos no snapshot 16/09 (BASF): títulos
+    # com grau formal; o marcador de tipo vinha da DESCRICAO (leakage via
+    # 'duales studium'/'ausbildung' no texto BASF).
+    check("B1. 'Bachelor of Science Betriebswirtschaftslehre' excluido (BASF real)",
+          not is_student_role("Bachelor of Science Betriebswirtschaftslehre (m/w/d)",
+                              "ELEMENTE DEINES DUALEN STUDIUMS ... Erfahrung"))
+    check("B2. 'Bachelor of Engineering - Elektrotechnik' excluido (BASF real)",
+          not is_student_role(
+              "Bachelor of Engineering - Elektrotechnik - Schwerpunkt "
+              "Automatisierungstechnik (m/w/d)",
+              "ELEMENTE DEINES DUALEN STUDIUMS ..."))
+    check("B3. 'Bachelor of Arts Betriebswirt:in VWA' excluido (BASF real)",
+          not is_student_role(
+              "Bachelor of Arts Betriebswirt:in VWA (m/w/d)",
+              "Dieses duale Studium mit integrierter Ausbildung ..."))
+    check("B4. 'Bachelor of Science (B.Sc.) ... (STAR)' excluido (SAP real)",
+          not is_student_role(
+              "Bachelor of Science (B.Sc.) (m/w/d) Wirtschaftsinformatik "
+              "Start 2027 Standort Dresden (STAR)",
+              "DUALES STUDIUM ..."))
+    # B5. Praxisverbund (Continental real): grau formal sem o 'of'.
+    check("B5. 'Bachelor Maschinenbau im Praxisverbund' excluido (Continental real)",
+          not is_student_role(
+              "Bachelor Maschinenbau im Praxisverbund (m/w/d)"))
+    # B6. Titulo sozinho, sem descricao, tambem excluido.
+    check("B6. 'Bachelor of Science BWL' sem descricao excluido (auditoria 15/09)",
+          not is_student_role("Bachelor of Science Betriebswirtschaftslehre (m/w/d)"))
+    # NEGATIVOS (regra nao pode ser ampla):
+    # N1. Tese continua VALIDA (mesmo com 'Bachelor' no titulo).
+    check("N1. 'Bachelorarbeit: Automatisierungspotentialanalyse' e estudante",
+          is_student_role(
+              "Bachelorarbeit/ Semesterarbeit: Automatisierungspotentialanalyse"))
+    check("N2. \"Bachelor's Thesis: Stress Analysis\" e estudante",
+          is_student_role(
+              "Bachelor's Thesis: Stress Analysis of USP Laser Structuring"))
+    # N3. Estagio com requisito de grau (sem o 'of') NAO e excluido.
+    check("N3. 'Internship ... (Bachelor's degree)' e estudante",
+          is_student_role(
+              "Internship 2026, R&D Engineering Laboratory PS-GH/ENG5-TH "
+              "(Bachelor's degree)"))
+    # N4. 'Bachelor' solto (sem 'of') NAO e exclusao (regra controlada).
+    check("N4. 'Werkstudent ... Bachelor- oder Masterand:in' e estudante",
+          is_student_role(
+              "Initiativbewerbung - Werkstudent*in, Praktikant*in, "
+              "Bachelor- oder Masterand*in"))
+    # N5. Grau de mestrado (Master of ...) NAO e alvo desta regra — sem
+    # regressao: nao ha exclusao nova p/ 'master of' (sem casos medidos).
+    check("N5. 'Master of Science ... (m/w/d)' sem marcador NAO e estudante (inalterado)",
+          not is_student_role("Master of Science - Produktionssysteme (m/w/d)"))
+    # N6. Duales Studium continua excluido (regressao da Fase 1), e o
+    # 'Bachelor of' dentro dele nao muda nada.
+    check("N6. 'Duales Studium: Bachelor of Arts ...' continua excluido",
+          not is_student_role(
+              "Duales Studium: Bachelor of Arts BWL-Spedition, Transport und "
+              "Logistik in 2027"))
+
 def main() -> int:
     test_type_rules()
     test_type_exclusion_rules()
@@ -587,6 +645,7 @@ def main() -> int:
     test_trainee_employment_type()
     test_theses_type()
     test_smvdp_exclusion()
+    test_bachelor_degree_exclusion()
     test_area_controlled_vocab()
     test_location_level()
     test_no_description()

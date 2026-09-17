@@ -21,7 +21,10 @@ Regras de negocio (dono):
   (regra do dono, Fase 1 das correcoes pos-auditoria): Duales Studium (e
   equivalentes: Dualer Student/Student:in, Dualer Master, Duale Hochschule,
   Dual Study, "Praktikum im Rahmen des Dualen Studiums"), Studium mit
-  vertiefter Praxis (pos-auditoria 15/09), Ausbildung /
+  vertiefter Praxis (pos-auditoria 15/09), programas de graduacao com grau no
+  titulo (Bachelor of Science/Arts/Engineering, Bachelor ... im Praxisverbund
+  — pos-auditoria 15/09; Bachelorarbeit/Bachelor's thesis sao teses VALIDAS e
+  nao casam o "bachelor of"), Ausbildung /
   Berufsausbildung (aprendizagem profissional) e o equivalente EN
   Apprentice/Apprenticeship (P3 lote 1), Schul-/Schuelerpraktikum e
   estagios escolares ("Praktikum fuer Schueler:innen",
@@ -158,6 +161,17 @@ TYPE_EXCLUSION_PATTERNS = [
     # na DESCRICAO (leakage) — a exclusao no TITULO vence a descricao rica
     # ("Praktikum"/"Bachelor"/"Student" na descricao nao ressuscitam a vaga).
     r"\bstudium mit vertiefter praxis\b",
+    # Programas de graduacao (Bachelor of Science/Arts/Engineering e variantes;
+    # "Bachelor Maschinenbau im Praxisverbund") NAO sao estagio: o TITULO
+    # identifica um grau formal. A exclusao no TITULO vence marcador forte de
+    # tipo vindo da DESCRICAO (leakage pos-auditoria 15/09: BASF "Bachelor of
+    # Science ..." e SAP "Bachelor of Science (B.Sc.) ... (STAR)" passavam pelo
+    # "duales studium"/"ausbildung" da descricao). So os COMPOSTOS do grau —
+    # nunca "Bachelor" solto (Bachelorarbeit/Bachelor's thesis sao teses
+    # VALIDAS; "Internship ... (Bachelor's degree)" e estagio com requisito,
+    # sem o "of" -> nao excluido).
+    r"\bbachelor of\b",
+    r"\bpraxisverbund\b",
     # Ausbildung / Berufsausbildung: aprendizagem profissional (Azubi), nao
     # estagio universitario. "Ausbildung zum/als ...", "Ausbildungsplatz",
     # "Berufsausbildung", "Schwerpunkt kaufmaennische Berufsausbildung".
