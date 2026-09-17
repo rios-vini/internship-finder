@@ -62,6 +62,12 @@ SEED = [
     # --- 27 da expansão E2 (2026-08-12) ---
     RegistryEntry(name="DHL", ats="phenom", tenant="phenom:nan"),
     RegistryEntry(name="Hellmann", ats="workday", tenant="workday:hellmann/hellmannexternaljobs"),
+    # Lidl: o RCM do successfactors serve o feed completo
+    # (https://jobs.lidl/sitemal.xml) gerado SOB DEMANDA, sem cache (TTFB
+    # ~10s; medido 17/09: 120 MB em 6 min com a conexao ainda aberta). O
+    # timeout de tenant (60s + 25s de margem) nunca e suficiente; corrigir
+    # exigiria timeout global de ~15 min + ~150 MB de XML/dia para 1 empresa.
+    # Externo ao projeto: falha conhecida legitima (timeout recorrente).
     RegistryEntry(name="Lidl", ats="successfactors", tenant="successfactors:lidlstiftuP2"),
     RegistryEntry(name="Kaufland", ats="successfactors", tenant="successfactors:jobs"),
     RegistryEntry(name="VWAGLPPROD10", ats="successfactors", tenant="successfactors:VWAGLPPROD10"),
@@ -140,6 +146,11 @@ SEED = [
     RegistryEntry(name="Linde", ats="cornerstone", tenant="cornerstone:linde"),
     RegistryEntry(name="Sonepar", ats="successfactors", tenant="successfactors:career"),
     RegistryEntry(name="Flix", ats="greenhouse", tenant="greenhouse:flix"),
+    # Kuehne+Nagel: phenom:nan (jobs.kuehne-nagel.com) e o tenant validado.
+    # O runtime tambem resolve cornerstone:kuehne-nagel (manifest upstream):
+    # kuehne-nagel.csod.com NAO resolve (NXDOMAIN — careersite extinto, K+N
+    # migrou para phenom). FETCH_ERROR recorrente esperado por run; sem
+    # exclusao per-tenant legitima (registry declara referencia, base decide).
     RegistryEntry(name="Kuehne+Nagel", ats="phenom", tenant="phenom:nan"),
     RegistryEntry(name="Vattenfall", ats="smartrecruiters", tenant="smartrecruiters:Vattenfall"),
     RegistryEntry(name="4flow", ats="workday", tenant="workday:4flow/4flow"),
@@ -154,9 +165,14 @@ SEED = [
     # Nome canônico = nome EXATO do manifest quando ele não resolve pelo nome
     # natural (Jobs Festo, Webasto Jobportal, Wacker) — nunca deduzir a
     # empresa pelo slug compartilhado. SMA resolve também o tenant oracle
-    # `fa-exow-saasfaprod1/cx_1` (slug incompleto p/ o oracle; identidade não
-    # confirmada — NÃO é esta entrada): FETCH_ERROR recorrente esperado por
-    # run, unidade falha nunca entra no SQLite/lifecycle (P1.2).
+    # `fa-exow-saasfaprod1/cx_1` (manifest upstream, name="SMA"): identidade
+    # confirmada 17/09 = HOMÔNIMO — academia marítima em Sharjah/UAE (7 vagas
+    # faculty, Marine Engineering/Maritime Business; site vivo). Slug do
+    # manifest é relativo e o scraper oracle exige URL completa (oracle ∉
+    # URL_SLUG_ATS) → FETCH_ERROR recorrente esperado por run. NÃO corrigir
+    # via URL_SLUG_ATS (coletaria entidade não validada) nem excluir
+    # oracle-específico (decisão 17/09). Unidade falha nunca entra no
+    # SQLite/lifecycle (P1.2).
     RegistryEntry(name="BMW AG", ats="successfactors", tenant="successfactors:jobs"),
     RegistryEntry(name="SMA", ats="successfactors", tenant="successfactors:sma"),
     RegistryEntry(name="Jobs Festo", ats="successfactors", tenant="successfactors:jobs"),
