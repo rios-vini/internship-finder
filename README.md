@@ -72,7 +72,7 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
 mesma cascata, gravando o resultado em `data/eligible_jobs.json`. A lista de
 empresas nao e mais colada no comando: vem do **registry** (fonte de verdade
-das 87 empresas em codigo — ver "Registry de empresas" abaixo):
+das 96 empresas em codigo — ver "Registry de empresas" abaixo):
 
 ```bash
 .venv/bin/internship-finder --registry --timeout 60
@@ -84,9 +84,10 @@ python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 
 ### Registry de empresas
 
-As 87 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
+As 96 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
 E2 + 25 da expansao 08/09 — P3 #23, Otto removida em 15/09 — + 17 da expansao
-de cobertura 15/09 + 6 da auditoria 16/09 — ver `docs/` e MASTER_PLAN #23 e o
+de cobertura 15/09 + 6 da auditoria 16/09 + 9 da auditoria próxima fronteira
+17/09 — ver `docs/` e MASTER_PLAN #23 e o
 Log de mudanças) vivem em **codigo**, no `SEED` de
 `src/internship_finder/registry.py` — a
 fonte de verdade do "quem coleta": nome canonico (a consulta do `--companies`),
@@ -240,15 +241,18 @@ locais e gitignored: os numeros servem como documentacao de coleta, nao como
 arquivos versionados. A coleta total leva alguns minutos — cada tenant usa
 timeout proprio (`--timeout 60`).
 
-### Cobertura (87 na coleta → 47 com vagas eligible)
+### Cobertura (96 na coleta → 47 com vagas eligible no run 16/09; o funil oficial com 96 empresas sai do próximo run cron 06:00)
 
 **"Avaliada", "operacional" e "com vagas eligible" sao metricas DIFERENTES**:
 
 - **Avaliada** = empresa que passou pela verificacao do runbook
   (`docs/empresas_verificacao.md`): match exato na base do `ats-scrapers` e
-  teste do tenant/ATS. Apos as expansoes de 15/09 e 16/09, sao **87 empresas**
+  teste do tenant/ATS. Apos as expansoes de 15/09, 16/09 e 17/09, sao **96 empresas**
   operacionais na coleta (12 da validacao inicial + 27 novas + 25 da expansao
-  08/09, Otto removida 15/09 + 17 de cobertura 15/09 + 6 da auditoria 16/09).
+  08/09, Otto removida 15/09 + 17 de cobertura 15/09 + 6 da auditoria 16/09
+  + 9 da auditoria próxima fronteira 17/09: Picnic, cbs Corporate Business
+  Solutions, AIXTRON SE, Holzland Becker, CarOnSale, CURRENTA GRUPPE, Miebach
+  Consulting, Engelhart, audibene/hear.com).
 - **Operacional** = retorna vagas no fetch real (tenant ativo, ATS com
   scraper): **39** no snapshot 07/09 (**pré-expansão #23** — 35 tenants com
   dados em `data/jobs.json`; a Bosch conta 2x no campo `company` — tenants
@@ -532,7 +536,7 @@ src/internship_finder/
 ├── errors.py       # codigos de erro estruturados (CollectionError + classificador)
 ├── health.py       # relatorio de health por tenant/ATS sobre o JSONL + alertas
 ├── geocoding.py    # fallback de pais por cidade (cache-first; flag OFF por default)
-├── registry.py     # CompanyRegistry: fonte unica das 87 empresas de coleta (SEED, P2 #13)
+├── registry.py     # CompanyRegistry: fonte unica das 96 empresas de coleta (SEED, P2 #13)
 └── cli.py          # entry point `internship-finder` (filtro default + coleta)
 scripts/collect_jobs.py   # atalho p/ rodar sem instalar
 scripts/refresh_daily.py  # refresh diario + alertas Telegram (rotacao -> coleta -> health -> alerta)
