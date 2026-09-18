@@ -202,6 +202,24 @@ SEED = [
     RegistryEntry(name="Holzland Becker", ats="recruitee", tenant="recruitee:holzlandbecker"),
     RegistryEntry(name="Miebach Consulting GmbH", ats="recruitee", tenant="recruitee:miebachconsulting"),
     RegistryEntry(name="audibene / hear.com", ats="greenhouse", tenant="greenhouse:audibenehearcom"),
+    # --- 5 da última onda de cobertura (2026-09-18, última busca ampla) ---
+    # Validadas AO VIVO em 18/09 com fetch real read-only (manifest 80.390
+    # empresas; funil oficial student/área/pais) — todas com eligible DE>0
+    # medido. Nomes canônicos = nomes EXATOS do manifest (resolução única de
+    # tenant, conferida com CompanyCollector): "sungrow-emea" (o nome
+    # comercial "Sungrow EMEA" NÃO resolve — mesmo padrão bahagag/
+    # mediasatur), "AutoScout24" (board distinto do group Scout24 já
+    # presente, greenhouse:scout24; empresa efetiva nos jobs = AutoScout24),
+    # "Huawei Research Center Germany", "EAT HAPPY GROUP",
+    # "VDI Technologiezentrum GmbH". Sungrow e AutoScout24 só renderam
+    # eligible após a melhoria GENÉRICA de country inference (18/09,
+    # countries.py): padrões "<País> - <Cidade>" (personio) e
+    # "<Cidade> (<País>)" (greenhouse) — ver PR; sem geocoding externo.
+    RegistryEntry(name="sungrow-emea", ats="personio", tenant="personio:sungrow-emea"),
+    RegistryEntry(name="AutoScout24", ats="greenhouse", tenant="greenhouse:autoscout24"),
+    RegistryEntry(name="Huawei Research Center Germany", ats="teamtailor", tenant="teamtailor:huaweiresearchcentergermanyaustria"),
+    RegistryEntry(name="EAT HAPPY GROUP", ats="teamtailor", tenant="teamtailor:eathappygroup"),
+    RegistryEntry(name="VDI Technologiezentrum GmbH", ats="softgarden", tenant="softgarden:vdijobs"),
 ]
 
 

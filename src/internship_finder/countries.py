@@ -141,14 +141,31 @@ COUNTRY_NAMES: dict[str, str] = {
 
 
 def _country_name_from_location(location: str) -> str | None:
-    """ISO do pais quando o ULTIMO segmento da ``location`` e um nome de pais.
+    """ISO do pais quando a ``location`` traz o NOME do pais como segmento.
 
-    Formato "Cidade, Estado, Pais" (API Phenom e similares): o nome do pais
-    vem explicito no ultimo segmento separado por virgula — derivar o ISO
-    disso e seguro (dado real, nao inferencia inventada). Suporta tambem
-    nomes divididos em 2 segmentos ("China, People's Republic of",
-    "Korea, (South) Republic").
+    O nome do pais explicito na localizacao e dado real da vaga (nao
+    inferencia inventada) — derivar o ISO e seguro em 3 formatos:
+
+    1. Pais como ULTIMO segmento separado por virgula (API Phenom e
+       similares): "Cidade, Estado, Pais". Suporta tambem nomes divididos
+       em 2 segmentos ("China, People's Republic of", "Korea, (South)
+       Republic").
+    2. "<Cidade> (<Pais>)" — pais entre parenteses no fim de um segmento
+       (API Greenhouse: "Munich (Germany)", "Home Office (Germany)",
+       "Toronto, ON (Canada)").
+    3. "<Pais> - <Cidade>" — pais como PRIMEIRO segmento antes de " - "
+       (API Personio: "Germany - Munich", "Germany - Munich,Germany -
+       Remote").
+
+    A busca dos formatos 2/3 percorre as unidades (separadas por virgula ou
+    ponto-e-virgula) da DIREITA para a ESQUERDA: em localizacoes multiplas
+    (ex.: "Spain - Madrid,Spain - Pamplona") vence o pais do segmento mais
+    a direita, mesma semantica do formato 1 (ultimo segmento). O nome do
+    pais e casado por SEGMENTO COMPLETO contra ``COUNTRY_NAMES`` — nunca
+    por substring, para nao transformar mencoes textuais em pais.
     """
+    # Formato 1 (comportamento historico preservado): ultimo segmento por
+    # virgula, com par de 2 segmentos para nomes compostos.
     parts = [p.strip().rstrip(".") for p in str(location).split(",")]
     parts = [p for p in parts if p]
     if not parts:
@@ -157,7 +174,41 @@ def _country_name_from_location(location: str) -> str | None:
     code = COUNTRY_NAMES.get(last)
     if code is None and len(parts) >= 2:
         code = COUNTRY_NAMES.get(f"{parts[-2].lower()}, {last}")
-    return code
+    if code is not None:
+        return code
+    # Formatos 2/3 (extensao 18/09): nome do pais como segmento em parenteses
+    # no fim da unidade ou como prefixo "Pais - ".
+    units = re.split(r"[,;]", str(location))
+    for unit in reversed(units):
+        u = unit.strip()
+        if not u:
+            continue
+        # 2. "<Cidade> (<Pais>)" — parenteses no fim da unidade.
+        m = re.search(r"\(([^()]+)\)\s*$", u)
+        if m:
+            code = _segment_country_code(m.group(1))
+            if code is not None:
+                return code
+        # 3. "<Pais> - <Cidade>" — pais como prefixo da unidade.
+        m = re.match(r"^\s*([^,;]+?)\s+-\s+", u)
+        if m:
+            code = _segment_country_code(m.group(1))
+            if code is not None:
+                return code
+    return None
+
+
+def _segment_country_code(token: str) -> str | None:
+    """ISO do pais para um SEGMENTO COMPLETO da localizacao (ou None).
+
+    Normaliza (strip/ponto final/minusculas) e casa contra ``COUNTRY_NAMES`` —
+    inclusao de nomes compostos ("United States", "Bosnia and Herzegovina").
+    Nenhum substring: o token inteiro precisa ser um nome de pais.
+    """
+    t = token.strip().rstrip(".").lower()
+    if not t:
+        return None
+    return COUNTRY_NAMES.get(t)
 
 
 def _iso_token_from_location(location: str) -> str | None:

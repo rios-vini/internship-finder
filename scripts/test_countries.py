@@ -58,6 +58,41 @@ def test_synthetic() -> None:
           infer_country_iso(location="Sao Bernardo do Campo") is None)
     check("infer_country_iso(None, None, None) is None",
           infer_country_iso() is None)
+
+    # --- Extensao 18/09 (cobertura): pais EXPLICITO como segmento ---
+    # Formato "<Pais> - <Cidade>" (personio/Sungrow), pais no INICIO.
+    check("'Germany - Munich' -> 'de'",
+          infer_country_iso(location="Germany - Munich") == "de")
+    check("'Germany - Munich,Germany - Remote' -> 'de' (multiplas DE)",
+          infer_country_iso(location="Germany - Munich,Germany - Remote") == "de")
+    # Nome composto (2 palavras) tambem casa como segmento inicial.
+    check("'United States - New York' -> 'us'",
+          infer_country_iso(location="United States - New York") == "us")
+    # Formato "<Cidade> (<Pais>)" (greenhouse/AutoScout24), pais no fim.
+    check("'Munich (Germany)' -> 'de'",
+          infer_country_iso(location="Munich (Germany)") == "de")
+    check("'Home Office (Germany)' -> 'de'",
+          infer_country_iso(location="Home Office (Germany)") == "de")
+    check("'Toronto, ON (Canada)' -> 'ca'",
+          infer_country_iso(location="Toronto, ON (Canada)") == "ca")
+    # Multipla localizacao: vence o pais do segmento mais a direita.
+    check("'Berlin (Germany); Munich (Germany)' -> 'de'",
+          infer_country_iso(location="Berlin (Germany); Munich (Germany)") == "de")
+    # Seguranca: pais como SEGMENTO, nunca substring/mencao textual.
+    check("'BeNeLux - Amsterdam' is None (nao e pais ISO)",
+          infer_country_iso(location="BeNeLux - Amsterdam") is None)
+    check("'Freiburg im Breisgau' is None (menção a cidade sem pais)",
+          infer_country_iso(location="Freiburg im Breisgau") is None)
+    check("'Ecatepec, Estado de Mexico' is None (nao e pais)",
+          infer_country_iso(location="Ecatepec, Estado de Mexico") is None)
+    # Formato invertido ("Cidade - Pais") NAO e inferido (nunca observado;
+    # nao inventar semantica nova).
+    check("'Munich - Germany' is None (formato invertido fora do escopo)",
+          infer_country_iso(location="Munich - Germany") is None)
+    # "Germany" sozinho infere 'de' pelo formato 1 (pais explicito no ultimo
+    # segmento) — comportamento historico preservado.
+    check("'Germany' sozinho -> 'de' (pais explicito, formato 1)",
+          infer_country_iso(location="Germany") == "de")
     # country_iso explícito preservado.
     check("country_iso explicito preservado",
           infer_country_iso(location="x", country_iso="ch") == "ch")
