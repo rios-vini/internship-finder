@@ -38,6 +38,14 @@ Fluxo:
    14, 0 desliga) aplicada em seguida. Falha NUNCA derruba o run nem muda o
    exit code: e logada e (se houver envio) entra na mensagem como
    ``⚠️ Backup do jobs.db falhou: ...``.
+2c. **Publicacao GitHub Pages (Fase 1, opcional via ``--pages-dir``)** —
+   quando informado, apos coleta/health o ranking do run e publicado na
+   branch ``gh-pages`` (reusa ``scripts/interface.py`` para o HTML,
+   verificacao de seguranca, escrita atomica, commit+push — ver
+   ``scripts/publish_pages.py``). Gates: coleta ok (exit 0) E vagas
+   elegiveis > 0 — nunca publica ranking parcial/vazio; a pagina anterior
+   permanece. Falha NUNCA derruba o run: entra na mensagem como
+   ``⚠️ Publicação GitHub Pages falhou: ...``.
 3. **Health** — ``build_health_report`` sobre o conteudo COMPLETO do JSONL
    apos o run (defensivo: malformados nunca derrubam). Os registros do run
    atual sao isolados por snapshot de linhas (antes x depois), sem adivinhar
@@ -105,6 +113,7 @@ from internship_finder.storage.sqlite_backup import (  # backup do jobs.db (P3)
     backup_jobs_db,
     cleanup_backups,
 )
+import publish_pages  # publicacao do ranking em GitHub Pages (Fase 1)
 
 log = logging.getLogger("refresh_daily")
 
@@ -440,6 +449,7 @@ def build_message(
     always_notify: bool = False,
     disk_pct: int | None = None,
     backup_error: str | None = None,
+    publish_error: str | None = None,
 ) -> str | None:
     """Monta a mensagem de alerta/digest; ``None`` = nada a enviar (anti-spam:
     sem anomalia, sem falha e sem ``--always-notify``, nao envia).
@@ -454,7 +464,8 @@ def build_message(
     run)."""
     alerts = sorted(report_alerts, key=lambda a: (a.get("source", ""), a.get("type", "")))
     disk_warning = disk_pct is not None and disk_pct > DISK_WARN_PCT
-    if not (always_notify or exit_code != 0 or alerts or disk_warning or backup_error):
+    if not (always_notify or exit_code != 0 or alerts or disk_warning
+            or backup_error or publish_error):
         return None
 
     source_names = summary.get("source_names") or {}
@@ -542,6 +553,9 @@ def build_message(
     if backup_error:
         lines.append("")
         lines.append(f"⚠️ Backup do jobs.db falhou: {backup_error}")
+    if publish_error:
+        lines.append("")
+        lines.append(f"⚠️ Publicação GitHub Pages falhou: {publish_error}")
     return "\n".join(lines)
 
 
@@ -715,7 +729,8 @@ def _run_dry_run(retention_days: int = DEFAULT_RETENTION_DAYS) -> int:
 
 # --- fluxo de producao -----------------------------------------------------
 
-def _archive_run_info(archive_dir: Path, summary: dict, alert_count: int) -> None:
+def _archive_run_info(archive_dir: Path, summary: dict, alert_count: int,
+                      publish_error: str | None = None) -> None:
     """Registra no archive o run que substituiu o snapshot (best-effort)."""
     info = {
         "rotated_at": utcnow_iso(),
@@ -725,6 +740,8 @@ def _archive_run_info(archive_dir: Path, summary: dict, alert_count: int) -> Non
         "eligible": summary.get("eligible"),
         "alerts": alert_count,
     }
+    if publish_error:
+        info["publish_error"] = publish_error
     try:
         (archive_dir / "run_info.json").write_text(
             json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -755,6 +772,11 @@ def main(argv: list[str] | None = None) -> int:
                         default=DEFAULT_BACKUP_RETENTION_DAYS, metavar="N",
                         help="retencao dos backups do jobs.db em dias "
                         f"(default {DEFAULT_BACKUP_RETENTION_DAYS}; 0 = desligado)")
+    parser.add_argument("--pages-dir", default=None, metavar="PATH",
+                        help="clone de deploy do GitHub Pages (branch gh-pages). "
+                        "Quando informado, o ranking do run (exit 0 e vagas "
+                        "elegiveis > 0) e publicado automaticamente apos a "
+                        "coleta. Default: publicacao desligada.")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -823,10 +845,31 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("disco: filesystem de %s com %d%% de uso (>= %d%%)",
                     data_dir, disk_pct, DISK_WARN_PCT)
 
+    # Fase 1 — publicacao do ranking em GitHub Pages (apos a coleta e o health;
+    # nunca derruba o run: falha vira publish_error, reportada no Telegram).
+    publish_error: str | None = None
+    pages_dir = Path(args.pages_dir).expanduser() if args.pages_dir else None
+    if pages_dir is not None:
+        try:
+            changed = publish_pages.publish_ranking(
+                root, pages_dir,
+                exit_code=exit_code,
+                eligible=summary.get("eligible") or 0,
+                run_id=summary.get("run_id") or utcnow_iso(),
+            )
+            if changed:
+                log.info("ranking publicado em GitHub Pages (branch gh-pages)")
+        except Exception as exc:  # noqa: BLE001 — publicacao e operacional, nao critica
+            publish_error = f"{type(exc).__name__}: {exc}"
+            log.error("publicacao GitHub Pages FALHOU: %s", publish_error)
+    else:
+        log.info("publicacao GitHub Pages desligada (sem --pages-dir)")
+
     message = build_message(summary, report["alerts"], exit_code,
                             always_notify=args.always_notify,
                             disk_pct=disk_pct,
-                            backup_error=backup_error)
+                            backup_error=backup_error,
+                            publish_error=publish_error)
     if message is None:
         print("Sem anomalia — nenhum envio (anti-spam).")
     else:
@@ -840,7 +883,8 @@ def main(argv: list[str] | None = None) -> int:
             log.warning("envio nao confirmado: %s",
                         result.get("reason") or result.get("error") or "desconhecido")
 
-    _archive_run_info(archive_dir, summary, len(report["alerts"]))
+    _archive_run_info(archive_dir, summary, len(report["alerts"]),
+                      publish_error=publish_error)
     # P1.3: o exit code final e o da coleta (0/1/2; 124 = teto estourado).
     # Toda a observabilidade (health/metricas/Telegram/limpeza/run_info) ja
     # rodou acima — so o status entregue ao SO muda. Antes o refresh sempre
