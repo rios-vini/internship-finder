@@ -44,3 +44,11 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
   (`--timeout` + margem); erro/trava vira linha FAIL e o pipeline segue.
 - Multiprocessing usa o contexto default do SO (fork no Linux, spawn no
   Windows).
+- **Publicacao em GitHub Pages (Fase 1, 18/09)**: o refresh diario reusa
+  `scripts/interface.py` para gerar o HTML do ranking e o publica na branch
+  `gh-pages` via `scripts/publish_pages.py` (clone de deploy fora do repo,
+  escrita atomica de `index.html`, commit+push; so com coleta ok e `eligible >
+  0`). Decisao de reuso: o HTML local e a pagina publica sao o MESMO artefato
+  — sem frontend novo, sem servidor, sem dependencias novas. Nenhum dado
+  interno e publicado: gate `check_public_safe` (tokens/caminhos privados)
+  antes do push.

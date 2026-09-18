@@ -474,6 +474,105 @@ def test_message_backup_error() -> None:
           and "Backup do jobs.db falhou" in msg2)
 
 
+def test_message_publish_error() -> None:
+    print("== Fase 1: build_message com publish_error ==")
+    summary = rd.summarize_run([_run_record("r1", 400, 50)])
+    check("publish_error dispara envio mesmo sem anomalia",
+          rd.build_message(summary, [], 0, publish_error="RuntimeError: x") is not None)
+    check("linha de publicacao falha na mensagem",
+          "⚠️ Publicação GitHub Pages falhou: RuntimeError: x"
+          in (rd.build_message(summary, [], 0, publish_error="RuntimeError: x") or ""))
+    msg3 = rd.build_message(summary, [], 2, backup_error="OSError: y",
+                            publish_error="RuntimeError: x")
+    check("coexiste com outras falhas (exit 2 + backup)",
+          msg3 is not None and "parcial" in msg3
+          and "Backup do jobs.db falhou" in msg3
+          and "Publicação GitHub Pages falhou" in msg3)
+
+
+def test_pages_dir_integrado() -> None:
+    print("== Fase 1: --pages-dir integrado ao fluxo do refresh ==")
+    with tempfile.TemporaryDirectory(prefix="t_pages_") as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir()
+        # JSONL semeado com um record type:run (eligible 50 > 0).
+        (data_dir / "collection_metrics.jsonl").write_text(
+            json.dumps(_run_record("r1", 400, 50)) + "\n", encoding="utf-8")
+        pages_dir = Path(tmp) / "pages"
+
+        calls: dict = {"publish": [], "notify": []}
+        original_root = rd.repo_root
+
+        def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+            return subprocess.CompletedProcess(args[0], 0)
+
+        def fake_publish(root, pages, *, exit_code, eligible, run_id):
+            calls["publish"].append((exit_code, eligible, run_id))
+            return True
+
+        def fake_notify(config, message, *, dry_run) -> dict:
+            calls["notify"].append(message)
+            return {"sent": True}
+
+        rd.repo_root = lambda: root
+        try:
+            with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "notify_or_log", side_effect=fake_notify), \
+                 mock.patch.object(rd.publish_pages, "publish_ranking",
+                                   side_effect=fake_publish):
+                rc = rd.main(["--config", str(root / ".env"),
+                              "--pages-dir", str(pages_dir)])
+        finally:
+            rd.repo_root = original_root
+
+        check("main retorna exit 0 (coleta ok)", rc == 0)
+        check("publish_ranking chamado com gates do run (exit 0, eligible 50)",
+              len(calls["publish"]) == 1 and calls["publish"][0][:2] == (0, 50))
+        check("run_id do run repassado a publicacao",
+              calls["publish"][0][2] == "r1")
+        check("sem anomalia -> nenhum envio (anti-spam preservado)",
+              calls["notify"] == [])
+
+
+def test_pages_falha_reportada() -> None:
+    print("== Fase 1: falha de publicacao reportada, jamais derruba o run ==")
+    with tempfile.TemporaryDirectory(prefix="t_pagesfail_") as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir()
+        (data_dir / "collection_metrics.jsonl").write_text(
+            json.dumps(_run_record("r1", 400, 50)) + "\n", encoding="utf-8")
+
+        calls: dict = {"notify": []}
+        original_root = rd.repo_root
+
+        def fake_run(*a, **k) -> subprocess.CompletedProcess:
+            return subprocess.CompletedProcess(a[0], 0)
+
+        def fake_notify(config, message, *, dry_run) -> dict:
+            calls["notify"].append(message)
+            return {"sent": True}
+
+        rd.repo_root = lambda: root
+        try:
+            with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "notify_or_log", side_effect=fake_notify), \
+                 mock.patch.object(rd.publish_pages, "publish_ranking",
+                                   side_effect=RuntimeError("push rejeitado")):
+                rc = rd.main(["--config", str(root / ".env"),
+                              "--pages-dir", "/tmp/nao-existe"])
+        finally:
+            rd.repo_root = original_root
+
+        check("falha de publicacao nao derruba o run (exit 0)", rc == 0)
+        check("falha dispara o envio (reportada, mesmo exit 0)",
+              len(calls["notify"]) == 1)
+        msg = calls["notify"][0] if calls["notify"] else ""
+        check("mensagem identifica a falha de publicacao",
+              "Publicação GitHub Pages falhou" in msg and "push rejeitado" in msg)
+
+
 def _data_snapshot(data_dir: Path) -> dict:
     snap = {}
     if not data_dir.exists():

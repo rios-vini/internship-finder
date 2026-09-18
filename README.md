@@ -141,7 +141,10 @@ deduplicados por fonte, disparado quando exit != 0 (coleta falhou/parcial) OU o
 relatorio tem alertas (queda brusca / erro recorrente / **zero-return**: uma
 fonte que tinha vagas e passou a responder `empty` por ≥3 runs ok>0 anteriores
 — P2 #10); sem anomalia, nada é
-enviado. `--always-notify` envia o resumo mesmo sem anomalia (digest, opcional).
+enviado. `--always-notify` envia o resumo mesmo sem anomalia (digest, opcional);
+(5) **publicacao GitHub Pages** (Fase 1, opcional via `--pages-dir PATH`) — com
+coleta ok e vagas elegiveis, o ranking e publicado na branch `gh-pages` (ver
+secao abaixo); falha vira linha na mensagem, nunca derruba o run.
 
 **Comportamento novo (06/09, PR #30)**: a coleta do refresh roda com
 `--sqlite data/jobs.db` (historico `first_seen`/`last_seen`/`active`/`archived`
@@ -200,11 +203,16 @@ rotaciona, entao merece snapshot independente do archive de JSONs.
   durante o snapshot (comportamento WAL normal do SQLite; somem quando a
   proxima conexao de escrita fecha). O backup em si e sempre um arquivo unico.
 
-**Cron** (instalado no VPS, 05/09): diario as 06:00 UTC, com `flock -n`
-(nao sobrepoe runs; se o anterior ainda roda, o novo e pulado):
+**Cron** (instalado no VPS, 05/09): diario as 06:00 com `flock -n`
+(nao sobrepõe runs; se o anterior ainda roda, o novo e pulado). Desde a
+Fase 1 (18/09) o horario e **06:00 America/Sao_Paulo** via `CRON_TZ` no
+proprio crontab (o sistema do VPS roda em UTC — timezone explicito, nunca
+aritmetica de horas), e o refresh publica o ranking no GitHub Pages
+(`--pages-dir`; ver secao abaixo):
 
 ```
-0 6 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/python /home/ubuntu/internship-finder/scripts/refresh_daily.py >> /tmp/refresh_daily.log 2>&1
+CRON_TZ=America/Sao_Paulo
+0 6 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/python /home/ubuntu/internship-finder/scripts/refresh_daily.py --pages-dir /home/ubuntu/internship-finder-ghpages >> /tmp/refresh_daily.log 2>&1
 ```
 
 > **Corrigido 05/09 (noite)**: a 1a versao usava `flock ... cd /repo && python ...`
@@ -215,6 +223,44 @@ rotaciona, entao merece snapshot independente do archive de JSONs.
 > lock cobre o run inteiro. Validado: preflight cron-like (`env -i PATH=/usr/bin:/bin`
 > + `--dry-run`, exit 0, sem tocar `data/`) e reentrada do flock (`-n` com lock
 > segurado → exit 1; liberado → exit 0).
+>
+> **Corrigido na Fase 1 (18/09)**: antes a linha era `0 6 * * *` SEM timezone —
+> o VPS roda em Etc/UTC, entao o refresh disparava as 06:00 UTC = **03:00 BRT**.
+> Agora `CRON_TZ=America/Sao_Paulo` faz o `0 6` significar 06:00 em Brasilia
+> (= 09:00 UTC), sem nenhuma aritmetica de horas no codigo. O `--pages-dir`
+> liga a publicacao automatica (branch `gh-pages`).
+
+### GitHub Pages (Fase 1)
+
+O ranking gerado a cada refresh e publicado automaticamente em **GitHub Pages**:
+
+**URL estavel: https://rios-vini.github.io/internship-finder/**
+
+Fluxo diario: coleta (CLI) → `data/eligible_jobs.json` (ranqueado) →
+`scripts/interface.py` reusado para gerar o HTML (mesma pagina do uso local,
+nenhum frontend novo) → verificacao de seguranca → `index.html` gravado
+atomicamente no clone de deploy (`~/internship-finder-ghpages`, fora do repo)
+→ commit + push na branch `gh-pages` → GitHub Pages serve a pagina.
+Implementacao: `scripts/publish_pages.py` (tambem chamavel a mao), invocado
+pelo refresh via `--pages-dir`.
+
+**Gates**: a publicacao so ocorre com coleta bem-sucedida (exit 0) E vagas
+elegiveis > 0 — nunca publica ranking parcial/vazio; a pagina anterior
+permanece. Falha de publicacao nao derruba o run: entra no log e na mensagem
+do Telegram (`⚠️ Publicação GitHub Pages falhou: ...`).
+
+**Seguranca**: antes do push o conteudo passa por `check_public_safe`
+(padroes de token/secret + caminhos privados da VPS); a branch `gh-pages`
+contem somente `index.html` — `jobs.db`, logs, `data/`, `.env` e outros
+artefatos internos nunca sao publicados.
+
+Publicar manualmente (caso necessario):
+
+```bash
+.venv/bin/python scripts/publish_pages.py --dry-run              # gera + verifica seguranca, sem push
+.venv/bin/python scripts/publish_pages.py                        # publica o ranking atual
+.venv/bin/python scripts/publish_pages.py --pages-dir /tmp/pages # clone de deploy custom
+```
 
 **Limitação documentada**: o JSONL de metricas acumulava lixo historico de
 validacao (registros `type: tenant` de mocks, ex.: `smartrecruiters:other` 70x
