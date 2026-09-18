@@ -205,14 +205,18 @@ rotaciona, entao merece snapshot independente do archive de JSONs.
 
 **Cron** (instalado no VPS, 05/09): diario as 06:00 com `flock -n`
 (nao sobrepõe runs; se o anterior ainda roda, o novo e pulado). Desde a
-Fase 1 (18/09) o horario e **06:00 America/Sao_Paulo** via `CRON_TZ` no
-proprio crontab (o sistema do VPS roda em UTC — timezone explicito, nunca
-aritmetica de horas), e o refresh publica o ranking no GitHub Pages
-(`--pages-dir`; ver secao abaixo):
+Fase 1 (18/09) o horario e **06:00 America/Sao_Paulo**, agendado como
+**`0 9 * * *` UTC** — o cron Vixie desta build do Ubuntu (3.0pl1) **nao
+suporta `CRON_TZ`** (testado 18/09 com protocolo dual: probe agendado
+11:45 America/Sao_Paulo nao disparou; o controle 14:45 UTC disparou) e o
+Brasil nao tem horario de verao desde 2019 (`America/Sao_Paulo` = UTC-3
+fixo, entao 06:00 BRT e permanentemente 09:00 UTC). Nenhuma aritmetica de
+horas no codigo — so o campo do cron, documentado. O refresh publica o
+ranking no GitHub Pages (`--pages-dir`; ver secao abaixo):
 
 ```
-CRON_TZ=America/Sao_Paulo
-0 6 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/python /home/ubuntu/internship-finder/scripts/refresh_daily.py --pages-dir /home/ubuntu/internship-finder-ghpages >> /tmp/refresh_daily.log 2>&1
+# 06:00 America/Sao_Paulo = 09:00 UTC (cron Vixie local sem suporte a CRON_TZ)
+0 9 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/python /home/ubuntu/internship-finder/scripts/refresh_daily.py --pages-dir /home/ubuntu/internship-finder-ghpages >> /tmp/refresh_daily.log 2>&1
 ```
 
 > **Corrigido 05/09 (noite)**: a 1a versao usava `flock ... cd /repo && python ...`
@@ -226,9 +230,9 @@ CRON_TZ=America/Sao_Paulo
 >
 > **Corrigido na Fase 1 (18/09)**: antes a linha era `0 6 * * *` SEM timezone —
 > o VPS roda em Etc/UTC, entao o refresh disparava as 06:00 UTC = **03:00 BRT**.
-> Agora `CRON_TZ=America/Sao_Paulo` faz o `0 6` significar 06:00 em Brasilia
-> (= 09:00 UTC), sem nenhuma aritmetica de horas no codigo. O `--pages-dir`
-> liga a publicacao automatica (branch `gh-pages`).
+> Agora o disparo e as **09:00 UTC = 06:00 America/Sao_Paulo** (UTC-3 fixo; ver
+> nota do `CRON_TZ` acima). O `--pages-dir` liga a publicacao automatica
+> (branch `gh-pages`).
 
 ### GitHub Pages (Fase 1)
 
