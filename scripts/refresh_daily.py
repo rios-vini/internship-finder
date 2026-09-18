@@ -64,7 +64,7 @@ Flags:
   nao e o default).
 - ``--timeout N``: timeout por scraper passado ao CLI (default 60).
 - ``--max-collection-secs N``: teto total do subprocesso de coleta (default
-  5400 = 90 min; a coleta completa de 96 empresas e ~10-30 min em media
+  5400 = 90 min; a coleta completa de 101 empresas e ~10-30 min em media
   (mais lenta se muitas falhas de timeout/erro por tenant). Estourado:
   mensagem "run falhou (timeout do subprocesso)".
 - ``--retention-days N``: retencao do archive em dias (default 14; ``0`` =

@@ -36,10 +36,12 @@ class RegistryEntry(BaseModel):
     enabled: bool = True  # false desabilita a empresa sem removê-la do registry
 
 
-# --- Seed: 96 empresas operacionais (12 da validação inicial + 27 da
+# --- Seed: 101 empresas operacionais (12 da validação inicial + 27 da
 # --- expansão E2 + 25 da expansão internacional P3 #23: 8 DE + 17 NL/CH/AT
 # --- + 17 da expansão de cobertura 15/09/2026 + 6 da auditoria 16/09/2026
-# --- + 9 da auditoria próxima fronteira 17/09/2026).
+# --- + 9 da auditoria próxima fronteira 17/09/2026 + 5 da última onda de
+# --- cobertura 18/09/2026: Sungrow EMEA, AutoScout24, Huawei Research Center
+# --- Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH).
 # --- Nomes canônicos = consulta real do ``--companies``
 # --- (README.md + docs/empresas_verificacao.md + docs/relatorio_expansao.md +
 # --- docs da auditoria de cobertura 15/09 + auditoria próxima onda 16/09).

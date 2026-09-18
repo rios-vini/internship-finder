@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-16
+Last updated: 2026-09-18
 
 ## Current state
 
@@ -9,7 +9,7 @@ filtering → dedup → ranking), with SQLite persistence, structured error code
 observability (health), CI and standardized requirement tracking in
 `MASTER_PLAN.md`.
 
-Current collection scope includes **87 evaluated/operational companies**
+Current collection scope includes **101 evaluated/operational companies**
 (12 initial + 27 E2 expansion + 25 added 08/09, P3 #23 — Lote A: 8 DE
 (Allianz, Adidas, Puma, Hella, Fraunhofer, Merck, Boehringer Ingelheim,
 HelloFresh; Otto removed 15/09 — false positive); Lote B: 17 NL/CH/AT (Philips,
@@ -22,11 +22,19 @@ BCG, MediaMarkt/mediasatur, Tchibo, HORNBACH, About You, Hager Group, Lanxess,
 Linde, Sonepar, Flix, Kuehne+Nagel, Vattenfall, 4flow)
 + **6 added 16/09** (auditoria próxima onda: BMW AG, SMA, Jobs Festo, Wacker,
 Webasto Jobportal, Roland Berger — nomes exatos do manifest; `successfactors:jobs`
-compartilhado desambiguado por URL).
+compartilhado desambiguado por URL)
++ **9 added 17/09** (auditoria próxima fronteira: Picnic, cbs Corporate Business
+Solutions, AIXTRON SE, Holzland Becker, CarOnSale, CURRENTA GRUPPE, Miebach
+Consulting, Engelhart, audibene/hear.com — nomes canônicos = nomes exatos do
+manifest)
++ **5 added 18/09** (última onda de cobertura: Sungrow EMEA, AutoScout24, Huawei
+Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH).
 
-Latest documented full runs (cron 06:00 UTC; reproduced offline by `scripts/coverage.py` and the current pipeline). **Current snapshot = 16/09 run** (1st with 81 companies + post-audit filters; the 6 new companies of the 16/09 wave enter on the 17/09 run); earlier runs below are historical records:
+Latest documented full runs (cron 06:00 UTC; reproduced offline by `scripts/coverage.py` and the current pipeline). **Current snapshot = 18/09 run** (1st with 101 companies); earlier runs below are historical records:
 
-- **16/09 (current): 69,586 raw → 5,813 student-type → 1,167 target-area → 355 Germany → 331 eligible (dedup −24)** — registry at **87 companies**; CI suite **23/23 scripts — 1009 checks — 0 failures** (re-run 16/09, on the #59 head); 47 companies / 35 tenants with eligible jobs (SAP 74, BoschGroup 47, Volkswagen AG 19, Fraunhofer-Gesellschaft 19, BASF SE 16, Knorr-Bremse 14, Liebherr 13, STIHL 12); ATS (eligible): successfactors 210, smartrecruiters 50, phenom 22, workday 16, eightfold 13, cornerstone 10, greenhouse 6, ashby 4; scores min 1.0 | median 6.0 | max 17.5
+- **18/09 (current): 72,866 raw → 6,635 student-type → 1,411 target-area → 507 Germany → 476 eligible (dedup −31)** — registry at **101 companies**; CI suite **23/23 scripts — 1033 checks — 0 failures** (re-run 18/09, on the #65 head); 65 companies / 50 tenants with eligible jobs (BMW AG 81, SAP 74, BoschGroup 48, Volkswagen AG 23, teampicnic 20, Fraunhofer-Gesellschaft 19, Knorr-Bremse 15, Liebherr-International S.A. 13, BASF SE 13, STIHL 12); ATS (eligible): successfactors 296, smartrecruiters 54, greenhouse 33, phenom 24, workday 16, recruitee 14, eightfold 12, cornerstone 10, softgarden 6, ashby 4, personio 4, teamtailor 3; scores min 1.0 | median 6.25 | max 17.5; health: 3 alerts (all documented external/legitimate: Lidl timeout ×15, Kuehne+Nagel cornerstone ×3, SMA oracle homonym ×2)
+- **17/09 (histórico): 71,735 raw → 414 eligible** — registry at 96 companies (1st run with 96)
+- **16/09 (histórico): 69,586 raw → 5,813 student-type → 1,167 target-area → 355 Germany → 331 eligible (dedup −24)** — registry at 87 companies; 47 companies / 35 tenants with eligible jobs
 - **14/09 (histórico): 60,222 raw → 281 filtered → 257 eligible (dedup −24)** — registry at 65 companies; CI suite 23/23 — 958 checks
 - 06/09 (histórico): 37,953 raw → 3,080 student-type → 752 target-area → 246 Germany-eligible → **222 eligible** (dedup −24)
 - 07/09 (histórico): **37,957 raw → 220 eligible** (dedup −24; 43 tenants ok / 2 empty / 1 timeout / 1 error — falhas recorrentes conhecidas: moka Bayer + Lidl timeout, ver MASTER_PLAN P3 #36)
@@ -54,7 +62,7 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 - JSON output (atomic write)
 - CSV output (atomic write)
 - E2 company expansion
-- 39-company collection scope (E2 expansion, 2026-08-12 — **historical**; expanded to 65 on 08/09, P3 #23; registry today: **87** after the 15/09 + 16/09 waves)
+- 39-company collection scope (E2 expansion, 2026-08-12 — **historical**; expanded to 65 on 08/09, P3 #23; registry today: **101** after the 15/09 → 18/09 waves)
 - Post-audit corrections F1–F3 (parecer A, 2026-08-13)
 - **P0 — Application deadline + hardening ACH-01..09** (PR #8, merged 31/08): `Job.application_deadline` (`datetime|None`, never inferred from `posted_at`), dedup per tenant, IDs without URL, JSONL metrics, exit code 2 on partial failure.
 - **P0.1 — Workday Country/Location Resolver** (PR #9, merged 01/09): `geocoding.py`, cache-first, flag `INTERNSHIP_FINDER_GEOCODING` (OFF), adapter fallback after `infer_country_iso`; +9 Workday DE recovered with the flag on.
@@ -89,10 +97,10 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 
 ## Next priorities
 
-- **P1–P3 desta leva: fechados e comprovados (auditoria 14/09)** — não existe defeito técnico conhecido em aberto. O que permanece abaixo é **monitoramento** de itens externos/operacionais (Lidl timeout, gate de versão do `ats-scrapers`) e **decisões futuras de escopo/produto** (P3 #24, próximas ondas de expansão) — não dívida técnica aberta. Expansões concluídas desde então: **65→87** (ondas 15/09 e 16/09, PR #59).
+- **P1–P3 desta leva: fechados e comprovados (auditoria 14/09)** — não existe defeito técnico conhecido em aberto. O que permanece abaixo é **monitoramento** de itens externos/operacionais (Lidl timeout, gate de versão do `ats-scrapers`) e **decisões futuras de escopo/produto** (P3 #24, próximas ondas de expansão) — não dívida técnica aberta. Expansões concluídas desde então: **65→87→96→101** (ondas 15/09 a 18/09, PRs #59, #62, #65; 18/09 = ondas de cobertura encerradas por decisão do dono).
 - **P3 #20/#21/#29/#30/#31 complete** (06/09 - see Completed). Backlog remainders:
   - **P3 #22**: DONE (08/09) — measured, no action (see Completed); reopen if jobs.json > 1GB or read > 10s or data/ > 10GB
-  - **P3 #23**: international expansion + more DE companies (39→60→100) — **DONE 08/09** (39→65, 26 validated; 22 rejected with evidence; 65→87 on 15/09+16/09 waves, PR #59); next wave BE/FR/Nordics/UK when owner decides scope — see MASTER_PLAN #23
+  - **P3 #23**: international expansion + more DE companies (39→60→100) — **DONE 08/09** (39→65, 26 validated; 22 rejected with evidence; 65→87 on 15/09+16/09 waves, PR #59; 87→96 on 17/09, PR #62; 96→101 on 18/09, PR #65 — **expansão de cobertura encerrada por decisão do dono em 18/09**) — see MASTER_PLAN #23
   - **P3 #24**: aggregators (LinkedIn/Indeed/Glassdoor) - needs owner scope decision
   - **P3 #25**: simple interface (top jobs, filters, link) — **DONE 08/09**: `scripts/interface.py` (HTML auto-contido, stdlib, zero deps novas) + `scripts/test_interface.py` no CI (array 16→17) — see MASTER_PLAN #25
   - **P3 #37**: health agora agrega por (source, company) — **DONE 08/09** (PR #39): elimina falsos drops em tenants compartilhados (phenom:nan 6 companies; successfactors:jobs 9); run 08/09 pós-fix: 1 alerta (só Lidl); CI 17 scripts. See MASTER_PLAN #37
@@ -107,8 +115,9 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 - Some Workday tenants do not expose country information clearly enough for the current country filter (documented; nothing fabricated). **Partially mitigated** by the optional `geocoding.py` fallback (OFF by default; +9 Workday DE when enabled; network geocoding only with the flag on).
 - **`application_deadline` em tenants SuccessFactors (P1.4, provado por origem — NÃO é bug):** o feed RSS de Google Merchant (`<host>/sitemal.xml`) publica `g:expiration_date` com **um único valor por feed, igual a `data do feed + 30 dias`, aplicado a todas** as vagas (ex.: feed 11/09 → `2026-10-11`). Trata-se de um horizonte de validade gerado pela própria plataforma (a fonte), não de um prazo de candidatura definido pelo empregador. **O valor VEM DA FONTE**: ats-scrapers 0.3.0 só parseia `g:expiration_date` e o adapter deste projeto só mapeia/parseia — nenhuma camada soma +30 dias nem aplica default. Verificado por reprodução em 4 feeds (SAP/Kaufland/ZF/AkzoNobel) e por auditoria de código. Por isso **não se remove** o valor por heurística de `+30 dias`/frequência (um prazo real que coincida com +30 seria apagado); a interface deve tratar esse campo em SuccessFactors como "providenciado pela fonte", não como prazo garantido do empregador.
 - Some companies/ATS combinations currently fail or are excluded for documented reasons (Siemens/teamtailor inativo; re-probe pós-release do PR #285 upstream; Mercedes-Benz/ThyssenKrupp/Kärcher/Heraeus/Aurubis/Rheinmetall/Nordex/SEW/Lenze/Beckhoff/Arvato/BLG/Dachser/Bechtle/Jungheinrich/KUKA sem match real no manifest 17/09 — nunca no SEED; BMW entra somente como "BMW AG" desde 16/09 — a consulta "BMW" sozinha continua FP (`join_com:bmw-kuehnert`); Hager Group e Lanxess foram ADICIONADAS ao SEED em 15/09 (coletam OK no ats-scrapers 0.3.0 — "XML malformado" era limitação do pin antigo); Symrise/ifm/Kerkhoff/Efficio seguem bloqueadas pela API join.com 422 (reconfirmado 17/09); GFT: FP icims:gannettfleming (283 vagas EUA) e workable:gft EMPTY; tenant real da GFT é `sf:jobs` jobs.gft.com (0 eligible DE medido 17/09; exigiria nome canônico longo); Rhenus exige fix `URL_SLUG_ATS`+"adp" (medido pós-fix: 3 raw, 0 eligible)).
-- Eligible count (current, documented): the daily cron regenerates `data/eligible_jobs.json` (**16/09 run: 331 eligible** — 69,586 raw → 5,813 → 1,167 area → 355 DE, dedup −24, registry 87; **registry 96 desde 17/09 — a onda 17/09 (Picnic, cbs, AIXTRON, Holzland Becker, CarOnSale, CURRENTA, Miebach, Engelhart, audibene/hear.com) tem ~49 eligible medido ao vivo no fetch (relatório /home/ubuntu/auditoria_proxima_fronteira_2026-09-17.md); o funil oficial com 96 sai do próximo run cron**). Historical figures: 14/09 → 257 (60,222 raw), 07/09 → 220 and 06/09 → 222 (the 222→220 drift was documented in the 07/09 update); older numbers in docs (236/232 from the 31/08 snapshot) are historical.
-- 5 bachelor-degree titles in the tail escape the type filter (degree programs without a student marker; 2 BASF "Studium mit vertiefter Praxis" were removed by the 15/09 SmVdP exclusion) + 3 academic-thesis titles (Bachelorarbeit/thesis — accepted by the 15/09 thesis rule, not a regression); candidates for future pattern extension.
+- **3 falhas recorrentes DOCUMENTADAS e legítimas (continuam no health/refresh de propósito — não silenciar; investigadas 17/09, PR #64)**: Lidl `successfactors:lidlstiftuP2` timeout ×15 runs (feed externo enorme sob demanda); Kuehne+Nagel `cornerstone:kuehne-nagel` NXDOMAIN (empresa válida coletada via phenom:nan); SMA `oracle:fa-exow-saasfaprod1/cx_1` homônimo externo (sem exclusão específica, decisão 17/09).
+- Eligible count (current, documented): the daily cron regenerates `data/eligible_jobs.json` (**18/09 run: 476 eligible** — 72,866 raw → 6,635 → 1,411 area → 507 DE, dedup −31, registry 101). Historical figures: 17/09 → 414 (71,735 raw, registry 96), 16/09 → 331 (69,586 raw, registry 87), 14/09 → 257 (60,222 raw), 07/09 → 220 and 06/09 → 222 (the 222→220 drift was documented in the 07/09 update); older numbers in docs (236/232 from the 31/08 snapshot) are historical. The 476 number is the eligible count of the supported ATS/registry universe — **not** an estimate of the entire German market.
+- Eligible tail (measured 18/09): **0 formal bachelor-degree titles** (Bachelor of.../Praxisverbund rules since 16/09 — PR #61; SmVdP since 15/09) + **27 academic-thesis titles** (Abschlussarbeit/Bachelor-/Masterarbeit/Thesis — accepted by the 15/09 thesis rule, not a regression); candidates for future pattern extension.
 
 Data in `data/` is local and gitignored: numbers serve as collection documentation, not as versioned files.
 

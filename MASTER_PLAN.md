@@ -1,15 +1,19 @@
 # MASTER_PLAN — Internship Finder (fonte de verdade única)
 
-**Versão:** 2026-09-16 · **Status:** unificado a partir de (1) roadmap original Hermes,
+**Versão:** 2026-09-18 · **Status:** unificado a partir de (1) roadmap original Hermes,
 (2) auditoria OpenHands (ACH-01..21), (3) consolidações das sessões 27–30/08,
 (4) **verificação direta no código/git em 31/08**; Seção 1 re-verificada em 07/09
 (estado pós-fechamento orquestrado de 06/09 — PRs #29–#32, main `ab822f8`, CI verde,
 0 PRs abertos), em **14/09** (auditoria final — leva P1–P3, PRs #40–#57, main
-`da271a2`, CI 23/23, 958 checks, 0 falhas; funil 60.222 → 257) e em **16/09**
+`da271a2`, CI 23/23, 958 checks, 0 falhas; funil 60.222 → 257), em **16/09**
 (expansão de cobertura 65→87 — PR #59, main `82e131c`, CI 23/23, 1.009 checks,
-0 falhas; funil 69.586 → 331). Nenhum item entra
+0 falhas; funil 69.586 → 331), em **17/09** (expansão 87→96 — PR #62, main
+`e6e661e`, CI 23/23, 1.021 checks; relatório auditoria próxima fronteira) e em
+**18/09** (última onda de cobertura 96→101 — PR #65, main `ea59f07`, CI 23/23,
+1.033 checks, 0 falhas; **fechamento final documental e técnico — ver Log 18/09**;
+funil oficial 72.866 → 476). Nenhum item entra
 aqui por memória: tudo foi conferido em `git log`, `git status`, grep no `src/`,
-execução da suíte (16/09) ou nos docs.
+execução da suíte (18/09) ou nos docs.
 
 > Regra de leitura: ✅ = verificado feito · ⏳ = pendente · 🔒 = bloqueado por decisão
 > do dono · ❌ = descartado com motivo. Fonte da verdade de execução: este arquivo +
@@ -18,14 +22,18 @@ execução da suíte (16/09) ou nos docs.
 
 ---
 
-## 1. Estado verificado em 2026-09-17
+## 1. Estado verificado em 2026-09-18
 
 ### Main público (GitHub)
-- `main` = `e6e661e` (17/09, PR #62 = expansão de cobertura 87→96 — onda da
-  auditoria próxima fronteira 17/09): registry com **96 empresas** (ondas
-  15/09, 16/09 e 17/09 — ver Log de mudanças abaixo), **CI do main/PR verde —
-  23/23 scripts, 1.021 checks, 0 falhas** (suíte re-executada em 17/09).
-  Marcos anteriores: `1937fd5` (16/09, PR #61 = filtro Bachelor),
+- `main` = `ea59f07` (18/09, PR #65 = última onda de cobertura 96→101 —
+  **+5 empresas**: Sungrow EMEA, AutoScout24, Huawei Research Center Germany,
+  EAT HAPPY GROUP, VDI Technologiezentrum GmbH — + melhoria genérica de país
+  em `countries.py`): registry com **101 empresas** (ondas
+  15/09, 16/09, 17/09 e 18/09 — ver Log de mudanças abaixo), **CI do
+  main/PR verde — 23/23 scripts, 1.033 checks, 0 falhas** (suíte
+  re-executada em 18/09).
+  Marcos anteriores: `e6e661e` (17/09, PR #62 = expansão 87→96),
+  `1937fd5` (16/09, PR #61 = filtro Bachelor),
   `82e131c` (16/09, PR #59 = expansão 65→87 + filtros
   pós-auditoria 15/09), `da271a2` (14/09, PR #57 = escrita atômica do CSV),
   `9ee080f` (14/09,
@@ -42,16 +50,17 @@ execução da suíte (16/09) ou nos docs.
   (exit != 0 OU alertas OU disco >80%; anti-spam). Exit code do subprocesso
   propagado ao SO (0/1/2/124) e teto total `--max-collection-secs` (default
   5400 s = 90 min) implementados e validados (P1.3 / P3.7).
-- **Último run real (16/09, 1º com 81 empresas + filtros 15/09)**: **69.586
-  brutas → 331 eligible** (funil abaixo; 86 empresas/76 tenants com dados,
-  47/35 com eligible; as 6 novas da onda 16/09 entram no run 17/09). Runs
-  anteriores (JSONL sanitizado): 14/09 **60.222→257** · 07/09 **37.957→220** ·
+- **Último run real (18/09, 1º com 101 empresas)**: **72.866 brutas → 476
+  eligible** (funil abaixo; 115 fontes ok no run — 100 empresas com vagas
+  coletadas — e 65/50 com eligible; as 5 novas da onda 18/09 entram já neste run). Runs
+  anteriores (JSONL sanitizado): 17/09 **71.735→414** (funil oficial com 96) ·
+  16/09 **69.586→331** · 14/09 **60.222→257** · 07/09 **37.957→220** ·
   06/09 **37.953→222** · 05/09 **38.038→224** · 31/08 **37.373→236**. Número
   vivo: `data/eligible_jobs.json` (regenerado ~06:05 UTC todo dia).
-- **Workday no eligible: 16** (run 16/09, flag OFF) — o resolver P0.1 segue
+- **Workday no eligible: 16** (run 18/09, flag OFF) — o resolver P0.1 segue
   OFF por default; a re-inferência de país via location recupera Workday no
   filtro.
-- Suíte: **23/23 scripts no CI, 1.009 checks, 0 falhas** (re-executada 16/09) +
+- Suíte: **23/23 scripts no CI, 1.033 checks, 0 falhas** (re-executada 18/09) +
   **probe manual separado** (`manifest_probe.py`, não é teste — fora do CI).
   Baseline original 31/08: 37.373→236; baseline antigo (12/08, 56.810→293) era
   mercado diferente, não regressão. Achado 31/08 (resolvido no P2 #16):
@@ -66,21 +75,21 @@ execução da suíte (16/09) ou nos docs.
 
 ### Pipeline (validado end-to-end, parecer A)
 ```
-69.586 brutas → 5.813 estudante → 1.167 área → 355 DE → dedup −24 → 331 eligible/ranked
+72.866 brutas → 6.635 estudante → 1.411 área → 507 DE → dedup −31 → 476 eligible/ranked
 ```
-(funil do run 16/09 com 81 empresas, reproduzido read-only sobre
-`data/jobs.json`; funis históricos: 14/09 60.222 → 257 · 06/09 37.953 → 222 ·
+(funil do run 18/09 com 101 empresas, reproduzido read-only sobre
+`data/jobs.json` (coverage.py + pipeline); funis históricos: 17/09 71.735 → 414 ·
+16/09 69.586 → 331 · 14/09 60.222 → 257 · 06/09 37.953 → 222 ·
 07/09 37.957 → 220 · 12/08 56.810→293 era
 mercado diferente, ver §1.)
-- 331/331 `country_iso='de'` · scores min 1.0 / mediana 6.0 / max 17.5 ·
-  determinístico (md5 idêntico em re-execução — re-verificado 16/09).
-- 96 empresas no registry · 47 com vagas eligible no run 16/09 (87 empresas;
-  as 9 da onda 17/09 têm eligible medido ao vivo no fetch — ver Log 17/09; o
-  funil oficial com 96 sai do próximo run cron) (SAP 74,
-  BoschGroup 47, Volkswagen AG 19, Fraunhofer-Gesellschaft 19, BASF SE 16,
-  Knorr-Bremse 14, Liebherr 13, STIHL 12...) · ATS (eligible): successfactors
-  210, smartrecruiters 50, phenom 22, workday 16, eightfold 13, cornerstone
-  10, greenhouse 6, ashby 4.
+- 476/476 `country_iso='de'` · scores min 1.0 / mediana 6.25 / max 17.5 ·
+  determinístico (md5 idêntico em re-execução — re-verificado 18/09).
+- 101 empresas no registry · 65 com vagas eligible no run 18/09 (BMW AG 81,
+  SAP 74, BoschGroup 48, Volkswagen AG 23, teampicnic 20, Fraunhofer 19,
+  Knorr-Bremse 15, Liebherr 13, BASF SE 13, STIHL 12...) · ATS (eligible): successfactors
+  296, smartrecruiters 54, greenhouse 33, phenom 24, workday 16, recruitee
+  14, eightfold 12, cornerstone 10, softgarden 6, ashby 4, personio 4,
+  teamtailor 3.
 
 ### Estado técnico P1–P3 (leva da auditoria final — encerrada e comprovada em 14/09)
 - **Identidade Company/tenant/Job** (P1.1, PR #40, 09/09): `Job.id` escopado por
@@ -128,15 +137,23 @@ mercado diferente, ver §1.)
 
 ### Limitações externas conhecidas (não são bugs internos)
 - Workday: API não expõe país confiável p/ vários tenants → vagas DE sem
-  `country_iso` na fonte (P0.1 mitigou; re-inferência via location no filtro).
-- 6 títulos de graduação na cauda do eligible 14/09 (4 Bachelor BASF + 2
-  "Studium mit vertiefter Praxis" Schaeffler) — fora
-  dos padrões aprovados F1; candidatos a extensão futura, não regressão.
-- **Falha recorrente restante (refresh diário, exit 2 até decisão)**:
-  `successfactors:lidlstiftuP2` (Lidl) — timeout 85s recorrente (P3 #36,
-  monitorado; reavaliar timeout por fonte quando o upstream evoluir).
-  `moka:bayer/148387` (Bayer) foi RESOLVIDO em 07/09 (P3 #36: pycryptodome
-  no pyproject). Conhecidas e não-regressões; o health alerta por design.
+  `country_iso` na fonte (P0.1 mitigou; re-inferência via location no filtro;
+  no run 18/09, 16 vagas eligible vieram de tenants workday com a flag OFF).
+- **Falhas recorrentes DOCUMENTADAS (investigadas 17/09 com evidência — PR
+  #64, comentários no SEED; continuam no health/refresh de propósito, não
+  silenciar)**: (1) `successfactors:lidlstiftuP2` (Lidl) — timeout recorrente
+  (15 runs em 18/09): feed externo enorme gerado sob demanda; timeout
+  global/por fonte não é aceitável. (2) `cornerstone:kuehne-nagel` (K+N) —
+  tenant Cornerstone morto/NXDOMAIN; a empresa válida continua coletada via
+  `phenom:nan`. (3) `oracle:fa-exow-saasfaprod1/cx_1` (SMA) — homônimo externo
+  confirmado; `oracle` NÃO entra em `URL_SLUG_ATS` e não há exclusão
+  específica (decisão 17/09). Alertas de health seguem factuais.
+- Cauda do eligible 18/09 (476): **0 títulos de graduação formal** (regras de
+  exclusão Bachelor `\bbachelor of\b`/`\bpraxisverbund\b` desde 16/09 — PR
+  #61 — e SmVdP desde 15/09) e **27 títulos de tese** (Abschlussarbeit /
+  Bachelor-/Masterarbeit / Thesis — aceitos pela regra de teses de 15/09,
+  não é regressão; candidatos a extensão futura de filtro, não FPs
+  confirmados).
 
 ---
 
@@ -242,6 +259,7 @@ mercado diferente, ver §1.)
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-18 (FECHAMENTO FINAL — última onda de cobertura + sync documental/técnico; PR #65, squash `ea59f07`, CI verde com membership 23/23 — 1.033 checks; 0 PRs; relatório `/home/ubuntu/auditoria_cobertura_expansao_2026-09-15.md` e ondas 16/17/18/09 precedentes)**: **+5 empresas no SEED (96→101)**: Sungrow EMEA `personio:sungrow-emea` (131 raw→**4 eligible**: Spare Parts Logistics/Operations Process Mgmt/Customer Service Ops Intern + Project&Ops Rework WS, Munich/Oberschleißheim), AutoScout24 `greenhouse:autoscout24` (39→**1**: Intern AI Transformation Munich), Huawei Research Center Germany `teamtailor:huaweiresearchcentergermanyaustria` (100→**1**: Intern Battery Diagnostics Nürnberg), EAT HAPPY GROUP `teamtailor:eathappygroup` (20→**2**), VDI Technologiezentrum GmbH `softgarden:vdijobs` (17→**2**) — **307 raw → 10 eligible** medidos AO VIVO 18/09. **Melhoria genérica de país em `countries.py`** (a pergunta da tarefa): formatos `"<País> - <Cidade>"` (personio/Sungrow) e `"<Cidade> (<País>)"` (greenhouse/AutoScout24) — casamento por SEGMENTO COMPLETO contra COUNTRY_NAMES, unidades da direita p/ esquerda, sem geocoding externo; Δ no corpus de 71.735: **+17 'de', 0 regressões, 162 correções ISO corretas**; test_countries +14 checks; CANONICAL_96→CANONICAL_101. **Fechamento final (esta tarefa)**: docs sincronizadas para o estado real — registry **101 empresas**, funil oficial do 1º run com 101 (18/09 06:00): **72.866 raw → 6.635 tipo → 1.411 área → 507 DE → dedup −31 → 476 eligible** (65 empresas / 50 tenants com eligible; BMW AG 81, SAP 74, BoschGroup 48, VW 23, teampicnic 20, Fraunhofer 19; top1 17,0% / top3 42,6% / top5 51,7%; ATS: successfactors 296, smartrecruiters 54, greenhouse 33, phenom 24, workday 16, recruitee 14, eightfold 12, cornerstone 10; scores min 1.0 / mediana 6.25 / max 17.5; health: 3 alertas factuais = Lidl timeout 15 runs, K+N cornerstone 3, SMA oracle 2 — os documentados, não silenciados). Verificados no código e inalterados (itens técnicos): CSV atômico via `_write_atomic` (PR #57), atomic writes, SQLite lifecycle por unidade (P1.2), exit code 0/1/2/124 do refresh (P1.3), `application_deadline` nunca inferido (P1.4), pin `ats-scrapers>=0.3.0` (0.3.0 instalado, expose presente), CI via `pip install -e .` (23 scripts), `_safe_url` http/https (P2.3), benchmark intacto (P2.5), registry consistency 101 linhas: **83 consistent / 15 multi / 3 dynamic / 0 drift**. Higiene: LICENSE (MIT) + SECURITY.md adicionados; sem resíduos no root. `data/` intocada; suíte local 23/23 (1.033 checks) de cwd scratch. [#onda 18/09 ✅][#fechamento final ✅]
 - **2026-09-17 (onda da auditoria próxima fronteira — registry 87→96, PR #62, squash `e6e661e`, CI verde com membership 23/23 — 1.021 checks; 0 PRs; relatório `/home/ubuntu/auditoria_proxima_fronteira_2026-09-17.md`)**: **+9 empresas** validadas AO VIVO (fetch 17/09, manifest 80.390, funil oficial student/área/pais): Picnic `greenhouse:teampicnic` (315 raw→**24 eligible**: Category Management/Commercial Analytics Praktikum, Hamburg/Düsseldorf — maior ganho unitário da onda), cbs Corporate Business Solutions `recruitee:cbsconsulting` (184→**5**: Werkstudent SAP/MDM/AI, Heidelberg), AIXTRON SE `softgarden:aixtron` (95→**4**: Project Purchasing, Data/Analytics), Holzland Becker `recruitee:holzlandbecker` (27→**4**: Einkauf/Procurement, Data Science), CarOnSale `greenhouse:caronsale` (43→**3**: Logistik-Strategie, Inventory, Berlin), CURRENTA GRUPPE `recruitee:currentagruppe` (40→**3**: Engineering Logistic, Transformation & Logistikoptimierung, Leverkusen), Miebach Consulting `recruitee:miebachconsulting` (11→**3**: Supply Chain Strategy, Berlin), Engelhart `greenhouse:engelhart` (9→2, Berlin), audibene/hear.com `greenhouse:audibenehearcom` (9→1). **Nome canônico = nome EXATO do manifest quando o nome natural resolve FP/zero** (regra auditoria 16/09): "audibene / hear.com" desambigua das 4 entradas audibene; "cbs Corporate Business Solutions GmbH" evita o FP workable:cbs-9; o match EXATO short-circuita o fallback token → homônimas com name diferente não entram (Picnic→não "Picnic Delivery"/try-picnic; Engelhart→não join.com "Engelhart & Dirr"; Holzland Becker→não softgarden "Manfred Scherf"). verify_companies --fetch **9/9 match exato + OK**; suíte 23/23 (1.021 checks) de cwd scratch; `data/` intocada; funil oficial com 96 = próximo run cron (18/09 06:00). **Não entrou (medido)**: Rhenus (fix `URL_SLUG_ATS`+adp destrava, 3 raw/0 eligible), GFT (tenant real = `sf:jobs` jobs.gft.com, 417 raw/34 student/16 DE/**0 eligible** — FP icims:gannettfleming 283 vagas EUA reconfirmado; workable:gft EMPTY), Siemens (teamtailor not found; re-probe pós-release com PR #285), KION (4 tenants: bamboohr EMPTY/greenhouse not-found/join 422/workday kiongroup 982 raw 0 área), Symrise/ifm/Kerkhoff/Efficio (join.com 422 reconfirmado; Symrise workday external_fitco tem 1 vaga), GEA (workday geacareers 370/0 — resolution exige nome canônico), Bilfinger (jobs.bilfinger.com 912/0; query canônica longa), Jungheinrich/Heraeus/Aurubis/Rheinmetall/Nordex/SEW/Lenze/Beckhoff/Arvato/BLG/KUKA/ThyssenKrupp (zero entradas no manifest — sem match confiável), Kärcher/Dachser/Bechtle/Porsche/Mercedes (só homônimas; MB.io 5 vagas/0 eligible). Dataset `Client.search()` segue fonte de descoberta (probes 8 ATS: softgarden 621 empresas DE+student fora do registry, recruitee 87...), nunca ingestão. [#onda 17/09 ✅]
 - **2026-09-16 (onda da auditoria próxima onda — registry 81→87, PR #59, squash `82e131c`, CI verde com membership 23/23 — 1.009 checks; 0 PRs)**: **+6 empresas** no SEED, nomes exatos do manifest (BMW AG `sf:jobs` jobs.bmwgroup.com; SMA `sf:sma` sma.jobs; Jobs Festo, Wacker, Webasto Jobportal `sf:jobs` jobs.festo/wacker/webasto.com; Roland Berger `smartrecruiters:rolandberger`). Padrão do tenant compartilhado: BMW/Festo/Wacker/Webasto seguem o caso STIHL/Tchibo/HORNBACH — o coletor desambigua por URL (`URL_SLUG_ATS`), nunca por slug genérico `jobs`; `Company.source` continua o tenant; health agrega por `(source, company)`; Job IDs escopados por empresa (P1.1). **Fetch real read-only validado** (funil oficial): BMW AG 886→485→149→85→**82 eligible** (auditoria 878→81; drift de mercado +1), SMA 128→20→6→5→**5**, Jobs Festo 126→15→2→1→**1**, Wacker 114→0, Webasto Jobportal 198→0, Roland Berger 199→0 → global 1.650→605→162→91→**88** (dedup −3). Zero cross-tenant collision (1.651 ids únicos), 0 duplicação indevida; `--health` real: 87 linhas, 0 drift, 6 no_data (novas ainda não no cron). **SMA documentado**: resolve também `oracle:fa-exow-saasfaprod1/cx_1` (slug incompleto p/ oracle; identidade não confirmada) → FETCH_ERROR recorrente esperado por run, NÃO silenciado (unidade falha nunca entra no SQLite/lifecycle). Otto segue fora (FP). Sem commit/PR na entrega — dono autorizou merge em 16/09. [#onda 16/09 ✅]
 - **2026-09-15 (expansão de cobertura — registry 65→81 + filtros pós-auditoria; implementada no working tree, mergeada em 16/09 via PR #59)**: **+17 empresas** (Liebherr `sf:LiMySLive`, STIHL/Tchibo/HORNBACH `sf:jobs` nome-exato desambigua URL, Simon-Kucher `cornerstone:simon-kucher`, bahagag/BAUHAUS, BCG `bamboohr:bcg`, mediasatur/MediaMarkt, aboutyougmbh/About You, Hager Group, Lanxess, Linde, Sonepar, Flix, Kuehne+Nagel, Vattenfall, 4flow); **Otto removida** (`jazzhr:otto` = otto.applytojob.com, FP — não readicionar). **Filtros**: teses acadêmicas (Abschlussarbeit/Bachelor-/Masterarbeit/Semester-/Studienarbeit/Bachelor's/Master's thesis) como tipo estudantil (+3–5 eligible, FP~0); exclusão SmVdP (Studium mit vertiefter Praxis — limpa FPs Schaeffler); vocabulário CONTROLADO de dados em `AREA_RELATED` (data science/data analysis/datenanalyse/business analyst, peso 0.5; `data`/`analyst` soltos fora). 1º run real com 81 (16/09 06:00): **69.586→331 eligible** (15/09: 60.220→276 — expansão +55 no 1º run). GFT/KION/Siemens/Symrise ficam pós-upstream; Rhenus exige fix `URL_SLUG_ATS`+adp. [#onda 15/09 ✅]
