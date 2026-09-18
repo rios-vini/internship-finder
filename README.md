@@ -127,7 +127,7 @@ Telegram SOMENTE em anomalia** (anti-spam), reusando o health do P1 #6:
 ```bash
 .venv/bin/python scripts/refresh_daily.py              # producao (cacheia em data/)
 .venv/bin/python scripts/refresh_daily.py --dry-run    # demonstrativo: tempdir sintetico, sem rede/data
-.venv/bin/python scripts/refresh_daily.py --always-notify  # digest diario (nao e o default)
+.venv/bin/python scripts/refresh_daily.py --always-notify  # digest diario (Fase 2: usado no cron)
 ```
 
 Fluxo: (1) **rotacao** — copia `data/jobs.json`/`.csv`,
@@ -141,10 +141,15 @@ deduplicados por fonte, disparado quando exit != 0 (coleta falhou/parcial) OU o
 relatorio tem alertas (queda brusca / erro recorrente / **zero-return**: uma
 fonte que tinha vagas e passou a responder `empty` por ≥3 runs ok>0 anteriores
 — P2 #10); sem anomalia, nada é
-enviado. `--always-notify` envia o resumo mesmo sem anomalia (digest, opcional);
+enviado. `--always-notify` envia o resumo mesmo sem anomalia (digest diario;
+desde a Fase 2 o cron usa a flag — ver secao "Digest do Telegram");
 (5) **publicacao GitHub Pages** (Fase 1, opcional via `--pages-dir PATH`) — com
 coleta ok e vagas elegiveis, o ranking e publicado na branch `gh-pages` (ver
 secao abaixo); falha vira linha na mensagem, nunca derruba o run.
+(6) **digest do ranking no Telegram** (Fase 2) — com coleta OK (exit 0) a
+mensagem ganha o resumo do ranking (perfil/criterios, novas vagas no Top 30,
+Top 5, mudancas e o link do GitHub Pages); o "estado anterior" usado na
+comparacao e o snapshot da propria rotacao (ver secao abaixo).
 
 **Comportamento novo (06/09, PR #30)**: a coleta do refresh roda com
 `--sqlite data/jobs.db` (historico `first_seen`/`last_seen`/`active`/`archived`
@@ -216,7 +221,9 @@ ranking no GitHub Pages (`--pages-dir`; ver secao abaixo):
 
 ```
 # 06:00 America/Sao_Paulo = 09:00 UTC (cron Vixie local sem suporte a CRON_TZ)
-0 9 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/python /home/ubuntu/internship-finder/scripts/refresh_daily.py --pages-dir /home/ubuntu/internship-finder-ghpages >> /tmp/refresh_daily.log 2>&1
+# --pages-dir: publica o ranking no GitHub Pages (Fase 1).
+# --always-notify: envia o digest do Telegram todo dia, mesmo sem anomalia (Fase 2).
+0 9 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/python /home/ubuntu/internship-finder/scripts/refresh_daily.py --pages-dir /home/ubuntu/internship-finder-ghpages --always-notify >> /tmp/refresh_daily.log 2>&1
 ```
 
 > **Corrigido 05/09 (noite)**: a 1a versao usava `flock ... cd /repo && python ...`
@@ -233,6 +240,52 @@ ranking no GitHub Pages (`--pages-dir`; ver secao abaixo):
 > Agora o disparo e as **09:00 UTC = 06:00 America/Sao_Paulo** (UTC-3 fixo; ver
 > nota do `CRON_TZ` acima). O `--pages-dir` liga a publicacao automatica
 > (branch `gh-pages`).
+>
+> **Fase 2 (18/09)**: a linha ganhou `--always-notify` — o digest diario do
+> Telegram passa a chegar TODOS os dias (o anti-spam continua valendo para os
+> avisos operacionais de anomalia, que entram na mesma mensagem).
+
+### Digest do Telegram (Fase 2)
+
+O Telegram deixou de ser so alerta e virou o **resumo diario do estado da
+busca** — o ranking completo continua sendo a pagina do GitHub Pages (o digest
+termina sempre com o link estavel). Implementacao:
+`scripts/ranking_digest.py` (funcoes puras) chamado por
+`scripts/refresh_daily.py`; a mensagem e UNICA por run (o resumo operacional
+de anomalia e o digest do ranking ficam juntos).
+
+A mensagem diaria traz, nesta ordem:
+
+1. **Resumo da execucao** (mantido da Fase anterior): status normal/parcial,
+   funil bruto → elegiveis, duplicatas, fontes ok/falhas e problemas.
+2. **Perfil e criterios ativos** — areas-alvo, localizacao principal (Germany),
+   tipos aceitos/excluidos e os **pesos do score lidos das constantes vivas**
+   de `src/internship_finder/ranking.py`/`filters.py` (nenhuma regra e
+   duplicada no digest; se o ranking mudar, o digest reflete sozinho).
+3. **Novas vagas no Top 30** — posicao, titulo, empresa, localizacao, score e
+   link de cada vaga que entrou no ranking desde a execucao anterior.
+   *"Nova vaga" ≠ "vaga que subiu"*: nova e a vaga cujo id NAO existia no
+   ranking elegivel anterior; vaga antiga que entrou no Top 30 aparece em
+   "Mudancas no ranking" (Entraram), nunca como "nova".
+4. **Top 5 atual** — resumo rapido sem abrir o site.
+5. **Mudancas relevantes no ranking** — entradas/saidas do Top 30 e maiores
+   movimentos de posicao (≥ 5 posicoes).
+6. **Link do ranking completo** (sempre a ultima linha).
+
+**Snapshot do run anterior**: NENHUM arquivo novo — a comparacao reusa o
+archive da propria **rotacao** do refresh: antes da coleta o `data/` atual
+(incluindo `eligible_jobs.json` do run anterior) e copiado para
+`data/archive/<ts>/`; o digest compara `data/eligible_jobs.json` (run atual)
+contra esse snapshot. Sem snapshot do run anterior (primeiro digest), a
+mensagem avisa que a comparacao comeca no proximo run — nunca trata o Top 30
+inteiro como "novo". Retencao = a do archive (`--retention-days`, 14).
+
+**Gates/robustez**: digest so e montado com coleta OK (exit 0 — mesmo gate da
+publicacao; run parcial reporta a parcialidade no resumo operacional, sem
+digest); falha ao montar nunca derruba o run; o digest respeita o limite do
+Telegram (4096 chars) — em runs com MUITAS anomalias a mensagem base ja e
+longa e o digest vira 1 linha compacta com o link do ranking (o envio nunca
+falha por tamanho). Relevancia de posicao: `MOVER_MIN_DELTA = 5`.
 
 ### GitHub Pages (Fase 1)
 

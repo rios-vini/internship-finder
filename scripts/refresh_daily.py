@@ -114,6 +114,7 @@ from internship_finder.storage.sqlite_backup import (  # backup do jobs.db (P3)
     cleanup_backups,
 )
 import publish_pages  # publicacao do ranking em GitHub Pages (Fase 1)
+import ranking_digest  # digest do ranking no Telegram (Fase 2)
 
 log = logging.getLogger("refresh_daily")
 
@@ -135,6 +136,13 @@ ARCHIVE_TS_FORMAT = "%Y%m%dT%H%M%SZ"
 # Aviso de disco: percentual de uso do filesystem de data/ acima do qual o
 # refresh loga warning e inclui a linha "Disco" na mensagem do Telegram.
 DISK_WARN_PCT = 80
+
+# Limite de texto do sendMessage do Telegram (4096 caracteres). O digest do
+# ranking (Fase 2) e anexado ao fim; em runs com MUITAS anomalias a mensagem
+# base ja consome quase todo o limite — o digest vira 1 linha compacta com o
+# link do ranking completo (nunca perde a saida para o ranking, e o envio
+# nunca falha por tamanho).
+TELEGRAM_MAX_LEN = 4096
 
 # Retencao default do archive em dias (--retention-days).
 DEFAULT_RETENTION_DAYS = 14
@@ -450,6 +458,7 @@ def build_message(
     disk_pct: int | None = None,
     backup_error: str | None = None,
     publish_error: str | None = None,
+    digest_lines: list[str] | None = None,
 ) -> str | None:
     """Monta a mensagem de alerta/digest; ``None`` = nada a enviar (anti-spam:
     sem anomalia, sem falha e sem ``--always-notify``, nao envia).
@@ -556,7 +565,27 @@ def build_message(
     if publish_error:
         lines.append("")
         lines.append(f"⚠️ Publicação GitHub Pages falhou: {publish_error}")
-    return "\n".join(lines)
+    # Fase 2 — digest do ranking (perfil, novas vagas no Top 30, Top 5,
+    # mudancas e link do ranking completo). Anexado ao FIM da mensagem: o
+    # resumo operacional acima fica intocado e o link e sempre a ultima
+    # linha. ``digest_lines`` ja vem com espaco em branco separador inicial;
+    # sem digest (run parcial/sem ranking), nada e anexado.
+    base_len = len(lines)
+    if digest_lines:
+        lines.extend(digest_lines)
+    text = "\n".join(lines)
+    if digest_lines and len(text) > TELEGRAM_MAX_LEN:
+        # Telegram aceita no maximo 4096 chars. A mensagem base (operacional)
+        # e preservada INTEGRA; o digest vira 1 linha com o link — melhor do
+        # que nao chegar nada (sendMessage devolveria 400).
+        link = next(
+            (line for line in reversed(digest_lines) if line.startswith("🔗")),
+            digest_lines[-1],
+        )
+        compact = (f"ℹ️ Resumo do ranking encurtado (mensagem longa) — "
+                   f"ranking completo: {link}")
+        text = "\n".join(lines[:base_len] + ["", compact])
+    return text
 
 
 # --- telegram --------------------------------------------------------------
@@ -720,7 +749,17 @@ def _run_dry_run(retention_days: int = DEFAULT_RETENTION_DAYS) -> int:
         records = read_new_records(metrics, 0)
         report = build_health_report(records)
         print("alertas health:", json.dumps(report["alerts"], ensure_ascii=False))
-        message = build_message(summary, report["alerts"], exit_code=0)
+        print("== digest do ranking (Fase 2) ==")
+        digest = ranking_digest.digest_sections(
+            data_dir / "eligible_jobs.json",
+            archive_dir / "eligible_jobs.json",
+            pages_url=ranking_digest.resolve_pages_url(base),
+        )
+        print("digest montado:",
+              "sim" if digest else "nao (sem ranking atual)", 
+              f"({len(digest)} linhas)" if digest else "")
+        message = build_message(summary, report["alerts"], exit_code=0,
+                                digest_lines=digest)
         notify_or_log({}, message, dry_run=True)
         print(f"archive criado: {archive_dir} ({len(list(archive_dir.iterdir()))} arquivos)")
         print("DRY-RUN OK: data/ real intocada, sem rede, sem envio.")
@@ -865,11 +904,32 @@ def main(argv: list[str] | None = None) -> int:
     else:
         log.info("publicacao GitHub Pages desligada (sem --pages-dir)")
 
+    # Fase 2 — digest do ranking para o Telegram. Montado apenas com coleta
+    # VALIDA (exit 0): mesmo gate da publicacao — num run parcial o ranking
+    # pode estar incompleto e o digest nao deve apresenta-lo como oficial
+    # (o resumo operacional acima ja reporta a parcialidade). O "estado
+    # anterior" vem do snapshot da rotacao (``archive_dir/eligible_jobs.
+    # json`` = ranking do run anterior, copiado ANTES da coleta). Falha ao
+    # montar NUNCA derruba o run: vira log e a mensagem segue sem digest.
+    digest_lines: list[str] | None = None
+    if exit_code == 0:
+        try:
+            digest_lines = ranking_digest.digest_sections(
+                current_path=data_dir / "eligible_jobs.json",
+                previous_path=archive_dir / "eligible_jobs.json",
+                pages_url=ranking_digest.resolve_pages_url(root),
+            )
+        except Exception as exc:  # noqa: BLE001 — digest e best-effort
+            log.warning("digest do ranking nao montado (run segue normal): %s", exc)
+    else:
+        log.info("digest pulado (exit %d != 0 — ranking nao e o oficial)", exit_code)
+
     message = build_message(summary, report["alerts"], exit_code,
                             always_notify=args.always_notify,
                             disk_pct=disk_pct,
                             backup_error=backup_error,
-                            publish_error=publish_error)
+                            publish_error=publish_error,
+                            digest_lines=digest_lines)
     if message is None:
         print("Sem anomalia — nenhum envio (anti-spam).")
     else:

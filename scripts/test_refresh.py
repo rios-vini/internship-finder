@@ -496,15 +496,19 @@ def test_pages_dir_integrado() -> None:
         root = Path(tmp)
         data_dir = root / "data"
         data_dir.mkdir()
-        # JSONL semeado com um record type:run (eligible 50 > 0).
-        (data_dir / "collection_metrics.jsonl").write_text(
-            json.dumps(_run_record("r1", 400, 50)) + "\n", encoding="utf-8")
+        # JSONL vazio antes do run; o registro type:run e gravado DURANTE a
+        # coleta (fake), como o CLI real faz — o snapshot de linhas do refresh
+        # (antes x depois) o conta como registro novo do run.
+        metrics_path = data_dir / "collection_metrics.jsonl"
+        metrics_path.write_text("", encoding="utf-8")
         pages_dir = Path(tmp) / "pages"
 
         calls: dict = {"publish": [], "notify": []}
         original_root = rd.repo_root
 
         def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+            with metrics_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(_run_record("r1", 400, 50)) + "\n")
             return subprocess.CompletedProcess(args[0], 0)
 
         def fake_publish(root, pages, *, exit_code, eligible, run_id):
@@ -682,6 +686,105 @@ def test_exit_code_processo_observavel() -> None:
               "Traceback" not in proc.stderr)
 
 
+def test_message_digest() -> None:
+    print("== Fase 2: digest_lines anexado por build_message ==")
+    summary = rd.summarize_run([_run_record("r1", 400, 50)])
+    digest = ["", "🎯 Perfil e critérios ativos", "🔗 Ranking completo: https://x/"]
+    base = rd.build_message(summary, [], 0, always_notify=True)
+    with_digest = rd.build_message(summary, [], 0, always_notify=True,
+                                   digest_lines=digest)
+    check("digest anexado ao fim da mensagem",
+          (with_digest or "").endswith("🔗 Ranking completo: https://x/"))
+    check("conteudo base preservado na frente",
+          (with_digest or "").startswith(base[:60]))
+    check("sem digest_lines: saida identica ao comportamento antigo",
+          rd.build_message(summary, [], 0, always_notify=True,
+                           digest_lines=[]) == base)
+    check("digest sozinho nao fura o anti-spam (assinatura antiga preservada)",
+          rd.build_message(summary, [], 0, digest_lines=digest) is None)
+    anti2 = rd.build_message(summary, [], 0, digest_lines=["x"], backup_error="e")
+    check("digest coexist com avisos operacionais (backup_error)",
+          anti2 is not None and "Backup do jobs.db falhou" in anti2 and "x" in anti2)
+    # guarda do limite do Telegram: digest gigante nunca estoura 4096 chars
+    huge = ["", "🎯 Perfil e critérios ativos", "🆕 Novas vagas no Top 30"] + [
+        f"#{i} — {'vaga ' * 40} — Acme — Berlin — 12.5" for i in range(1, 30)
+    ] + ["🔗 Ranking completo (todas as vagas elegíveis): https://x/"]
+    long_msg = rd.build_message(summary, [], 0, always_notify=True,
+                                digest_lines=huge)
+    check("mensagem longa cabe no limite do Telegram",
+          long_msg is not None and len(long_msg) <= rd.TELEGRAM_MAX_LEN)
+    check("mensagem longa preserva a parte operacional + link",
+          "📊 internship-finder" in long_msg
+          and "Resumo do ranking encurtado" in long_msg
+          and "https://x/" in long_msg)
+    check("mensagem curta NAO e encurtada",
+          with_digest is not None and "encurtado" not in with_digest)
+
+
+def test_digest_integrado_fluxo() -> None:
+    print("== Fase 2: digest montado no fluxo do refresh (so exit 0) ==")
+    prev = [{"id": "old-1", "title": "Antiga", "company": "Acme",
+             "location": "Berlin", "score": 9.0, "url": "https://ex.com/old-1"}]
+    new = [{"id": "fresh-1", "title": "Nova", "company": "SAP",
+            "location": "Walldorf", "score": 12.0,
+            "url": "https://ex.com/fresh-1"},
+           {"id": "old-1", "title": "Antiga", "company": "Acme",
+            "location": "Berlin", "score": 9.0, "url": "https://ex.com/old-1"}]
+
+    for code in (0, 2):
+        with tempfile.TemporaryDirectory(prefix="t_digest_") as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            data_dir.mkdir()
+            (data_dir / "collection_metrics.jsonl").write_text(
+                json.dumps(_run_record("r1", 400, 2)) + "\n", encoding="utf-8")
+            (data_dir / "eligible_jobs.json").write_text(
+                json.dumps(prev, ensure_ascii=False), encoding="utf-8")
+
+            calls: dict = {"notify": []}
+            original_root = rd.repo_root
+
+            def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+                # Simula a saida do CLI no fluxo real: exit 0 grava o ranking
+                # NOVO em data/ (o anterior ja foi para o archive pela rotacao).
+                if code == 0:
+                    (data_dir / "eligible_jobs.json").write_text(
+                        json.dumps(new, ensure_ascii=False), encoding="utf-8")
+                return subprocess.CompletedProcess(args[0], code)
+
+            def fake_notify(config, message, *, dry_run) -> dict:
+                calls["notify"].append(message)
+                return {"sent": True}
+
+            rd.repo_root = lambda: root
+            try:
+                with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                     mock.patch.object(rd, "notify_or_log", side_effect=fake_notify):
+                    rc = rd.main(["--config", str(root / ".env"),
+                                  "--always-notify"])
+            finally:
+                rd.repo_root = original_root
+
+            if code == 0:
+                check("exit 0: mensagem enviada com digest",
+                      rc == 0 and len(calls["notify"]) == 1)
+                msg = calls["notify"][0] or ""
+                check("digest com perfil, Top 5 e link",
+                      "🎯 Perfil e critérios ativos" in msg
+                      and "🏆 Top 5 atual" in msg
+                      and "🔗 Ranking completo" in msg)
+                check("vaga nova detectada contra o snapshot rotacionado",
+                      "🆕 Novas vagas no Top 30" in msg and "Nova" in msg)
+                check("link do ranking completo na ultima linha",
+                      msg.rstrip().endswith(rd.ranking_digest.PAGES_URL_FALLBACK))
+            else:
+                msg = calls["notify"][0] or ""
+                check(f"exit {code}: mensagem SEM digest (ranking nao oficial)",
+                      rc == code and len(calls["notify"]) == 1
+                      and "🏆 Top 5" not in msg
+                      and "🔗 Ranking completo" not in msg)
+
+
 def main() -> int:
     test_rotacao()
     test_snapshot_e_resumo()
@@ -697,6 +800,11 @@ def main() -> int:
     test_backup_integrado()
     test_backup_falha_reportada()
     test_message_backup_error()
+    test_message_publish_error()
+    test_pages_dir_integrado()
+    test_pages_falha_reportada()
+    test_message_digest()
+    test_digest_integrado_fluxo()
     test_dry_run_nao_toca_data()
     test_exit_code_propagado()
     test_exit_code_processo_observavel()
