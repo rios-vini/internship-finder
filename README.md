@@ -562,6 +562,45 @@ ausente, H2 language, H3 desempate): `docs/ranking_benchmark.md`. Relatorio
 reproduzivel: `.venv/bin/python scripts/ranking_benchmark.py`; reproduzir o
 benchmark em snapshot novo: `scripts/make_ranking_benchmark.py refresh`.
 
+### PT-BR na interface (Fase 5, 19/09)
+
+A pagina publica ganhou uma **camada estruturada em PT-BR** — para entender a
+vaga (o que e, tipo de contrato, onde fica, a area e POR QUE recebeu aquela
+posicao) sem depender de ingles/alemao. Regras da fase (decisao do dono):
+
+- **NAO ha traducao integral automatica** das descricoes: sem LLM, sem API de
+  traducao, sem servico externo, sem peso no refresh diario. A descricao
+  permanece original, etiquetada `Original`.
+- **Titulo**: traducao DETERMINISTICA por glossario (`src/internship_finder/
+  ptbr.py`), exibida como campo separado `PT-BR`; o titulo original continua
+  SEMPRE visivel, com tag `Original (EN/DE)` quando o idioma e detectado, e e
+  o link que abre o anuncio na fonte. Titulo sem termos traduziveis → so o
+  original.
+- **Campos em PT-BR**: tipo do anuncio (`FULL_TIME` → "Período integral
+  (FULL_TIME)"), pais (`de` → "Alemanha"), modalidade quando o registro traz
+  (`remoto`), além dos rotulos ja PT-BR (local, desde, candidaturas ate).
+- **"por que esta vaga?"**: cada componente REAL do `score_breakdown` (ou
+  `materials_breakdown`) do perfil ativo vira uma linha com rotulo PT-BR,
+  valor real e um detalhe do que a componente mede; componentes NEGATIVAS
+  (penalidades reais) sao separadas em "o que reduziu a nota". Os valores
+  sao os do calculo real — nenhum numero novo e criado (e o ranking nao e
+  recalculado).
+- **Perfis**: os explicadores mudam conforme o perfil ativo (principal vs
+  Materials Engineering) e nunca se misturam.
+- **Pontes/seguranca**: palavras-ponte (im/in/for/und/and) so em minusculas e
+  so entre segmentos traduzidos; nomes de produto ("SAP Analytics Cloud") e
+  o sufixo alemao `*in`/`/in` sao protegidos de traducao errada.
+
+**Como adicionar termos ao glossario** (unica manutencao necessaria):
+editar `GLOSSARY` em `src/internship_finder/ptbr.py` com uma entrada
+`(regex, frase_pt, rotulo_pt)`. Regras: frases compostas ANTES das genericas
+("Supply Chain Management" antes de "Supply Chain"); `frase_pt=None`
+preserva o match como esta (protecao de nomes proprios); termos profissionais
+internacionais podem manter o original entre parenteses ("Compras
+(Procurement)"). Sem entrada, o termo permanece no original (comportamento
+seguro, sem quebra). Detalhes e limitacoes:
+`docs/relatorio_fase5_ptbr.md` + `scripts/test_ptbr.py`.
+
 ## Runbook
 
 ### Como adicionar empresas
