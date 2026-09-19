@@ -64,7 +64,7 @@
 <main>
   <header>
     <h1>Internship Finder — ranking de vagas elegíveis</h1>
-    <p>data/eligible_jobs.json (476 vagas ranqueadas) · gerado em 2026-09-19T02:54:54Z UTC · ordem: score (ranking do pipeline)</p>
+    <p>data/eligible_jobs.json (476 vagas ranqueadas) · gerado em 2026-09-19T04:18:18Z UTC · ordem: score (ranking do pipeline)</p>
   </header>
   <div class="stats">
     <div class="stat"><b>476</b><span>vagas elegíveis</span></div>
@@ -689,11 +689,11 @@ function if_filter_sort(rows, st, sortKey) {
     out.forEach(function (r) {
       r.tr.style.display = '';
       body.appendChild(r.tr);
-      visible[r.tr] = true;
+      visible[r.tr.dataset.rank] = true;  // chave UNICA: elemento vira '[object ...]' (todos iguais)
       shown++;
     });
     data.forEach(function (r) {
-      if (!visible[r.tr]) r.tr.style.display = 'none';
+      if (!visible[r.tr.dataset.rank]) r.tr.style.display = 'none';
     });
     els.count.textContent = shown + ' de ' + TOTAL + ' vagas';
   }
