@@ -1,8 +1,10 @@
 # internship-finder
 
 Buscador de estagios (internship / working student / Praktikum / Werkstudent) com
-foco em **Supply Chain, Procurement, BI, Analytics e Automacao**, prioridade para a
-**Alemanha**. Pipeline **orientado a empresas**:
+foco em **Supply Chain, Procurement, BI, Analytics e Automacao** (perfil
+principal) e **Materials Engineering** (perfil secundario — mesmo conjunto de
+vagas, ranking proprio e independente), prioridade para a **Alemanha**.
+Pipeline **orientado a empresas**:
 
 ```
 Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeout) → adapter → Job (pydantic) → filtros → dedup → ranking → print/save (JSON/CSV)
@@ -497,6 +499,17 @@ deterministica, sem ML — e mostra as melhores primeiro (TOP 20). Cada vaga
 ganha `score` (total) e `score_breakdown` (por componente) no JSON/CSV; o
 desempate e deterministico (score desc -> titulo -> empresa -> id).
 
+**Segundo perfil — Materials Engineering (Fase 4, 19/09)**: o MESMO conjunto
+elegivel tambem e ranqueado por relevancia para Engenharia de Materiais
+(`src/internship_finder/materials_ranking.py`): cada vaga ganha
+`materials_score` + `materials_breakdown` PROPRIOS. O `score` do perfil
+principal NUNCA muda — os dois rankings sao independentes (nunca somados) e
+operam sobre as MESMAS vagas elegiveis (nada e recolhido, re-filtrado ou
+deduplicado). A pagina publica (`index.html`) tem um seletor de perfil
+(**Procurement / Supply Chain** | **Materials Engineering**) e o digest
+diario do Telegram ganhou a secao "Perfil Materials Engineering" (Top 5 +
+novas no Top 30 Materials).
+
 Score = `area + skills + language + type + location + penalties`:
 
 | Componente | Peso | Fonte |
@@ -507,6 +520,25 @@ Score = `area + skills + language + type + location + penalties`:
 | `type` | +1.0 | marcador forte de tipo no TITULO (Praktikum, Werkstudent, Internship, iXp... — reusa `filters.STUDENT_TYPE_PATTERNS`; Trainee/JMP NAO sao marcadores: os programas de `filters.PROGRAM_EXCLUSION_PATTERNS` nao chegam ao eligible) |
 | `location` | DE explicito +1.0; Berlin +0.5 | ISO alpha-2 via `filters.infer_country_iso`; remoto neutro |
 | `penalties` | senior/director/head/principal -3.0; manager -1.0; FULL_TIME -0.5 | senioridade e "manager" SO valem sem marcador forte de tipo no titulo (Praktikum/Werkstudent/Internship no titulo protegem; JMP/Trainee nao protegem — nao sao marcadores); FULL_TIME e suave (Werkstudent/Praktikum vêm marcados FULL_TIME no conjunto e nao zeram) |
+
+Materials score = `materials + adjacent + context + type + location + penalties`
+(componentes proprios, independentes do principal — ver
+`materials_ranking.py` para a lista completa de termos):
+
+| Componente | Peso | Fonte |
+| --- | --- | --- |
+| `materials` (nucleo) | titulo +2.5 por termo unico; descricao corrobora no maximo +1.0 | termo unico no titulo: materials engineering/science/testing, materialwissenschaft/-technik, werkstoff, metallurgy, metals, steel, aluminium, alloys, polymer, plastics, kunststoff, composites, ceramics, corrosion, surface engineering, coatings/beschichtung, failure analysis, NDT... (compostos DE por prefixo; NUNCA "material" solto — "Materialwirtschaft"/"Materialfluss" sao compras/logistica) |
+| `adjacent` (industrial) | titulo +1.25 por termo unico; descricao +0.5 (1x) | manufacturing/Fertigung, production/Produktion, process engineering/Verfahrenstechnik, mechanical/Maschinenbau, battery/Batterie, semiconductor, chemistry/Chemie, additive manufacturing, anlagenbau, laboratory/Labor, laser, presswerk, catalysts, welding |
+| `context` (quality/R&D) | titulo +0.75 por termo; descricao +0.5 (1x); **so com >=1 termo de nucleo OU adjacente no TITULO** | Quality/Qualität, R&D/research/Forschung, development/Entwicklung, testing/Versuch/Prüfung — "Qualiti Engineer de banco" nao vira vaga de materiais (gate) |
+| `type` | +1.0 | marcador forte de tipo no TITULO (mesma regra do principal) |
+| `location` | DE +1.0; Berlin +0.5 | ISO via `infer_country_iso`; remoto neutro |
+| `penalties` | compras/SCM -1.5; logistica/vendas/financas/RH/juridico/software/admin -1.0 (por CATEGORIA) | SOMENTE no titulo (boilerplate "MS Office"/Einkauf em descricoes nao penaliza); nucleo vence a penalidade ("Einkauf Aluminium" pontua a materia, mas abaixo de vaga tecnica real) |
+
+Sinais NEGATIVOS (evitam falsos positivos): "student"/"engineering"/
+"internship"/"manufacturing" SOZINHOS nao dao relevancia alta (nao sao termos
+do nucleo); termos de negocio no titulo penalizam; palavra solta "material"
+nunca conta. O ranking materials NAO altera a elegibilidade: responde apenas
+"entre as vagas ja elegiveis, quais sao mais relevantes para Materials?".
 
 Sem descricao (parte das vagas em que o ATS nao expoe descricao), age-se com
 graca: skills/idioma contribuem 0 e o score vem do titulo. Metrica do
