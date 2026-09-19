@@ -564,11 +564,11 @@ function if_filter_sort(rows, st, sortKey) {
     out.forEach(function (r) {
       r.tr.style.display = '';
       body.appendChild(r.tr);
-      visible[r.tr] = true;
+      visible[r.tr.dataset.rank] = true;  // chave UNICA: elemento vira '[object ...]' (todos iguais)
       shown++;
     });
     data.forEach(function (r) {
-      if (!visible[r.tr]) r.tr.style.display = 'none';
+      if (!visible[r.tr.dataset.rank]) r.tr.style.display = 'none';
     });
     els.count.textContent = shown + ' de ' + TOTAL + ' vagas';
   }

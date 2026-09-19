@@ -320,6 +320,13 @@ def test_render_html() -> None:
           'id="q"' in page and 'id="f-company"' in page and 'id="f-type"' in page
           and 'id="f-min-score"' in page and 'id="sort"' in page
           and "src=" not in page.split("<script>")[1].split("</script>")[0])
+    # Regressao: o mapa de visibilidade da cola DOM precisa de chave UNICA por
+    # linha (data-rank). Usar o elemento como chave de objeto nao funciona —
+    # todo <tr> vira a mesma string '[object HTMLTableRowElement]' e nenhuma
+    # linha oculta (pego na verificacao DOM real da Fase 3).
+    check("cola DOM oculta por chave unica (data-rank, regressao)",
+          "visible[r.tr.dataset.rank]" in page
+          and "visible[r.tr] = true" not in page)
     check("contador de vagas", "3 de 3 vagas" in page)
     chips = _render([FIXTURE[0]], filters_desc=["empresa contem 'sap'", "pais: de"])
     check("chips de filtro renderizados (escapados)",
