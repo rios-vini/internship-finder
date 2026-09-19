@@ -29,6 +29,14 @@ Consulting, Engelhart, audibene/hear.com — nomes canônicos = nomes exatos do
 manifest)
 + **5 added 18/09** (última onda de cobertura: Sungrow EMEA, AutoScout24, Huawei
 Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH).
++ **Fase 3 (18/09)**: interface do ranking reescrita (`scripts/interface.py` —
+apresentação pura): a página pública mostra **todas as vagas elegíveis** (476)
+com resumo no topo, **filtros/ordenação client-side** (JS vanilla embutido,
+sem backend), posição = posição no ranking do pipeline, badge Top 30 e
+"por que este score" com os componentes reais do `score_breakdown`;
+pipeline/pesos/filtros/dedup intocados; `publish_pages.py`/`refresh_daily.py`
+intocados (regeneração diária automática preservada). Detalhes no Log do
+MASTER_PLAN (18/09, FASE 3).
 
 Latest documented full runs (cron 06:00 UTC; reproduced offline by `scripts/coverage.py` and the current pipeline). **Current snapshot = 18/09 run** (1st with 101 companies); earlier runs below are historical records:
 

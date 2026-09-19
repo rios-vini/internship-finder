@@ -1,4 +1,4 @@
-"""Testes standalone — P3 #25: interface simples (top vagas, filtros, link).
+"""Testes standalone — P3 #25 + Fase 3: interface do ranking (filtros, ordenação).
 
 Cobre ``scripts/interface.py``:
 
@@ -11,13 +11,25 @@ Cobre ``scripts/interface.py``:
   nao re-ranqueia);
 - ``load_db``: SQLite — le apenas ATIVAS (``active=1``), ordenadas por
   ``last_seen`` desc, SEM a chave ``score`` (o banco nao tem a coluna);
-- ``render_html``: HTML auto-contido (doctype, CSS inline, JS vanilla inline
-  SEM atributo src), tudo escapado (título com ``<script>`` nao injeta),
-  URL clicavel com score/breakdown/empresa/local/pais/desde;
+- ``render_html`` (Fase 3): pagina auto-contida (doctype, CSS inline, JS
+  vanilla inline SEM atributo src), tudo escapado (titulo com ``<script>``
+  nao injeta), URL clicavel com score/breakdown/empresa/local/tipo/pais/
+  desde, resumo no topo (total/empresas/score max/top30/atualizado),
+  data-attributes por linha para o JS client-side, badge Top 30, botao
+  "abrir" e bloco "por que este score" com as componentes reais;
 - ``_safe_url``/href (P2.3): so scheme http/https vira ``<a href>``
   (case-insensitive); javascript:/data:/file:/ftp:/mailto:/tel:, URL sem
   scheme e malformada viram titulo sem link; escaping HTML permanece
   depois da validacao;
+- nucleo JS client-side (``if_filter_sort``/``if_match``/``if_sorter``):
+  executado DE VERDADE em node quando disponivel (CI ubuntu tem node
+  pre-instalado) — filtros por texto/empresa/tipo/pais/score minimo e as
+  6 ordenacoes; sem node, o bloco e SKIP com mensagem;
+- bloco REAL (Fase 3): com ``data/eligible_jobs.json`` presente, gera a
+  pagina publica (mesmo comando do publish_pages) e confirma que TODAS as
+  vagas elegiveis aparecem, Top 30 correto, data-rank == posicao do
+  pipeline, resumo coerente e gate de seguranca (nada privado publicado).
+  Sem ``data/``, SKIP (padrao do projeto para runner limpo);
 - ``main``: E2E off-line (tempfile, sem rede, sem ``data/``) — --top corta,
   --output '-' vai pro stdout, filtros via CLI, default de ``data/`` do CWD
   com fallback JSON->DB e erro claro quando nada existe, validacoes
@@ -35,6 +47,9 @@ import contextlib
 import io
 import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 import tempfile
 from datetime import UTC, datetime
@@ -45,6 +60,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import interface  # noqa: E402
+import publish_pages  # noqa: E402 (gate de seguranca do bloco real)
 from internship_finder.models.job import Job  # noqa: E402
 from internship_finder.storage.sqlite_store import SqliteStore  # noqa: E402
 
@@ -144,9 +160,31 @@ FIXTURE = [
      "description": "B2B marketplace operations."},
 ]
 
+# Posicao (rank) no ranking por score desc — ordem esperada em toda a suite.
+RANK_BY_ID = {
+    "sap:1": 1, "sap:2": 2, "siemens:1": 3, "bosch:1": 4,
+    "dhl:1": 5, "zf:1": 6, "attest:1": 7, "edge:1": 8,
+}
+
 
 def titles(jobs: list[dict]) -> list[str]:
     return [j["title"] for j in jobs]
+
+
+def _core_row(job: dict, rank: int) -> dict:
+    """Linha como o DOM glue da pagina enxerga (dataset -> objeto do nucleo JS)."""
+    score = job.get("score")
+    added = interface._added_date(job)
+    return {
+        "title": str(job.get("title") or ""),
+        "company": str(job.get("company") or ""),
+        "location": str(job.get("location") or ""),
+        "type": str(job.get("employment_type") or ""),
+        "country": str(job.get("country_iso") or ""),
+        "score": str(score) if isinstance(score, (int, float)) else "",
+        "rank": rank,
+        "date": "" if added == "—" else added,
+    }
 
 
 def test_load_json() -> None:
@@ -247,30 +285,55 @@ def _render(jobs: list[dict], **kw) -> str:
 
 
 def test_render_html() -> None:
-    print("== render_html (auto-contido, escapado, link clicavel) ==")
-    page = _render([FIXTURE[1], FIXTURE[0]])
+    print("== render_html (Fase 3: auto-contido, escapado, resumo, data-attrs) ==")
+    fx = interface.sort_ranked(FIXTURE)  # como o main faz antes de renderizar
+    page = _render(fx[:3])  # sap1 9.5, sap2 9.0, siemens 8.1
     check("doctype + html + head", page.lstrip().lower().startswith("<!doctype html>")
           and "<html" in page and "<head>" in page)
     check("CSS inline e tabela", "<style>" in page and "<table>" in page and "tbody" in page)
-    check("1 <tr> de dados por vaga", page.count("<tr>") == 3)  # thead + 2 dados
-    check("titulo e empresa presentes", "Working Student Supply Chain Analytics (f/m/d)" in page and "SAP SE" in page)
-    check("URL clicavel (href + nova aba)", 'href="https://jobs.example/sap-1"' in page and 'target="_blank"' in page)
-    check("score formatado", "9.50" in page and "7.20" in page)
-    check("breakdown explicado (badges)", "area +6.0" in page and "idioma +2.0" in page)
-    check("deadline exibida", "ate 2026-10-01" in page)
-    check("filtro no browser: input #q sem <script src=", 'id="q"' in page and "src=" not in page.split("<script>")[1][:200])
-    check("contador de vagas", "2 de 2 vagas" in page)
+    check("3 linhas de dados (thead + 3)", page.count("<tr class=") == 3 and page.count("</tr>") == 4)
+    check("titulo e empresa presentes",
+          "Working Student Supply Chain Analytics (f/m/d)" in page and "SAP SE" in page)
+    check("URL clicavel (href + nova aba)",
+          'href="https://jobs.example/sap-1"' in page and 'target="_blank"' in page)
+    check("botao 'abrir' com link direto", 'class="open"' in page and 'abrir&nbsp;↗' in page)
+    check("score formatado", "9.50" in page and "9.00" in page and "8.10" in page)
+    check("composicao do score com componentes REAIS",
+          '<span class="bd-l">Área</span><span class="bd-v">+6.00</span>' in page
+          and '<span class="bd-l">Skills</span><span class="bd-v">+0.75</span>' in page
+          and '<span class="bd-l">Idioma</span><span class="bd-v">+2.00</span>' in page)
+    check("penalidade negativa exibida",
+          '<span class="bd-l">Penalidades</span><span class="bd-v">-0.40</span>' in page)
+    check("total do breakdown", "Total <b>9.50</b>" in page)
+    check("deadline exibida", "candidaturas até 2026-10-01" in page)
+    check("resumo no topo (stats)", 'vagas elegíveis' in page and 'empresas' in page
+          and 'score máx' in page and 'no Top 30' in page and 'dados atualizados' in page)
+    check("stats com valores reais", '<b>3</b><span>vagas elegíveis' in page
+          and '<b>2</b><span>empresas' in page and '<b>9.50</b><span>score máx'
+          and '<b>3</b><span>no Top 30')
+    check("badge Top 30 presente (3 de 3 no top_n default)",
+          '<span class="badge-top">Top 30</span>' in page and page.count('class="badge-top"') == 3)
+    check("data-attributes por linha", 'data-rank="1"' in page and 'data-rank="3"' in page
+          and 'data-score="9.5"' in page and 'data-date="2026-09-01"' in page
+          and 'data-company="SAP SE"' in page and 'data-type="PART_TIME"' in page)
+    check("filtro no browser: input #q e selects sem <script src=",
+          'id="q"' in page and 'id="f-company"' in page and 'id="f-type"' in page
+          and 'id="f-min-score"' in page and 'id="sort"' in page
+          and "src=" not in page.split("<script>")[1].split("</script>")[0])
+    check("contador de vagas", "3 de 3 vagas" in page)
     chips = _render([FIXTURE[0]], filters_desc=["empresa contem 'sap'", "pais: de"])
     check("chips de filtro renderizados (escapados)",
           '<span class="chip">empresa contem &#x27;sap&#x27;</span>' in chips
-          and 'pa&iacute;s' not in chips and "pais: de" in chips)
+          and "pais: de" in chips)
     evil = {"id": "x", "title": "<script>alert(1)</script>", "company": "A&B",
             "location": "X", "country_iso": "de", "url": "https://e/x?a=1&b=2",
             "score": 1.0, "score_breakdown": None, "description": "<b>raw</b>"}
     page2 = _render([evil])
     check("titulo/empresa escapados (sem injecao)",
           "&lt;script&gt;alert(1)&lt;/script&gt;" in page2 and "<script>alert(1)</script>" not in page2)
-    check("URL escapada (& -> &amp;)", "href=\"https://e/x?a=1&amp;b=2\"" in page2)
+    check("data-title escapado para atributo",
+          'data-title="&lt;script&gt;alert(1)&lt;/script&gt;"' in page2)
+    check("URL escapada (& -> &amp;)", 'href="https://e/x?a=1&amp;b=2"' in page2)
     dbrow = {"id": "d1", "title": "Vaga DB", "company": "Co", "location": "L",
              "country_iso": "de", "remote": 1, "first_seen": "2026-09-07T06:00:02.000000Z",
              "last_seen": "2026-09-07T06:00:02.000000Z", "url": "https://d/1",
@@ -279,14 +342,39 @@ def test_render_html() -> None:
              "collected_at": None, "application_deadline": None}
     page3 = _render([dbrow])
     check("vaga sem score exibe '—' e ordem last_seen", "—" in page3 and "mais recentes (last_seen)" in page3)
-    check("data first_seen exibida (desde)", "2026-09-07" in page3)
+    check("data first_seen exibida (desde) e como data-date", "2026-09-07" in page3 and 'data-date="2026-09-07"' in page3)
+    check("vaga sem score nao tem data-score numerico", 'data-score=""' in page3)
 
 
-def _job_row(url: str, title: str = "Vaga X") -> dict:
-    """Dict minimo de vaga para exercitar o ``_row_html`` (caminho render)."""
-    return {"id": "x", "title": title, "company": "Co", "location": "L",
-            "country_iso": "de", "url": url, "score": 1.0,
-            "score_breakdown": None, "description": None}
+def test_top_n_badge() -> None:
+    print("== destaque Top 30 (apenas apresentacao, posicao do ranking) ==")
+    fx = interface.sort_ranked(FIXTURE)
+    page = _render(fx, top_n=4)
+    body = page.split("<tbody>")[1].split("</tbody>")[0]
+    ranks_with_badge = re.findall(r'<tr class="top30" data-rank="(\d+)"', body)
+    check("badge nas 4 primeiras posicoes", ranks_with_badge == ["1", "2", "3", "4"])
+    check("posicoes 5+ sem badge", 'class="" data-rank="5"' in body
+          and page.count('class="badge-top"') == 4)
+    page0 = _render(fx, top_n=0)
+    check("top_n=0 desliga o destaque", 'class="badge-top"' not in page0
+          and '<tr class="top30"' not in page0)
+    page_all = _render(fx, top_n=30)
+    check("top_n >= total destaca todas", page_all.count('class="badge-top"') == 8)
+
+
+def test_rank_map() -> None:
+    print("== rank_map: posicao no RANKING do pipeline (nao no filtrado) ==")
+    fx = interface.sort_ranked(FIXTURE)
+    rank_map = {str(j["id"]): i for i, j in enumerate(fx, 1)}
+    # so dhl (rank 5 do pipeline) passa no filtro da geracao; a posicao exibida
+    # deve continuar 5, nao 1.
+    page = _render([fx[4]], total=1, rank_map=rank_map)
+    check("posicao preservada do ranking global", 'data-rank="5"' in page
+          and '<td class="score">5</td>' in page)
+    check("sem badge (5 > top 4)", _render([fx[4]], total=1, rank_map=rank_map, top_n=4).count('class="badge-top"') == 0)
+    page_pos = _render([fx[0]], total=1, rank_map=rank_map)
+    check("topo do ranking global nao perde o badge", 'data-rank="1"' in page_pos
+          and page_pos.count('class="badge-top"') == 1)
 
 
 def test_url_scheme() -> None:
@@ -303,7 +391,7 @@ def test_url_scheme() -> None:
         "javascript:alert(1)", "JaVaScRiPt:alert(1)",
         "data:text/html,<script>alert(1)</script>",
         "file:///tmp/test", "ftp://example.com/file",
-        "mailto:test@example.com", "tel:+4912345678",
+        "mailto:test@example.com", "tel:+491****5678",
         "example.com/job/123", "//example.com/x", "not a url",
         "http://[::1",  # malformada: o parser rejeita
     ]
@@ -329,12 +417,158 @@ def test_url_scheme() -> None:
               ["javascript:", "data:", "mailto:", "file:", "ftp:", "tel:"]))
     check("titulo de vaga rejeitada aparece sem link",
           all(t in page for t in ["Ruim", "Feia", "Mail", "Arq", "Ftp"]))
+    check("botao abrir ausente quando a URL e rejeitada",
+          'class="act"><span class="mut">—</span>' in page)
     evil = {"id": "e", "title": "Escape", "company": "Co", "location": "L",
             "country_iso": "de", "url": "https://example.com/?next=javascript:alert(1)&x=1",
             "score": 1.0, "score_breakdown": None, "description": None}
     page2 = _render([evil])
     check("URL http/https com & continua escapada apos validar scheme",
           'href="https://example.com/?next=javascript:alert(1)&amp;x=1"' in page2)
+
+
+def _job_row(url: str, title: str = "Vaga X") -> dict:
+    """Dict minimo de vaga para exercitar o ``render_html`` (caminho render)."""
+    return {"id": "x", "title": title, "company": "Co", "location": "L",
+            "country_iso": "de", "url": url, "score": 1.0,
+            "score_breakdown": None, "description": None}
+
+
+def _extract_core_js(page: str) -> str:
+    """Nucleo puro do JS client-side (ate o marcador de DOM glue)."""
+    script = page.split("<script>")[1].split("</script>")[0]
+    return script.split("/* ==== DOM glue")[0]
+
+
+def test_client_js_core() -> None:
+    print("== nucleo JS client-side executado em node (filtros e ordenacao) ==")
+    if shutil.which("node") is None:
+        print("  [SKIP] node ausente — nucleo JS nao executado (CI ubuntu-latest tem node)")
+        return
+    fx = interface.sort_ranked(FIXTURE)
+    page = _render(fx)
+    core = _extract_core_js(page)
+    check("nucleo puro extraido (nao vazio)", len(core) > 500 and "if_filter_sort" in core)
+    rows = [_core_row(j, RANK_BY_ID[j["id"]]) for j in fx]
+
+    # (estado, ordenacao, ranks esperados) — ranks = posicao no ranking do fixture.
+    cases = [
+        # Filtros
+        ({"q": "logistik"}, "score-desc", [4], "texto 'logistik'"),
+        ({"q": "WORKING"}, "score-desc", [1, 6], "texto case-insensitive 'WORKING'"),
+        ({"q": "xyz"}, "score-desc", [], "texto sem match"),
+        ({"company": "SAP SE"}, "score-desc", [1, 2], "empresa 'SAP SE'"),
+        ({"company": "DHL"}, "score-desc", [5], "empresa 'DHL' (selecao exata)"),
+        ({"type": "FULL_TIME"}, "score-desc", [2, 7], "tipo FULL_TIME"),
+        ({"type": "PART_TIME"}, "score-desc", [1, 3, 4, 5, 6], "tipo PART_TIME"),
+        ({"country": "at"}, "score-desc", [7], "pais 'at'"),
+        ({"location": "Munich, DE"}, "score-desc", [3], "local exato 'Munich, DE'"),
+        ({"q": "vienna"}, "score-desc", [7], "texto encontra LOCAL (vienna)"),
+        ({"minScore": "8"}, "score-desc", [1, 2, 3], "score minimo 8"),
+        ({"minScore": "100"}, "score-desc", [], "score minimo sem match"),
+        ({"minScore": ""}, "score-desc", [1, 2, 3, 4, 5, 6, 7, 8], "score minimo vazio"),
+        ({"company": "SAP SE", "minScore": "9.2"}, "score-desc", [1], "combinado empresa+score"),
+        ({"q": "logistik", "type": "PART_TIME"}, "score-desc", [4], "combinado texto+tipo"),
+        ({"q": "procurement", "country": "de"}, "score-desc", [5], "combinado texto+pais"),
+        # Ordenacoes
+        ({}, "rank", [1, 2, 3, 4, 5, 6, 7, 8], "ordenar por posicao"),
+        ({}, "score-desc", [1, 2, 3, 4, 5, 6, 7, 8], "ordenar score desc (padrao)"),
+        ({}, "score", [8, 7, 6, 5, 4, 3, 2, 1], "ordenar score asc"),
+        ({}, "company", [7, 4, 5, 8, 1, 2, 3, 6], "ordenar empresa"),
+        ({}, "title", [5, 7, 2, 3, 4, 8, 6, 1], "ordenar titulo"),
+        ({}, "location", [2, 5, 8, 3, 6, 4, 7, 1], "ordenar local"),
+        ({}, "date", [7, 8, 6, 5, 3, 4, 1, 2], "ordenar data"),
+    ]
+    lines = [
+        core,
+        "var rows = " + json.dumps(rows, ensure_ascii=False) + ";",
+        "var cases = " + json.dumps(cases) + ";",
+        "var ok = 0;",
+        "for (var i = 0; i < cases.length; i++) {",
+        "  var st = cases[i][0], key = cases[i][1], exp = cases[i][2], label = cases[i][3];",
+        "  var got = if_filter_sort(rows, st, key).map(function (r) { return r.rank; });",
+        "  if (JSON.stringify(got) !== JSON.stringify(exp)) {",
+        "    console.log('FAIL ' + label + ': got ' + JSON.stringify(got) + ' want ' + JSON.stringify(exp));",
+        "    process.exitCode = 1;",
+        "  } else { ok++; }",
+        "}",
+        "console.log('cases ok: ' + ok + '/' + cases.length);",
+        "if (process.exitCode !== 1) console.log('TUDO OK');",
+    ]
+    try:
+        proc = subprocess.run(
+            ["node", "-"], input="\n".join(lines), capture_output=True,
+            text=True, timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        check(f"node executa o nucleo JS ({type(exc).__name__})", False)
+        return
+    out = (proc.stdout or "") + (proc.stderr or "")
+    check("node executa sem erro (exit 0)", proc.returncode == 0)
+    check("nucleo JS: 23/23 casos de filtro+ordenacao OK",
+          "cases ok: 23/23" in out and "TUDO OK" in out)
+    if "FAIL" in out:
+        for line in out.splitlines():
+            if line.startswith("FAIL"):
+                check(f"caso do nucleo JS: {line}", False)
+
+
+def test_real_snapshot() -> None:
+    print("== bloco real (data/eligible_jobs.json) — Fase 3 ==")
+    json_path = ROOT / "data" / "eligible_jobs.json"
+    if not json_path.exists():
+        print("  [SKIP] data/eligible_jobs.json ausente (runner limpo) — bloco real nao roda")
+        return
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    n = len(data)
+    check("snapshot e lista nao vazia", isinstance(data, list) and n > 0)
+    with tempfile.TemporaryDirectory(prefix="t_if_real_") as td:
+        out = Path(td) / "index.html"
+        # Mesmo chamado do publish_pages: --input RELATIVO (o rotulo da pagina
+        # nao pode expor o caminho absoluto da VPS — o gate de seguranca detecta).
+        rc = interface.main(["--input", "data/eligible_jobs.json", "--top", "100000", "--output", str(out)])
+        page = out.read_text(encoding="utf-8")
+    check("gera a pagina (rc 0)", rc == 0 and len(page) > 100_000)
+    body = page.split("<tbody>")[1].split("</tbody>")[0]
+    row_count = body.count("<tr class=")
+    check(f"TODAS as vagas elegiveis na pagina ({row_count} == {n})", row_count == n)
+    check("resumo: total == pipeline", f'<b>{n}</b><span>vagas elegíveis' in page)
+    companies = len({str(j.get("company")) for j in data if j.get("company")})
+    check(f"resumo: empresas == {companies}", f'<b>{companies}</b><span>empresas' in page)
+    max_score = max(float(j["score"]) for j in data)
+    check(f"resumo: score max == {max_score:.2f}", f'<b>{max_score:.2f}</b><span>score máx' in page)
+    check("resumo: Top 30 == 30", '<b>30</b><span>no Top 30' in page)
+    check("contador inicial 'N de N vagas'", f"{n} de {n} vagas" in page)
+    ranks = [int(r) for r in re.findall(r'data-rank="(\d+)"', body)]
+    check("data-rank 1..N consecutivo (posicao do pipeline)", ranks == list(range(1, n + 1)))
+    titles_page = re.findall(r'data-title="([^"]*)"', body)
+    expected = [html_escape(str(j.get("title") or "")) for j in data]
+    check("ordem exibida == ordem do ranking do pipeline (mesmos titulos)",
+          titles_page[:30] == expected[:30] and titles_page[-1] == expected[-1])
+    badges = re.findall(r'<tr class="top30" data-rank="(\d+)"', body)
+    check("badge Top 30 nas 30 primeiras posicoes",
+          badges == [str(i) for i in range(1, 31)])
+    check("posicao 31 SEM badge", 'data-rank="31"' in body
+          and '<tr class="top30" data-rank="31"' not in body)
+    check("botao 'abrir' em todas as vagas com URL", body.count('class="open"') == n)
+    check("nenhuma linha sem URL necessaria (todas as URLs validas do pipeline)",
+          body.count('<a href=') >= n)
+    breakdown_labels = ("Área", "Skills", "Idioma", "Tipo", "Local", "Penalidades")
+    check("componentes reais do breakdown na pagina",
+          all(lbl in page for lbl in breakdown_labels))
+    problems = publish_pages.check_public_safe(page)
+    if problems:
+        print(f"    gate problems: {problems}")
+    check("gate de seguranca: nada privado no HTML publicado", problems == [])
+    script = page.split("<script>")[1].split("</script>")[0]
+    check("JS client-side sem src externo", "src=" not in script)
+    check("nucleo puro presente na pagina publicada", "if_filter_sort" in script)
+
+
+def html_escape(value: str) -> str:
+    """Mesmo escape usado na pagina (atributo), para comparar data-title."""
+    import html as _html
+    return _html.escape(value, quote=True)
 
 
 def test_main() -> None:
@@ -352,7 +586,8 @@ def test_main() -> None:
               and "Praktikum BI &amp; Analytics (f/m/d)" in page
               and "Werkstudent Data Science (w/m/d)" in page)
         check("4a posicao (7.2) NAO aparece", "Werkstudent Logistik (m/w/d)" not in page)
-        check("mensagem de geracao no stdout capturado", True)
+        check("posicoes exibidas = ranking global (data-rank 1..3)",
+              'data-rank="1"' in page and 'data-rank="2"' in page and 'data-rank="3"' in page)
 
         buf = io.StringIO()
         try:
@@ -428,7 +663,11 @@ def main() -> int:
     test_apply_filters()
     test_load_db()
     test_render_html()
+    test_top_n_badge()
+    test_rank_map()
     test_url_scheme()
+    test_client_js_core()
+    test_real_snapshot()
     test_main()
     print()
     if FAILURES:

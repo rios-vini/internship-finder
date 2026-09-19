@@ -587,16 +587,25 @@ arquivos gravados (`data/eligible_jobs.json`/`.csv` com campo `score`).
 > Validacao/saidas gravam em `data/` por default (local, gitignored); para nao
 > depender de `data/`, use `--output PATH`/`--filter-output PATH`/`--metrics PATH`.
 
-**Interface** (P3 #25, 08/09) — leitura amigavel das vagas ranqueadas, sem servidor:
+**Interface** (P3 #25 08/09 + Fase 3 18/09) — leitura amigavel das vagas
+ranqueadas, sem servidor:
 ```bash
 .venv/bin/python scripts/interface.py                # HTML em /tmp/interface.html (top 25 por score)
 .venv/bin/python scripts/interface.py --top 50 --company sap --keyword student --output -
 .venv/bin/python scripts/interface.py --db data/jobs.db   # SQLite (sem score: ordena por last_seen)
 ```
-Pagina HTML auto-contida (CSS/JS inline, zero dependencia nova): top N por score,
-filtros `--company`/`--keyword`/`--country`, URL clicavel, breakdown do score em
-badges. Filtragem client-side do browser e so ocultacao sobre o conjunto ja
-filtrado na geracao; a logica testada e a do script (`scripts/test_interface.py`).
+Pagina HTML auto-contida (CSS/JS inline, zero dependencia nova). **Fase 3**:
+na publicacao (GitHub Pages) a pagina mostra **todas as vagas elegiveis** com
+resumo no topo (total/empresas/score max/Top 30/atualizacao), **filtros
+client-side** (texto sobre titulo+empresa+local; selects de empresa/local/tipo;
+score minimo; pais quando houver mais de um valor) e **ordenacao client-side**
+(score desc padrao; posicao/empresa/titulo/local/data) — JS vanilla embutido,
+sem backend; cada vaga tem o badge "Top 30" (posicoes 1-30), o bloco
+"por que este score" com os componentes reais do `score_breakdown` e link
+direto (titulo + botao "abrir"). Filtros `--company`/`--keyword`/`--country`
+seguem funcionando na geracao (mesmos 3 eixos); o ranking/score nunca e
+recomputado pela interface. Testes: `scripts/test_interface.py` (inclui a
+execucao do nucleo JS em node e um bloco real com `data/eligible_jobs.json`).
 
 ## Modelo `Job` (canonico, pydantic)
 
