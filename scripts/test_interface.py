@@ -61,6 +61,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import interface  # noqa: E402
 import publish_pages  # noqa: E402 (gate de seguranca do bloco real)
+from internship_finder.materials_ranking import rank_materials_jobs  # noqa: E402
 from internship_finder.models.job import Job  # noqa: E402
 from internship_finder.storage.sqlite_store import SqliteStore  # noqa: E402
 
@@ -320,13 +321,20 @@ def test_render_html() -> None:
           'id="q"' in page and 'id="f-company"' in page and 'id="f-type"' in page
           and 'id="f-min-score"' in page and 'id="sort"' in page
           and "src=" not in page.split("<script>")[1].split("</script>")[0])
-    # Regressao: o mapa de visibilidade da cola DOM precisa de chave UNICA por
-    # linha (data-rank). Usar o elemento como chave de objeto nao funciona —
-    # todo <tr> vira a mesma string '[object HTMLTableRowElement]' e nenhuma
-    # linha oculta (pego na verificacao DOM real da Fase 3).
-    check("cola DOM oculta por chave unica (data-rank, regressao)",
-          "visible[r.tr.dataset.rank]" in page
-          and "visible[r.tr] = true" not in page)
+    # Regressao (#72 Fase 3): a cola DOM PRECISA ocultar linhas — o fix anterior
+    # usava mapa de visibilidade com chave unica por linha (data-rank), pois
+    # usar o elemento como chave de objeto coage tudo para '[object ...]' e
+    # nenhuma linha oculta. Fase 4: a cola oculta TODAS as linhas da tabela
+    # ativa e re-exibe so as filtradas (nem precisa do mapa — mais robusto).
+    check("cola DOM oculta linhas (regressao #72, sem elemento como chave)",
+          "visible[r.tr] = true" not in page
+          and "tr.style.display = 'none'" in page
+          and "r.tr.style.display = ''" in page)
+    # Regressao Fase 4: a cola declara o perfil ativo ANTES de usar (um
+    # ReferenceError de ACTIVE no 'use strict' mataria a cola inteira e a
+    # pagina ficaria estatica — pego na verificacao DOM real com jsdom).
+    check("cola DOM declara ACTIVE antes do uso (var ACTIVE = 'biz')",
+          "var ACTIVE = 'biz';" in page)
     check("contador de vagas", "3 de 3 vagas" in page)
     chips = _render([FIXTURE[0]], filters_desc=["empresa contem 'sap'", "pais: de"])
     check("chips de filtro renderizados (escapados)",
@@ -520,8 +528,77 @@ def test_client_js_core() -> None:
                 check(f"caso do nucleo JS: {line}", False)
 
 
+def _tbody(page: str, table_id: str) -> str:
+    """Corpo (linhas) da tabela ``table_id`` — escopo por perfil."""
+    match = re.search(r'<table id="' + table_id + r'".*?<tbody>(.*?)</tbody>',
+                      page, re.S)
+    assert match, f"tabela {table_id} nao encontrada"
+    return match.group(1)
+
+
+def test_dual_profile_render() -> None:
+    print("== Fase 4: render_html com segundo perfil (Materials) ==")
+    fx = interface.sort_ranked(FIXTURE)
+    mats = rank_materials_jobs(fx)  # mesmos jobs, ranking proprio
+    mat_rank_map = {str(j["id"]): i for i, j in enumerate(mats, 1)}
+    mat_stats = interface._compute_stats(
+        mats, total=len(mats), score_key="materials_score")
+    page = _render(
+        fx, materials=mats,
+        materials_rank_map=mat_rank_map,
+        materials_stats=mat_stats,
+    )
+    check("seletor de perfil com os dois botoes",
+          'id="btn-biz"' in page and 'id="btn-mat"' in page
+          and "Procurement / Supply Chain" in page
+          and "Materials Engineering" in page)
+    check("duas tabelas com ids proprios",
+          'id="tbl-biz"' in page and 'id="tbl-mat"' in page)
+    check("wrap do materials começa oculto",
+          'id="wrap-mat" hidden' in page and 'id="wrap-biz"' in page)
+    check("tabela biz tem 8 linhas = fixture",
+          _tbody(page, "tbl-biz").count("<tr class=") == 8)
+    check("tabela materials tem 8 linhas = mesmo conjunto",
+          _tbody(page, "tbl-mat").count("<tr class=") == 8)
+    check("data-rank 1..8 em AMBAS as tabelas (posicoes proprias)",
+          re.findall(r'data-rank="(\d+)"', _tbody(page, "tbl-biz"))
+          == [str(i) for i in range(1, 9)]
+          and re.findall(r'data-rank="(\d+)"', _tbody(page, "tbl-mat"))
+          == [str(i) for i in range(1, 9)])
+    check("data-score da tabela materials == materials_score (nao o do principal)",
+          'data-score="9.5"' not in _tbody(page, "tbl-mat")
+          and "data-score=" in _tbody(page, "tbl-mat"))
+    mat_body = _tbody(page, "tbl-mat")
+    biz_body = _tbody(page, "tbl-biz")
+    check("breakdown do materials usa componentes proprios",
+          '<span class="bd-l">Materiais</span>' in mat_body
+          and '<span class="bd-l">Manufatura/Processo</span>' in mat_body
+          and '<span class="bd-l">Qualidade/P&amp;D/Lab</span>' in mat_body)
+    check("breakdown do principal continua com os rotulos da Fase 3",
+          '<span class="bd-l">Área</span>' in biz_body
+          and '<span class="bd-l">Skills</span>' in biz_body)
+    check("total do breakdown materials usa materials_score (Total com valor)",
+          'Total <b>' in mat_body and "Total <b>9.50</b>" not in mat_body)
+    check("stats de dois perfis (valores alternados por data-sv)",
+          'data-sv="biz"' in page and 'data-sv="mat"' in page
+          and '<span data-sv="mat" hidden' in page)
+    mscore = max(float(j["materials_score"]) for j in mats)
+    check(f"score max do materials nos stats ({mscore:.2f})",
+          f'<span data-sv="mat" hidden>{mscore:.2f}</span>' in page)
+    check("botoes com classe active inicial em biz",
+          'id="btn-biz" class="active"' in page)
+    # posicao do ranking PROPRIO (materials_rank_map) independente do principal
+    top_mat = mats[0]
+    page2 = _render([top_mat], total=1,
+                    materials=[top_mat],
+                    materials_rank_map=mat_rank_map,
+                    materials_stats=mat_stats)
+    check("posicao materials == posicao NO ranking materials (nao no biz)",
+          f'data-rank="{mat_rank_map[str(top_mat["id"])]}"' in page2)
+
+
 def test_real_snapshot() -> None:
-    print("== bloco real (data/eligible_jobs.json) — Fase 3 ==")
+    print("== bloco real (data/eligible_jobs.json) — Fase 3 + Fase 4 ==")
     json_path = ROOT / "data" / "eligible_jobs.json"
     if not json_path.exists():
         print("  [SKIP] data/eligible_jobs.json ausente (runner limpo) — bloco real nao roda")
@@ -535,34 +612,71 @@ def test_real_snapshot() -> None:
         # nao pode expor o caminho absoluto da VPS — o gate de seguranca detecta).
         rc = interface.main(["--input", "data/eligible_jobs.json", "--top", "100000", "--output", str(out)])
         page = out.read_text(encoding="utf-8")
-    check("gera a pagina (rc 0)", rc == 0 and len(page) > 100_000)
-    body = page.split("<tbody>")[1].split("</tbody>")[0]
-    row_count = body.count("<tr class=")
-    check(f"TODAS as vagas elegiveis na pagina ({row_count} == {n})", row_count == n)
-    check("resumo: total == pipeline", f'<b>{n}</b><span>vagas elegíveis' in page)
+    check("gera a pagina de dois perfis (rc 0)", rc == 0 and len(page) > 100_000)
+    biz_body = _tbody(page, "tbl-biz")
+    mat_body = _tbody(page, "tbl-mat")
+    check(f"perfil principal: TODAS as vagas elegiveis ({biz_body.count('<tr class=')} == {n})",
+          biz_body.count("<tr class=") == n)
+    check(f"perfil materials: MESMO conjunto de vagas ({mat_body.count('<tr class=')} == {n})",
+          mat_body.count("<tr class=") == n)
+    # Resumo com os DOIS perfis (formato Fase 4: spans alternados por data-sv).
+    check("resumo: total do principal no data-sv biz",
+          f'<span data-sv="biz">{n}</span><span data-sv="mat" hidden>{n}</span>'
+          in page.replace("\n", ""))
     companies = len({str(j.get("company")) for j in data if j.get("company")})
-    check(f"resumo: empresas == {companies}", f'<b>{companies}</b><span>empresas' in page)
+    check(f"resumo: empresas == {companies} (ambos perfis)",
+          f'<span data-sv="biz">{companies}</span>' in page
+          and f'<span data-sv="mat" hidden>{companies}</span>' in page)
     max_score = max(float(j["score"]) for j in data)
-    check(f"resumo: score max == {max_score:.2f}", f'<b>{max_score:.2f}</b><span>score máx' in page)
-    check("resumo: Top 30 == 30", '<b>30</b><span>no Top 30' in page)
-    check("contador inicial 'N de N vagas'", f"{n} de {n} vagas" in page)
-    ranks = [int(r) for r in re.findall(r'data-rank="(\d+)"', body)]
-    check("data-rank 1..N consecutivo (posicao do pipeline)", ranks == list(range(1, n + 1)))
-    titles_page = re.findall(r'data-title="([^"]*)"', body)
-    expected = [html_escape(str(j.get("title") or "")) for j in data]
-    check("ordem exibida == ordem do ranking do pipeline (mesmos titulos)",
-          titles_page[:30] == expected[:30] and titles_page[-1] == expected[-1])
-    badges = re.findall(r'<tr class="top30" data-rank="(\d+)"', body)
-    check("badge Top 30 nas 30 primeiras posicoes",
-          badges == [str(i) for i in range(1, 31)])
-    check("posicao 31 SEM badge", 'data-rank="31"' in body
-          and '<tr class="top30" data-rank="31"' not in body)
-    check("botao 'abrir' em todas as vagas com URL", body.count('class="open"') == n)
-    check("nenhuma linha sem URL necessaria (todas as URLs validas do pipeline)",
-          body.count('<a href=') >= n)
+    mats = rank_materials_jobs(data)
+    max_mat = max(float(j["materials_score"]) for j in mats)
+    check(f"resumo: score max do principal == {max_score:.2f}",
+          f'<span data-sv="biz">{max_score:.2f}</span>' in page)
+    check(f"resumo: score max do materials == {max_mat:.2f}",
+          f'<span data-sv="mat" hidden>{max_mat:.2f}</span>' in page)
+    check("resumo: Top 30 == 30",
+          '<span data-sv="biz">30</span><span data-sv="mat" hidden>30</span>'
+          in page.replace("\n", ""))
+    check("contador inicial 'N de N vagas'",
+          f"{n} de {n} vagas" in page)
+    # Posicao = ranking do PERFIL (1..N em cada tabela, ordem propria).
+    biz_ranks = [int(r) for r in re.findall(r'data-rank="(\d+)"', biz_body)]
+    mat_ranks = [int(r) for r in re.findall(r'data-rank="(\d+)"', mat_body)]
+    check("data-rank 1..N no principal (posicao do pipeline)",
+          biz_ranks == list(range(1, n + 1)))
+    check("data-rank 1..N no materials (posicao propria, independente)",
+          mat_ranks == list(range(1, n + 1)))
+    expect_biz = [html_escape(str(j.get("title") or "")) for j in data]
+    expect_mat = [html_escape(str(j.get("title") or "")) for j in mats]
+    titles_biz = re.findall(r'data-title="([^"]*)"', biz_body)
+    titles_mat = re.findall(r'data-title="([^"]*)"', mat_body)
+    check("ordem do principal == ranking do pipeline",
+          titles_biz[:30] == expect_biz[:30] and titles_biz[-1] == expect_biz[-1])
+    check("ordem do materials == ranking materials (ranking proprio)",
+          titles_mat[:30] == expect_mat[:30] and titles_mat[-1] == expect_mat[-1])
+    # Top 30 independentes: os dois rankings nao podem ser a mesma ordem.
+    check("Top 30 do principal != Top 30 do materials (posicoes independentes)",
+          titles_biz[:30] != titles_mat[:30])
+    badges_biz = re.findall(r'<tr class="top30" data-rank="(\d+)"', biz_body)
+    badges_mat = re.findall(r'<tr class="top30" data-rank="(\d+)"', mat_body)
+    check("badge Top 30 nas 30 primeiras de CADA perfil",
+          badges_biz == [str(i) for i in range(1, 31)]
+          and badges_mat == [str(i) for i in range(1, 31)])
+    check("botao 'abrir' em todas as vagas (2 tabelas)",
+          biz_body.count('class="open"') == n
+          and mat_body.count('class="open"') == n)
     breakdown_labels = ("Área", "Skills", "Idioma", "Tipo", "Local", "Penalidades")
-    check("componentes reais do breakdown na pagina",
+    check("componentes reais do breakdown do principal na pagina",
           all(lbl in page for lbl in breakdown_labels))
+    mat_labels = ("Materiais", "Manufatura/Processo", "Qualidade/P")
+    check("componentes reais do breakdown do materials na pagina",
+          all(lbl in page for lbl in mat_labels))
+    # O breakdown de materials mostra os componentes REAIS (soma = total).
+    from internship_finder.materials_ranking import materials_score_job  # noqa: PLC0415
+    top1 = mats[0]
+    sc = materials_score_job(top1)
+    check("total do materials == soma dos componentes (breakdown honesto)",
+          abs(sc.total - round(sum(sc.breakdown.values()), 2)) < 1e-9)
     problems = publish_pages.check_public_safe(page)
     if problems:
         print(f"    gate problems: {problems}")
@@ -674,6 +788,7 @@ def main() -> int:
     test_rank_map()
     test_url_scheme()
     test_client_js_core()
+    test_dual_profile_render()
     test_real_snapshot()
     test_main()
     print()

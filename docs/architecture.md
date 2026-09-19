@@ -22,7 +22,8 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
 | `filters.py` | `is_student_role(title, description)` — heuristica EN/PT/DE (intern, internship, student, Werkstudent, Praktikum, iXp...) com exclusao de senior/manager/etc. |
 | `countries.py` | país/localização — `COUNTRY_CODES`, `EUROPE_COUNTRIES`, `COUNTRY_NAMES`, `infer_country_iso`, `parse_country_spec` (extraído de `filters.py` no P2 #12; `filters.py` re-exporta os símbolos) |
 | `dedup.py` | deduplicacao deterministica por chave de confiabilidade (`external_id`/`id`, URL normalizada, `company+title+location`) |
-| `ranking.py` | ranking por perfil: `score_job` (score + breakdown) e `rank_jobs`, ordem deterministica |
+| `ranking.py` | ranking do perfil principal: `score_job` (score + breakdown) e `rank_jobs`, ordem deterministica |
+| `materials_ranking.py` | ranking do perfil secundário (Fase 4): `materials_score_job` + `rank_materials_jobs` — MESMAS vagas elegíveis, score/breakdown próprios, independentes do principal |
 | `metrics.py` | metricas de execucao em JSONL (payload por tenant + resumo do run, com `error_code`) |
 | `errors.py` | `CollectionError` + codigos de erro estruturados (classificador para o payload da queue e `error_code` no JSONL) |
 | `health.py` | relatorio de health por tenant/ATS sobre o JSONL (drop de cobertura, erros recorrentes) + alertas |
@@ -52,3 +53,12 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
   — sem frontend novo, sem servidor, sem dependencias novas. Nenhum dado
   interno e publicado: gate `check_public_safe` (tokens/caminhos privados)
   antes do push.
+- **Dois perfis, um pipeline (Fase 4, 19/09)**: o conjunto elegivel alimenta
+  DOIS rankings independentes — `ranking.py` (perfil principal) e
+  `materials_ranking.py` (Materials Engineering). `score`/`score_breakdown`
+  do principal NUNCA mudam (o perfil secundario adiciona
+  `materials_score`/`materials_breakdown`, nunca soma os dois). Nenhuma
+  alteracao de elegibilidade/coleta/dedup: o segundo perfil responde apenas
+  "entre as vagas ja elegiveis, quais sao mais relevantes para Materials?".
+  A interface (`scripts/interface.py`) mostra os dois rankings com seletor de
+  perfil (abas) na mesma pagina.

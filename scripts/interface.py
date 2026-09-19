@@ -1,4 +1,4 @@
-"""Interface do internship-finder: ranking completo, filtros e ordenacao (Fase 3).
+"""Interface do internship-finder: ranking completo, filtros e ordenacao (Fase 3 + 4).
 
 Gera uma pagina HTML unica e auto-contida (CSS inline, JS vanilla inline, sem
 framework e sem dependencia nova) com as vagas ja ranqueadas pelo pipeline. A
@@ -12,32 +12,34 @@ e re-ranqueado; o score exibido e o do pipeline; o ``score_breakdown`` usa os
 componentes REAIS do ``ranking.score_job`` (area, skills, language, type,
 location, penalties) — nenhum criterio ou peso novo.
 
+Fase 4 (segundo perfil): o MESMO conjunto elegivel tambem e classificado pelo
+perfil Materials Engineering (``materials_ranking.rank_materials_jobs`` — score
+e breakdown proprios, independentes; o score do perfil principal nao muda). A
+pagina ganha um seletor de perfil (abas) e UMA tabela por perfil, reusando a
+mesma estrutura e o mesmo JS client-side (escopo por tabela ativa). Sem
+``materials``, ``render_html`` produz EXATAMENTE a pagina da Fase 3 (compat
+com testes/uso direto).
+
 Fontes (os DOIS caminhos funcionam):
 
 - ``--input``: JSON ranqueado (default ``data/eligible_jobs.json`` do CWD),
   saida direta do ``cli --rank`` — contem ``score``/``score_breakdown``.
-  Ordenado por score desc (estavel; o score e o Ja calculado, nunca recomputado).
 - ``--db``: SQLite ``jobs.db`` (default como fallback ao JSON ausente) — le
   apenas vagas ATIVAS (``active=1``), sem score (o banco nao tem a coluna):
-  ordena por ``last_seen`` desc (mais recentes primeiro).
+  ordena por ``last_seen`` desc.
 
-Filtros na GERACAO (3 eixos, aplicados sobre a lista JA pronta — mesmo
-comportamento das fases anteriores):
+Filtros na GERACAO (3 eixos, aplicados sobre a lista JA pronta):
 
 - ``--company``: substring case-insensitive no campo empresa;
 - ``--keyword``: substring case-insensitive no TITULO;
-- ``--country``: mesma spec do CLI (reusa ``parse_country_spec``/
-  ``matches_country``): ISO alpha-2 em lista, 'europe', 'remote' ou 'all'.
-  Spec invalida -> erro claro (exit 2).
+- ``--country``: mesma spec do CLI (reusa ``parse_country_spec``).
 
-Filtros e ordenacao no BROWSER (Fase 3, vanilla JS, sem backend): a pagina
-embute cada vaga como data-attributes na linha da tabela e o JS filtra
-(texto/titulo, empresa, local, tipo, pais, score minimo) e ordena (score,
-posicao, empresa, titulo, local, data) sem recarregar. Top 30 recebe badge
-discreto; cada vaga tem "por que este score" com a composicao real do
-breakdown; o botao/titulo leva direto ao anuncio (http/https validado, P2.3).
-O nucleo JS puro (``if_filter_sort``/``if_match``/``if_sorter``) e separado
-da cola DOM para ser executavel em node nos testes.
+Filtros e ordenacao no BROWSER (vanilla JS, sem backend): cada vaga e embutida
+como data-attributes na linha da tabela ATIVA (por perfil) e o JS filtra e
+ordena sem recarregar — nucleo puro em ``if_filter_sort``/``if_match``/
+``if_sorter`` (testado em node). Top 30 recebe badge discreto POR PERFIL; cada
+vaga tem "por que este score" com a composicao real do breakdown do perfil
+ativo; o botao/titulo leva direto ao anuncio (http/https validado, P2.3).
 
 Uso:
 
@@ -63,6 +65,7 @@ from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from internship_finder.countries import matches_country, parse_country_spec  # noqa: E402
+from internship_finder.materials_ranking import rank_materials_jobs  # noqa: E402
 
 DEFAULT_OUTPUT = Path("/tmp/interface.html")
 
@@ -79,8 +82,8 @@ _DB_COLUMNS = [
     "first_seen", "last_seen",
 ]
 
-# Rotulos PT-BR das componentes REAIS do score_breakdown (ranking.py: area,
-# skills, language, type, location, penalties — nenhuma componente inventada).
+# Rotulos PT-BR das componentes REAIS do score_breakdown do perfil principal
+# (ranking.py: area, skills, language, type, location, penalties).
 _BREAKDOWN_LABELS = {
     "area": "Área",
     "skills": "Skills",
@@ -90,6 +93,27 @@ _BREAKDOWN_LABELS = {
     "penalties": "Penalidades",
 }
 _BREAKDOWN_ORDER = ("area", "skills", "language", "type", "location", "penalties")
+
+# Rotulos das componentes REAIS do breakdown do perfil Materials Engineering
+# (materials_ranking.py: materials, adjacent, context, type, location,
+# penalties — nomeada ``materials_breakdown`` na vaga).
+_MATERIALS_BREAKDOWN_LABELS = {
+    "materials": "Materiais",
+    "adjacent": "Manufatura/Processo",
+    "context": "Qualidade/P&D/Lab",
+    "type": "Tipo",
+    "location": "Local",
+    "penalties": "Penalidades",
+}
+_MATERIALS_BREAKDOWN_ORDER = (
+    "materials", "adjacent", "context", "type", "location", "penalties",
+)
+
+# Rotulos dos botoes do seletor de perfil (Fase 4).
+PROFILE_LABELS = {
+    "biz": "Procurement / Supply Chain",
+    "mat": "Materials Engineering",
+}
 
 
 def load_json(path: Path) -> list[dict]:
@@ -223,30 +247,34 @@ def _attr(value) -> str:
     return html.escape(str(value), quote=True)
 
 
-def _breakdown_items(job: dict) -> list[tuple[str, str, float]]:
-    """Componentes reais do ``score_breakdown``: (label, chave, valor)."""
-    b = job.get("score_breakdown") or {}
+def _breakdown_items(
+    job: dict, *, breakdown_key: str, order: tuple[str, ...],
+) -> list[tuple[str, str, float]]:
+    """Componentes reais do breakdown: (label, chave, valor)."""
+    b = job.get(breakdown_key) or {}
     if not isinstance(b, dict):
         return []
     out: list[tuple[str, str, float]] = []
-    for key in _BREAKDOWN_ORDER:
+    labels = _MATERIALS_BREAKDOWN_LABELS if breakdown_key == "materials_breakdown" \
+        else _BREAKDOWN_LABELS
+    for key in order:
         if key not in b:
             continue
         try:
             val = float(b[key])
         except (TypeError, ValueError):
             continue
-        out.append((_BREAKDOWN_LABELS.get(key, key), key, val))
+        out.append((labels.get(key, key), key, val))
     return out
 
 
-def _breakdown_html(job: dict) -> str:
+def _breakdown_html(job: dict, *, breakdown_key: str, order: tuple[str, ...]) -> str:
     """Bloco 'por que este score': componentes com barra proporcional + total.
 
     Barra = |valor| relativo ao maior |valor| da propria vaga (visual so;
     os numeros exibidos sao os componentes reais, sem nenhuma conta nova).
     """
-    items = _breakdown_items(job)
+    items = _breakdown_items(job, breakdown_key=breakdown_key, order=order)
     if not items:
         return ""
     maxv = max((abs(v) for _, _, v in items), default=0.0)
@@ -262,12 +290,15 @@ def _breakdown_html(job: dict) -> str:
             f'<span class="bd-bar"><i{neg} style="width:{width:.0f}%"></i></span>'
             "</div>"
         )
-    total = job.get("score")
+    total_key = "score" if breakdown_key == "score_breakdown" else breakdown_key.replace("_breakdown", "_score")
+    total = job.get(total_key)
     total_txt = f"Total <b>{_fmt_score(total)}</b>" if total is not None else "Total —"
     return f'<div class="bd-body">{rows}<div class="bd-total">{total_txt}</div></div>'
 
 
-def _details_html(job: dict) -> str:
+def _details_html(
+    job: dict, *, breakdown_key: str, order: tuple[str, ...],
+) -> str:
     """Detalhes compactos da vaga (fora da tabela, dentro do <details>).
 
     Extras factuais do proprio registro (nada inferido): tipo do anuncio,
@@ -299,7 +330,7 @@ def _details_html(job: dict) -> str:
     return (
         "<details class=\"why\">"
         "<summary>por que este score</summary>"
-        f"{_breakdown_html(job)}"
+        f"{_breakdown_html(job, breakdown_key=breakdown_key, order=order)}"
         f"{extras}"
         f"{desc_snippet}"
         "</details>"
@@ -312,18 +343,26 @@ def _added_date(job: dict) -> str:
                      or job.get("collected_at"))
 
 
-def _row_html(rank: int, job: dict, *, top_n: int = TOP_N) -> str:
+def _row_html(
+    rank: int, job: dict, *,
+    top_n: int = TOP_N,
+    score_key: str = "score",
+    breakdown_key: str = "score_breakdown",
+    order: tuple[str, ...] = _BREAKDOWN_ORDER,
+) -> str:
     """Uma linha da tabela (tudo escapado; URL clicavel, abre em nova aba).
 
     A linha carrega os data-attributes que o JS client-side usa para filtrar
-    e ordenar (titulo, empresa, local, tipo, pais, score, posicao, data).
-    Posicao ``rank`` = posicao no ranking do pipeline; ``top_n`` primeiras
+    e ordenar (titulo, empresa, local, tipo, pais, score, posicao, data) —
+    dentro da tabela DO PERFIL em questao (``score_key``/``breakdown_key``
+    apontam para o score do perfil: ``score``/``score_breakdown`` no perfil
+    principal; ``materials_score``/``materials_breakdown`` no Materials).
+    Posicao ``rank`` = posicao no ranking do perfil; ``top_n`` primeiras
     recebem o badge "Top 30" e a classe de destaque (so apresentacao).
 
     P2.3: a URL so vira ``href`` apos validar o scheme (somente http/https,
     via ``_safe_url``); scheme rejeitado segue o fluxo de URL vazia — o
-    titulo aparece sem link e sem botao. O escaping HTML continua aplicado
-    depois da validacao (validar scheme -> escape -> gerar href).
+    titulo aparece sem link e sem botao. O escaping HTML continua aplicado.
     """
     title = html.escape(str(job.get("title") or "(sem titulo)"))
     safe_url = _safe_url(job.get("url"))
@@ -335,7 +374,7 @@ def _row_html(rank: int, job: dict, *, top_n: int = TOP_N) -> str:
     country = html.escape(str(job.get("country_iso") or ""))
     added = _added_date(job)
     added_attr = "" if added == "—" else added
-    score = job.get("score")
+    score = job.get(score_key)
     score_attr = str(score) if isinstance(score, (int, float)) else ""
 
     is_top = top_n > 0 and rank <= top_n
@@ -365,7 +404,7 @@ def _row_html(rank: int, job: dict, *, top_n: int = TOP_N) -> str:
         f' data-date="{d_date}">'
         f'<td class="score">{rank}</td>'
         f'<td class="score">{_fmt_score(score)}</td>'
-        f"<td>{link}{badge}{_details_html(job)}</td>"
+        f"<td>{link}{badge}{_details_html(job, breakdown_key=breakdown_key, order=order)}</td>"
         f"<td>{company}</td>"
         f'<td class="loc">{location}</td>'
         f"<td>{type_txt}</td>"
@@ -375,10 +414,13 @@ def _row_html(rank: int, job: dict, *, top_n: int = TOP_N) -> str:
     )
 
 
-def _compute_stats(jobs: list[dict], *, total: int) -> dict:
+def _compute_stats(jobs: list[dict], *, total: int, score_key: str = "score") -> dict:
     """Resumo do topo (estado atual da busca), derivado dos dados reais."""
     companies = len({str(j.get("company") or "") for j in jobs if j.get("company")})
-    scores = [float(j["score"]) for j in jobs if isinstance(j.get("score"), (int, float))]
+    scores = [
+        float(j[score_key]) for j in jobs
+        if isinstance(j.get(score_key), (int, float))
+    ]
     max_score = max(scores) if scores else None
     updated = ""
     for j in jobs:
@@ -405,6 +447,10 @@ _CSS = """
   main { max-width:1180px; margin:0 auto; padding:24px 16px 64px; }
   h1 { font-size:1.35rem; margin:0 0 4px; }
   header p { color:var(--mut); margin:2px 0; font-size:.9rem; }
+  .profiles { display:flex; gap:8px; margin:14px 0 2px; flex-wrap:wrap; }
+  .profiles button { font:inherit; font-size:.85rem; padding:7px 14px; border:1px solid var(--line); border-radius:999px; background:var(--card); color:var(--mut); cursor:pointer; }
+  .profiles button:hover { border-color:var(--acc); color:var(--acc); }
+  .profiles button.active { background:var(--acc); border-color:var(--acc); color:#fff; font-weight:600; }
   .stats { display:flex; flex-wrap:wrap; gap:10px; margin:14px 0 4px; }
   .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 14px; min-width:120px; }
   .stat b { display:block; font-size:1.05rem; font-variant-numeric:tabular-nums; }
@@ -510,43 +556,59 @@ function if_filter_sort(rows, st, sortKey) {
 /* ==== DOM glue (nao faz parte do nucleo puro) ==== */
 (function () {
   'use strict';
-  var body = document.querySelector('tbody');
-  if (!body || !body.rows.length) return;
-  var rows = Array.prototype.slice.call(body.querySelectorAll('tr'));
-  var TOTAL = parseInt(document.body.getAttribute('data-total') || String(rows.length), 10);
-  var data = rows.map(function (tr) {
-    var d = tr.dataset;
-    return { tr: tr, title: d.title, company: d.company, location: d.location,
-             type: d.type, country: d.country, score: d.score,
-             rank: d.rank, date: d.date };
-  });
+  var PROFILES = ['biz', 'mat'];
+  var ACTIVE = 'biz';
+  function table(p) { return document.getElementById('tbl-' + p); }
+  function body(p) { return table(p).querySelector('tbody'); }
+  function rows(p) { return Array.prototype.slice.call(body(p).querySelectorAll('tr')); }
+  function total(p) {
+    var t = parseInt(table(p).getAttribute('data-total'), 10);
+    return isNaN(t) ? body(p).rows.length : t;
+  }
+  function data(p) {
+    return rows(p).map(function (tr) {
+      var d = tr.dataset;
+      return { tr: tr, title: d.title, company: d.company, location: d.location,
+               type: d.type, country: d.country, score: d.score,
+               rank: d.rank, date: d.date };
+    });
+  }
   var ids = ['q', 'f-company', 'f-location', 'f-type', 'f-country', 'f-min-score', 'sort', 'count', 'clear'];
   var els = {};
   ids.forEach(function (id) { els[id] = document.getElementById(id); });
   if (!els.sort || !els.count) return;
 
-  function fill(selId, pick) {
+  var PICK = {
+    'f-company': function (r) { return r.company; },
+    'f-location': function (r) { return r.location; },
+    'f-type': function (r) { return r.type; },
+    'f-country': function (r) { return r.country; }
+  };
+  var EMPTY_LABEL = { 'f-company': 'todas', 'f-location': 'todos', 'f-type': 'todos', 'f-country': 'todos' };
+  function fill(selId, items) {
     var sel = document.getElementById(selId);
     if (!sel) return;
     var seen = [];
-    rows.forEach(function (tr) {
-      var v = pick(tr.dataset);
+    items.forEach(function (r) {
+      var v = PICK[selId](r);
       if (v && seen.indexOf(v) === -1) seen.push(v);
     });
     seen.sort(if_cmp_str);
-    if (seen.length < 2) { var wrap = sel.closest('.fld'); if (wrap) wrap.style.display = 'none'; return; }
+    sel.innerHTML = '';
+    var o = document.createElement('option');
+    o.value = '';
+    o.textContent = EMPTY_LABEL[selId];
+    sel.appendChild(o);
+    var wrap = sel.closest('.fld');
+    if (seen.length < 2) { if (wrap) wrap.style.display = 'none'; return; }
+    if (wrap) wrap.style.display = '';
     seen.forEach(function (v) {
-      var o = document.createElement('option');
-      o.value = v;
-      o.textContent = v;
-      sel.appendChild(o);
+      var opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      sel.appendChild(opt);
     });
   }
-  fill('f-company', function (d) { return d.company; });
-  fill('f-location', function (d) { return d.location; });
-  fill('f-type', function (d) { return d.type; });
-  fill('f-country', function (d) { return d.country; });
-
   function state() {
     return {
       q: els.q ? els.q.value : '',
@@ -558,19 +620,38 @@ function if_filter_sort(rows, st, sortKey) {
     };
   }
   function apply() {
-    var out = if_filter_sort(data, state(), els.sort.value);
-    var shown = 0;
-    var visible = {};
+    var p = ACTIVE;
+    var out = if_filter_sort(data(p), state(), els.sort.value);
+    rows(p).forEach(function (tr) { tr.style.display = 'none'; });
     out.forEach(function (r) {
       r.tr.style.display = '';
-      body.appendChild(r.tr);
-      visible[r.tr.dataset.rank] = true;  // chave UNICA: elemento vira '[object ...]' (todos iguais)
-      shown++;
+      body(p).appendChild(r.tr);
     });
-    data.forEach(function (r) {
-      if (!visible[r.tr.dataset.rank]) r.tr.style.display = 'none';
+    els.count.textContent = out.length + ' de ' + total(p) + ' vagas';
+  }
+  function activate(p) {
+    ACTIVE = p;
+    PROFILES.forEach(function (x) {
+      var w = document.getElementById('wrap-' + x);
+      if (w) w.hidden = (x !== p);
+      var btn = document.getElementById('btn-' + x);
+      if (btn) btn.classList.toggle('active', x === p);
+      document.querySelectorAll('[data-sv="' + x + '"]').forEach(function (el) {
+        el.hidden = (x !== p);
+      });
     });
-    els.count.textContent = shown + ' de ' + TOTAL + ' vagas';
+    var rowsP = data(p);
+    fill('f-company', rowsP);
+    fill('f-location', rowsP);
+    fill('f-type', rowsP);
+    fill('f-country', rowsP);
+    ['f-company', 'f-location', 'f-type', 'f-country'].forEach(function (id) {
+      if (els[id]) els[id].value = '';
+    });
+    if (els.q) els.q.value = '';
+    if (els['f-min-score']) els['f-min-score'].value = '';
+    els.sort.value = 'score-desc';
+    apply();
   }
   function wire(id, evt) { if (els[id]) els[id].addEventListener(evt, apply); }
   wire('q', 'input');
@@ -590,9 +671,55 @@ function if_filter_sort(rows, st, sortKey) {
       apply();
     });
   }
-  apply();
+  PROFILES.forEach(function (p) {
+    var btn = document.getElementById('btn-' + p);
+    if (btn) btn.addEventListener('click', function () { activate(p); });
+  });
+  activate('biz');
 })();
 """
+
+
+def _stat_block(label: str, biz_value: str, mat_value: str) -> str:
+    """Um card do resumo com os dois valores (Fase 4), alternados via [data-sv]."""
+    return (
+        '<div class="stat"><b>'
+        f'<span data-sv="biz">{html.escape(biz_value)}</span>'
+        f'<span data-sv="mat" hidden>{html.escape(mat_value)}</span>'
+        f"</b><span>{label}</span></div>"
+    )
+
+
+def _stats_html(
+    stats: dict, *, mat_stats: dict | None = None,
+) -> str:
+    """Cards do resumo. Sem ``mat_stats``: formato da Fase 3 (valor unico).
+
+    Com ``mat_stats`` (pagina de dois perfis): cada card leva os valores dos
+    dois perfis em spans ``[data-sv]``; o JS mostra o do perfil ativo.
+    """
+    if mat_stats is None:
+        max_score = stats.get("max_score")
+        max_txt = _fmt_score(max_score) if max_score is not None else "—"
+        return (
+            f'<div class="stat"><b>{stats.get("total", 0)}</b><span>vagas elegíveis</span></div>'
+            f'<div class="stat"><b>{stats.get("companies", 0)}</b><span>empresas</span></div>'
+            f'<div class="stat"><b>{max_txt}</b><span>score máx</span></div>'
+            f'<div class="stat"><b>{stats.get("top30", 0)}</b><span>no Top 30</span></div>'
+            f'<div class="stat"><b>{html.escape(str(stats.get("updated") or "")[:16].replace("T", " "))}</b><span>dados atualizados</span></div>'
+        )
+    biz_max = stats.get("max_score")
+    mat_max = mat_stats.get("max_score")
+    biz_txt = _fmt_score(biz_max) if biz_max is not None else "—"
+    mat_txt = _fmt_score(mat_max) if mat_max is not None else "—"
+    updated = str(stats.get("updated") or "")[:16].replace("T", " ")
+    return (
+        _stat_block("vagas elegíveis", str(stats.get("total", 0)), str(mat_stats.get("total", 0)))
+        + _stat_block("empresas", str(stats.get("companies", 0)), str(mat_stats.get("companies", 0)))
+        + _stat_block("score máx", biz_txt, mat_txt)
+        + _stat_block("no Top 30", str(stats.get("top30", 0)), str(mat_stats.get("top30", 0)))
+        + _stat_block("dados atualizados", updated, updated)
+    )
 
 
 def render_html(
@@ -605,15 +732,25 @@ def render_html(
     stats: dict | None = None,
     top_n: int = TOP_N,
     rank_map: dict[str, int] | None = None,
+    materials: list[dict] | None = None,
+    materials_rank_map: dict[str, int] | None = None,
+    materials_stats: dict | None = None,
 ) -> str:
     """Pagina auto-contida (CSS inline, JS vanilla inline, zero external).
 
-    ``jobs`` sao as linhas exibidas (ja filtradas/cortadas pelo CLI); ``total``
-    e o total do conjunto filtrado (usado no contador e no resumo). ``stats``
-    e o resumo do topo (derivado do conjunto inteiro pelo ``main``); quando
-    ausente, e derivado de ``jobs`` (uso direto/testes). ``rank_map`` mapeia
-    id -> posicao no ranking do pipeline; sem ele, a posicao exibida e a
-    posicao na lista passada (uso local/testes).
+    ``jobs`` sao as linhas exibidas do PERFIL PRINCIPAL (ja
+    filtradas/cortadas pelo CLI); ``total`` e o total do conjunto filtrado
+    (contador e resumo). ``stats`` e o resumo do topo (derivado do conjunto
+    inteiro pelo ``main``); quando ausente, e derivado de ``jobs``.
+    ``rank_map`` mapeia id -> posicao no ranking do pipeline; sem ele, a
+    posicao exibida e a posicao na lista passada.
+
+    Fase 4: com ``materials`` (lista do MESMO conjunto ranqueada pelo perfil
+    Materials — ver ``materials_ranking.rank_materials_jobs``), a pagina ganha
+    o seletor de perfil e a segunda tabela (posicoes, scores e breakdowns
+    PROPRIOS do perfil Materials). ``materials_rank_map``/``materials_stats``
+    espelham ``rank_map``/``stats`` para o segundo perfil. Sem ``materials``,
+    o HTML e EXATAMENTE o da Fase 3 (compatibilidade preservada).
     """
     if stats is None:
         stats = _compute_stats(jobs, total=total)
@@ -624,20 +761,27 @@ def render_html(
             rank = rank_map.get(str(j.get("id")), i)
         rows.append(_row_html(rank, j, top_n=top_n))
     rows_html = "\n".join(rows)
-    order_note = (
-        "ordem: score (ranking do pipeline)" if jobs and jobs[0].get("score") is not None
-        else "ordem: mais recentes (last_seen)"
-    )
+
     chips = ""
     if filters_desc:
         chips = '<div class="meta">' + "".join(
             f'<span class="chip">{html.escape(f)}</span>' for f in filters_desc
         ) + "</div>"
     shown = len(jobs)
-    max_score_txt = _fmt_score(stats.get("max_score")) if stats.get("max_score") is not None else "—"
-    updated = stats.get("updated") or generated_at
-    updated_txt = str(updated)[:16].replace("T", " ")
-    return f"""<!doctype html>
+
+    table_head = (
+        "<thead><tr><th>#</th><th>score</th><th>vaga</th><th>empresa</th>"
+        "<th>local</th><th>tipo</th><th>desde</th><th></th></tr></thead>"
+    )
+
+    if materials is None:
+        # ---- Fase 3: pagina de um perfil (sem muda nada) ----
+        order_note = (
+            "ordem: score (ranking do pipeline)"
+            if jobs and jobs[0].get("score") is not None
+            else "ordem: mais recentes (last_seen)"
+        )
+        return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
@@ -654,11 +798,7 @@ def render_html(
     <p>{html.escape(source_label)} · gerado em {html.escape(generated_at)} UTC · {html.escape(order_note)}</p>
   </header>
   <div class="stats">
-    <div class="stat"><b>{stats.get("total", 0)}</b><span>vagas elegíveis</span></div>
-    <div class="stat"><b>{stats.get("companies", 0)}</b><span>empresas</span></div>
-    <div class="stat"><b>{max_score_txt}</b><span>score máx</span></div>
-    <div class="stat"><b>{stats.get("top30", 0)}</b><span>no Top 30</span></div>
-    <div class="stat"><b>{html.escape(updated_txt)}</b><span>dados atualizados</span></div>
+    {_stats_html(stats)}
   </div>
   {chips}
   <div class="toolbar">
@@ -683,7 +823,7 @@ def render_html(
   </div>
   <div class="wrap">
   <table>
-    <thead><tr><th>#</th><th>score</th><th>vaga</th><th>empresa</th><th>local</th><th>tipo</th><th>desde</th><th></th></tr></thead>
+{table_head}
     <tbody>
 {rows_html}
     </tbody>
@@ -698,11 +838,101 @@ def render_html(
 </html>
 """
 
+    # ---- Fase 4: dois perfis, uma tabela por perfil ----
+    mat_rows: list[str] = []
+    for i, j in enumerate(materials, 1):
+        rank = i
+        if materials_rank_map is not None and j.get("id") is not None:
+            rank = materials_rank_map.get(str(j.get("id")), i)
+        mat_rows.append(_row_html(
+            rank, j, top_n=top_n,
+            score_key="materials_score",
+            breakdown_key="materials_breakdown",
+            order=_MATERIALS_BREAKDOWN_ORDER,
+        ))
+    mat_rows_html = "\n".join(mat_rows)
+
+    pane_biz = f"Perfil: {PROFILE_LABELS['biz']} — ordem: score (ranking do pipeline)"
+    pane_mat = (
+        f"Perfil: {PROFILE_LABELS['mat']} — ordem: scores e posições próprios "
+        "(materials_score; ranking independente do principal)"
+    )
+    return f"""<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Internship Finder — ranking de vagas elegíveis (2 perfis)</title>
+<style>
+{_CSS}
+</style>
+</head>
+<body data-total="{total}">
+<main>
+  <header>
+    <h1>Internship Finder — ranking de vagas elegíveis</h1>
+    <p>{html.escape(source_label)} · gerado em {html.escape(generated_at)} UTC</p>
+    <p class="pane"><span data-sv="biz">{html.escape(pane_biz)}</span><span data-sv="mat" hidden>{html.escape(pane_mat)}</span></p>
+  </header>
+  <div class="profiles">
+    <button type="button" id="btn-biz" class="active">{PROFILE_LABELS['biz']}</button>
+    <button type="button" id="btn-mat">{PROFILE_LABELS['mat']}</button>
+  </div>
+  <div class="stats">
+    {_stats_html(stats, mat_stats=materials_stats)}
+  </div>
+  {chips}
+  <div class="toolbar">
+    <input id="q" type="search" placeholder="Buscar por título, empresa ou local…">
+    <input id="f-min-score" type="number" min="0" step="0.25" placeholder="score mín.">
+    <select id="sort" title="Ordenação">
+      <option value="score-desc">ordenar: score (padrão)</option>
+      <option value="rank">posição no ranking</option>
+      <option value="company">empresa (A→Z)</option>
+      <option value="title">título (A→Z)</option>
+      <option value="location">local (A→Z)</option>
+      <option value="date">data (mais recentes)</option>
+    </select>
+    <span class="hint" id="count">{shown} de {total} vagas</span>
+  </div>
+  <div class="toolbar">
+    <span class="fld"><label>empresa</label><select id="f-company"><option value="">todas</option></select></span>
+    <span class="fld"><label>local</label><select id="f-location"><option value="">todos</option></select></span>
+    <span class="fld"><label>tipo</label><select id="f-type"><option value="">todos</option></select></span>
+    <span class="fld"><label>país</label><select id="f-country"><option value="">todos</option></select></span>
+    <button type="button" id="clear">limpar filtros</button>
+  </div>
+  <div class="wrap" id="wrap-biz">
+  <table id="tbl-biz" data-total="{total}">
+{table_head}
+    <tbody>
+{rows_html}
+    </tbody>
+  </table>
+  </div>
+  <div class="wrap" id="wrap-mat" hidden>
+  <table id="tbl-mat" data-total="{total}">
+{table_head}
+    <tbody>
+{mat_rows_html}
+    </tbody>
+  </table>
+  </div>
+  <footer>Filtros e ordenação são client-side (JS embutido, sem backend). O score e o score_breakdown exibidos são os do perfil ativo (principal: pipeline; Materials Engineering: materials_score/materials_breakdown, componentes próprios e independentes — o ranking do perfil principal não é alterado). Filtros --company/--keyword/--country (se usados) já foram aplicados na geração.</footer>
+</main>
+<script>
+{_JS}
+</script>
+</body>
+</html>
+"""
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Interface Fase 3: ranking completo com filtros/ordenação "
-        "client-side e score explicável — gera HTML estático.",
+        description="Interface Fase 3/4: ranking completo com filtros/ordenação "
+        "client-side, score explicável e segundo perfil Materials Engineering — "
+        "gera HTML estático.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -722,8 +952,8 @@ def main(argv: list[str] | None = None) -> int:
         "--top",
         type=int,
         default=25,
-        help="Maximo de vagas exibidas (default: 25; <= 0 -> erro; a "
-        "publicacao em GitHub Pages usa um valor alto = todas)",
+        help="Maximo de vagas exibidas por perfil (default: 25; <= 0 -> erro; "
+        "a publicacao em GitHub Pages usa um valor alto = todas)",
     )
     parser.add_argument(
         "--company",
@@ -799,10 +1029,24 @@ def main(argv: list[str] | None = None) -> int:
         if j.get("id") is not None:
             rank_map[str(j.get("id"))] = i
 
+    # Fase 4: o MESMO conjunto tambem e ranqueado pelo perfil Materials
+    # (score/breakdown proprios; o score do principal nao muda). Filtros do
+    # CLI sao ortogonais ao score: aplicam-se igualmente aos dois rankings.
+    materials_ranked = rank_materials_jobs(jobs)
+    materials_rank_map = {}
+    for i, j in enumerate(materials_ranked, 1):
+        if j.get("id") is not None:
+            materials_rank_map[str(j.get("id"))] = i
+
     filtered = apply_filters(
         jobs, company=args.company, keyword=args.keyword, country=args.country
     )
+    materials_filtered = apply_filters(
+        materials_ranked,
+        company=args.company, keyword=args.keyword, country=args.country,
+    )
     top_jobs = filtered[: args.top]
+    mat_top_jobs = materials_filtered[: args.top]
 
     filters_desc: list[str] = []
     if args.company:
@@ -820,6 +1064,12 @@ def main(argv: list[str] | None = None) -> int:
         generated_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         stats=_compute_stats(filtered, total=len(filtered)),
         rank_map=rank_map,
+        materials=mat_top_jobs,
+        materials_rank_map=materials_rank_map,
+        materials_stats=_compute_stats(
+            materials_filtered, total=len(materials_filtered),
+            score_key="materials_score",
+        ),
     )
 
     out = "-" if args.output == "-" else Path(args.output or DEFAULT_OUTPUT)
@@ -827,7 +1077,11 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(page)
     else:
         out.write_text(page, encoding="utf-8")
-        print(f"interface gerada: {out.resolve()} ({len(top_jobs)} de {len(filtered)} vagas)")
+        print(
+            f"interface gerada: {out.resolve()} "
+            f"(business {len(top_jobs)}/{len(filtered)} · materials "
+            f"{len(mat_top_jobs)}/{len(materials_filtered)} vagas)"
+        )
     return 0
 
 
