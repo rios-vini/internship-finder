@@ -24,6 +24,7 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
 | `dedup.py` | deduplicacao deterministica por chave de confiabilidade (`external_id`/`id`, URL normalizada, `company+title+location`) |
 | `ranking.py` | ranking do perfil principal: `score_job` (score + breakdown) e `rank_jobs`, ordem deterministica |
 | `materials_ranking.py` | ranking do perfil secundário (Fase 4): `materials_score_job` + `rank_materials_jobs` — MESMAS vagas elegíveis, score/breakdown próprios, independentes do principal |
+| `ptbr.py` | camada PT-BR (Fase 5): glossário determinístico (`title_pt`), `detect_language`, `employment_type_pt`, `country_label`, `relevance_signals`/`penalties` — só apresentação; nunca toca score/ranking |
 | `metrics.py` | metricas de execucao em JSONL (payload por tenant + resumo do run, com `error_code`) |
 | `errors.py` | `CollectionError` + codigos de erro estruturados (classificador para o payload da queue e `error_code` no JSONL) |
 | `health.py` | relatorio de health por tenant/ATS sobre o JSONL (drop de cobertura, erros recorrentes) + alertas |
@@ -62,3 +63,12 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
   "entre as vagas ja elegiveis, quais sao mais relevantes para Materials?".
   A interface (`scripts/interface.py`) mostra os dois rankings com seletor de
   perfil (abas) na mesma pagina.
+- **Camada PT-BR de apresentacao (Fase 5, 19/09)**: `ptbr.py` traduz o
+  TITULO de forma deterministica por glossario (campo separado "PT-BR"; o
+  original permanece com tag "Original (EN/DE)"), rotula tipo do anuncio e
+  pais em portugues e explica cada componente REAL do breakdown do perfil
+  ativo em PT-BR (inclusive penalidades). NAO traduz descricao, NAO usa
+  LLM/API/servico externo e NAO altera score/ranking/filtros/dedup — apenas
+  a apresentacao. Como adicionar termos: editar `GLOSSARY` em `ptbr.py`
+  (frase composta antes da generica; identidade `frase_pt=None` protege
+  nomes de produto).

@@ -1,4 +1,4 @@
-"""Interface do internship-finder: ranking completo, filtros e ordenacao (Fase 3 + 4).
+"""Interface do internship-finder: ranking completo, filtros e ordenacao (Fase 3 + 4 + 5).
 
 Gera uma pagina HTML unica e auto-contida (CSS inline, JS vanilla inline, sem
 framework e sem dependencia nova) com as vagas ja ranqueadas pelo pipeline. A
@@ -19,6 +19,14 @@ pagina ganha um seletor de perfil (abas) e UMA tabela por perfil, reusando a
 mesma estrutura e o mesmo JS client-side (escopo por tabela ativa). Sem
 ``materials``, ``render_html`` produz EXATAMENTE a pagina da Fase 3 (compat
 com testes/uso direto).
+
+Fase 5 (camada PT-BR): titulo traduzido de forma DETERMINISTICA por glossario
+(``ptbr.py`` — modulo novo) como campo SEPARADO ("PT-BR"), com o original
+sempre visivel e rotulado ("Original (EN/DE)"); tipo do anuncio e pais em
+portugues; o bloco "por que esta vaga?" explica em PT-BR cada componente REAL
+do breakdown do perfil ativo (inclusive as penalidades). NAO traduz a
+descricao, NAO usa LLM/API/servico externo e NAO altera ranking/score/filtros/
+dedup — apenas apresenta melhor o resultado existente.
 
 Fontes (os DOIS caminhos funcionam):
 
@@ -66,6 +74,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from internship_finder.countries import matches_country, parse_country_spec  # noqa: E402
 from internship_finder.materials_ranking import rank_materials_jobs  # noqa: E402
+from internship_finder import ptbr  # noqa: E402  (Fase 5: camada PT-BR deterministica)
 
 DEFAULT_OUTPUT = Path("/tmp/interface.html")
 
@@ -83,31 +92,14 @@ _DB_COLUMNS = [
 ]
 
 # Rotulos PT-BR das componentes REAIS do score_breakdown do perfil principal
-# (ranking.py: area, skills, language, type, location, penalties).
-_BREAKDOWN_LABELS = {
-    "area": "Área",
-    "skills": "Skills",
-    "language": "Idioma",
-    "type": "Tipo",
-    "location": "Local",
-    "penalties": "Penalidades",
-}
-_BREAKDOWN_ORDER = ("area", "skills", "language", "type", "location", "penalties")
+# (Fase 5: definidos na camada PT-BR — ptbr.py — junto com os explicadores).
+_BREAKDOWN_LABELS = ptbr.BREAKDOWN_LABELS
+_BREAKDOWN_ORDER = ptbr.BREAKDOWN_ORDER
 
 # Rotulos das componentes REAIS do breakdown do perfil Materials Engineering
-# (materials_ranking.py: materials, adjacent, context, type, location,
-# penalties — nomeada ``materials_breakdown`` na vaga).
-_MATERIALS_BREAKDOWN_LABELS = {
-    "materials": "Materiais",
-    "adjacent": "Manufatura/Processo",
-    "context": "Qualidade/P&D/Lab",
-    "type": "Tipo",
-    "location": "Local",
-    "penalties": "Penalidades",
-}
-_MATERIALS_BREAKDOWN_ORDER = (
-    "materials", "adjacent", "context", "type", "location", "penalties",
-)
+# (materials_ranking.py; nomeada ``materials_breakdown`` na vaga).
+_MATERIALS_BREAKDOWN_LABELS = ptbr.MATERIALS_BREAKDOWN_LABELS
+_MATERIALS_BREAKDOWN_ORDER = ptbr.MATERIALS_BREAKDOWN_ORDER
 
 # Rotulos dos botoes do seletor de perfil (Fase 4).
 PROFILE_LABELS = {
@@ -269,17 +261,33 @@ def _breakdown_items(
 
 
 def _breakdown_html(job: dict, *, breakdown_key: str, order: tuple[str, ...]) -> str:
-    """Bloco 'por que este score': componentes com barra proporcional + total.
+    """Bloco 'por que esta vaga': componentes reais, explicados em PT-BR.
 
-    Barra = |valor| relativo ao maior |valor| da propria vaga (visual so;
-    os numeros exibidos sao os componentes reais, sem nenhuma conta nova).
+    Cada componente do breakdown REAL vira uma linha com rotulo PT-BR, o
+    valor REAL (com sinal) e uma barra proporcional (barra = |valor| relativo
+    ao maior |valor| da propria vaga — visual so; os numeros sao os
+    componentes reais, sem nenhuma conta nova). Abaixo de cada linha, um
+    detalhe fixo explica o que a componente mede (Fase 5 — novo). Quando
+    existem componentes NEGATIVAS, um cabecalho "o que reduziu a nota" as
+    separa (as penalidades REAIS do breakdown; nenhuma penalidade e criada).
     """
     items = _breakdown_items(job, breakdown_key=breakdown_key, order=order)
     if not items:
         return ""
+    profile = "biz" if breakdown_key == "score_breakdown" else "mat"
+    explains = ptbr.BREAKDOWN_EXPLAIN if profile == "biz" \
+        else ptbr.MATERIALS_BREAKDOWN_EXPLAIN
     maxv = max((abs(v) for _, _, v in items), default=0.0)
     rows = ""
-    for label, _key, val in items:
+    started_neg = False
+    for label, key, val in items:
+        if val < 0 and not started_neg:
+            rows += (
+                '<div class="bd-pen">'
+                "o que reduziu a nota (penalidades reais do breakdown)"
+                "</div>"
+            )
+            started_neg = True
         sign = "+" if val >= 0 else ""
         width = (abs(val) / maxv * 100) if maxv > 0 else 0
         neg = ' class="bd-neg"' if val < 0 else ""
@@ -290,7 +298,15 @@ def _breakdown_html(job: dict, *, breakdown_key: str, order: tuple[str, ...]) ->
             f'<span class="bd-bar"><i{neg} style="width:{width:.0f}%"></i></span>'
             "</div>"
         )
-    total_key = "score" if breakdown_key == "score_breakdown" else breakdown_key.replace("_breakdown", "_score")
+        detail = explains.get(key, "")
+        if detail:
+            rows += (
+                '<div class="bd-x">'
+                f"{html.escape(detail)}"
+                "</div>"
+            )
+    total_key = "score" if breakdown_key == "score_breakdown" else \
+        breakdown_key.replace("_breakdown", "_score")
     total = job.get(total_key)
     total_txt = f"Total <b>{_fmt_score(total)}</b>" if total is not None else "Total —"
     return f'<div class="bd-body">{rows}<div class="bd-total">{total_txt}</div></div>'
@@ -301,16 +317,26 @@ def _details_html(
 ) -> str:
     """Detalhes compactos da vaga (fora da tabela, dentro do <details>).
 
-    Extras factuais do proprio registro (nada inferido): tipo do anuncio,
-    estagio/remoto, deadline, "desde" e um trecho curto da descricao.
+    Extras factuais do proprio registro (nada inferido): tipo do anuncio
+    (rotulo PT-BR quando mapeado — Fase 5), pais em PT-BR, estagio/remoto,
+    deadline, "desde" e um trecho curto da descricao ORIGINAL (sem traducao
+    automatica; o original permanece e o link do anuncio abre a fonte).
     """
     parts: list[str] = []
     if job.get("employment_type"):
-        parts.append(f"tipo do anúncio: {html.escape(str(job['employment_type']))}")
+        raw_type = str(job["employment_type"])
+        pt_type = ptbr.employment_type_pt(raw_type)
+        if pt_type and pt_type.upper() != raw_type.upper():
+            parts.append(f"tipo do anúncio: {html.escape(pt_type)} ({html.escape(raw_type)})")
+        else:
+            parts.append(f"tipo do anúncio: {html.escape(raw_type)}")
     if _fmt_bool(job.get("internship")):
         parts.append("estágio")
     if _fmt_bool(job.get("remote")):
         parts.append("remoto")
+    pais = ptbr.country_label(job.get("country_iso"))
+    if pais and pais != str(job.get("country_iso") or ""):
+        parts.append(f"país: {html.escape(pais)}")
     if job.get("application_deadline"):
         parts.append(f"candidaturas até {_fmt_date(job['application_deadline'])}")
     added = _fmt_date(job.get("first_seen") or job.get("posted_at")
@@ -326,10 +352,13 @@ def _details_html(
         text = " ".join(str(desc).split())
         if len(text) > 300:
             text = text[:300] + "…"
-        desc_snippet = f'<p class="mut desc">{html.escape(text)}</p>'
+        desc_snippet = (
+            '<p class="mut desc"><span class="tag tag-orig">Original</span> '
+            f'<span class="desc-orig">{html.escape(text)}</span></p>'
+        )
     return (
         "<details class=\"why\">"
-        "<summary>por que este score</summary>"
+        "<summary>por que esta vaga? (score e penalidades)</summary>"
         f"{_breakdown_html(job, breakdown_key=breakdown_key, order=order)}"
         f"{extras}"
         f"{desc_snippet}"
@@ -364,7 +393,8 @@ def _row_html(
     via ``_safe_url``); scheme rejeitado segue o fluxo de URL vazia — o
     titulo aparece sem link e sem botao. O escaping HTML continua aplicado.
     """
-    title = html.escape(str(job.get("title") or "(sem titulo)"))
+    title = str(job.get("title") or "(sem titulo)")
+    title_esc = html.escape(title)
     safe_url = _safe_url(job.get("url"))
     url = html.escape(safe_url or "")
     company = html.escape(str(job.get("company") or "—"))
@@ -377,10 +407,33 @@ def _row_html(
     score = job.get(score_key)
     score_attr = str(score) if isinstance(score, (int, float)) else ""
 
+    # Fase 5 — camada PT-BR: titulo traduzido de forma deterministica (campo
+    # separado; o original continua SEMPRE visivel e com tag "Original
+    # (idioma)" quando detectado). Nenhuma informacao nova e inventada: a
+    # traducao vem do glossario em ptbr.py e o idioma e detectado por
+    # marcadores fortes (ptbr.detect_language).
+    pt_title = ptbr.title_pt(title)
+    lang = ptbr.detect_language(title)
+    lang_suffix = f" ({lang.upper()})" if lang else ""
+    title_cell = ""
+    if pt_title:
+        title_cell += (
+            '<div class="t-pt"><span class="tag tag-pt">PT-BR</span> '
+            f'<span class="t-pt-txt">{html.escape(pt_title)}</span></div>'
+        )
+    title_cell += (
+        f'<div class="t-og"><span class="tag tag-orig">Original{lang_suffix}</span> '
+    )
+    if safe_url:
+        title_cell += f'<a href="{url}" target="_blank" rel="noopener">{title_esc}</a>'
+    else:
+        title_cell += title_esc
+    title_cell += "</div>"
+    link = title_cell
+
     is_top = top_n > 0 and rank <= top_n
     badge = '<span class="badge-top">Top 30</span>' if is_top else ""
     row_class = "top30" if is_top else ""
-    link = f'<a href="{url}" target="_blank" rel="noopener">{title}</a>' if safe_url else title
     open_btn = (
         f'<a class="open" href="{url}" target="_blank" rel="noopener">abrir&nbsp;↗</a>'
         if safe_url else '<span class="mut">—</span>'
@@ -479,6 +532,16 @@ _CSS = """
   a { color:var(--acc); text-decoration:none; }
   a:hover { text-decoration:underline; }
   .badge-top { display:inline-block; font-size:.66rem; font-weight:700; background:#0b6bcb; color:#fff; border-radius:999px; padding:1px 8px; margin-left:6px; vertical-align:20%; letter-spacing:.03em; }
+  /* Fase 5: camada PT-BR — titulo derivado + original rotulado */
+  .t-pt { font-weight:600; line-height:1.35; }
+  .t-og { margin-top:3px; font-size:.85rem; color:#3d4c5c; line-height:1.35; }
+  .t-og a { color:var(--acc); }
+  .tag { display:inline-block; font-size:.6rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; border:1px solid var(--line); color:var(--mut); border-radius:999px; padding:1px 7px; margin-right:5px; vertical-align:2px; white-space:nowrap; }
+  .tag-pt { border-color:var(--acc); color:var(--acc); }
+  .tag-orig { background:#eef2f7; padding:1px 6px; }
+  .bd-x { grid-column:1 / -1; font-size:.72rem; color:var(--mut); margin:-2px 0 5px; padding-left:2px; }
+  .bd-pen { grid-column:1 / -1; font-size:.72rem; font-weight:700; color:#a93226; margin:4px 0 3px; letter-spacing:.02em; }
+  .desc-orig { display:inline; }
   a.open { display:inline-block; white-space:nowrap; font-size:.78rem; border:1px solid var(--acc); color:var(--acc); border-radius:999px; padding:3px 10px; }
   a.open:hover { background:var(--acc); color:#fff; text-decoration:none; }
   details.why { margin-top:5px; }
@@ -494,6 +557,7 @@ _CSS = """
   .mut { color:var(--mut); }
   .loc { font-size:.85rem; color:#3d4c5c; }
   p.facts, p.desc { margin:6px 0 0; font-size:.82rem; color:#3d4c5c; max-width:680px; }
+  p.small { font-size:.78rem; }
   footer { margin-top:18px; font-size:.75rem; color:var(--mut); }
   @media (max-width:760px) { th:nth-child(5),td:nth-child(5),th:nth-child(7),td:nth-child(7) { display:none; } }
 """
@@ -796,6 +860,7 @@ def render_html(
   <header>
     <h1>Internship Finder — ranking de vagas elegíveis</h1>
     <p>{html.escape(source_label)} · gerado em {html.escape(generated_at)} UTC · {html.escape(order_note)}</p>
+    <p class="mut small">PT-BR: título e tipo traduzidos por glossário determinístico (sem traduzir descrições); o original permanece em &quot;Original&quot; e o anúncio abre na fonte.</p>
   </header>
   <div class="stats">
     {_stats_html(stats)}
@@ -829,7 +894,7 @@ def render_html(
     </tbody>
   </table>
   </div>
-  <footer>Filtros e ordenação são client-side (JS embutido, sem backend). O ranking, o score e o score_breakdown são os do pipeline — esta página não re-ranqueia nada. Filtros --company/--keyword/--country (se usados) já foram aplicados na geração.</footer>
+  <footer>Filtros e ordenação são client-side (JS embutido, sem backend). O ranking, o score e o score_breakdown são os do pipeline — esta página não re-ranqueia nada. PT-BR: glossário determinístico em ptbr.py (títulos/tipos/país/“por que esta vaga”); as descrições não são traduzidas e o anúncio original permanece. Filtros --company/--keyword/--country (se usados) já foram aplicados na geração.</footer>
 </main>
 <script>
 {_JS}
@@ -873,6 +938,7 @@ def render_html(
     <h1>Internship Finder — ranking de vagas elegíveis</h1>
     <p>{html.escape(source_label)} · gerado em {html.escape(generated_at)} UTC</p>
     <p class="pane"><span data-sv="biz">{html.escape(pane_biz)}</span><span data-sv="mat" hidden>{html.escape(pane_mat)}</span></p>
+    <p class="mut small">PT-BR: título, tipo, país e "por que esta vaga" em português por glossário determinístico (sem traduzir a descrição); o original permanece em &quot;Original&quot; e o anúncio abre na fonte.</p>
   </header>
   <div class="profiles">
     <button type="button" id="btn-biz" class="active">{PROFILE_LABELS['biz']}</button>
@@ -918,7 +984,7 @@ def render_html(
     </tbody>
   </table>
   </div>
-  <footer>Filtros e ordenação são client-side (JS embutido, sem backend). O score e o score_breakdown exibidos são os do perfil ativo (principal: pipeline; Materials Engineering: materials_score/materials_breakdown, componentes próprios e independentes — o ranking do perfil principal não é alterado). Filtros --company/--keyword/--country (se usados) já foram aplicados na geração.</footer>
+  <footer>Filtros e ordenação são client-side (JS embutido, sem backend). O score e o score_breakdown exibidos são os do perfil ativo (principal: pipeline; Materials Engineering: materials_score/materials_breakdown, componentes próprios e independentes — o ranking do perfil principal não é alterado). PT-BR: glossário determinístico em ptbr.py (títulos/tipos/país/“por que esta vaga” por perfil); as descrições não são traduzidas e o anúncio original permanece. Filtros --company/--keyword/--country (se usados) já foram aplicados na geração.</footer>
 </main>
 <script>
 {_JS}
