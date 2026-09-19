@@ -1,13 +1,21 @@
 # Project Status
 
-Last updated: 2026-09-18
+Last updated: 2026-09-19
 
 ## Current state
 
 The project has a working company-oriented ATS collection pipeline (collection →
 filtering → dedup → ranking), with SQLite persistence, structured error codes,
 observability (health), CI and standardized requirement tracking in
-`MASTER_PLAN.md`.
+`MASTER_PLAN.md`. Since the **Fase 4 (19/09)**, the eligible set feeds **two
+independent rankings**: the main profile (`ranking.py` — Supply Chain /
+Procurement / BI / Analytics / Automation) and the **Materials Engineering
+profile** (`materials_ranking.py` — `materials_score`/`materials_breakdown`
+own components; the main score is never touched and never summed). Same 476
+eligible jobs, no new collection/filters/dedup; the public page has a
+profile switcher and the Telegram digest a compact "Perfil Materials
+Engineering" section. Details in the MASTER_PLAN log (19/09, FASE 4) and
+`docs/relatorio_fase4_perfil_materials.md`.
 
 Current collection scope includes **101 evaluated/operational companies**
 (12 initial + 27 E2 expansion + 25 added 08/09, P3 #23 — Lote A: 8 DE
@@ -29,6 +37,7 @@ Consulting, Engelhart, audibene/hear.com — nomes canônicos = nomes exatos do
 manifest)
 + **5 added 18/09** (última onda de cobertura: Sungrow EMEA, AutoScout24, Huawei
 Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH).
++ **Fase 4 (19/09)**: segundo perfil **Materials Engineering** — `src/internship_finder/materials_ranking.py` (novo): o MESMO conjunto elegível (476) ganha `materials_score`/`materials_breakdown` próprios (materiais/metais/polímeros/cerâmicas/superfície/corrosão/ensaios + manufatura/processo; quality/R&D gated por contexto técnico; penalidades de função de negócio no título); `score` do principal intacto por id; interface com **seletor de perfil** (2 tabelas na mesma página, JS da Fase 3 reusado); digest do Telegram com seção "Perfil Materials Engineering" (Top 5 + novas no Top 30). Verificado: 476/476, rankings independentes, topo = polímero/beschichtung/verfahrenstechnik/bateria; suíte **26/26** (test_materials_ranking no CI).
 + **Fase 3 (18/09)**: interface do ranking reescrita (`scripts/interface.py` —
 apresentação pura): a página pública mostra **todas as vagas elegíveis** (476)
 com resumo no topo, **filtros/ordenação client-side** (JS vanilla embutido,
@@ -104,6 +113,7 @@ With `INTERNSHIP_FINDER_GEOCODING=1` (Workday fallback, OFF by default): histori
 - **Batch 12–13/09 (PRs #48–#53, merged)**: CI passa a instalar dependências via `pyproject.toml` — sem lista manual nem `--no-deps` (#48); papel do `requirements-lock.txt` documentado como snapshot, não lock declarativo (#49); `test_manifest.py` renomeado para `manifest_probe.py` — probe manual (rede), fora da suíte do CI (#50); `coverage.py` suporta zero vagas elegíveis sem `IndexError` (#51); escopo do registry consolidado 39/60 → 65 + `RegistryEntry.source` removido (#52); detecção de drift entre tenant do registry e tenant resolvido (#53). Com P3 #40 (backup do jobs.db, 13/09) e o README pós-auditoria com a suite 23/23 (#55), fecham a leva P1–P3 desta auditoria.
 - **Fase 1 — GitHub Pages + cron 06:00 America/Sao_Paulo** (18/09; PRs #67 + #68; main `d36791c`; CI 24/24 — 1.062 checks): o ranking HTML local ganhou **publicação automática no GitHub Pages** — URL estável **https://rios-vini.github.io/internship-finder/** (repo público, source branch `gh-pages`/root; a branch contém só `index.html`, 472 KB). Fluxo: refresh diário → `scripts/interface.py` (mesmo HTML do uso local) → **`scripts/publish_pages.py`** (novo: gate `check_public_safe`, escrita atômica no clone de deploy `/home/ubuntu/internship-finder-ghpages`, commit+push da `gh-pages`; `--dry-run` para ensaio) → Pages. O refresh ganhou a flag **`--pages-dir`** (default OFF; habilitada no cron): publica só após o run com exit 0 + eligible > 0; falha de deploy não derruba o run (`publish_error` na mensagem Telegram/`run_info.json`) e a página anterior permanece no ar. **Cron**: era `0 6 * * *` UTC (= 03:00 BRT) → **`0 9 * * *` UTC = 06:00 America/Sao_Paulo** (UTC-3 fixo, sem DST no Brasil desde 2019; Vixie 3.0pl1 local **não suporta `CRON_TZ`** — testado com probe; comentário no crontab + README). Watchdogs `*/5` intactos. Segurança: `check_public_safe` + verificação do blob publicado (0 matches de `ghp_|TELEGRAM_BOT_TOKEN|/home/ubuntu|jobs.db`). Documentação: README (seção GitHub Pages + Cron corrigido), `docs/architecture.md`. Testes novos: `scripts/test_publish_pages.py` (28 checks), `test_refresh.py` +16.
 - **Fase 2 — Telegram Daily Digest** (18/09; PR #70; CI 25/25 — 1.163 checks): o Telegram virou o **resumo diário do estado da busca** (ranking completo segue no GitHub Pages). Novo `scripts/ranking_digest.py` (funções puras, zero infra nova): compara o ranking do run contra o **snapshot da própria rotação** (`data/archive/<ts>/eligible_jobs.json` — estado anterior já copiado antes da coleta desde o P2 #17; nenhum arquivo/banco novo). Seções anexadas à mensagem única do refresh_daily: perfil/critérios ativos (**pesos lidos das constantes vivas** de ranking.py/filters.py — nada duplicado), **novas vagas no Top 30** (id ausente do ranking elegível anterior; "nova" ≠ "subiu" — vaga antiga que entrou vai para "Entraram no Top 30"), Top 5 atual, mudanças (entradas/saídas + movimentos ≥ 5 posições), link do GitHub Pages (sempre a última linha). Gates: digest só com exit 0; falha ao montar nunca derruba o run; **limite do Telegram (4096 chars)** — run com muitas anomalias preserva a mensagem base e o digest vira 1 linha compacta com o link. **Cron**: linha ganhou `--always-notify` (digest diário todos os dias). Testes: novo `scripts/test_digest.py` no CI (24→25), `test_refresh.py` +2 blocos, e **testes órfãos da Fase 1 registrados** (com fix de fixture em `test_pages_dir_integrado`: type:run gravado DURANTE a coleta fake, como o CLI real — antes o snapshot de linhas zerava o resumo e `publish_ranking` recebia eligible 0). Suíte local 25/25, 1.163 checks, 0 falhas; mensagem real (18/09: 476 vs 414 → 5 novas no Top 30) enviada ao Telegram **ok:true**. [ver MASTER_PLAN Log 18/09]
+- **Fase 4 — Segundo perfil Materials Engineering** (19/09; PR #73; main `9ad6bf8`; CI 26/26): o MESMO conjunto elegível é classificado por dois rankings independentes — `src/internship_finder/materials_ranking.py` adiciona `materials_score`/`materials_breakdown` próprios (núcleo de materiais + adjacentes industriais + contexto quality/R&D gated por contexto técnico no título + tipo + local + penalidades de função de negócio no título); `score`/`score_breakdown` do principal INTACTOS (nunca somados); elegibilidade/coleta/dedup inalteradas. Interface (`scripts/interface.py`): seletor de perfil `[Procurement / Supply Chain | Materials Engineering]`, duas tabelas na mesma página reusando o JS da Fase 3 (filtros/ordenação por perfil); `render_html` sem `materials` = página da Fase 3 idêntica. Digest (`ranking_digest.py`): seção "Perfil Materials Engineering" (Top 5 + novas no Top 30 Materials) na mesma mensagem, link continua última linha. Testes: `test_materials_ranking.py` no CI (25→26), interface +22 checks, digest +9; suíte local 26/26. Validação real (run 19/09, 476): mesma quantidade, business intacto por id, Top 30s independentes, vagas de polímero/beschichtung/verfahrenstechnik/bateria no topo, topo do principal cai para #215 no materials; DOM real (jsdom) 25/25 checks; docs em README/architecture/MASTER_PLAN/PROJECT_STATUS + `docs/relatorio_fase4_perfil_materials.md`. [ver MASTER_PLAN Log 19/09]
 
 ## Next priorities
 
