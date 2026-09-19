@@ -246,10 +246,14 @@ def test_digest_sections() -> None:
               text.index("🆕 Novas vagas") < text.index("🏆 Top 5"))
         check("Top 5 antes das mudancas",
               text.index("🏆 Top 5") < text.index("📈 Mudanças"))
-        check("mudancas antes do link",
-              text.index("📈 Mudanças") < text.index("🔗 Ranking completo"))
+        check("mudancas antes da secao materials (Fase 4)",
+              text.index("📈 Mudanças") < text.index("🧪 Perfil Materials"))
+        check("secao materials antes do link",
+              text.index("🧪 Perfil Materials") < text.index("🔗 Ranking completo"))
         check("link do ranking completo e a ULTIMA linha",
               (sections or [])[-1] == f"🔗 Ranking completo (todas as vagas elegíveis): {url}")
+        check("Top 5 materials com score proprio (mat)",
+              "Top 5:" in text and "(mat " in text)
         check("vaga nova listada com posicao, titulo, score e link",
               "#1 — Nova vaga — Acme — Berlin — 12" in text
               and "https://ex.com/fresh" in text)
@@ -277,6 +281,9 @@ def test_digest_sections() -> None:
         check("sem snapshot: Top 5 e link continuam",
               "🏆 Top 5 atual" in text2
               and text2.rstrip().endswith(f"🔗 Ranking completo (todas as vagas elegíveis): {url}"))
+        check("sem snapshot: secao materials so com Top 5 (sem novas)",
+              "🧪 Perfil Materials" in text2
+              and "Novas no Top 30 Materials" not in text2)
 
         # ranking atual vazio -> None (sem digest)
         cur3, _ = _fixture_files(base, [], previous)
@@ -314,6 +321,42 @@ def test_digest_deterministico() -> None:
         check("mesmas entradas -> mesmo texto", a is not None and a == b)
 
 
+def test_materials_lines() -> None:
+    print("== secao materials (Fase 4): top proprio + novas no Top 30 ==")
+    cur = [
+        _job("m1", "Praktikum Materials Testing", 3.0),
+        _job("m2", "Working Student Battery Cell Development", 4.5),
+        _job("biz1", "Werkstudent Logistik", 12.0),      # alto no principal
+        _job("new1", "Praktikum Beschichtung", 5.0),      # nova, nao existia
+        _job("m3", "Werkstudent Einkauf Aluminium", 6.0),  # penalizada
+        _job("m4", "Intern Polymer Processing", 4.0),
+        _job("m5", "Praktikum Verfahrenstechnik", 4.0),
+    ]
+    prev = [j for j in cur if j["id"] != "new1"]
+    lines = rdg.materials_lines(cur, prev)
+    text = "\n".join(lines)
+    check("cabecalho do perfil materials presente",
+          "🧪 Perfil Materials Engineering" in text)
+    mat_order = [j["id"] for j in rdg.rank_materials_jobs(cur)]
+    check("Top 5 materials segue o RANKING materials (nao o do principal)",
+          "1. Praktikum Materials Testing" in text
+          or mat_order[0] == "m1")
+    check("'Werkstudent Logistik' (topo do principal) nao lidera materials",
+          "1. Werkstudent Logistik" not in text)
+    check("'Einkauf Aluminium' penalizada nao aparece no Top 5",
+          "Einkauf Aluminium" not in text)
+    check("nova vaga materials listada em 'Novas no Top 30 Materials'",
+          "Novas no Top 30 Materials" in text and "Praktikum Beschichtung" in text)
+    # mesmo conjunto -> nenhuma nova
+    lines2 = rdg.materials_lines(prev, prev)
+    check("sem novas -> '— nenhuma vaga nova no Top 30 Materials'",
+          "— nenhuma vaga nova no Top 30 Materials" in "\n".join(lines2))
+    # determinismo
+    lines3 = rdg.materials_lines(cur, prev)
+    check("determinismo da secao materials", lines == lines3)
+    check("sem ranking atual -> []", rdg.materials_lines([], prev) == [])
+
+
 def main() -> int:
     test_load_ranking()
     test_top_positions()
@@ -325,6 +368,7 @@ def main() -> int:
     test_default_country_espelha_cli()
     test_digest_sections()
     test_mensagem_sem_novas()
+    test_materials_lines()
     test_digest_deterministico()
     print()
     if FAILURES:

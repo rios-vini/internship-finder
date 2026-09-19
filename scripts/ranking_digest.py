@@ -45,6 +45,7 @@ from pathlib import Path
 
 from internship_finder import filters
 from internship_finder import ranking as ranking_mod
+from internship_finder.materials_ranking import rank_materials_jobs
 
 # ---------------------------------------------------------------------------
 # Limites do digest (exibicao; NAO sao regras de ranking)
@@ -61,6 +62,9 @@ MOVER_MIN_DELTA = 5
 MOVER_MAX_SHOWN = 5
 # Teto defensivo de novas vagas listadas (Telegram tem limite de 4096 chars).
 NEW_MAX_SHOWN = 15
+# Fase 4: Tetos da secao do perfil Materials (compacta — mesma mensagem).
+MATERIALS_TOP5 = 5
+MATERIALS_NEW_MAX = 5
 
 # Spec de pais do filtro (espelha o default de ``cli.py --country``; o teste
 # test_digest confere os dois — se o CLI mudar o default, o teste falha).
@@ -356,6 +360,13 @@ def profile_lines(country_spec: str = DEFAULT_COUNTRY_SPEC) -> list[str]:
         f"excluídos: {_TYPE_EXCLUDED_DISPLAY} ({n_excl} padrões)"
     )
     lines.extend(_signal_lines())
+    # Fase 4: o mesmo conjunto elegivel tambem tem o perfil secundario
+    # (mesmas vagas, score proprio — secoes abaixo).
+    lines.append(
+        "Perfil secundário (ranking próprio, mesmas vagas elegíveis): "
+        "Materials Engineering — materiais/metalurgia/polímeros/cerâmicas/"
+        "metais/superfície/corrosão/ensaios + manufatura/processo"
+    )
     return lines
 
 
@@ -475,6 +486,46 @@ def _changes_section(
     return lines
 
 
+def materials_lines(current: list[dict], previous: list[dict]) -> list[str]:
+    """Secao compacta do perfil Materials (Fase 4): Top 5 + novas no Top 30.
+
+    O ranking materials e COMPUTADO aqui (``rank_materials_jobs`` — funcao
+    pura sobre as MESMAS vagas elegiveis ja carregadas; score e posicoes
+    PROPRIOS, independentes do principal). Zero arquivo novo, zero infra:
+    a mesma mensagem unica do refresh carrega a secao do segundo perfil.
+    Best-effort: lista vazia sem vagas; nunca derruba o digest.
+    """
+    if not current:
+        return []
+    mat_cur = rank_materials_jobs(current)
+    lines = [
+        "🧪 Perfil Materials Engineering (ranking próprio, mesmas vagas elegíveis)"
+    ]
+    top5 = mat_cur[:MATERIALS_TOP5]
+    if not top5:
+        lines.append("— ranking materials vazio")
+        return lines
+    lines.append("Top 5:")
+    for pos, j in enumerate(top5, 1):
+        lines.append(
+            f"  {pos}. {_short_title(j)} — {j.get('company') or '—'} "
+            f"(mat {_score_text(j.get('materials_score'))})"
+        )
+    if previous:
+        novas = new_top_entries(mat_cur, previous, top=DIGEST_TOP)
+        if novas:
+            lines.append(f"🆕 Novas no Top 30 Materials ({len(novas)}):")
+            for pos, j in novas[:MATERIALS_NEW_MAX]:
+                lines.append(
+                    f"  #{pos} — {_short_title(j)} — {j.get('company') or '—'}"
+                )
+            if len(novas) > MATERIALS_NEW_MAX:
+                lines.append(f"  (+{len(novas) - MATERIALS_NEW_MAX} outras)")
+        else:
+            lines.append("— nenhuma vaga nova no Top 30 Materials")
+    return lines
+
+
 def digest_sections(
     current_path: str | Path,
     previous_path: str | Path,
@@ -524,6 +575,13 @@ def digest_sections(
         changes = ranking_changes(current, previous, top=top)
         lines.append("")
         lines.extend(_changes_section(changes, {j.get("id") for _, j in novas}))
+
+    # Fase 4: secao compacta do perfil Materials (antes do link — o link do
+    # ranking completo segue sendo a ULTIMA linha).
+    mat_lines = materials_lines(current, previous)
+    if mat_lines:
+        lines.append("")
+        lines.extend(mat_lines)
 
     lines.append("")
     lines.append(f"🔗 Ranking completo (todas as vagas elegíveis): {pages_url}")
