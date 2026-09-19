@@ -27,7 +27,7 @@ execução da suíte (18/09) ou nos docs.
 ## 1. Estado verificado em 2026-09-18
 
 ### Main público (GitHub)
-- `main` = `0939f05` (18/09 — PRs #66/#67/#68: fechamento final documental +
+- `main` = `f5da0d3` (18/09 — PRs #66/#67/#68: fechamento final documental +
   **Fase 1 — GitHub Pages + cron 06:00 America/Sao_Paulo**; #69 docs sync;
   **#70 = Fase 2 — Telegram Daily Digest**; **#71 = Fase 3 — interface do
   ranking**: todas as vagas elegíveis, filtros/ordenação client-side e
