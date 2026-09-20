@@ -25,6 +25,7 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
 | `ranking.py` | ranking do perfil principal: `score_job` (score + breakdown) e `rank_jobs`, ordem deterministica |
 | `materials_ranking.py` | ranking do perfil secundário (Fase 4): `materials_score_job` + `rank_materials_jobs` — MESMAS vagas elegíveis, score/breakdown próprios, independentes do principal |
 | `ptbr.py` | camada PT-BR (Fase 5): glossário determinístico (`title_pt`), `detect_language`, `employment_type_pt`, `country_label`, `relevance_signals`/`penalties` — só apresentação; nunca toca score/ranking |
+| `app_intel.py` | Application Intelligence (Fase 6): `german_level` (exigência de alemão por EVIDÊNCIA no texto), `english_evidence`, `work_authorization` (5 estados, só com evidência), `deadline_kind` (empregador vs. validade do feed SuccessFactors vs. ausente), `urgency_color`, `candidate_fit`, `possible_problems`, `quality_flags`, `application_readiness` — funções puras e determinísticas; alimenta ranking (componente language) e interface |
 | `metrics.py` | metricas de execucao em JSONL (payload por tenant + resumo do run, com `error_code`) |
 | `errors.py` | `CollectionError` + codigos de erro estruturados (classificador para o payload da queue e `error_code` no JSONL) |
 | `health.py` | relatorio de health por tenant/ATS sobre o JSONL (drop de cobertura, erros recorrentes) + alertas |

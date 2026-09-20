@@ -316,8 +316,7 @@ def _signal_lines() -> list[str]:
     rows = [
         ("área no título", ranking_mod.WEIGHT_AREA_TITLE),
         ("competências na descrição (por termo)", ranking_mod.WEIGHT_SKILL),
-        ("inglês", ranking_mod.WEIGHT_LANG_EN),
-        ("alemão", ranking_mod.WEIGHT_LANG_DE),
+        ("inglês (evidência no anúncio)", ranking_mod.WEIGHT_LANG_EN),
         ("tipo de vaga no título", ranking_mod.WEIGHT_TYPE_TITLE),
         ("localização DE", ranking_mod.WEIGHT_DE_EXPLICIT),
         ("Berlin", ranking_mod.WEIGHT_DE_CAPITAL),
@@ -331,6 +330,12 @@ def _signal_lines() -> list[str]:
         ("senioridade", ranking_mod.PENALTY_SENIOR),
         ("manager", ranking_mod.PENALTY_MANAGER),
         ("full-time", ranking_mod.PENALTY_FULL_TIME),
+        # Fase 6: alemão deixou de bonificar menção — as penalidades refletem
+        # a EXIGÊNCIA detectada por app_intel.german_level no texto do anúncio
+        # (required -> PENALTY_LANG_DE_REQUIRED; preferred -> PREFERRED; plus/sem
+        # menção -> neutro; o idioma em que o anúncio foi escrito nunca é requisito).
+        ("alemão exigido", ranking_mod.PENALTY_LANG_DE_REQUIRED),
+        ("alemão preferido", ranking_mod.PENALTY_LANG_DE_PREFERRED),
     ]
     penalty_parts = [
         f"{label} ({weight:g})"

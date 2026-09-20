@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-19
+Last updated: 2026-09-20
 
 ## Current state
 
@@ -37,6 +37,31 @@ Consulting, Engelhart, audibene/hear.com — nomes canônicos = nomes exatos do
 manifest)
 + **5 added 18/09** (última onda de cobertura: Sungrow EMEA, AutoScout24, Huawei
 Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH).
++ **Fase 6 (20/09)**: **Candidate Fit + Application Intelligence + Mobile UX** —
+  conceitos separados do score de relevância (score = SÓ relevância; sinais de
+  candidatura nunca entram nele). Novo `app_intel.py` (puro/determinístico):
+  alemão por EXIGÊNCIA detectada no TEXTO (required −2,0 / preferred −0,5 /
+  plus e sem menção neutros — fim do bônus por "conter alemão"; EN +1,5
+  inalterado; `german_level` com negação explícita, CEFR, "von Vorteil",
+  "English required, German is a plus"→preferido; "Deutsche Bahn"/"Deutschland"
+  não contam), `work_authorization` (5 estados SÓ com evidência; 444/474 `not
+  mentioned`), `deadline_kind` (employer vs validade do feed SuccessFactors
+  [`g:expiration_date` = collected+30d, validado 295/295] vs none — SF nunca
+  vira prazo/urgência/"vagas expirando"), urgency 🟢>14/🟡7–14/🟠3–6/🔴≤2,
+  `candidate_fit`/`possible_problems`/`quality_flags`/`application_readiness`.
+  Interface: chips por vaga, bloco "sinais de candidatura e possíveis
+  problemas", seção "Como este ranking funciona" com PESOS REAIS das
+  constantes (nada duplicado), filtros novos (vagas expirando ≤2/≤7/≤14 — só
+  deadline confiável; work auth; idioma; Top 30; quality flags; contador
+  "Filtros (N)"), **mobile: tabela → card <760px** sem scroll horizontal,
+  dark mode, `--ref-date`/`--db-join` (freshness first/last_seen). Ranking
+  real (run 20/09, 474 vs archive 19/09, 476): 448 comuns; **278 (62%)
+  mudaram** (deltas −2,5×148, −2,0×30, −1,0×73, −0,5×27); Top 30: 23 ficam,
+  7 saem/7 entram (saídas = alemão exigido). Suíte local **28/28**, CI 27→28
+  (`test_app_intel.py` novo; `test_interface` +11 casos node + Fase 6).
+  Detalhes: `docs/relatorio_fase6_candidate_fit.md`. Status pessoal =
+  evolução futura (página estática, sem backend); Company Intelligence
+  (Fase 7) NÃO implementada.
 + **Fase 5 (19/09)**: camada **PT-BR determinística** na interface (`src/internship_finder/ptbr.py` — novo: glossário ≈80 entradas, `title_pt`, `detect_language`, `employment_type_pt`, `country_label`, `relevance_signals`); o HTML público mostra **título PT-BR como campo separado** (original sempre visível com tag `Original (EN/DE)`, 467/476 títulos traduzidos), tipo do anúncio e país em PT-BR, e o bloco **"por que esta vaga?"** explica cada componente REAL do breakdown do perfil ativo em PT-BR (penalidades separadas em "o que reduziu a nota"). SEM tradução integral de descrições, SEM LLM/API/serviço externo; `ranking.py`/`materials_ranking.py`/filtros/dedup/coleta **intocados**. Suíte local **27/27 scripts — 1.345 checks — 0 falhas** (test_ptbr: 59 checks, CI 26→27). Detalhes: `docs/relatorio_fase5_ptbr.md`.
 + **Fase 4 (19/09)**: segundo perfil **Materials Engineering** — `src/internship_finder/materials_ranking.py` (novo): o MESMO conjunto elegível (476) ganha `materials_score`/`materials_breakdown` próprios (materiais/metais/polímeros/cerâmicas/superfície/corrosão/ensaios + manufatura/processo; quality/R&D gated por contexto técnico; penalidades de função de negócio no título); `score` do principal intacto por id; interface com **seletor de perfil** (2 tabelas na mesma página, JS da Fase 3 reusado); digest do Telegram com seção "Perfil Materials Engineering" (Top 5 + novas no Top 30). Verificado: 476/476, rankings independentes, topo = polímero/beschichtung/verfahrenstechnik/bateria; suíte **26/26** (test_materials_ranking no CI).
 + **Fase 3 (18/09)**: interface do ranking reescrita (`scripts/interface.py` —

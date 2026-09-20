@@ -601,6 +601,43 @@ internacionais podem manter o original entre parenteses ("Compras
 seguro, sem quebra). Detalhes e limitacoes:
 `docs/relatorio_fase5_ptbr.md` + `scripts/test_ptbr.py`.
 
+### Candidate Fit + Application Intelligence + mobile (Fase 6, 20/09)
+
+A pagina passou a responder tambem **"esta vaga e viavel para candidatura, e
+urgente e ha obstaculos?"** — com conceitos mantidos SEPARADOS do score de
+relevancia (o score continua sendo so relevancia; sinais de candidatura nunca
+entram nele):
+
+- **Idioma**: ingles mencionado no anuncio (+1,5) e sinal compativel; alemao e
+  avaliado pela EXIGENCIA detectada no TEXTO do anuncio (nunca pelo idioma em
+  que foi escrito): exigido −2,0 / preferido −0,5 / menção difusa ou sem
+  menção → neutro. Classificador em `src/internship_finder/app_intel.py`
+  (`german_level`) — frases reais, negacao explicita, CEFR, "von Vorteil".
+- **Work authorization**: estados por evidencia explicita no anuncio
+  (suporte/requer existente/sem sponsorship/nao mencionado/incerto) — nunca
+  inferido de multinacional ou localizacao.
+- **Deadline**: primeira classe, nunca inventado; o valor SuccessFactors
+  (`g:expiration_date` = feed +30d) e mostrado como **validade do anuncio na
+  fonte**, NAO como prazo de candidatura (nao entra em urgencia nem em "vagas
+  expirando"). Urgencia so com deadline confirmado do empregador.
+- **Por vaga**: chips visiveis (deadline/idioma/visto/readiness), bloco
+  "sinais de candidatura e possiveis problemas" (fit, work auth, deadline,
+  problemas objetivos, quality flags, readiness, freshness first/last seen via
+  `--db-join` do SQLite).
+- **"Como este ranking funciona"**: secao acima da lista com os PESOS REAIS
+  lidos das constantes de `ranking.py`/`materials_ranking.py` (nada
+  duplicado) e as regras (idioma, deadline SF, work auth, gates do perfil).
+- **Filtros novos** (painel recolhivel com contador): vagas expirando
+  (≤2/≤7/≤14 dias), work authorization, idioma, Top 30, quality flags.
+- **Mobile**: <760px a tabela vira card por vaga, topo compacto, busca em
+  largura total — sem scroll horizontal.
+- `--ref-date` fixa a data de urgencia (determinismo em testes);
+  `--db-join` junta first_seen/last_seen do `jobs.db` para freshness.
+
+Relatorio oficial: `docs/relatorio_fase6_candidate_fit.md`. Testes:
+`scripts/test_app_intel.py` (novo), `test_interface` (node 34 casos +
+`test_fase6_features`), `test_ranking`, `test_digest`.
+
 ## Runbook
 
 ### Como adicionar empresas

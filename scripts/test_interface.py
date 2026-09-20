@@ -61,6 +61,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import interface  # noqa: E402
 import publish_pages  # noqa: E402 (gate de seguranca do bloco real)
+from internship_finder import app_intel  # noqa: E402
+from internship_finder import ptbr  # noqa: E402
 from internship_finder.materials_ranking import rank_materials_jobs  # noqa: E402
 from internship_finder.models.job import Job  # noqa: E402
 from internship_finder.storage.sqlite_store import SqliteStore  # noqa: E402
@@ -176,6 +178,10 @@ def _core_row(job: dict, rank: int) -> dict:
     """Linha como o DOM glue da pagina enxerga (dataset -> objeto do nucleo JS)."""
     score = job.get("score")
     added = interface._added_date(job)
+    # Fase 6: mesmos campos que o _row_html serializa (data-deadline/wa/lang/
+    # en/flags/top/ready) — para o nucleo JS filtrar exatamente como na pagina.
+    ref = app_intel.snapshot_ref_date([job])
+    intel = interface._job_intel(job, ref)
     return {
         "title": str(job.get("title") or ""),
         "company": str(job.get("company") or ""),
@@ -185,6 +191,14 @@ def _core_row(job: dict, rank: int) -> dict:
         "score": str(score) if isinstance(score, (int, float)) else "",
         "rank": rank,
         "date": "" if added == "—" else added,
+        "deadline": (str(intel["days"]) if intel["days"] is not None
+                     and intel["kind"] == "employer" else ""),
+        "wa": intel["wa"],
+        "lang": "de-" + intel["de"] if intel["de"] != "none" else "",
+        "en": "1" if intel["en"] else "",
+        "flags": str(len(intel["flags"])),
+        "top": "1" if rank <= 30 else "",
+        "ready": intel["ready"],
     }
 
 
@@ -291,7 +305,7 @@ def test_render_html() -> None:
     page = _render(fx[:3])  # sap1 9.5, sap2 9.0, siemens 8.1
     check("doctype + html + head", page.lstrip().lower().startswith("<!doctype html>")
           and "<html" in page and "<head>" in page)
-    check("CSS inline e tabela", "<style>" in page and "<table>" in page and "tbody" in page)
+    check("CSS inline e tabela", "<style>" in page and "<table" in page and "tbody" in page)
     check("3 linhas de dados (thead + 3)", page.count("<tr class=") == 3 and page.count("</tr>") == 4)
     check("titulo e empresa presentes",
           "Working Student Supply Chain Analytics (f/m/d)" in page and "SAP SE" in page)
@@ -306,7 +320,9 @@ def test_render_html() -> None:
     check("penalidade negativa exibida",
           '<span class="bd-l">Penalidades</span><span class="bd-v">-0.40</span>' in page)
     check("total do breakdown", "Total <b>9.50</b>" in page)
-    check("deadline exibida", "candidaturas até 2026-10-01" in page)
+    check("deadline exibida (SF tratado como validade de feed, nao prazo)",
+          "validade do anúncio na fonte: 2026-10-01" in page
+          and "candidaturas até 2026-10-01" not in page)
     check("resumo no topo (stats)", 'vagas elegíveis' in page and 'empresas' in page
           and 'score máx' in page and 'no Top 30' in page and 'dados atualizados' in page)
     check("stats com valores reais", '<b>3</b><span>vagas elegíveis' in page
@@ -385,7 +401,7 @@ def test_rank_map() -> None:
     # deve continuar 5, nao 1.
     page = _render([fx[4]], total=1, rank_map=rank_map)
     check("posicao preservada do ranking global", 'data-rank="5"' in page
-          and '<td class="score">5</td>' in page)
+          and '<td class="score" data-label="#">5</td>' in page)
     check("sem badge (5 > top 4)", _render([fx[4]], total=1, rank_map=rank_map, top_n=4).count('class="badge-top"') == 0)
     page_pos = _render([fx[0]], total=1, rank_map=rank_map)
     check("topo do ranking global nao perde o badge", 'data-rank="1"' in page_pos
@@ -507,7 +523,47 @@ def test_client_js_core() -> None:
         "    process.exitCode = 1;",
         "  } else { ok++; }",
         "}",
-        "console.log('cases ok: ' + ok + '/' + cases.length);",
+        # Fase 6: filtros novos (deadline/wa/idioma/top30/flags) num conjunto
+        # com vagas extras semeadas — mesmas regras do if_match da pagina.
+        "var extra = " + json.dumps([
+            {"title": "D1", "company": "X", "location": "L", "type": "T",
+             "country": "de", "score": "20", "rank": 90, "date": "2026-09-01",
+             "deadline": "1", "wa": "support", "lang": "de-required", "en": "1",
+             "flags": "0", "top": "", "ready": "verify"},
+            {"title": "D2", "company": "X", "location": "L", "type": "T",
+             "country": "de", "score": "19", "rank": 91, "date": "2026-09-02",
+             "deadline": "30", "wa": "not_mentioned", "lang": "", "en": "",
+             "flags": "0", "top": "", "ready": "verify"},
+            {"title": "D3", "company": "X", "location": "L", "type": "T",
+             "country": "de", "score": "18", "rank": 92, "date": "2026-09-03",
+             "deadline": "15", "wa": "unclear", "lang": "de-preferred", "en": "1",
+             "flags": "2", "top": "", "ready": "verify"},
+        ], ensure_ascii=False) + ";",
+        "var rows2 = rows.concat(extra);",
+        "var cases2 = " + json.dumps([
+            ({"deadline": "2"}, "score-desc", [90], "expirando <=2 dias (1d sim, 15d/30d nao)"),
+            ({"deadline": "7"}, "score-desc", [90], "expirando <=7 dias"),
+            ({"deadline": "14"}, "score-desc", [90], "expirando <=14 dias exclui 15d"),
+            ({"deadline": "30"}, "score-desc", [90, 91, 92], "expirando <=30 dias (ordem por score)"),
+            ({"wa": "support"}, "score-desc", [90], "work auth = suporte"),
+            ({"wa": "not_mentioned"}, "score-desc", [91, 1, 2, 3, 4, 5, 6, 7, 8],
+             "work auth = nao mencionado (fixture tb)"),
+            ({"lang": "de-required"}, "score-desc", [90], "alemão exigido"),
+            ({"lang": "de-preferred"}, "score-desc", [92], "alemão preferido"),
+            ({"lang": "none"}, "score-desc", [91, 1, 2, 3, 5, 6, 7, 8],
+             "sem menção a idioma (fixture 4 tem EN)"),
+            ({"top30": True}, "score-desc", [1, 2, 3, 4, 5, 6, 7, 8], "Top 30 (extras fora)"),
+            ({"flags": True}, "score-desc", [92, 1, 2, 3, 4, 5, 6, 7, 8], "quality flags"),
+        ]) + ";",
+        "for (var i = 0; i < cases2.length; i++) {",
+        "  var st = cases2[i][0], key = cases2[i][1], exp = cases2[i][2], label = cases2[i][3];",
+        "  var got = if_filter_sort(rows2, st, key).map(function (r) { return r.rank; });",
+        "  if (JSON.stringify(got) !== JSON.stringify(exp)) {",
+        "    console.log('FAIL ' + label + ': got ' + JSON.stringify(got) + ' want ' + JSON.stringify(exp));",
+        "    process.exitCode = 1;",
+        "  } else { ok++; }",
+        "}",
+        "console.log('cases ok: ' + ok + '/' + (cases.length + cases2.length));",
         "if (process.exitCode !== 1) console.log('TUDO OK');",
     ]
     try:
@@ -520,8 +576,8 @@ def test_client_js_core() -> None:
         return
     out = (proc.stdout or "") + (proc.stderr or "")
     check("node executa sem erro (exit 0)", proc.returncode == 0)
-    check("nucleo JS: 23/23 casos de filtro+ordenacao OK",
-          "cases ok: 23/23" in out and "TUDO OK" in out)
+    check("nucleo JS: 34/34 casos de filtro+ordenacao OK",
+          "cases ok: 34/34" in out and "TUDO OK" in out)
     if "FAIL" in out:
         for line in out.splitlines():
             if line.startswith("FAIL"):
@@ -692,6 +748,116 @@ def html_escape(value: str) -> str:
     return _html.escape(value, quote=True)
 
 
+def _f6_job(job_id: str, source: str, title: str, description: str,
+            deadline: str | None = None, employment_type: str | None = None) -> dict:
+    """Vaga sintetica minima para os checks de Fase 6 (candidatura)."""
+    return {
+        "id": job_id, "source": source, "title": title,
+        "company": "Co F6", "location": "Munich, DE", "country_iso": "de",
+        "url": "https://jobs.example/" + job_id, "score": 10.0,
+        "score_breakdown": {"area": 4.0, "skills": 0.0, "language": 1.0,
+                            "type": 1.0, "location": 1.0, "penalties": 0.0},
+        "employment_type": employment_type, "internship": True,
+        "posted_at": "2026-09-01T08:00:00Z", "collected_at": "2026-09-09T06:00:02Z",
+        "application_deadline": deadline,
+        "description": description,
+    }
+
+
+def test_fase6_features() -> None:
+    print("== Fase 6: Candidate Fit + Application Intelligence + UI ==")
+    from datetime import date as _date
+    ref = _date(2026, 9, 9)
+
+    jobs = [
+        _f6_job("emp:1", "smartrecruiters:co", "Werkstudent Procurement",
+                "English required, fluent German required. We sponsor visas.",
+                deadline="2026-09-10T00:00:00Z"),
+        _f6_job("sf:1", "successfactors:jobs", "Praktikum Logistik",
+                "Help with the logistics team. German is a plus.",
+                deadline="2026-10-09T00:00:00Z"),
+        _f6_job("wa:1", "greenhouse:co", "Working Student Data",
+                "Support data reporting. English required.",
+                deadline="2026-09-20T00:00:00Z"),
+        _f6_job("none:1", "greenhouse:co", "Working Student Analytics",
+                "Build analytics dashboards.", deadline=None),
+    ]
+    page = _render(jobs, ref_date=ref)
+
+    # --- secao "Como este ranking funciona" (pesos REAIS das constantes) ---
+    check("secao 'como funciona' presente",
+          "Como este ranking funciona — pesos e regras reais" in page)
+    check("pesos do perfil biz vivos (area +2, alemao exigido -2)",
+          'área no título (por sinal)</span><b>+2' in page
+          and 'alemão exigido (detectado no texto)</span><b>-2' in page)
+    check("pesos do materials vivos (materiais +2.5) no painel oculto",
+          'materiais no título (por termo)</span><b>+2.5' in page
+          and 'data-sv="mat" hidden' in page)
+    check("regra de idioma documentada na seção",
+          "o idioma em que o anúncio foi escrito nunca é requisito" in page)
+
+    # --- painel de filtros recolhivel (spec 16) ---
+    check("filtros novos no painel",
+          all(x in page for x in
+              ['id="filters"', 'id="f-deadline"', 'id="f-wa"', 'id="f-lang"',
+               'id="f-top30"', 'id="f-flags"', 'id="f-badge"',
+               'vagas expirando (deadline confiável)']))
+    check("vagas sem deadline nao entram em 'expirando'",
+          "sem deadline confirmado não entram" in page)
+
+    # --- deadline: employer vira chip/data-deadline; SF vira validade ---
+    emp_row = re.search(r'<tr class="top30" data-rank="1".*?</tr>', page, re.S).group(0)
+    check("deadline EMPLOYER vira chip de candidaturas (com cor)",
+          'class="chip c-red">🔴 candidaturas: 10 set 2026 · 1 d' in emp_row)
+    check("data-deadline so para deadline do empregador",
+          'data-deadline="1"' in emp_row and 'data-deadline=""' in page)
+    sf_row = re.search(r'<tr class="top30" data-rank="2".*?</tr>', page, re.S).group(0)
+    check("valor SuccessFactors NAO vira deadline (validade da fonte)",
+          "candidaturas:" not in sf_row
+          and "Validade do anúncio (fonte): 09 out 2026" in sf_row)
+    check("Deadline: Not specified para vaga sem deadline",
+          "Deadline: " + ptbr.DEADLINE_KIND_LABELS["none"] in page)
+
+    # --- work authorization ---
+    check("work auth 'suporte' na vaga emp:1",
+          'data-wa="support"' in emp_row
+          and "Work authorization — Suporte/patrocínio de visto mencionado" in page)
+    check("work auth 'não mencionado' (sem evidência nao se inventa)",
+          'data-wa="not_mentioned"' in page)
+
+    # --- idioma nos data-attrs ---
+    check("idioma nos data-attrs (de-required, preferred, none)",
+          'data-lang="de-required"' in page and 'data-lang=""' in page
+          and 'data-lang="de-preferred"' in page)
+
+    # --- candidate fit / problemas / readiness / quality flags ---
+    check("sinais de candidatura (fit)",
+          "sinais de candidatura e possíveis problemas" in page
+          and 'fit-ok"><span class="fit-icon">✓</span> Alemanha' in page
+          and "Vaga de estudante" in page
+          and "Inglês mencionado" in page)
+    check("possiveis problemas com evidencia",
+          "Possíveis problemas" in page
+          and "Alemão exigido no anúncio" in page
+          and "Candidaturas até 10 set 2026 (1 dias)" in page)
+    check("readiness e quality flags",
+          "Application readiness" in page and "Quality flags (dados)" in page
+          and "Pronta para revisar" in page)
+    check("freshness (Publicada presente)",
+          "Publicada: 01 set 2026" in page)
+
+    # --- mobile (spec 14/15): tabela vira card, sem scroll horizontal ---
+    check("CSS mobile: tabela vira card (<760px)", "@media (max-width:760px)" in page
+          and "tr { display:block" in page
+          and 'td[data-label="empresa"]::before' in page)
+    check("topo mobile: informacoes da atualizacao recolhiveis",
+          'id="filters"' in page and "Informações da atualização" in page)
+
+    # --- determinismo total da pagina ---
+    check("pagina deterministica (2 geracoes identicas)",
+          page == _render(jobs, ref_date=ref))
+
+
 def test_main() -> None:
     print("== main (E2E off-line) ==")
     with tempfile.TemporaryDirectory() as td:
@@ -789,6 +955,7 @@ def main() -> int:
     test_url_scheme()
     test_client_js_core()
     test_dual_profile_render()
+    test_fase6_features()
     test_real_snapshot()
     test_main()
     print()
