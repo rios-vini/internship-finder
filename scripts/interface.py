@@ -1,4 +1,4 @@
-"""Interface do internship-finder: ranking completo, filtros e ordenacao (Fase 3 + 4 + 5).
+"""Interface do internship-finder: ranking completo, filtros e ordenacao (Fase 3 + 4 + 5 + 6).
 
 Gera uma pagina HTML unica e auto-contida (CSS inline, JS vanilla inline, sem
 framework e sem dependencia nova) com as vagas ja ranqueadas pelo pipeline. A
@@ -27,6 +27,18 @@ portugues; o bloco "por que esta vaga?" explica em PT-BR cada componente REAL
 do breakdown do perfil ativo (inclusive as penalidades). NAO traduz a
 descricao, NAO usa LLM/API/servico externo e NAO altera ranking/score/filtros/
 dedup — apenas apresenta melhor o resultado existente.
+
+Fase 6 (Candidate Fit + Application Intelligence + mobile): por vaga, a pagina
+mostra SINAIS DE CANDIDATURA (fit), work authorization, deadline classificada
+(empregador vs. validade do feed SuccessFactors — regra documentada), possiveis
+problemas objetivos, quality flags, readiness e freshness (first/last_seen do
+SQLite via ``--db-join``); chips visiveis com deadline/idioma/visto/readiness;
+secao "Como este ranking funciona" com os PESOS REAIS das constantes de
+ranking.py/materials_ranking.py (nada duplicado); painel de filtros recolhivel
+(deadline expirando, work auth, idioma, Top 30, quality flags + contador);
+layout mobile em CARDS (tabela vira card <=760px, sem scroll horizontal);
+``--ref-date`` fixa a urgencia (determinismo). Nenhum deadline e inventado e
+nenhum sinal de visto/idioma e inferido sem evidencia (app_intel.py).
 
 Fontes (os DOIS caminhos funcionam):
 
