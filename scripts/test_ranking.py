@@ -344,7 +344,10 @@ def test_synthetic() -> None:
     )
     check("Praktikum SC: area > 0", sc.breakdown["area"] > 0)
     check("Praktikum SC: skills > 0", sc.breakdown["skills"] > 0)
-    check("Praktikum SC: ingles detectado", sc.breakdown["language"] >= 2.0)
+    # Fase 6: ingles e evidencia positiva (+1.5); "German is a plus" deixa de
+    # bonificar e vira PREFERIDO (-0.5) -> componente language = 1.0.
+    check("Praktikum SC: ingles +1.5 e alemao preferido -0.5 (lang=1.0)",
+          sc.breakdown["language"] == 1.0)
     check("Praktikum SC: tipo no titulo", sc.breakdown["type"] == 1.0)
     check("Praktikum SC: DE explicito", sc.breakdown["location"] >= 1.0)
     check("Praktikum SC: FULL_TIME suave (nao zera)", sc.total > 5.0)

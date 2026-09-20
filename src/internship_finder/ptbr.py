@@ -412,7 +412,10 @@ MATERIALS_BREAKDOWN_ORDER = (
 BREAKDOWN_EXPLAIN: dict[str, str] = {
     "area": "termos da área alvo (Procurement, Supply Chain, BI, Analytics, Automação)",
     "skills": "competências do perfil citadas na descrição",
-    "language": "inglês essencial / alemão no título ou descrição",
+    # Fase 6: alemão deixou de bonificar — a componente agora mede a EVIDÊNCIA
+    # de inglês (+1.5) e a EXIGÊNCIA de alemão detectada no TEXTO do anúncio
+    # (exigido −2.0 / preferido −0.5 / menção difusa neutra / sem menção neutra).
+    "language": "inglês mencionado (+1,5); alemão: exigido (−2,0) ou preferido (−0,5) — exigência detectada no texto, nunca pelo idioma do anúncio",
     "type": "marcador forte de vaga de estudante no título",
     "location": "Alemanha explícita (DE) / Berlim",
     "penalties": "características que REDUZIRAM a relevância",
@@ -471,3 +474,76 @@ def relevance_signals(job: dict, *, profile: str = "biz") -> list[dict]:
 def penalties(job: dict, *, profile: str = "biz") -> list[dict]:
     """Apenas as componentes NEGATIVAS (o que reduziu a nota), ou []."""
     return [s for s in relevance_signals(job, profile=profile) if s["kind"] == "neg"]
+
+
+# ---------------------------------------------------------------------------
+# Fase 6 — Application Intelligence (rotulos PT-BR das camadas de candidatura;
+# os ESTADOS/KEYS vem de app_intel.py; aqui so a apresentacao em portugues)
+# ---------------------------------------------------------------------------
+
+# Estados de work authorization (app_intel.work_authorization).
+WORK_AUTH_LABELS: dict[str, str] = {
+    "support": "Suporte/patrocínio de visto mencionado",
+    "existing_required": "Requer autorização de trabalho existente",
+    "no_sponsorship": "Sem sponsorship (não patrocina visto)",
+    "unclear": "Informação não clara",
+    "not_mentioned": "Não mencionado",
+}
+
+# Niveis de exigencia de alemao (app_intel.german_level).
+GERMAN_LEVEL_LABELS: dict[str, str] = {
+    "required": "exigido",
+    "preferred": "preferido",
+    "plus": "mencionado (nível não informado)",
+    "none": "",
+}
+
+# Tipos de deadline (app_intel.deadline_kind).
+DEADLINE_KIND_LABELS: dict[str, str] = {
+    "employer": "prazo de candidatura (informado na vaga)",
+    "platform_sf": "validade do anúncio na fonte (feed da plataforma, +30 dias)",
+    "none": "Not specified",
+}
+
+# Sinais de Candidate Fit (app_intel.candidate_fit; ``key`` -> rotulo).
+FIT_LABELS: dict[str, str] = {
+    "germany": "Alemanha",
+    "student_type": "Vaga de estudante",
+    "english": "Inglês mencionado",
+    "location_known": "Localização informada",
+    "description_known": "Descrição disponível",
+    "german": "Alemão",
+    "work_auth": "Autorização de trabalho",
+}
+
+# Problemas possiveis (app_intel.possible_problems): template por key.
+# ``{arg}`` e preenchido com o detalhe real (ex.: a data do deadline).
+PROBLEM_TEXTS: dict[str, str] = {
+    "german_required": "Alemão exigido no anúncio (penalidade no score)",
+    "german_preferred": "Alemão preferencial (não obrigatório)",
+    "wa_existing": "Requer autorização de trabalho já existente",
+    "wa_no_sponsorship": "Empresa não patrocina visto",
+    "wa_unclear": "Autorização de trabalho não clara no anúncio",
+    "deadline": "Candidaturas até {arg}",
+    "sf_validity_passed": "Validade do anúncio na fonte já venceu: {arg}",
+    "senior_title": "Título sugere senioridade acima do nível de estágio",
+}
+
+# Quality flags (app_intel.quality_flags): template por key.
+QUALITY_TEXTS: dict[str, str] = {
+    "no_deadline": "Sem deadline informado",
+    "platform_validity": (
+        "A 'data limite' é validade do feed da plataforma (fonte), "
+        "não um prazo de candidatura do empregador"
+    ),
+    "no_location": "Localização ausente",
+    "short_description": "Descrição ausente ou muito curta ({arg} caracteres)",
+    "no_language": "Sem menção a idioma no anúncio",
+    "old_posting": "Publicação antiga ({arg} dias)",
+}
+
+# Application readiness (app_intel.application_readiness).
+READINESS_LABELS: dict[str, str] = {
+    "ready": "Pronta para revisar",
+    "verify": "Precisa verificação",
+}

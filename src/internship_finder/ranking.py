@@ -24,9 +24,14 @@ Componentes do score (``score_job`` -> ``Score.total`` + ``breakdown``):
   (senao o "sap" fraco remanescente ainda pontuaria).
 - **skills** — competencias do perfil na DESCRICAO (+WEIGHT_SKILL por termo;
   sem descricao, contribui 0).
-- **language** — ingles (+WEIGHT_LANG_EN, essencial) e alemao
-  (+WEIGHT_LANG_DE, menor) no titulo+descricao. Muitas descricoes estao
-  vazias: sem descricao, age-se com graca e o score vem so do titulo.
+- **language** — ingles (+WEIGHT_LANG_EN, essencial) quando ha evidencia no
+  titulo+descricao; alemão pela EXIGENCIA DETECTADA NO TEXTO (Fase 6):
+  ``app_intel.german_level`` classifica required (penalidade forte
+  PENALTY_LANG_DE_REQUIRED) / preferred (PENALTY_LANG_DE_PREFERRED) / plus
+  (neutro) / sem mencao (neutro). Nao ha mais bonus por o anuncio conter
+  alemao: o idioma em que o anuncio foi escrito NAO e requisito. Muitas
+  descricoes estao vazias: sem descricao, age-se com graca e o score vem so
+  do titulo.
 - **type** — marcador forte de tipo de vaga no TITULO (Praktikum, Werkstudent,
   Internship, iXp... — reusa ``filters.STUDENT_TYPE_PATTERNS``; Trainee/JMP
   NAO sao marcadores: os programas de ``filters.PROGRAM_EXCLUSION_PATTERNS``
@@ -53,6 +58,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from internship_finder.app_intel import english_evidence, german_level
 from internship_finder.filters import (
     MANAGER_PATTERN,
     SENIORITY_PATTERNS,
@@ -68,8 +74,12 @@ from internship_finder.filters import (
 WEIGHT_AREA_TITLE = 2.0  # area do TITULO (filters.area_score, so titulo)
 WEIGHT_AREA_DESC = 0.0  # area da DESCRICAO (calibrado: 0 — ruido dos templates)
 WEIGHT_SKILL = 0.75  # por competencia do perfil na descricao
-WEIGHT_LANG_EN = 1.5  # ingles essencial
-WEIGHT_LANG_DE = 0.5  # alemao menor
+WEIGHT_LANG_EN = 1.5  # ingles essencial (qualquer evidencia no titulo/descricao)
+# Alemao (Fase 6): o SCORE agora penaliza a EXIGENCIA, em vez de bonificar a
+# mencao. Niveis classificados por app_intel.german_level (texto do anuncio,
+# nunca o idioma em que foi escrito): required / preferred / plus / none.
+PENALTY_LANG_DE_REQUIRED = -2.0  # "German required", "fließende Deutschkenntnisse"...
+PENALTY_LANG_DE_PREFERRED = -0.5  # "German preferred", "von Vorteil", par sem nivel
 WEIGHT_TYPE_TITLE = 1.0  # marcador forte de tipo no TITULO
 WEIGHT_DE_EXPLICIT = 1.0  # DE explicito (ISO) na vaga
 WEIGHT_DE_CAPITAL = 0.5  # Berlin (capital alema)
@@ -116,14 +126,10 @@ _SKILL_RE = {name: re.compile(p, re.IGNORECASE) for name, p in SKILL_PATTERNS.it
 # Idioma (positivo; detectado no titulo+descricao)
 # ---------------------------------------------------------------------------
 
-# EN: "english" (EN) e "englisch" sem fronteira (pega englische,
-# Englischkenntnisse — DE). Nada ambiguo colide com "english"/"englisch".
+# EN: evidencia de ingles (titulo+descricao) — FORTE e word-bounded
+# (mesma lista exportada por app_intel; apenas re-exportada aqui).
 LANG_EN_PATTERNS = [r"\benglish\b", r"\benglisch"]
-# DE: "german" (EN) e "deutsch"/"deutsche" como PALAVRA — "deutschland" nao
-# entra (senão quase toda descricao DE ganharia o bonus sem exigir alemao).
-LANG_DE_PATTERNS = [r"\bgerman\b", r"\bdeutsch\b", r"\bdeutsche\b"]
 _LANG_EN_RE = [re.compile(p, re.IGNORECASE) for p in LANG_EN_PATTERNS]
-_LANG_DE_RE = [re.compile(p, re.IGNORECASE) for p in LANG_DE_PATTERNS]
 
 
 # ---------------------------------------------------------------------------
@@ -180,12 +186,22 @@ def _skills_score(description: str | None) -> float:
 
 
 def _language_score(text: str) -> float:
-    """Ingles essencial (+WEIGHT_LANG_EN) e alemao menor (+WEIGHT_LANG_DE)."""
+    """Ingles (+WEIGHT_LANG_EN na evidencia) e alemao pela EXIGENCIA (Fase 6).
+
+    ``app_intel.german_level`` classifica required/preferred/plus/none a
+    partir do TEXTO (verbos de exigencia, qualificadores de intensidade,
+    "von Vorteil"/preferred, negacao explicita). O idioma do anuncio nunca
+    e requisito; mencao difusa (plus) fica NEUTRA.
+    """
     score = 0.0
-    if any(p.search(text) for p in _LANG_EN_RE):
+    if english_evidence(text):
         score += WEIGHT_LANG_EN
-    if any(p.search(text) for p in _LANG_DE_RE):
-        score += WEIGHT_LANG_DE
+    de = german_level(text)
+    if de is not None:
+        if de.level == "required":
+            score += PENALTY_LANG_DE_REQUIRED
+        elif de.level == "preferred":
+            score += PENALTY_LANG_DE_PREFERRED
     return score
 
 

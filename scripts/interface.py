@@ -72,6 +72,7 @@ from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from internship_finder import app_intel  # noqa: E402  (Fase 6: Candidate Fit + Application Intelligence)
 from internship_finder.countries import matches_country, parse_country_spec  # noqa: E402
 from internship_finder.materials_ranking import rank_materials_jobs  # noqa: E402
 from internship_finder import ptbr  # noqa: E402  (Fase 5: camada PT-BR deterministica)
@@ -337,8 +338,14 @@ def _details_html(
     pais = ptbr.country_label(job.get("country_iso"))
     if pais and pais != str(job.get("country_iso") or ""):
         parts.append(f"país: {html.escape(pais)}")
-    if job.get("application_deadline"):
+    # Fase 6: deadline classificado pela fonte — valor do empregador vira
+    # "candidaturas até"; o valor SuccessFactors e validade do feed da
+    # plataforma (fonte) e nao pode ser apresentado como prazo de candidatura.
+    deadline_kind_ = app_intel.deadline_kind(job)
+    if deadline_kind_ == "employer" and job.get("application_deadline"):
         parts.append(f"candidaturas até {_fmt_date(job['application_deadline'])}")
+    elif deadline_kind_ == "platform_sf" and job.get("application_deadline"):
+        parts.append(f"validade do anúncio na fonte: {_fmt_date(job['application_deadline'])}")
     added = _fmt_date(job.get("first_seen") or job.get("posted_at")
                       or job.get("collected_at"))
     if added != "—":
@@ -372,12 +379,337 @@ def _added_date(job: dict) -> str:
                      or job.get("collected_at"))
 
 
+# ---------------------------------------------------------------------------
+# Fase 6 — Application Intelligence (candidatura) por vaga
+# ---------------------------------------------------------------------------
+
+_MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun",
+              "jul", "ago", "set", "out", "nov", "dez"]
+
+
+def _fmt_dmy(value) -> str:
+    """'2026-09-24T00:00:00'/'2026-09-24' -> '24 set 2026' (PT-BR, ISO-safe)."""
+    text = str(value or "")[:10]
+    try:
+        y, m, d = text.split("-")
+        return f"{int(d):02d} {_MONTHS_PT[int(m)-1]} {y}"
+    except (ValueError, IndexError):
+        return text
+
+
+def _job_intel(job: dict, ref: date) -> dict:
+    """Intel de candidatura de uma vaga (Fase 6) — numero/significado real.
+
+    Tudo derivado de ``app_intel`` (evidencias no anuncio/campos da fonte):
+    nivel de alemao, evidencia de ingles, estado de work authorization,
+    deadline classificado (employer/platform_sf/none), urgencia e dias
+    restantes, problemas objetivos, quality flags e readiness. Nenhum valor
+    e inventado; ``None``/ausencia nunca vira numero.
+    """
+    text = f"{job.get('title') or ''} {job.get('description') or ''}"
+    de = app_intel.german_level(text)
+    kind = app_intel.deadline_kind(job)
+    dl = app_intel.deadline_date(job)
+    days = app_intel.days_until(dl, ref) if dl is not None else None
+    problems = app_intel.possible_problems(job, ref)
+    return {
+        "de": de.level if de else "none",
+        "en": app_intel.english_evidence(text),
+        "wa": app_intel.work_authorization(text)["state"],
+        "kind": kind,
+        "dl": dl.isoformat() if dl is not None else None,
+        "days": days,
+        "urgency": app_intel.urgency_color(days) if kind == "employer" else None,
+        "problems": problems,
+        "flags": app_intel.quality_flags(job, ref),
+        "ready": app_intel.application_readiness(problems),
+    }
+
+
+_WA_EMOJI = {
+    "support": "🟢", "existing_required": "🔴", "no_sponsorship": "🔴",
+    "unclear": "🟡", "not_mentioned": "🟡",
+}
+_WA_CHIP = {
+    "support": "visto: suporte", "existing_required": "visto: autorização req.",
+    "no_sponsorship": "visto: sem sponsorship", "unclear": "visto: incerto",
+    "not_mentioned": "visto: não mencionado",
+}
+_URGENCY_EMOJI = {"green": "🟢", "yellow": "🟡", "orange": "🟠", "red": "🔴"}
+
+
+def _chips_html(intel: dict) -> str:
+    """Chips compactos SEMPRE visiveis (deadline, idioma, visa, readiness).
+
+    Apenas sinais reais: deadline EMPLOYER (o valor de feed do SuccessFactors
+    NAO aparece como deadline — cf. regra documentada), evidencia de ingles,
+    exigencia/preferencia de alemao, estado de work authorization e readiness.
+    """
+    parts: list[str] = []
+    if intel["kind"] == "employer" and intel["dl"]:
+        color = intel["urgency"] or "green"
+        emoji = _URGENCY_EMOJI.get(color, "🟢")
+        days_txt = f" · {intel['days']} d" if intel["days"] is not None else ""
+        parts.append(
+            f'<span class="chip c-{color}">{emoji} candidaturas: '
+            f'{_fmt_dmy(intel["dl"])}{days_txt}</span>'
+        )
+    if intel["de"] == "required":
+        parts.append('<span class="chip c-bad">🇩🇪 alemão exigido</span>')
+    elif intel["de"] == "preferred":
+        parts.append('<span class="chip c-warn">🇩🇪 alemão preferido</span>')
+    if intel["en"]:
+        parts.append('<span class="chip c-en">🇬🇧 inglês</span>')
+    parts.append(
+        f'<span class="chip c-wa">{_WA_EMOJI.get(intel["wa"], "🟡")} '
+        f'{_WA_CHIP.get(intel["wa"], intel["wa"])}</span>'
+    )
+    if intel["ready"] == "ready":
+        parts.append('<span class="chip c-good">✅ pronta p/ revisar</span>')
+    else:
+        parts.append('<span class="chip c-warn">⚠️ verificar antes</span>')
+    return '<div class="chips">' + " ".join(parts) + "</div>"
+
+
+def _fit_lines_html(job: dict) -> str:
+    """Candidate fit: sinais objetivos (app_intel.candidate_fit), PT-BR."""
+    lines: list[str] = []
+    for s in app_intel.candidate_fit(job):
+        label = ptbr.FIT_LABELS.get(s["key"], s["key"])
+        if s["key"] == "german" and s.get("detail"):
+            label += f': {ptbr.GERMAN_LEVEL_LABELS.get(s["detail"], s["detail"])}'
+        if s["key"] == "work_auth" and s.get("detail"):
+            label += f': {ptbr.WORK_AUTH_LABELS.get(s["detail"], s["detail"])}'
+        icon = {"ok": "✓", "warn": "⚠", "info": "·"}.get(s["kind"], "·")
+        lines.append(
+            f'<div class="fit-line fit-{s["kind"]}">'
+            f"<span class=\"fit-icon\">{icon}</span> {html.escape(label)}</div>"
+        )
+    return '<div class="fit">' + "".join(lines) + "</div>"
+
+
+def _problems_html(intel: dict) -> str:
+    """Possiveis problemas (apenas com evidencia) + quality flags."""
+    block: list[str] = []
+    probs = []
+    for p in intel["problems"]:
+        tpl = ptbr.PROBLEM_TEXTS.get(p["key"], p["key"])
+        arg = p.get("detail") or ""
+        if p["key"] == "deadline" and "|" in str(arg):
+            dl, days = str(arg).split("|", 1)
+            arg = f"{_fmt_dmy(dl)}"
+            if days not in ("None", ""):
+                arg += f" ({days} dias)"
+        if p["key"] == "sf_validity_passed" and "|" in str(arg):
+            dl, days = str(arg).split("|", 1)
+            arg = _fmt_dmy(dl)
+        probs.append(f'<div class="prob">{html.escape(tpl.format(arg=arg))}</div>')
+    if probs:
+        block.append(
+            '<div class="sec"><span class="sec-t">Possíveis problemas</span>'
+            + "".join(probs) + "</div>"
+        )
+    flags = []
+    for f in intel["flags"]:
+        tpl = ptbr.QUALITY_TEXTS.get(f["key"], f["key"])
+        arg = f.get("detail") or ""
+        flags.append(f'<div class="flag">{html.escape(tpl.format(arg=arg))}</div>')
+    if flags:
+        block.append(
+            '<div class="sec"><span class="sec-t">Quality flags (dados)</span>'
+            + "".join(flags) + "</div>"
+        )
+    return "".join(block)
+
+
+def _wa_line_html(intel: dict) -> str:
+    """Work authorization — estado com emoji (spec 3)."""
+    emoji = _WA_EMOJI.get(intel["wa"], "🟡")
+    label = ptbr.WORK_AUTH_LABELS.get(intel["wa"], intel["wa"])
+    return (
+        f'<div class="wa"><span class="fit-icon">{emoji}</span> '
+        f"Work authorization — {html.escape(label)}</div>"
+    )
+
+
+def _deadline_line_html(intel: dict) -> str:
+    """Deadline de primeira classe; nunca inventada (spec 4/5)."""
+    if intel["kind"] == "employer" and intel["dl"]:
+        color = intel["urgency"] or "green"
+        emoji = _URGENCY_EMOJI.get(color, "🟢")
+        days_txt = (
+            f" · {intel['days']} dias restantes"
+            if intel["days"] is not None and intel["days"] >= 0
+            else (" · vencida" if intel["days"] is not None else "")
+        )
+        return (
+            f'<div class="wa"><span class="fit-icon">{emoji}</span> '
+            f"Deadline: {_fmt_dmy(intel['dl'])}{days_txt} "
+            f"<span class=\"mut small\">({ptbr.DEADLINE_KIND_LABELS['employer']})</span></div>"
+        )
+    if intel["kind"] == "platform_sf" and intel["dl"]:
+        return (
+            f'<div class="wa"><span class="fit-icon">🗓️</span> '
+            f"Validade do anúncio (fonte): {_fmt_dmy(intel['dl'])} — "
+            f"{ptbr.DEADLINE_KIND_LABELS['platform_sf']}</div>"
+        )
+    return (
+        '<div class="wa"><span class="fit-icon">🟡</span> '
+        f"Deadline: {ptbr.DEADLINE_KIND_LABELS['none']} "
+        "<span class=\"mut small\">(nenhuma data inventada)</span></div>"
+    )
+
+
+def _freshness_html(job: dict) -> str:
+    """Freshness: Published / First seen / Last seen (nunca inventa)."""
+    parts: list[str] = []
+    if job.get("posted_at"):
+        parts.append(f"Publicada: {_fmt_dmy(job['posted_at'])}")
+    if job.get("first_seen"):
+        parts.append(f"Primeira vista: {_fmt_date(job['first_seen'])}")
+    if job.get("last_seen"):
+        parts.append(f"Última vista: {_fmt_date(job['last_seen'])}")
+    if not parts:
+        return ""
+    return (
+        '<div class="sec"><span class="sec-t">Freshness</span><div class="fresh">'
+        + " · ".join(html.escape(p) for p in parts)
+        + "</div></div>"
+    )
+
+
+def _intel_html(job: dict, intel: dict) -> str:
+    """Bloco recolhível 'sinais de candidatura e possíveis problemas'."""
+    n_prob = len(intel["problems"])
+    summary = "sinais de candidatura e possíveis problemas"
+    if n_prob:
+        summary = f"⚠ sinais de candidatura e possíveis problemas ({n_prob})"
+    ready = ptbr.READINESS_LABELS.get(intel["ready"], intel["ready"])
+    icon = "✅" if intel["ready"] == "ready" else "⚠️"
+    readiness_line = (
+        f'<div class="sec"><span class="sec-t">Application readiness</span>'
+        f'<div class="fit-line fit-{"ok" if intel["ready"] == "ready" else "warn"}">'
+        f"<span class=\"fit-icon\">{icon}</span> {html.escape(ready)} "
+        '<span class="mut small">(sinais objetivos do anúncio — não é '
+        "garantia de contratação)</span></div></div>"
+    )
+    return (
+        f"<details class=\"intel\"><summary>{summary}</summary>"
+        f'{_fit_lines_html(job)}'
+        f"{_wa_line_html(intel)}"
+        f"{_deadline_line_html(intel)}"
+        f"{_problems_html(intel)}"
+        f"{readiness_line}"
+        f"{_freshness_html(job)}"
+        "</details>"
+    )
+
+
+def _how_section() -> str:
+    """'Como este ranking funciona' — pesos/regras das CONSTANTES VIVAS.
+
+    Nada duplicado manualmente: cada numero vem do modulo de ranking do
+    perfil (ranking.py / materials_ranking.py); a seção alterna por perfil
+    via [data-sv] (mesmo mecanismo do seletor de perfil).
+    """
+    from internship_finder import materials_ranking as mr
+    from internship_finder import ranking as rk
+
+    biz_crit = [
+        ("área no título (por sinal)", rk.WEIGHT_AREA_TITLE),
+        ("competências na descrição (por termo)", rk.WEIGHT_SKILL),
+        ("inglês evidenciado no anúncio", rk.WEIGHT_LANG_EN),
+        ("tipo de vaga estudantil no título", rk.WEIGHT_TYPE_TITLE),
+        ("Alemanha explícita (ISO)", rk.WEIGHT_DE_EXPLICIT),
+        ("Berlin (capital)", rk.WEIGHT_DE_CAPITAL),
+    ]
+    biz_pen = [
+        ("alemão exigido (detectado no texto)", rk.PENALTY_LANG_DE_REQUIRED),
+        ("alemão preferido (detectado no texto)", rk.PENALTY_LANG_DE_PREFERRED),
+        ("senior/director/head no título (sem marcador de estudante)", rk.PENALTY_SENIOR),
+        ("manager no título (sem marcador de estudante)", rk.PENALTY_MANAGER),
+        ("employment_type FULL_TIME", rk.PENALTY_FULL_TIME),
+    ]
+    mat_crit = [
+        ("materiais no título (por termo)", mr.WEIGHT_MATERIALS_TITLE),
+        ("materiais na descrição (corroboração, máx. 1x)", mr.WEIGHT_MATERIALS_DESC),
+        ("adjacentes no título (por termo)", mr.WEIGHT_ADJACENT_TITLE),
+        ("adjacentes na descrição (corroboração)", mr.WEIGHT_ADJACENT_DESC),
+        ("contexto quality/R&D no título (gate técnico)", mr.WEIGHT_CONTEXT_TITLE),
+        ("contexto na descrição (corroboração)", mr.WEIGHT_CONTEXT_DESC),
+        ("tipo de vaga estudantil no título", mr.WEIGHT_TYPE_TITLE),
+        ("Alemanha explícita (ISO)", mr.WEIGHT_DE_EXPLICIT),
+        ("Berlin (capital)", mr.WEIGHT_DE_CAPITAL),
+    ]
+    mat_pen = [
+        ("função comercial no título (compras/SCM)", mr.PENALTY_PROCUREMENT),
+        ("outras funções não-materiais no título", mr.PENALTY_OTHER_FUNCTION),
+    ]
+
+    def crit_rows(rows: list[tuple[str, float]]) -> str:
+        return "".join(
+            f'<div class="w-row"><span>{html.escape(label)}</span>'
+            f'<b>+{value:g}</b></div>'
+            for label, value in rows if value > 0
+        )
+
+    def pen_rows(rows: list[tuple[str, float]]) -> str:
+        return "".join(
+            f'<div class="w-row"><span>{html.escape(label)}</span>'
+            f'<b>{value:g}</b></div>'
+            for label, value in rows if value != 0
+        )
+
+    biz_rules = (
+        "<li><b>Idioma:</b> inglês mencionado no anúncio é sinal positivo "
+        f"(+{rk.WEIGHT_LANG_EN:g}); alemão é avaliado pela EXIGÊNCIA "
+        "detectada no texto (exigido/preferido/plus/sem menção) — o idioma "
+        "em que o anúncio foi escrito nunca é requisito e ''conter alemão'' "
+        "não bonifica.</li>"
+        "<li><b>Deadline:</b> nunca inventada; em vagas SuccessFactors o campo "
+        "é validade do feed da plataforma (fonte), não prazo do empregador — "
+        "não entra em urgência nem em \"vagas expirando\".</li>"
+        "<li><b>Work authorization:</b> classificado só por evidência explícita "
+        "no anúncio; sem informação o estado é \"não mencionado\".</li>"
+        "<li><b>Penalidade de senioridade</b> só sem marcador forte de "
+        "estudante no título.</li>"
+    )
+    mat_rules = (
+        "<li><b>Gate técnico:</b> quality/P&amp;D/lab só pontuam com termo de "
+        "materiais/adjacente no TÍTULO.</li>"
+        "<li>Descrição apenas <b>corrobora</b> (máx. 1x por bloco) — "
+        "boilerplate não infla.</li>"
+        "<li>Penalidades de função de negócio só no <b>título</b>.</li>"
+    )
+
+    def pane(label: str, crit, pen, rules: str) -> str:
+        return (
+            '<div class="how-pane"><b>' + html.escape(label) + "</b>"
+            '<div class="w-group">Critérios (positivos)' + crit_rows(crit) + "</div>"
+            '<div class="w-group">Penalidades' + pen_rows(pen) + "</div>"
+            '<div class="w-group">Regras relevantes<ul>' + rules + "</ul></div>"
+            "</div>"
+        )
+
+    return (
+        '<details class="how"><summary>Como este ranking funciona — '
+        'pesos e regras reais</summary>'
+        '<div class="how-body" data-sv="biz">'
+        + pane(PROFILE_LABELS["biz"], biz_crit, biz_pen, biz_rules)
+        + '</div><div class="how-body" data-sv="mat" hidden>'
+        + pane(PROFILE_LABELS["mat"], mat_crit, mat_pen, mat_rules)
+        + "</div></details>"
+    )
+
+
 def _row_html(
     rank: int, job: dict, *,
     top_n: int = TOP_N,
     score_key: str = "score",
     breakdown_key: str = "score_breakdown",
     order: tuple[str, ...] = _BREAKDOWN_ORDER,
+    intel: dict | None = None,
+    ref: date | None = None,
 ) -> str:
     """Uma linha da tabela (tudo escapado; URL clicavel, abre em nova aba).
 
@@ -388,6 +720,12 @@ def _row_html(
     principal; ``materials_score``/``materials_breakdown`` no Materials).
     Posicao ``rank`` = posicao no ranking do perfil; ``top_n`` primeiras
     recebem o badge "Top 30" e a classe de destaque (so apresentacao).
+
+    Fase 6: ``intel`` (dict do ``_job_intel``) alimenta os data-attributes de
+    filtro novos (deadline/dias, work authorization, idioma, flags, top,
+    readiness), os chips visiveis e o <details> de sinais de candidatura.
+    Quando ausente (chamadas diretas/uso antigo), e computado sob demanda
+    com ``ref`` (default: data do snapshot -> ``app_intel.snapshot_ref_date``).
 
     P2.3: a URL so vira ``href`` apos validar o scheme (somente http/https,
     via ``_safe_url``); scheme rejeitado segue o fluxo de URL vazia — o
@@ -438,6 +776,13 @@ def _row_html(
         f'<a class="open" href="{url}" target="_blank" rel="noopener">abrir&nbsp;↗</a>'
         if safe_url else '<span class="mut">—</span>'
     )
+    # Fase 6 — Application Intelligence da vaga (computado UMA vez por vaga
+    # no render_html e reusado nas duas tabelas; fallback sob demanda aqui).
+    if intel is None:
+        ref_date = ref or app_intel.snapshot_ref_date([job])
+        intel = _job_intel(job, ref_date)
+    chips = _chips_html(intel)
+    intel_details = _intel_html(job, intel)
     # Atributos de dados para o JS client-side (escapados para atributo).
     d_title = _attr(job.get("title") or "")
     d_company = _attr(job.get("company") or "")
@@ -445,6 +790,14 @@ def _row_html(
     d_type = _attr(job.get("employment_type") or "")
     d_country = _attr(job.get("country_iso") or "")
     d_date = _attr(added_attr)
+    d_deadline = (str(intel["days"]) if intel["days"] is not None
+                  and intel["kind"] == "employer" else "")
+    d_wa = _attr(intel["wa"])
+    d_lang = "de-" + intel["de"] if intel["de"] != "none" else ""
+    d_en = "1" if intel["en"] else ""
+    d_flags = str(len(intel["flags"]))
+    d_ready = _attr(intel["ready"])
+    d_top = "1" if is_top else ""
     return (
         f'<tr class="{row_class}"'
         f' data-rank="{rank}"'
@@ -454,14 +807,21 @@ def _row_html(
         f' data-type="{d_type}"'
         f' data-country="{d_country}"'
         f' data-score="{score_attr}"'
-        f' data-date="{d_date}">'
-        f'<td class="score">{rank}</td>'
-        f'<td class="score">{_fmt_score(score)}</td>'
-        f"<td>{link}{badge}{_details_html(job, breakdown_key=breakdown_key, order=order)}</td>"
-        f"<td>{company}</td>"
-        f'<td class="loc">{location}</td>'
-        f"<td>{type_txt}</td>"
-        f'<td class="mut">{added}</td>'
+        f' data-date="{d_date}"'
+        f' data-deadline="{d_deadline}"'
+        f' data-wa="{d_wa}"'
+        f' data-lang="{d_lang}"'
+        f' data-en="{d_en}"'
+        f' data-flags="{d_flags}"'
+        f' data-ready="{d_ready}"'
+        f' data-top="{d_top}">'
+        f'<td class="score" data-label="#">{rank}</td>'
+        f'<td class="score" data-label="score">{_fmt_score(score)}</td>'
+        f"<td data-label=\"vaga\">{link}{badge}{chips}{intel_details}{_details_html(job, breakdown_key=breakdown_key, order=order)}</td>"
+        f'<td data-label="empresa">{company}</td>'
+        f'<td class="loc" data-label="local">{location}</td>'
+        f'<td data-label="tipo">{type_txt}</td>'
+        f'<td class="mut" data-label="desde">{added}</td>'
         f'<td class="act">{open_btn}</td>'
         "</tr>"
     )
@@ -559,7 +919,93 @@ _CSS = """
   p.facts, p.desc { margin:6px 0 0; font-size:.82rem; color:#3d4c5c; max-width:680px; }
   p.small { font-size:.78rem; }
   footer { margin-top:18px; font-size:.75rem; color:var(--mut); }
-  @media (max-width:760px) { th:nth-child(5),td:nth-child(5),th:nth-child(7),td:nth-child(7) { display:none; } }
+  /* ---- Fase 6: chips de candidatura, sinais, "como funciona", filtros ---- */
+  .chips { margin:6px 0 2px; display:flex; flex-wrap:wrap; gap:4px; }
+  .chip { display:inline-block; font-size:.64rem; font-weight:600; border-radius:999px; padding:2px 8px; border:1px solid var(--line); background:#f4f7fa; color:#33475b; white-space:nowrap; }
+  .chip.c-bad { background:#fdecea; border-color:#e6b4ad; color:#a93226; }
+  .chip.c-warn { background:#fef7e0; border-color:#ecd9a0; color:#8a6d1c; }
+  .chip.c-good, .chip.c-green { background:#eaf7ee; border-color:#bfe3cc; color:#1e7d45; }
+  .chip.c-yellow { background:#fef7e0; border-color:#ecd9a0; color:#8a6d1c; }
+  .chip.c-orange { background:#fdf0e2; border-color:#f0cfa3; color:#b45f06; }
+  .chip.c-red { background:#fdecea; border-color:#e6b4ad; color:#a93226; }
+  .chip.c-en { background:#e8f1fc; border-color:#bcd8f5; color:#0b5394; }
+  .chip.c-wa { background:#f1f3f6; border-color:#d8dee6; color:#3d4c5c; }
+  details.intel { margin-top:4px; }
+  details.intel summary { cursor:pointer; color:var(--mut); font-size:.76rem; }
+  .fit { margin:4px 0 2px; }
+  .fit-line { font-size:.78rem; color:#33475b; padding:1px 0; }
+  .fit-icon { display:inline-block; width:16px; text-align:center; }
+  .fit-ok .fit-icon { color:#1e7d45; }
+  .fit-warn .fit-icon { color:#b45f06; }
+  .wa { font-size:.78rem; color:#33475b; margin:3px 0; }
+  .sec { margin:6px 0 2px; }
+  .sec-t { display:block; font-size:.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); margin-bottom:2px; }
+  .prob, .flag { font-size:.76rem; color:#33475b; padding:1px 0; }
+  .prob::before { content:"⚠ "; color:#b45f06; }
+  .flag::before { content:"ⓘ "; color:var(--mut); }
+  .fresh { font-size:.76rem; color:var(--mut); }
+  details.intel .fit, details.intel .wa, details.intel .sec { border-bottom:1px dashed var(--line); padding:4px 0; }
+  details.upd { margin:6px 0 2px; }
+  details.upd summary { cursor:pointer; color:var(--mut); font-size:.72rem; }
+  details.how { margin:12px 0 4px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; }
+  details.how summary { cursor:pointer; font-weight:600; color:#33475b; font-size:.82rem; }
+  .how-body { margin:6px 0 2px; }
+  .how-pane b { display:block; margin-bottom:2px; }
+  .w-group { font-size:.72rem; color:var(--mut); margin-top:8px; }
+  .w-row { display:flex; justify-content:space-between; gap:12px; color:#33475b; font-size:.78rem; padding:1px 0; max-width:600px; }
+  .w-row b { font-variant-numeric:tabular-nums; }
+  .w-group ul { margin:3px 0 0; padding-left:16px; color:#33475b; font-size:.76rem; max-width:680px; }
+  details.filters { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; margin:10px 0 4px; }
+  details.filters summary { cursor:pointer; color:#33475b; font-weight:600; font-size:.85rem; }
+  .f-badge { background:var(--acc); color:#fff; border-radius:999px; padding:0 7px; margin-left:4px; font-size:.72rem; }
+  .fgrid { display:flex; flex-wrap:wrap; gap:10px 18px; margin:8px 0 4px; }
+  .fgrid .fld select { max-width:240px; }
+  .chk { font-weight:400; }
+  @media (max-width:760px) {
+    main { padding:14px 10px 48px; }
+    h1 { font-size:1.02rem; line-height:1.25; }
+    .src-line { display:none; }
+    .stats { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+    .stat { min-width:0; padding:8px 10px; }
+    .wrap { overflow-x:visible; border:0; background:transparent; }
+    table { display:block; }
+    thead { display:none; }
+    tbody { display:block; }
+    tr { display:block; background:var(--card); border:1px solid var(--line); border-radius:12px; margin:0 0 12px; padding:10px 12px 12px; box-shadow:0 1px 2px rgba(28,39,51,.05); }
+    tr.top30 { background:#f0f7ff; }
+    tr:hover td { background:transparent; }
+    td { display:block; border:0; padding:1px 0; }
+    td.score { display:inline-block; width:auto; margin-right:10px; font-size:.86rem; }
+    td[data-label="vaga"] { margin-top:5px; }
+    td[data-label="empresa"] { font-weight:600; font-size:.9rem; }
+    td[data-label="empresa"]::before, td[data-label="local"]::before,
+    td[data-label="tipo"]::before, td[data-label="desde"]::before { content:attr(data-label) ": "; font-size:.62rem; color:var(--mut); text-transform:uppercase; letter-spacing:.04em; }
+    td.loc, td[data-label="tipo"], td[data-label="desde"] { font-size:.78rem; }
+    td[data-label="tipo"], td[data-label="desde"] { display:inline-block; margin-right:12px; }
+    td.act { margin-top:8px; text-align:right; }
+    td.act a.open { display:inline-block; padding:9px 22px; font-size:.85rem; }
+    details.intel, details.why { font-size:.9rem; }
+    .bd-body { max-width:100%; }
+    .toolbar { gap:8px; }
+    input#q { flex:1 1 100%; max-width:none; font-size:16px; }
+    .fgrid { flex-direction:column; gap:8px; }
+    .how-body { padding:6px 2px; }
+    details.how { padding:6px 10px; }
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#10151b; --card:#192027; --ink:#e6edf3; --mut:#9aa7b4; --acc:#4da3ff; --line:#2a343e; }
+    .badge-top { background:#4da3ff; }
+    tr.top30 td { background:rgba(77,163,255,.08); }
+    tr.top30:hover td { background:rgba(77,163,255,.12); }
+    th { background:#222c36; }
+    .bd-body, .how-body { background:#141a21; }
+    .chip { background:#222c36; border-color:#33404c; color:#c8d3dd; }
+    .chip.c-bad { background:#3b1d1d; border-color:#6e3a33; color:#f0a6a0; }
+    .chip.c-warn { background:#3b3317; border-color:#6e5d2e; color:#e8cf8a; }
+    .chip.c-good, .chip.c-green { background:#16301f; border-color:#2c5c3e; color:#9fd8b4; }
+    .chip.c-red { background:#3b1d1d; border-color:#6e3a33; color:#f0a6a0; }
+    td[data-label="empresa"], .t-pt-txt { color:#e6edf3; }
+  }
 """
 
 # Nucleo puro + cola DOM. O marcador ``/* ==== DOM glue`` separa o nucleo
@@ -590,6 +1036,21 @@ function if_match(row, st) {
     var sc = parseFloat(row.score);
     if (isNaN(sc) || sc < ms) return false;
   }
+  /* Fase 6: deadline confiavel (dias restantes), work authorization,
+     idioma, Top 30 e quality flags. Vagas SEM deadline (row.deadline vazio)
+     nunca casam o filtro de "expirando". */
+  if (st.deadline) {
+    var dd = parseFloat(row.deadline);
+    if (isNaN(dd) || !(dd <= parseFloat(st.deadline))) return false;
+  }
+  if (st.wa && row.wa !== st.wa) return false;
+  if (st.lang) {
+    if (st.lang === 'en') { if (row.en !== '1') return false; }
+    else if (st.lang === 'none') { if (row.en === '1' || row.lang) return false; }
+    else { if (row.lang !== st.lang) return false; }
+  }
+  if (st.top30 && row.top !== '1') return false;
+  if (st.flags && !((parseFloat(row.flags) || 0) > 0)) return false;
   return true;
 }
 function if_sorter(key) {
@@ -634,10 +1095,14 @@ function if_filter_sort(rows, st, sortKey) {
       var d = tr.dataset;
       return { tr: tr, title: d.title, company: d.company, location: d.location,
                type: d.type, country: d.country, score: d.score,
-               rank: d.rank, date: d.date };
+               rank: d.rank, date: d.date,
+               deadline: d.deadline, wa: d.wa, lang: d.lang, en: d.en,
+               flags: d.flags, top: d.top, ready: d.ready };
     });
   }
-  var ids = ['q', 'f-company', 'f-location', 'f-type', 'f-country', 'f-min-score', 'sort', 'count', 'clear'];
+  var ids = ['q', 'f-company', 'f-location', 'f-type', 'f-country', 'f-min-score',
+             'f-deadline', 'f-wa', 'f-lang', 'f-top30', 'f-flags',
+             'sort', 'count', 'clear', 'f-badge'];
   var els = {};
   ids.forEach(function (id) { els[id] = document.getElementById(id); });
   if (!els.sort || !els.count) return;
@@ -680,8 +1145,25 @@ function if_filter_sort(rows, st, sortKey) {
       location: els['f-location'] ? els['f-location'].value : '',
       type: els['f-type'] ? els['f-type'].value : '',
       country: els['f-country'] ? els['f-country'].value : '',
-      minScore: els['f-min-score'] ? els['f-min-score'].value : ''
+      minScore: els['f-min-score'] ? els['f-min-score'].value : '',
+      deadline: els['f-deadline'] ? els['f-deadline'].value : '',
+      wa: els['f-wa'] ? els['f-wa'].value : '',
+      lang: els['f-lang'] ? els['f-lang'].value : '',
+      top30: els['f-top30'] ? els['f-top30'].checked : false,
+      flags: els['f-flags'] ? els['f-flags'].checked : false
     };
+  }
+  function badgeCount() {
+    var n = 0;
+    if (els.q && els.q.value.trim()) n++;
+    ['f-company', 'f-location', 'f-type', 'f-country', 'f-min-score',
+     'f-deadline', 'f-wa', 'f-lang'].forEach(function (id) {
+      if (els[id] && els[id].value) n++;
+    });
+    ['f-top30', 'f-flags'].forEach(function (id) {
+      if (els[id] && els[id].checked) n++;
+    });
+    return n;
   }
   function apply() {
     var p = ACTIVE;
@@ -692,6 +1174,10 @@ function if_filter_sort(rows, st, sortKey) {
       body(p).appendChild(r.tr);
     });
     els.count.textContent = out.length + ' de ' + total(p) + ' vagas';
+    if (els['f-badge']) {
+      var b = badgeCount();
+      els['f-badge'].textContent = b ? '(' + b + ')' : '';
+    }
   }
   function activate(p) {
     ACTIVE = p;
@@ -709,9 +1195,12 @@ function if_filter_sort(rows, st, sortKey) {
     fill('f-location', rowsP);
     fill('f-type', rowsP);
     fill('f-country', rowsP);
-    ['f-company', 'f-location', 'f-type', 'f-country'].forEach(function (id) {
+    ['f-company', 'f-location', 'f-type', 'f-country', 'f-deadline', 'f-wa',
+     'f-lang'].forEach(function (id) {
       if (els[id]) els[id].value = '';
     });
+    if (els['f-top30']) els['f-top30'].checked = false;
+    if (els['f-flags']) els['f-flags'].checked = false;
     if (els.q) els.q.value = '';
     if (els['f-min-score']) els['f-min-score'].value = '';
     els.sort.value = 'score-desc';
@@ -724,14 +1213,22 @@ function if_filter_sort(rows, st, sortKey) {
   wire('f-location', 'change');
   wire('f-type', 'change');
   wire('f-country', 'change');
+  wire('f-deadline', 'change');
+  wire('f-wa', 'change');
+  wire('f-lang', 'change');
+  wire('f-top30', 'change');
+  wire('f-flags', 'change');
   wire('sort', 'change');
   if (els.clear) {
     els.clear.addEventListener('click', function () {
       if (els.q) els.q.value = '';
       if (els['f-min-score']) els['f-min-score'].value = '';
-      ['f-company', 'f-location', 'f-type', 'f-country'].forEach(function (id) {
+      ['f-company', 'f-location', 'f-type', 'f-country', 'f-deadline', 'f-wa',
+       'f-lang'].forEach(function (id) {
         if (els[id]) els[id].value = '';
       });
+      if (els['f-top30']) els['f-top30'].checked = false;
+      if (els['f-flags']) els['f-flags'].checked = false;
       apply();
     });
   }
@@ -786,6 +1283,96 @@ def _stats_html(
     )
 
 
+def _filters_panel_html(expiring_note: str) -> str:
+    """Painel de filtros recolhivel (Fase 6: deadline, visa, idioma, top30,
+    quality flags — alem dos eixos existentes). Contador de ativos em #f-badge."""
+    return (
+        '<details class="filters" id="filters"><summary>Filtros '
+        '<span id="f-badge" class="f-badge"></span></summary>'
+        '<div class="fgrid">'
+        '<span class="fld"><label>empresa</label><select id="f-company">'
+        '<option value="">todas</option></select></span>'
+        '<span class="fld"><label>local</label><select id="f-location">'
+        '<option value="">todos</option></select></span>'
+        '<span class="fld"><label>tipo</label><select id="f-type">'
+        '<option value="">todos</option></select></span>'
+        '<span class="fld"><label>país</label><select id="f-country">'
+        '<option value="">todos</option></select></span>'
+        '<span class="fld"><label>score mín.</label>'
+        '<input id="f-min-score" type="number" min="0" step="0.25" '
+        'placeholder="0.0"></span>'
+        '<span class="fld"><label>vagas expirando (deadline confiável)</label>'
+        '<select id="f-deadline">'
+        '<option value="">qualquer</option>'
+        '<option value="2">≤ 2 dias</option>'
+        '<option value="7">≤ 7 dias</option>'
+        '<option value="14">≤ 14 dias</option>'
+        "</select></span>"
+        '<span class="fld"><label>work authorization</label>'
+        '<select id="f-wa">'
+        '<option value="">qualquer</option>'
+        '<option value="support">suporte mencionado</option>'
+        '<option value="existing_required">autorização existente exigida</option>'
+        '<option value="no_sponsorship">sem sponsorship</option>'
+        '<option value="unclear">não claro</option>'
+        '<option value="not_mentioned">não mencionado</option>'
+        "</select></span>"
+        '<span class="fld"><label>idioma</label>'
+        '<select id="f-lang">'
+        '<option value="">qualquer</option>'
+        '<option value="en">inglês mencionado</option>'
+        '<option value="de-required">alemão exigido</option>'
+        '<option value="de-preferred">alemão preferido</option>'
+        '<option value="none">sem menção a idioma</option>'
+        "</select></span>"
+        '<span class="fld"><label class="chk"><input type="checkbox" '
+        'id="f-top30"> Top 30 (perfil ativo)</label></span>'
+        '<span class="fld"><label class="chk"><input type="checkbox" '
+        'id="f-flags"> com quality flags</label></span>'
+        "</div>"
+        f'<p class="hint">{html.escape(expiring_note)}</p>'
+        '<button type="button" id="clear">limpar filtros</button>'
+        "</details>"
+    )
+
+
+def _expiring_note(jobs: list[dict], ref: date) -> str:
+    """Resumo 'vagas expirando' — SOMENTE deadline confiavel do empregador.
+
+    Validade de feed do SuccessFactors NAO conta (nao e prazo — regra
+    documentada); sem deadline tambem nao aparece como 'expirando' (spec 6).
+    """
+    known = 0
+    expiring7 = 0
+    seen: set[str] = set()
+    for j in jobs:
+        jid = str(j.get("id") or "")
+        if jid in seen:
+            continue
+        seen.add(jid)
+        if app_intel.deadline_kind(j) == "employer":
+            known += 1
+            dl = app_intel.deadline_date(j)
+            days = app_intel.days_until(dl, ref) if dl is not None else None
+            if days is not None and days <= 7:
+                expiring7 += 1
+    return (
+        f"Vagas expirando: {expiring7} com deadline confirmado em até 7 dias "
+        f"(de {known} com deadline do empregador; {len(seen) - known} sem "
+        "deadline confirmado não entram neste filtro)."
+    )
+
+
+def _intel_map_for(jobs: list[dict], materials: list[dict] | None, ref: date) -> dict:
+    """Intel de candidatura UMA vez por vaga (id), reusado nas duas tabelas."""
+    out: dict[str, dict] = {}
+    for j in list(jobs) + list(materials or []):
+        jid = str(j.get("id") or "")
+        if jid and jid not in out:
+            out[jid] = _job_intel(j, ref)
+    return out
+
+
 def render_html(
     jobs: list[dict],
     *,
@@ -799,6 +1386,9 @@ def render_html(
     materials: list[dict] | None = None,
     materials_rank_map: dict[str, int] | None = None,
     materials_stats: dict | None = None,
+    ref_date: date | None = None,
+    intel_map: dict[str, dict] | None = None,
+    show_how: bool = True,
 ) -> str:
     """Pagina auto-contida (CSS inline, JS vanilla inline, zero external).
 
@@ -815,16 +1405,47 @@ def render_html(
     PROPRIOS do perfil Materials). ``materials_rank_map``/``materials_stats``
     espelham ``rank_map``/``stats`` para o segundo perfil. Sem ``materials``,
     o HTML e EXATAMENTE o da Fase 3 (compatibilidade preservada).
+
+    Fase 6: ``ref_date`` (data do run; default = max(collected_at) do
+    snapshot) fixa a urgencia; ``intel_map`` (py id -> ``_job_intel``)
+    alimenta filtros/chips/sinais; ``show_how`` liga a secao 'Como este
+    ranking funciona' (pesos REAIS das constantes).
     """
     if stats is None:
         stats = _compute_stats(jobs, total=total)
+    all_jobs = list(jobs) + list(materials or [])
+    if ref_date is None:
+        ref_date = app_intel.snapshot_ref_date(all_jobs or jobs)
+    if intel_map is None:
+        intel_map = _intel_map_for(jobs, materials, ref_date)
     rows: list[str] = []
     for i, j in enumerate(jobs, 1):
         rank = i
         if rank_map is not None and j.get("id") is not None:
             rank = rank_map.get(str(j.get("id")), i)
-        rows.append(_row_html(rank, j, top_n=top_n))
+        rows.append(_row_html(
+            rank, j, top_n=top_n,
+            intel=intel_map.get(str(j.get("id"))),
+            ref=ref_date,
+        ))
     rows_html = "\n".join(rows)
+
+    mat_rows_html = ""
+    if materials is not None:
+        mat_rows: list[str] = []
+        for i, j in enumerate(materials, 1):
+            rank = i
+            if materials_rank_map is not None and j.get("id") is not None:
+                rank = materials_rank_map.get(str(j.get("id")), i)
+            mat_rows.append(_row_html(
+                rank, j, top_n=top_n,
+                score_key="materials_score",
+                breakdown_key="materials_breakdown",
+                order=_MATERIALS_BREAKDOWN_ORDER,
+                intel=intel_map.get(str(j.get("id"))),
+                ref=ref_date,
+            ))
+        mat_rows_html = "\n".join(mat_rows)
 
     chips = ""
     if filters_desc:
@@ -838,96 +1459,42 @@ def render_html(
         "<th>local</th><th>tipo</th><th>desde</th><th></th></tr></thead>"
     )
 
-    if materials is None:
-        # ---- Fase 3: pagina de um perfil (sem muda nada) ----
-        order_note = (
-            "ordem: score (ranking do pipeline)"
-            if jobs and jobs[0].get("score") is not None
-            else "ordem: mais recentes (last_seen)"
-        )
-        return f"""<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Internship Finder — ranking de vagas elegíveis</title>
-<style>
-{_CSS}
-</style>
-</head>
-<body data-total="{total}">
-<main>
-  <header>
-    <h1>Internship Finder — ranking de vagas elegíveis</h1>
-    <p>{html.escape(source_label)} · gerado em {html.escape(generated_at)} UTC · {html.escape(order_note)}</p>
-    <p class="mut small">PT-BR: título e tipo traduzidos por glossário determinístico (sem traduzir descrições); o original permanece em &quot;Original&quot; e o anúncio abre na fonte.</p>
-  </header>
-  <div class="stats">
-    {_stats_html(stats)}
-  </div>
-  {chips}
-  <div class="toolbar">
-    <input id="q" type="search" placeholder="Buscar por título, empresa ou local…">
-    <input id="f-min-score" type="number" min="0" step="0.25" placeholder="score mín.">
-    <select id="sort" title="Ordenação">
-      <option value="score-desc">ordenar: score (padrão)</option>
-      <option value="rank">posição no ranking</option>
-      <option value="company">empresa (A→Z)</option>
-      <option value="title">título (A→Z)</option>
-      <option value="location">local (A→Z)</option>
-      <option value="date">data (mais recentes)</option>
-    </select>
-    <span class="hint" id="count">{shown} de {total} vagas</span>
-  </div>
-  <div class="toolbar">
-    <span class="fld"><label>empresa</label><select id="f-company"><option value="">todas</option></select></span>
-    <span class="fld"><label>local</label><select id="f-location"><option value="">todos</option></select></span>
-    <span class="fld"><label>tipo</label><select id="f-type"><option value="">todos</option></select></span>
-    <span class="fld"><label>país</label><select id="f-country"><option value="">todos</option></select></span>
-    <button type="button" id="clear">limpar filtros</button>
-  </div>
-  <div class="wrap">
-  <table>
-{table_head}
-    <tbody>
-{rows_html}
-    </tbody>
-  </table>
-  </div>
-  <footer>Filtros e ordenação são client-side (JS embutido, sem backend). O ranking, o score e o score_breakdown são os do pipeline — esta página não re-ranqueia nada. PT-BR: glossário determinístico em ptbr.py (títulos/tipos/país/“por que esta vaga”); as descrições não são traduzidas e o anúncio original permanece. Filtros --company/--keyword/--country (se usados) já foram aplicados na geração.</footer>
-</main>
-<script>
-{_JS}
-</script>
-</body>
-</html>
-"""
+    order_note = (
+        "ordem: score (ranking do pipeline)"
+        if jobs and jobs[0].get("score") is not None
+        else "ordem: mais recentes (last_seen)"
+    )
+    how_html = _how_section() if show_how else ""
+    filters_html = _filters_panel_html(_expiring_note(all_jobs, ref_date))
 
-    # ---- Fase 4: dois perfis, uma tabela por perfil ----
-    mat_rows: list[str] = []
-    for i, j in enumerate(materials, 1):
-        rank = i
-        if materials_rank_map is not None and j.get("id") is not None:
-            rank = materials_rank_map.get(str(j.get("id")), i)
-        mat_rows.append(_row_html(
-            rank, j, top_n=top_n,
-            score_key="materials_score",
-            breakdown_key="materials_breakdown",
-            order=_MATERIALS_BREAKDOWN_ORDER,
-        ))
-    mat_rows_html = "\n".join(mat_rows)
-
-    pane_biz = f"Perfil: {PROFILE_LABELS['biz']} — ordem: score (ranking do pipeline)"
+    pane_biz = f"Perfil: {PROFILE_LABELS['biz']} — {order_note}"
     pane_mat = (
         f"Perfil: {PROFILE_LABELS['mat']} — ordem: scores e posições próprios "
         "(materials_score; ranking independente do principal)"
     )
+
+    profiles_html = ""
+    if materials is not None:
+        profiles_html = (
+            '<div class="profiles">'
+            f'<button type="button" id="btn-biz" class="active">{PROFILE_LABELS["biz"]}</button>'
+            f'<button type="button" id="btn-mat">{PROFILE_LABELS["mat"]}</button>'
+            "</div>"
+        )
+    mat_wrap = ""
+    if materials is not None:
+        mat_wrap = (
+            '<div class="wrap" id="wrap-mat" hidden>'
+            '<table id="tbl-mat" data-total="' + str(total) + '">'
+            + table_head + "<tbody>" + mat_rows_html + "</tbody></table></div>"
+        )
+
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Internship Finder — ranking de vagas elegíveis (2 perfis)</title>
+<title>Internship Finder — ranking de vagas elegíveis{(' (2 perfis)' if materials is not None else '')}</title>
 <style>
 {_CSS}
 </style>
@@ -936,21 +1503,21 @@ def render_html(
 <main>
   <header>
     <h1>Internship Finder — ranking de vagas elegíveis</h1>
-    <p>{html.escape(source_label)} · gerado em {html.escape(generated_at)} UTC</p>
-    <p class="pane"><span data-sv="biz">{html.escape(pane_biz)}</span><span data-sv="mat" hidden>{html.escape(pane_mat)}</span></p>
-    <p class="mut small">PT-BR: título, tipo, país e "por que esta vaga" em português por glossário determinístico (sem traduzir a descrição); o original permanece em &quot;Original&quot; e o anúncio abre na fonte.</p>
+    <details class="upd"><summary>Informações da atualização</summary>
+      <p class="mut small">{html.escape(source_label)} · gerado em {html.escape(generated_at)} UTC · {html.escape(order_note)}</p>
+      <p class="mut small">PT-BR: títulos, tipos, país e explicações em português por glossário determinístico (sem traduzir a descrição); o original permanece em &quot;Original&quot; e o anúncio abre na fonte. Score = relevância ao perfil; sinais de candidatura (idioma exigido, work authorization, deadline, problemas) aparecem por vaga e NÃO entram no score de relevância.</p>
+    </details>
+    <p class="pane src-line"><span data-sv="biz">{html.escape(pane_biz)}</span><span data-sv="mat" hidden>{html.escape(pane_mat)}</span></p>
   </header>
-  <div class="profiles">
-    <button type="button" id="btn-biz" class="active">{PROFILE_LABELS['biz']}</button>
-    <button type="button" id="btn-mat">{PROFILE_LABELS['mat']}</button>
-  </div>
+  {profiles_html}
+  {how_html}
   <div class="stats">
     {_stats_html(stats, mat_stats=materials_stats)}
   </div>
   {chips}
+  {filters_html}
   <div class="toolbar">
     <input id="q" type="search" placeholder="Buscar por título, empresa ou local…">
-    <input id="f-min-score" type="number" min="0" step="0.25" placeholder="score mín.">
     <select id="sort" title="Ordenação">
       <option value="score-desc">ordenar: score (padrão)</option>
       <option value="rank">posição no ranking</option>
@@ -960,13 +1527,6 @@ def render_html(
       <option value="date">data (mais recentes)</option>
     </select>
     <span class="hint" id="count">{shown} de {total} vagas</span>
-  </div>
-  <div class="toolbar">
-    <span class="fld"><label>empresa</label><select id="f-company"><option value="">todas</option></select></span>
-    <span class="fld"><label>local</label><select id="f-location"><option value="">todos</option></select></span>
-    <span class="fld"><label>tipo</label><select id="f-type"><option value="">todos</option></select></span>
-    <span class="fld"><label>país</label><select id="f-country"><option value="">todos</option></select></span>
-    <button type="button" id="clear">limpar filtros</button>
   </div>
   <div class="wrap" id="wrap-biz">
   <table id="tbl-biz" data-total="{total}">
@@ -976,15 +1536,8 @@ def render_html(
     </tbody>
   </table>
   </div>
-  <div class="wrap" id="wrap-mat" hidden>
-  <table id="tbl-mat" data-total="{total}">
-{table_head}
-    <tbody>
-{mat_rows_html}
-    </tbody>
-  </table>
-  </div>
-  <footer>Filtros e ordenação são client-side (JS embutido, sem backend). O score e o score_breakdown exibidos são os do perfil ativo (principal: pipeline; Materials Engineering: materials_score/materials_breakdown, componentes próprios e independentes — o ranking do perfil principal não é alterado). PT-BR: glossário determinístico em ptbr.py (títulos/tipos/país/“por que esta vaga” por perfil); as descrições não são traduzidas e o anúncio original permanece. Filtros --company/--keyword/--country (se usados) já foram aplicados na geração.</footer>
+  {mat_wrap}
+  <footer>Filtros e ordenação são client-side (JS embutido, sem backend). O score e o score_breakdown exibidos são os do perfil ativo (principal: pipeline; Materials Engineering: materials_score/materials_breakdown próprios). Sinais de candidatura (Candidate Fit / problemas / work authorization / deadline) são objetivos, extraídos do anúncio — nunca inventados; deadline SuccessFactors é validade de feed (fonte), não entra em urgência. Filtros --company/--keyword/--country (se usados) já foram aplicados na geração.</footer>
 </main>
 <script>
 {_JS}
@@ -1043,6 +1596,21 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help=f"Onde gravar o HTML (default: {DEFAULT_OUTPUT}; '-' = stdout)",
     )
+    parser.add_argument(
+        "--ref-date",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Data de referencia para urgencia/deadline (default: data do "
+        "run, max(collected_at) do snapshot) — determinismo em testes",
+    )
+    parser.add_argument(
+        "--db-join",
+        default="data/jobs.db",
+        metavar="PATH",
+        help="SQLite jobs.db para Freshness (first_seen/last_seen) no caminho "
+        "--input; arquivo ausente nao e erro, apenas omite a juncao "
+        "(default: data/jobs.db)",
+    )
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -1082,11 +1650,39 @@ def main(argv: list[str] | None = None) -> int:
         jobs = load_json(input_path)
         source_label = f"{input_path} ({len(jobs)} vagas ranqueadas)"
         jobs = sort_ranked(jobs)
+        # Fase 6 — Freshness: junta first_seen/last_seen do SQLite (historico
+        # da fonte viva) quando disponivel; nunca inventa nem derruba.
+        if args.db_join:
+            join_path = Path(args.db_join)
+            if join_path.exists():
+                try:
+                    conn = sqlite3.connect(str(join_path))
+                    conn.row_factory = sqlite3.Row
+                    rows = conn.execute(
+                        "SELECT id, first_seen, last_seen FROM jobs"
+                    ).fetchall()
+                    conn.close()
+                except sqlite3.Error:
+                    rows = []
+                seen = {str(r["id"]): r for r in rows}
+                for j in jobs:
+                    r = seen.get(str(j.get("id")))
+                    if r is not None:
+                        j.setdefault("first_seen", r["first_seen"] or j.get("first_seen"))
+                        j.setdefault("last_seen", r["last_seen"] or j.get("last_seen"))
     else:
         if not db_path.exists():
             parser.error(f"--db nao encontrado: {db_path}")
         jobs = load_db(db_path)
         source_label = f"{db_path} ({len(jobs)} vagas ativas)"
+
+    # Fase 6 — data de referencia do run (urgencia deterministica por run).
+    try:
+        ref_date = app_intel.parse_ref_date(args.ref_date)
+    except ValueError:
+        parser.error(f"--ref-date invalido: {args.ref_date} (use YYYY-MM-DD)")
+    if args.ref_date is None:
+        ref_date = app_intel.snapshot_ref_date(jobs)
 
     # Posicao no ranking do pipeline (independente de filtros do CLI): o mapa
     # e construido sobre a lista completa ordenada por score.
@@ -1136,6 +1732,7 @@ def main(argv: list[str] | None = None) -> int:
             materials_filtered, total=len(materials_filtered),
             score_key="materials_score",
         ),
+        ref_date=ref_date,
     )
 
     out = "-" if args.output == "-" else Path(args.output or DEFAULT_OUTPUT)
