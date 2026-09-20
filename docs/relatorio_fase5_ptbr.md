@@ -1,6 +1,6 @@
 # Relatório Fase 5 — Compreensão PT-BR + explicação do ranking
 
-**Data:** 2026-09-19 · **PR:** #74 · **Main:** (ver Log do MASTER_PLAN)
+**Data:** 2026-09-19 · **PR:** #74 (squash `5e1cc95`, CI 27/27) · **Main:** `5e1cc95`
 **Snapshot de validação:** run 18/09 — 476 vagas elegíveis (mesmo conjunto da Fase 4).
 
 A Fase 5 adiciona uma **camada estruturada em PT-BR** à interface e **melhora a
@@ -158,7 +158,7 @@ e MASTER_PLAN (Seção 1 + Log 19/09). Este relatório é o registro da fase.
 
 ## 12. Commits
 
-- **#74** (PR) `feature/fase5-ptbr-ranking-explanation` (squash no merge).
+- **#74** (PR `feature/fase5-ptbr-ranking-explanation`, squash `5e1cc95` no main).
 - `src/internship_finder/ptbr.py` + `scripts/test_ptbr.py` — módulo + testes.
 - `scripts/interface.py` + `.github/workflows/ci.yml` — integração + CI.
 - `README.md`/`PROJECT_STATUS.md`/`MASTER_PLAN.md`/`docs/...` — docs.

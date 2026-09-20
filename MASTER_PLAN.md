@@ -24,22 +24,26 @@ execução da suíte (18/09) ou nos docs.
 
 ---
 
-## 1. Estado verificado em 2026-09-18
+## 1. Estado verificado em 2026-09-19
 
 ### Main público (GitHub)
-- `main` = `9ad6bf8` (19/09 — **Fase 4 — segundo perfil Materials Engineering**,
-  PR #73 squash: `feature/fase4-materials-profile`; ranking, interface e digest
-  — ver Log 19/09): **CI verde — 26/26 scripts, check count do run
-  35441211890, 0 falhas**; ranking público em
+- `main` = `5e1cc95` (19/09 — **Fase 5 — compreensão PT-BR das vagas +
+  explicação do ranking em português**, PR #74 squash:
+  `feature/fase5-ptbr-ranking-explanation`; camada `ptbr.py` + interface —
+  ver Log 19/09): **CI verde — 27/27 scripts (run 35476650188, 0 falhas)**;
+  ranking público em
   https://rios-vini.github.io/internship-finder/ (branch `gh-pages`, só
-  `index.html`, agora com **seletor de perfil** `[Procurement / Supply Chain] |
+  `index.html`, com seletor de perfil `[Procurement / Supply Chain] |
   [Materials Engineering]` — duas tabelas na mesma página, gerada por
-  `scripts/interface.py`); mensagem diária do Telegram agora com a seção
+  `scripts/interface.py`; **Fase 5**: título PT-BR por glossário
+  determinístico com original sempre visível, tipo/pais em PT-BR e "por que
+  esta vaga?" explicado por perfil); mensagem diária do Telegram com a seção
   **"Perfil Materials Engineering"** (Top 5 + novas no Top 30 Materials —
   `scripts/ranking_digest.py`); cron diário `0 9 * * *`
   UTC (= 06:00 America/Sao_Paulo, UTC-3 fixo — Vixie não suporta `CRON_TZ`;
-  ver Log 18/09). Histórico do dia: `e8e0aee` (docs sync),
-  `f5da0d3` (18/09 — Fase 3 hotfix #72) e, antes, `0939f05` (Fase 3 #71).
+  ver Log 18/09). Histórico do dia: `9ad6bf8` (Fase 4 #73),
+  `e8e0aee` (docs sync), `f5da0d3` (18/09 — Fase 3 hotfix #72) e, antes,
+  `0939f05` (Fase 3 #71).
   Marcos anteriores do 18/09: `ea59f07` (PR #65 = última onda de
   cobertura 96→101 — **+5 empresas**: Sungrow EMEA, AutoScout24, Huawei
   Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH — +
