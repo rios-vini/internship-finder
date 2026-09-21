@@ -58,6 +58,25 @@ Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH).
   real (run 20/09, 474 vs archive 19/09, 476): 448 comuns; **278 (62%)
   mudaram** (deltas −2,5×148, −2,0×30, −1,0×73, −0,5×27); Top 30: 23 ficam,
   7 saem/7 entram (saídas = alemão exigido). Suíte local **28/28**, CI 27→28
++ **Fase 7 (20/09)**: **Company & Location Intelligence** — camada de
++  desempate SEPARADA do score (Job Fit) e do Candidate Fit (Fase 6):
++  Opportunity Intelligence em `opportunity_intel.py` (funções puras) +
++  arquivos curados versionados `company_intel/*.json` (12 empresas e 12
++  cidades com fonte+qualidade+data). Empresa (setor/porte/sede/internacional/
++  áreas/site/carreiras), benefícios (só com fonte — nenhum presumido),
++  carreira (evidência oficial), Internship→Full-time (Explicitly supported/
++  Evidence available/Not mentioned/Unknown — nunca probabilidade), turnover
++  (fato com fonte e período), salário SOMENTE quando citado no anúncio
++  (18/474 no run 20/09: STIHL 2.117 €/mês, Bayer 2.280 €), work mode por
++  evidência (hybrid 91/remote 5/on_site 105), cidade real da string (108
++  cidades; "Germany" não vira cidade), custo de vida contexto (Numbeo
++  ago–set/2026, 12 cidades). Interface: seções recolhíveis por vaga
++  (Empresa/Benefícios/Carreira/Pathway/Localização/Salário/Turnover/Fontes)
++  + Compare opportunities (2–4 vagas; fatores; sem vencedor automático).
++  NADA entra no score; ranking intocado (data-scores idênticos ao snapshot);
++  zero rede em tempo de render (arquivo ausente → Not available, página
++  continua). Suíte local **29/29**, CI 28→29. Relatório:
++  `docs/relatorio_fase7_company_location_intel.md`.
   (`test_app_intel.py` novo; `test_interface` +11 casos node + Fase 6).
   Detalhes: `docs/relatorio_fase6_candidate_fit.md`. Status pessoal =
   evolução futura (página estática, sem backend); Company Intelligence

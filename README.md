@@ -638,6 +638,41 @@ Relatorio oficial: `docs/relatorio_fase6_candidate_fit.md`. Testes:
 `scripts/test_app_intel.py` (novo), `test_interface` (node 34 casos +
 `test_fase6_features`), `test_ranking`, `test_digest`.
 
+### Company & Location Intelligence (Fase 7, 20/09)
+
+Terceira camada, SEPARADA de Job Fit (score) e Candidate Fit (Fase 6):
+**Opportunity Intelligence** — informação verificável sobre empresa,
+benefícios, carreira, Internship→Full-time, turnover, localização, custo de
+vida e salário, para desempate informado entre vagas. NUNCA entra no score e
+nenhum "Company Score" é calculado.
+
+- **Dados de empresa/custo de vida**: arquivos curados versionados
+  (`company_intel/company_intelligence.json` + `company_intel/location_intel.json`)
+  — cada campo com fonte (URL) + qualidade (`primary`/`secondary`/`aggregated`)
+  + data de verificação (`checked`) + período. Estrutura reutilizável por
+  empresa (a MESMA entrada atende todas as vagas da empresa). Ausência de
+  campo → a página mostra `Not mentioned`/`Not available` (nunca inventa).
+- **Do anúncio (evidência, nunca estimativa)**: salário citado ("Gehalt:
+  2.117 €/Monat"; 18 vagas no run 20/09), work mode
+  (hybrid/remote/on_site/not_mentioned), duração em meses, cidade/região da
+  string real (endereço com CEP → cidade; "Germany" não vira cidade).
+- **Por vaga (recolhível, mobile-friendly)**: seções Empresa / Benefícios /
+  Carreira / Internship→Full-time (estados Explicitly supported · Evidence
+  available · Not mentioned · Unknown — nunca probabilidade) / Localização
+  (cidade, região, país, work mode, custo de vida contexto) / Salário /
+  Turnover (fato com fonte e período, sem avaliação) / Fontes.
+- **Compare opportunities**: marque 2–4 vagas e veja uma tabela de fatores
+  (fit, candidatura, vaga, empresa, localização) — dados com fonte, sem
+  vencedor automático.
+- **Resiliência**: zero rede em tempo de render; arquivo curado ausente/
+  corrompido → camada vira `Not available` e a página/ranking continuam.
+- Flags da CLI: `--company-intel`, `--location-intel` (defaults
+  `company_intel/*.json`).
+
+Relatório oficial: `docs/relatorio_fase7_company_location_intel.md`. Testes:
+`scripts/test_opportunity_intel.py` (novo, 29º), `test_interface`,
+`test_publish_pages` (gate de segurança).
+
 ## Runbook
 
 ### Como adicionar empresas

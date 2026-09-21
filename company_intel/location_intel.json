@@ -1,0 +1,109 @@
+{
+  "_comment": "Custo de vida por cidade — NUMBEO (fonte agregada), valores aproximados coletados em 2026-09-20. estimate_monthly = custo mensal estimado para UMA pessoa, SEM aluguel. rent_1br_center = aluguel mensal de 1 quarto no centro. transport_monthly = passe mensal de transporte publico. Valores sao CONTEXTO, nunca verdade absoluta; cidades sem dados confiaveis ficam de fora (interface mostra Not available).",
+  "cities": {
+    "munchen": {
+      "estimate_monthly": "€1.081",
+      "rent_1br_center": "€1.537",
+      "transport_monthly": "€63",
+      "period": "set/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Munich", "quality": "aggregated"}
+    },
+    "berlin": {
+      "estimate_monthly": "€1.058",
+      "rent_1br_center": "€1.304",
+      "transport_monthly": "€63",
+      "period": "ago/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Berlin", "quality": "aggregated"}
+    },
+    "stuttgart": {
+      "estimate_monthly": "€1.021",
+      "rent_1br_center": "€1.080",
+      "transport_monthly": "€63",
+      "period": "set/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Stuttgart", "quality": "aggregated"}
+    },
+    "hamburg": {
+      "estimate_monthly": "€1.010",
+      "rent_1br_center": "€1.168",
+      "transport_monthly": "€63",
+      "period": "set/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Hamburg", "quality": "aggregated"}
+    },
+    "koln": {
+      "estimate_monthly": "€1.072",
+      "rent_1br_center": "€1.037",
+      "transport_monthly": "€63",
+      "period": "ago/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Cologne", "quality": "aggregated"}
+    },
+    "leipzig": {
+      "estimate_monthly": "€999",
+      "rent_1br_center": "€698",
+      "transport_monthly": "€63",
+      "period": "ago/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Leipzig", "quality": "aggregated"}
+    },
+    "dusseldorf": {
+      "estimate_monthly": "€1.058",
+      "rent_1br_center": "€960",
+      "transport_monthly": "€63",
+      "period": "ago/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Dusseldorf", "quality": "aggregated"}
+    },
+    "nurnberg": {
+      "estimate_monthly": "€1.006",
+      "rent_1br_center": "€801",
+      "transport_monthly": "€63",
+      "period": "set/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Nuremberg", "quality": "aggregated"}
+    },
+    "dresden": {
+      "estimate_monthly": "€1.025",
+      "rent_1br_center": "€683",
+      "transport_monthly": "€65",
+      "period": "ago/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Dresden", "quality": "aggregated"}
+    },
+    "frankfurt am main": {
+      "estimate_monthly": "€1.079",
+      "rent_1br_center": "€1.207",
+      "transport_monthly": "€63",
+      "period": "ago/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Frankfurt", "quality": "aggregated"}
+    },
+    "frankfurt": {
+      "estimate_monthly": "€1.079",
+      "rent_1br_center": "€1.207",
+      "transport_monthly": "€63",
+      "period": "ago/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Frankfurt", "quality": "aggregated"}
+    },
+    "heidelberg": {
+      "estimate_monthly": "€1.031",
+      "rent_1br_center": "€1.166",
+      "transport_monthly": "€61",
+      "period": "jun/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Heidelberg", "quality": "aggregated"}
+    },
+    "bonn": {
+      "estimate_monthly": "€1.054",
+      "rent_1br_center": "€942",
+      "transport_monthly": "€63",
+      "period": "set/2026",
+      "checked": "2026-09-20",
+      "source": {"name": "Numbeo (agregado)", "url": "https://www.numbeo.com/cost-of-living/in/Bonn", "quality": "aggregated"}
+    }
+  }
+}

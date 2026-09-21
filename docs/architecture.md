@@ -71,5 +71,16 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
   ativo em PT-BR (inclusive penalidades). NAO traduz descricao, NAO usa
   LLM/API/servico externo e NAO altera score/ranking/filtros/dedup — apenas
   a apresentacao. Como adicionar termos: editar `GLOSSARY` em `ptbr.py`
-  (frase composta antes da generica; identidade `frase_pt=None` protege
-  nomes de produto).
+  (frase composta antes da generica; identidade `frase_pt=None`
+  protege nomes de produto).
+- **Opportunity Intelligence (Fase 7, 20/09)**: camada complementar de
+  desempate — `opportunity_intel.py` (funcoes puras: salario e work mode por
+  EVIDENCIA no anuncio; cidade/regiao da string real; duracao; pathway e
+  turnover a partir da fonte curada; loaders tolerantes de
+  `company_intel/*.json` — arquivos curados versionados com fonte+qualidade+
+  data). Nada entra no score; ausencia vira `Not available`/`Not mentioned`;
+  zero rede em tempo de render (falha externa impossivel de derrubar o
+  pipeline). A interface ganha secoes recolhiveis por vaga (Empresa/
+  Beneficios/Carreira/Internship→Full-time/Localizacao/Salario/Turnover/
+  Fontes) e a area Compare opportunities (fatores de desempate, sem vencedor
+  automatico — JS puro, dados dos data-attributes da linha).
