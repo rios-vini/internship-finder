@@ -1,0 +1,215 @@
+{
+  "_comment": "Company Intelligence curada (Fase 7). Cada campo so existe quando verificado em fonte publica na data 'checked'. Ausencia de campo = a interface mostra Not mentioned/Not available. Nunca editar sem atualizar sources/checked. Qualidades: primary (fonte oficial) / secondary (fonte publica confiavel) / aggregated (terceiros).",
+  "companies": [
+    {
+      "company": "BMW AG",
+      "aliases": ["BMW"],
+      "industry": "Automotivo (carros e motos)",
+      "size": "154.540 empregados (2025)",
+      "hq": "Munique (München), Alemanha",
+      "international": "Produção e operações em Alemanha, Reino Unido, EUA, Brasil, México, África do Sul, Índia e China; presença mundial",
+      "business_areas": ["Automóveis (BMW, Mini, Rolls-Royce)", "Motos (BMW Motorrad)", "Serviços financeiros"],
+      "website": "https://www.bmwgroup.com",
+      "careers_url": "https://jobs.bmwgroup.com",
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Wikipedia — BMW (infobox e lead)", "url": "https://en.wikipedia.org/wiki/BMW", "quality": "secondary", "checked": "2026-09-20", "period": "2025"},
+        {"text": "Página de carreiras BMW Group (domínio do anúncio)", "url": "https://jobs.bmwgroup.com", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    },
+    {
+      "company": "SAP",
+      "aliases": ["SAP SE"],
+      "industry": "Software empresarial (ERP, tecnologia da informação)",
+      "size": "110.650 empregados (2025)",
+      "hq": "Walldorf, Baden-Württemberg, Alemanha",
+      "international": "Operações mundiais (Área served: Worldwide)",
+      "business_areas": ["Software corporativo (ERP/S/4HANA)", "Nuvem e dados", "Aplicações de negócio"],
+      "website": "https://www.sap.com",
+      "careers_url": "https://jobs.sap.com",
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Wikipedia — SAP (infobox)", "url": "https://en.wikipedia.org/wiki/SAP", "quality": "secondary", "checked": "2026-09-20", "period": "2025"},
+        {"text": "Página de carreiras SAP (jobs.sap.com)", "url": "https://jobs.sap.com/", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    },
+    {
+      "company": "BoschGroup",
+      "aliases": ["Bosch", "Robert Bosch GmbH"],
+      "industry": "Tecnologia e engenharia (conglomerado)",
+      "size": "417.859 empregados (2024)",
+      "hq": "Gerlingen, Baden-Württemberg, Alemanha",
+      "international": "Presença mundial (Área served: Worldwide)",
+      "business_areas": ["Mobilidade", "Tecnologia industrial", "Bens de consumo", "Energia e tecnologia de construção"],
+      "website": "https://www.bosch.com",
+      "careers_url": "https://jobs.smartrecruiters.com/BoschGroup",
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Wikipedia — Robert Bosch GmbH (infobox)", "url": "https://en.wikipedia.org/wiki/Robert_Bosch_GmbH", "quality": "secondary", "checked": "2026-09-20", "period": "2024"},
+        {"text": "Portal de carreiras Bosch (SmartRecruiters, domínio do anúncio)", "url": "https://jobs.smartrecruiters.com/BoschGroup", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    },
+    {
+      "company": "Volkswagen AG",
+      "aliases": ["Volkswagen", "VW"],
+      "industry": "Automotivo (fabricação)",
+      "size": "682.724 empregados (média de 2024)",
+      "hq": "Wolfsburg, Baixa Saxônia, Alemanha",
+      "international": "Presença mundial (Área served: Worldwide)",
+      "business_areas": ["Veículos de passeio", "Veículos comerciais", "Serviços financeiros", "Baterias e e-mobility"],
+      "website": "https://www.volkswagen-group.com",
+      "careers_url": "https://jobs.volkswagen-group.com",
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Wikipedia — Volkswagen Group (infobox)", "url": "https://en.wikipedia.org/wiki/Volkswagen_Group", "quality": "secondary", "checked": "2026-09-20", "period": "2024"},
+        {"text": "Portal de vagas Volkswagen Group (domínio do anúncio)", "url": "https://jobs.volkswagen-group.com/en", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    },
+    {
+      "company": "Fraunhofer-Gesellschaft",
+      "aliases": ["Fraunhofer"],
+      "industry": "Pesquisa aplicada e institutos tecnológicos",
+      "size": "Mais de 30.000 empregados; mais de 74 institutos",
+      "hq": "Munique, Alemanha",
+      "international": "Principalmente Alemanha; projetos e filiais internacionais",
+      "business_areas": ["Engenharia", "Ciências da computação", "Ciências físicas e da vida", "Administração e tecnologia"],
+      "website": "https://www.fraunhofer.de",
+      "careers_url": "https://jobs.fraunhofer.de",
+      "career_development": [
+        {"text": "Programas estruturados para estudantes e trainees (estágios e teses) — seção oficial 'Students'"},
+        {"text": "Programas para recém-formados ('Entry-level Candidates') e profissionais"}
+      ],
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Fraunhofer — Jobs and Career (página oficial)", "url": "https://www.fraunhofer.de/en/jobs-and-career.html", "quality": "primary", "checked": "2026-09-20"},
+        {"text": "Portal de vagas Fraunhofer (domínio do anúncio)", "url": "https://jobs.fraunhofer.de", "quality": "primary", "checked": "2026-09-20"}
+      ],
+      "sources_for": {
+        "career": [
+          {"text": "Fraunhofer — Jobs and Career (seção Students / Entry-level)", "url": "https://www.fraunhofer.de/en/jobs-and-career.html", "quality": "primary", "checked": "2026-09-20"}
+        ]
+      }
+    },
+    {
+      "company": "Knorr-Bremse",
+      "aliases": ["Knorr-Bremse AG", "knorrbremsP2"],
+      "industry": "Manufatura — sistemas de freio (ferroviário e rodoviário)",
+      "size": "33.319 empregados (2023)",
+      "hq": "Munique, Alemanha",
+      "international": "Produção e serviços em dezenas de países (ferrovias e veículos comerciais)",
+      "business_areas": ["Sistemas de frenagem ferroviários", "Sistemas de frenagem de veículos comerciais"],
+      "website": "https://www.knorr-bremse.com",
+      "careers_url": "https://careers.knorr-bremse.com",
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Wikipedia — Knorr-Bremse (infobox)", "url": "https://en.wikipedia.org/wiki/Knorr-Bremse", "quality": "secondary", "checked": "2026-09-20", "period": "2023"},
+        {"text": "Portal de carreiras Knorr-Bremse (domínio do anúncio)", "url": "https://careers.knorr-bremse.com", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    },
+    {
+      "company": "Liebherr-International S.A.",
+      "aliases": ["Liebherr"],
+      "industry": "Máquinas pesadas e equipamentos",
+      "size": "53.659 empregados (2023)",
+      "hq": "Bulle, Suíça",
+      "international": "Grupo com mais de 130 empresas em dezenas de países",
+      "business_areas": ["Guindastes", "Máquinas para construção", "Refrigeração", "Aviões e componentes aeroespaciais", "Componentes de máquinas"],
+      "website": "https://www.liebherr.com",
+      "careers_url": "https://careers.liebherr.com",
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Wikipedia — Liebherr Group (infobox)", "url": "https://en.wikipedia.org/wiki/Liebherr_Group", "quality": "secondary", "checked": "2026-09-20", "period": "2023"},
+        {"text": "Portal de carreiras Liebherr (domínio do anúncio)", "url": "https://careers.liebherr.com", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    },
+    {
+      "company": "BASF SE",
+      "aliases": ["BASF"],
+      "industry": "Química",
+      "size": "111.991 empregados (fim de 2023)",
+      "hq": "Ludwigshafen, Alemanha",
+      "international": "Operações mundiais (Área served: Worldwide)",
+      "business_areas": ["Químicos", "Plásticos", "Químicos de performance", "Catalisadores", "Tecnologia agrícola"],
+      "website": "https://www.basf.com",
+      "careers_url": "https://basf.jobs",
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Wikipedia — BASF (infobox)", "url": "https://en.wikipedia.org/wiki/BASF", "quality": "secondary", "checked": "2026-09-20", "period": "2023"},
+        {"text": "Portal de vagas BASF (basf.jobs, domínio do anúncio)", "url": "https://basf.jobs", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    },
+    {
+      "company": "STIHL",
+      "aliases": ["Stihl", "Andreas Stihl AG & Co. KG"],
+      "industry": "Ferramentas motorizadas a gasolina/elétricas (florestal e jardinagem)",
+      "size": "20.246 empregados (2025)",
+      "hq": "Waiblingen, Baden-Württemberg, Alemanha",
+      "international": "Produção em 7 países e venda em mais de 160 países",
+      "business_areas": ["Motossierras e aparadores", "Ferramentas elétricas de jardinagem", "Equipamentos florestais"],
+      "website": "https://www.stihl.com",
+      "careers_url": "https://jobs.stihl.com",
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Wikipedia — Stihl (infobox)", "url": "https://en.wikipedia.org/wiki/Stihl", "quality": "secondary", "checked": "2026-09-20", "period": "2025"},
+        {"text": "Portal de carreiras STIHL (domínio do anúncio)", "url": "https://jobs.stihl.com/", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    },
+    {
+      "company": "Schaeffler Technologies AG & Co. KG",
+      "aliases": ["Schaeffler", "Schaeffler Group"],
+      "industry": "Automotivo, aeroespacial e industrial (rolamentos)",
+      "size": "120.000 empregados (2023)",
+      "hq": "Herzogenaurach, Alemanha",
+      "international": "Presença mundial (Área served: Worldwide)",
+      "business_areas": ["Rolamentos (marcas INA, FAG, LuK)", "Componentes automotivos", "Aplicações aeroespaciais e industriais"],
+      "website": "https://www.schaeffler.com",
+      "careers_url": "https://jobs.schaeffler.com",
+      "turnover": {
+        "kind": "workforce_trend",
+        "detail": "Anúncio de 2024: eliminação de ~4.700 postos (2.800 na Alemanha), fechamento de plantas na Áustria e Reino Unido",
+        "period": "2024",
+        "text": "Wikipedia — Schaeffler Group (21st century)",
+        "url": "https://en.wikipedia.org/wiki/Schaeffler_Group",
+        "quality": "secondary",
+        "checked": "2026-09-20"
+      },
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Wikipedia — Schaeffler Group (infobox e histórico)", "url": "https://en.wikipedia.org/wiki/Schaeffler_Group", "quality": "secondary", "checked": "2026-09-20", "period": "2023–2024"},
+        {"text": "Portal de vagas Schaeffler (domínio do anúncio)", "url": "https://jobs.schaeffler.com", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    },
+    {
+      "company": "Bayer",
+      "aliases": ["Bayer AG"],
+      "industry": "Farmacêutica e ciências da vida",
+      "size": "92.815 empregados (2024)",
+      "hq": "Leverkusen, Alemanha",
+      "international": "Presença mundial (Área served: Worldwide)",
+      "business_areas": ["Farmacêuticos", "Saúde do consumidor", "Ciência agrícola (Crop Science)"],
+      "website": "https://www.bayer.com",
+      "careers_url": "https://jobs.bayer.com",
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Wikipedia — Bayer (infobox)", "url": "https://en.wikipedia.org/wiki/Bayer", "quality": "secondary", "checked": "2026-09-20", "period": "2024"},
+        {"text": "Portal de carreiras Bayer (domínio do anúncio)", "url": "https://jobs.bayer.com", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    },
+    {
+      "company": "teampicnic",
+      "aliases": ["Picnic"],
+      "industry": null,
+      "size": null,
+      "hq": null,
+      "international": null,
+      "business_areas": null,
+      "website": null,
+      "careers_url": "https://jobs.picnic.app",
+      "_note": "Site oficial nao acessivel nesta curadoria (bloqueado); apenas o portal de carreiras (dominio do anuncio) e verificado.",
+      "checked": "2026-09-20",
+      "sources": [
+        {"text": "Portal de vagas (domínio do anúncio)", "url": "https://jobs.picnic.app", "quality": "primary", "checked": "2026-09-20"}
+      ]
+    }
+  ]
+}
