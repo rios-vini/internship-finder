@@ -85,6 +85,7 @@ from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from internship_finder import app_intel  # noqa: E402  (Fase 6: Candidate Fit + Application Intelligence)
+from internship_finder import opportunity_intel  # noqa: E402  (Fase 7: Company & Location Intelligence)
 from internship_finder.countries import matches_country, parse_country_spec  # noqa: E402
 from internship_finder.materials_ranking import rank_materials_jobs  # noqa: E402
 from internship_finder import ptbr  # noqa: E402  (Fase 5: camada PT-BR deterministica)
@@ -590,6 +591,296 @@ def _freshness_html(job: dict) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# Fase 7 — Opportunity Intelligence (Company & Location Intelligence)
+# ---------------------------------------------------------------------------
+
+
+def _job_opportunity(job: dict, company_intel_map: dict, loc_map: dict) -> dict:
+    """Intel de oportunidade de UMA vaga (Fase 7) — numero/significado real.
+
+    Empresa/custo de vida vem dos arquivos curados (fonte+data); salario,
+    modalidade, duracao e cidade vem de EVIDENCIA no proprio anuncio;
+    turnover/pathway da entrada curada (nunca estimados).
+    """
+    entry = opportunity_intel.company_intel_for(job, company_intel_map)
+    loc = opportunity_intel.city_and_region(job)
+    col = opportunity_intel.cost_of_living(loc.get("city"), loc_map)
+    return {
+        "company": entry,
+        "salary": opportunity_intel.job_salary(job),
+        "mode": opportunity_intel.work_mode(job),
+        "duration": opportunity_intel.job_duration(job),
+        "city": loc.get("city"),
+        "region": loc.get("region"),
+        "country": loc.get("country"),
+        "col": col,
+        "pathway": opportunity_intel.pathway_state(entry),
+        "pathway_pct": opportunity_intel.pathway_percentage(entry),
+        "turnover": opportunity_intel.turnover_summary(entry),
+    }
+
+
+def _opp_map_for(
+    jobs: list[dict], materials: list[dict] | None,
+    company_intel_map: dict, loc_map: dict,
+) -> dict:
+    """Opportunity intel UMA vez por vaga (id), reusado nas duas tabelas."""
+    out: dict[str, dict] = {}
+    for j in list(jobs) + list(materials or []):
+        jid = str(j.get("id") or "")
+        if jid and jid not in out:
+            out[jid] = _job_opportunity(j, company_intel_map, loc_map)
+    return out
+
+
+def _source_list(field_sources: list | None, fallback_text: str | None) -> str:
+    """Lista de fontes de um campo (URL valida) ou texto-fallback."""
+    if not field_sources:
+        return ""
+    rows: list[str] = []
+    for s in field_sources:
+        if not isinstance(s, dict):
+            continue
+        text = str(s.get("text") or s.get("source") or "")
+        url = _safe_url(s.get("url") or s.get("href"))
+        checked = str(s.get("checked") or "")
+        quality = str(s.get("quality") or "")
+        label = html.escape(text) if text else ""
+        if url:
+            label = f'<a href="{html.escape(url)}" target="_blank" rel="noopener">{label or "fonte"}</a>'
+        meta = " · ".join(x for x in (quality and ptbr.SOURCE_QUALITY_LABELS.get(quality, quality),
+                                      f"verificado em {_fmt_dmy(checked)}" if checked else "") if x)
+        rows.append(f'<div class="src">{label} <span class="mut small">{html.escape(meta)}</span></div>' if meta else f'<div class="src">{label}</div>')
+    return "<div class=\"srcs\">" + "".join(rows) + "</div>"
+
+
+def _company_section(opp: dict, entry: dict) -> str:
+    """Secao Empresa: dados estruturais da entrada curada (com fontes)."""
+    rows: list[str] = []
+    for key, label in (("industry", "Setor"), ("size", "Porte"),
+                       ("hq", "Sede"), ("international", "Presença internacional"),
+                       ("business_areas", "Principais áreas de atuação")):
+        value = entry.get(key)
+        if value is None or (isinstance(value, (list, dict)) and not value):
+            continue
+        text = ", ".join(str(v) for v in value) if isinstance(value, list) else str(value)
+        rows.append(f'<div class="opp-row"><span class="opp-k">{label}</span>'
+                    f'<span class="opp-v">{html.escape(text)}</span></div>')
+    out = "".join(rows)
+    if not out:
+        return ""
+    website = _safe_url(entry.get("website"))
+    careers = _safe_url(entry.get("careers_url"))
+    links = []
+    if website:
+        links.append(f'<a href="{html.escape(website)}" target="_blank" rel="noopener">site oficial</a>')
+    if careers:
+        links.append(f'<a href="{html.escape(careers)}" target="_blank" rel="noopener">página de carreiras</a>')
+    if links:
+        out += '<div class="opp-row"><span class="opp-k">Links</span><span class="opp-v">' \
+            + " · ".join(links) + "</span></div>"
+    checked = entry.get("checked") or entry.get("refreshed_at")
+    note = f'<p class="mut small">Dados de empresa — verificado em {_fmt_dmy(checked)}' \
+        if checked else '<p class="mut small">Dados de empresa'
+    note += " — informações podem envelhecer; confira a fonte para decisões importantes.</p>"
+    return out + note
+
+
+def _benefits_section(entry: dict) -> str:
+    """Beneficios: SO com fonte na entrada curada; senao 'Not mentioned'."""
+    benefits = entry.get("benefits") if entry else None
+    if not isinstance(benefits, list) or not benefits:
+        return '<div class="opp-row opp-em"><span class="opp-v">Not mentioned</span></div>'
+    items = ""
+    for b in benefits:
+        if isinstance(b, str):
+            items += f'<div class="opp-row"><span class="opp-v">✓ {html.escape(b)}</span></div>'
+        elif isinstance(b, dict) and b.get("name"):
+            items += f'<div class="opp-row"><span class="opp-v">✓ {html.escape(str(b["name"]))}</span></div>'
+    srcs = _source_list(entry.get("sources_for", {}).get("benefits") or entry.get("sources"), None)
+    return (f'<div class="opp-row opp-em"><span class="opp-v">Benefícios com fonte (não '
+            f'presumidos por serem comuns):</span></div>{items}{srcs}')
+
+
+def _career_section(entry: dict) -> str:
+    """Carreira/desenvolvimento: evidencias explicitas com fonte."""
+    career = entry.get("career_development") if entry else None
+    if not isinstance(career, list) or not career:
+        return '<div class="opp-row opp-em"><span class="opp-v">Not mentioned</span></div>'
+    items = ""
+    for c in career:
+        if isinstance(c, str):
+            items += f'<div class="opp-row"><span class="opp-v">• {html.escape(c)}</span></div>'
+        elif isinstance(c, dict) and c.get("text"):
+            items += f'<div class="opp-row"><span class="opp-v">• {html.escape(str(c["text"]))}</span></div>'
+    srcs = _source_list(entry.get("sources_for", {}).get("career") or entry.get("sources"), None)
+    return items + srcs if items else '<div class="opp-row opp-em"><span class="opp-v">Not mentioned</span></div>'
+
+
+def _pathway_section(opp: dict) -> str:
+    """Internship -> Full-time: estado curado; percentual so como dado factual."""
+    label = ptbr.PATHWAY_LABELS.get(opp["pathway"], opp["pathway"])
+    if opp["pathway"] == "unknown":
+        return '<div class="opp-row opp-em"><span class="opp-v">Not disclosed</span></div>'
+    rows = f'<div class="opp-row"><span class="opp-k">Caminho declarado</span>' \
+           f'<span class="opp-v">{html.escape(label)}</span></div>'
+    pct = opp.get("pathway_pct")
+    if pct:
+        rows += f'<div class="opp-row"><span class="opp-k">Dado oficial</span>' \
+                f'<span class="opp-v">{html.escape(str(pct.get("value")))} ' \
+                f'— {html.escape(str(pct.get("text") or ""))}</span></div>'
+    return rows
+
+
+def _location_section(opp: dict, job: dict) -> str:
+    """Localizacao: cidade/regiao/pais reais + custo de vida contextual."""
+    rows: list[str] = []
+    if opp["city"]:
+        rows.append(f'<div class="opp-row"><span class="opp-k">Cidade</span>'
+                    f'<span class="opp-v">{html.escape(opp["city"])}</span></div>')
+    if opp["region"]:
+        rows.append(f'<div class="opp-row"><span class="opp-k">Região</span>'
+                    f'<span class="opp-v">{html.escape(opp["region"])}</span></div>')
+    pais = ptbr.country_label(opp["country"]) or opp["country"]
+    if pais:
+        rows.append(f'<div class="opp-row"><span class="opp-k">País</span>'
+                    f'<span class="opp-v">{html.escape(pais)}</span></div>')
+    rows.append(f'<div class="opp-row"><span class="opp-k">Work mode</span>'
+                f'<span class="opp-v">{html.escape(ptbr.WORK_MODE_LABELS.get(opp["mode"], opp["mode"]))}</span></div>')
+    col = opp.get("col")
+    if col:
+        estim = str(col.get("estimate_monthly") or "")
+        rent = str(col.get("rent_1br_center") or "")
+        transport = str(col.get("transport_monthly") or "")
+        for label, value in (("Custo de vida (estim. mensal, sem aluguel)", estim),
+                             ("Aluguel 1 quarto (centro)", rent),
+                             ("Transporte público mensal", transport)):
+            if value:
+                rows.append(f'<div class="opp-row"><span class="opp-k">{label}</span>'
+                            f'<span class="opp-v">{html.escape(value)}</span></div>')
+        src = col.get("source") or {}
+        src_name = src.get("name") if isinstance(src, dict) else col.get("source_name")
+        src_url = _safe_url(src.get("url") if isinstance(src, dict) else col.get("source_url"))
+        checked = col.get("checked")
+        caveat = f'<p class="mut small">Estimativa aproximada — {html.escape(str(src_name or "fonte"))}'
+        if src_url:
+            caveat += f' (<a href="{html.escape(src_url)}" target="_blank" rel="noopener">fonte</a>)'
+        caveat += f', verificada em {_fmt_dmy(checked)}. Valores são contexto, não verdade absoluta'
+        if isinstance(col, dict) and col.get("period"):
+            caveat += f" — referente a {html.escape(str(col['period']))}"
+        caveat += ".</p>"
+        rows.append(caveat)
+    else:
+        rows.append('<div class="opp-row opp-em"><span class="opp-v">Custo de vida — '
+                    'Not available (cidade sem dados curados confiáveis)</span></div>')
+    return "".join(rows)
+
+
+def _salary_section(opp: dict) -> str:
+    """Salario: apresentado SOMENTE quando citado no anuncio."""
+    salary = opp.get("salary")
+    if not salary:
+        return '<div class="opp-row opp-em"><span class="opp-v">Salary — Not disclosed '
+        '(não citado no anúncio; nenhum valor é inventado)</span></div>'
+
+    def euro(v: float) -> str:
+        return f"{v:,.0f}".replace(",", ".")
+
+    period = ptbr.SALARY_PERIOD_LABELS.get(salary["period"], salary["period"])
+    if salary["min"] == salary["max"]:
+        value = f"€{euro(salary['min'])} / {period}"
+    else:
+        value = f"€{euro(salary['min'])}–€{euro(salary['max'])} / {period}"
+    return (f'<div class="opp-row"><span class="opp-k">Salary</span>'
+            f'<span class="opp-v">{html.escape(value)}</span></div>'
+            '<div class="opp-row opp-em"><span class="opp-v mut small">Source: job posting — citação '
+            f'exata: “{html.escape(salary["text"])}”</span></div>')
+
+
+def _turnover_section(opp: dict) -> str:
+    """Turnover: fato registrado COM fonte; nunca vira avaliacao."""
+    t = opp.get("turnover")
+    if not t:
+        return '<div class="opp-row opp-em"><span class="opp-v">Employee turnover — Not available '
+        '(sem fonte pública confiável; nenhum dado é inferido)</span></div>'
+    rows = f'<div class="opp-row"><span class="opp-k">Dado</span>' \
+           f'<span class="opp-v">{html.escape(str(t.get("detail") or ""))}</span></div>'
+    if t.get("period"):
+        rows += f'<div class="opp-row"><span class="opp-k">Período</span>' \
+                f'<span class="opp-v">{html.escape(str(t["period"]))}</span></div>'
+    note = ('<p class="mut small">Turnover/layoffs são fatos registrados com fonte e período — '
+            'não são usados como avaliação de qualidade da empresa nem do estágio.</p>')
+    return rows + note + _source_list([t], '"')
+
+
+def _sources_section(entry: dict) -> str:
+    """Fontes gerais da entrada curada (enunciado: fonte+URL+data+qualidade)."""
+    srcs = entry.get("sources") if entry else None
+    if not isinstance(srcs, list) or not srcs:
+        return '<div class="opp-row opp-em"><span class="opp-v">Not available</span></div>'
+    rows = ""
+    for s in srcs:
+        if not isinstance(s, dict):
+            continue
+        text = str(s.get("text") or s.get("source") or "")
+        url = _safe_url(s.get("url"))
+        label = html.escape(text) if text else "fonte"
+        if url:
+            label = f'<a href="{html.escape(url)}" target="_blank" rel="noopener">{label}</a>'
+        parts = [label]
+        if s.get("quality"):
+            parts.append(html.escape(ptbr.SOURCE_QUALITY_LABELS.get(str(s["quality"]), str(s["quality"]))))
+        if s.get("checked"):
+            parts.append(f"checado em {html.escape(_fmt_dmy(s['checked']))}")
+        if s.get("period"):
+            parts.append(f"período: {html.escape(str(s['period']))}")
+        rows += f'<div class="src">{" · ".join(parts)}</div>'
+    return rows or '<div class="opp-row opp-em"><span class="opp-v">Not available</span></div>'
+
+
+def _opportunity_html(job: dict, opp: dict) -> str:
+    """Bloco recolhivel 'Oportunidade' (Company & Location Intelligence).
+
+    Secoes: Empresa / Benefícios / Carreira / Internship→Full-time /
+    Localização / Salário / Turnover / Fontes. Tudo fechado por padrão
+    (mobile: abre so o que o usuario quer); nenhum score geral de empresa.
+    """
+    entry = opp.get("company") or {}
+    sections = [
+        ("Empresa", _company_section(opp, entry)),
+        ("Benefícios", _benefits_section(entry)),
+        ("Carreira e desenvolvimento", _career_section(entry)),
+        ("Internship → Full-time", _pathway_section(opp)),
+        ("Localização", _location_section(opp, job)),
+        ("Salário", _salary_section(opp)),
+        ("Turnover / força de trabalho", _turnover_section(opp)),
+        ("Fontes", _sources_section(entry)),
+    ]
+    body = ""
+    for title, content in sections:
+        if not content:
+            content = '<div class="opp-row opp-em"><span class="opp-v">Not available</span></div>'
+        body += (f'<div class="opp-sec"><span class="opp-sec-t">{title}</span>'
+                 f'<div class="opp-sec-body">{content}</div></div>')
+    chips = []
+    if opp.get("salary"):
+        chips.append('<span class="chip c-good">💰 salário citado</span>')
+    if opp["mode"] in ("hybrid", "remote"):
+        chips.append(f'<span class="chip c-{"hybrid" if opp["mode"]=="hybrid" else "good"}">'
+                     f'{ptbr.WORK_MODE_LABELS[opp["mode"]]}</span>')
+    if entry:
+        chips.append('<span class="chip c-en">🏢 empresa: dados c/ fonte</span>')
+    chips_html = ('<div class="chips">' + " ".join(chips) + "</div>") if chips else ""
+    return f'<details class="opp"><summary>Oportunidade — empresa, localização e desempate</summary>{chips_html}{body}</details>'
+
+
+def _compare_cell(value: str, tone: str = "") -> str:
+    """Celula da tabela de comparacao (dado so; tone = pista visual)."""
+    cls = f' class="cmp-{tone}"' if tone else ""
+    return f'<td{cls}>{value}</td>'
+
+
 def _intel_html(job: dict, intel: dict) -> str:
     """Bloco recolhível 'sinais de candidatura e possíveis problemas'."""
     n_prob = len(intel["problems"])
@@ -722,6 +1013,7 @@ def _row_html(
     order: tuple[str, ...] = _BREAKDOWN_ORDER,
     intel: dict | None = None,
     ref: date | None = None,
+    opp: dict | None = None,
 ) -> str:
     """Uma linha da tabela (tudo escapado; URL clicavel, abre em nova aba).
 
@@ -795,6 +1087,9 @@ def _row_html(
         intel = _job_intel(job, ref_date)
     chips = _chips_html(intel)
     intel_details = _intel_html(job, intel)
+    # Fase 7 — Opportunity Intelligence: bloco recolhivel por vaga + data-
+    # attributes para o Compare opportunities (sempre dados, nunca vencedor).
+    opp_details = _opportunity_html(job, opp) if opp else ""
     # Atributos de dados para o JS client-side (escapados para atributo).
     d_title = _attr(job.get("title") or "")
     d_company = _attr(job.get("company") or "")
@@ -810,6 +1105,32 @@ def _row_html(
     d_flags = str(len(intel["flags"]))
     d_ready = _attr(intel["ready"])
     d_top = "1" if is_top else ""
+    # Fase 7 — atributos de comparacao (valores ENQUANTO dados; nunca vencedor).
+    if opp:
+        sal = opp.get("salary")
+        d_salary = f"{sal['min']:g}" if sal and sal["min"] == sal["max"] else (
+            f"{sal['min']:g}-{sal['max']:g}" if sal else "")
+        dur = opp.get("duration")
+        d_duration = f"{dur['min']}-{dur['max']}" if dur else ""
+        col = opp.get("col")
+        d_cost = str(col.get("estimate_monthly") or "") if col else ""
+        d_benefits = "1" if (opp.get("company") or {}).get("benefits") else ""
+        d_career = "1" if (opp.get("company") or {}).get("career_development") else ""
+        d_has_company = "1" if opp.get("company") else ""
+        col = opp.get("col")
+        d_transport = str(col.get("transport_monthly") or "") if col else ""
+    else:
+        d_salary = d_duration = d_cost = d_benefits = d_career = d_has_company = d_transport = ""
+    d_mode = _attr(opp["mode"]) if opp else ""
+    d_city = _attr(opp.get("city") or "") if opp else ""
+    d_pathway = _attr(opp["pathway"]) if opp else ""
+    d_url = _attr(safe_url or "")
+    compare_box = (
+        '<label class="cmp-pick" title="selecionar para comparar">'
+        f'<input type="checkbox" class="cmp-cb" data-cmp-id="{d_title}" '
+        f'data-cmp-name="{d_company}" data-cmp-title="{d_title}">'
+        "<span>comparar</span></label>"
+    ) if opp is not None else ""
     return (
         f'<tr class="{row_class}"'
         f' data-rank="{rank}"'
@@ -826,10 +1147,21 @@ def _row_html(
         f' data-en="{d_en}"'
         f' data-flags="{d_flags}"'
         f' data-ready="{d_ready}"'
-        f' data-top="{d_top}">'
+        f' data-top="{d_top}"'
+        f' data-salary="{d_salary}"'
+        f' data-mode="{d_mode}"'
+        f' data-city="{d_city}"'
+        f' data-cost="{d_cost}"'
+        f' data-pathway="{d_pathway}"'
+        f' data-duration="{d_duration}"'
+        f' data-benefits="{d_benefits}"'
+        f' data-career="{d_career}"'
+        f' data-has-company="{d_has_company}"'
+        f' data-transport="{d_transport}"'
+        f' data-url="{d_url}">'
         f'<td class="score" data-label="#">{rank}</td>'
         f'<td class="score" data-label="score">{_fmt_score(score)}</td>'
-        f"<td data-label=\"vaga\">{link}{badge}{chips}{intel_details}{_details_html(job, breakdown_key=breakdown_key, order=order)}</td>"
+        f"<td data-label=\"vaga\">{compare_box}{link}{badge}{chips}{intel_details}{opp_details}{_details_html(job, breakdown_key=breakdown_key, order=order)}</td>"
         f'<td data-label="empresa">{company}</td>'
         f'<td class="loc" data-label="local">{location}</td>'
         f'<td data-label="tipo">{type_txt}</td>'
@@ -973,6 +1305,34 @@ _CSS = """
   .fgrid { display:flex; flex-wrap:wrap; gap:10px 18px; margin:8px 0 4px; }
   .fgrid .fld select { max-width:240px; }
   .chk { font-weight:400; }
+  /* ---- Fase 7: Opportunity Intelligence + Compare opportunities ---- */
+  details.opp { margin-top:5px; border:1px solid var(--line); border-radius:8px; padding:4px 8px; background:#fbfcfe; max-width:640px; }
+  details.opp > summary { font-size:.78rem; font-weight:600; color:#33475b; }
+  .opp-sec { margin:5px 0 0; padding-top:4px; border-top:1px dashed var(--line); }
+  .opp-sec-t { display:block; font-size:.64rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); margin-bottom:2px; }
+  .opp-row { display:flex; gap:8px; font-size:.78rem; color:#33475b; padding:1px 0; }
+  .opp-k { flex:0 0 auto; min-width:150px; color:var(--mut); }
+  .opp-v { flex:1 1 auto; }
+  .opp-em .opp-v { color:var(--mut); font-style:italic; }
+  .srcs { margin:2px 0 4px; }
+  .src { font-size:.74rem; color:#3d4c5c; padding:1px 0; }
+  details.opp .srcs .src a, .opp-v a { color:var(--acc); }
+  .cmp-pick { float:right; font-size:.66rem; color:var(--mut); margin:0 0 4px 8px; }
+  .cmp-pick input { vertical-align:-1px; }
+  details.compare { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; margin:10px 0 4px; }
+  details.compare summary { cursor:pointer; color:#33475b; font-weight:600; font-size:.85rem; }
+  .cmp-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:6px 0 4px; }
+  .cmp-bar button { font:inherit; font-size:.82rem; padding:6px 12px; border:1px solid var(--acc); color:var(--acc); border-radius:999px; background:var(--card); cursor:pointer; }
+  .cmp-bar button:hover { background:var(--acc); color:#fff; }
+  .cmp-out { overflow-x:auto; margin-top:6px; }
+  .cmp-out table { border-collapse:collapse; min-width:560px; }
+  .cmp-out th, .cmp-out td { border:1px solid var(--line); padding:6px 9px; font-size:.78rem; vertical-align:top; }
+  .cmp-out th { background:#eef2f7; font-size:.66rem; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); }
+  .cmp-out td.f { color:var(--mut); font-weight:600; white-space:nowrap; }
+  .cmp-good { background:#eaf7ee; }
+  .cmp-warn { background:#fef7e0; }
+  .cmp-bad { background:#fdecea; }
+  .cmp-empty { color:var(--mut); font-style:italic; }
   @media (max-width:760px) {
     main { padding:14px 10px 48px; }
     h1 { font-size:1.02rem; line-height:1.25; }
@@ -1250,6 +1610,149 @@ function if_filter_sort(rows, st, sortKey) {
   });
   activate('biz');
 })();
+/* ==== Fase 7: Compare opportunities (dados; sem vencedor automatico) ==== */
+(function () {
+  'use strict';
+  function allCbs() {
+    return Array.prototype.slice.call(document.querySelectorAll('tr .cmp-cb'));
+  }
+  function checked() { return allCbs().filter(function (cb) { return cb.checked; }); }
+  function d(tr) { return tr.dataset; }
+  function waLabel(v) {
+    var m = { support: 'Suporte/visto mencionado', existing_required: 'Requer autorização existente',
+              no_sponsorship: 'Sem sponsorship', unclear: 'Não claro', not_mentioned: 'Não mencionado' };
+    return m[v] || v || 'Não mencionado';
+  }
+  function waTone(v) {
+    if (v === 'support') return 'cmp-good';
+    if (v === 'existing_required' || v === 'no_sponsorship') return 'cmp-bad';
+    if (v === 'unclear') return 'cmp-warn';
+    return '';
+  }
+  function langText(tr) {
+    var out = [];
+    if (d(tr).en === '1') out.push('Inglês mencionado');
+    if (d(tr).lang === 'de-required') out.push('Alemão exigido');
+    else if (d(tr).lang === 'de-preferred') out.push('Alemão preferido');
+    if (!out.length) out.push('Sem menção a idioma');
+    return out.join('; ');
+  }
+  function deadlineText(tr) {
+    var v = d(tr).deadline;
+    if (!v || isNaN(parseFloat(v))) return ['Não informado', 'cmp-empty'];
+    var n = parseFloat(v);
+    var tone = n <= 2 ? 'cmp-bad' : (n <= 7 ? 'cmp-warn' : (n <= 14 ? '' : 'cmp-good'));
+    return [n + ' dias', tone];
+  }
+  function salaryText(tr) {
+    var v = d(tr).salary;
+    if (!v) return ['Not disclosed', 'cmp-empty'];
+    var p = String(v).split('-');
+    return [(p.length === 2 ? '€' + p[0] + '–€' + p[1] : '€' + p[0]) + '/mês', 'cmp-good'];
+  }
+  function modeText(tr) {
+    var m = { remote: 'Remoto', hybrid: 'Híbrido', on_site: 'Presencial', not_mentioned: 'Não mencionado' };
+    var v = d(tr).mode || 'not_mentioned';
+    var tone = (v === 'remote' || v === 'hybrid') ? 'cmp-good' : (v === 'on_site' ? '' : 'cmp-empty');
+    return [m[v] || v, tone];
+  }
+  function durationText(tr) {
+    var v = d(tr).duration;
+    if (!v) return ['Não informada', 'cmp-empty'];
+    var p = String(v).split('-');
+    return [(p.length === 2 && p[1] !== p[0] ? p[0] + '–' + p[1] : p[0]) + ' meses', ''];
+  }
+  function flagText(v, yes, no, tone) {
+    return v === '1' ? [yes, tone] : [no, 'cmp-empty'];
+  }
+  function pathwayText(tr) {
+    var m = { explicitly_supported: 'Explicitly supported', evidence_available: 'Evidence available',
+              not_mentioned: 'Not mentioned', unknown: 'Unknown' };
+    var v = d(tr).pathway || 'unknown';
+    var tone = v === 'explicitly_supported' ? 'cmp-good' : (v === 'evidence_available' ? 'cmp-warn' : 'cmp-empty');
+    return [m[v] || v, tone];
+  }
+  function cityText(tr) {
+    var c = d(tr).city;
+    if (!c) return ['Não informada', 'cmp-empty'];
+    var cost = d(tr).cost;
+    var t = cost ? ' ~' + cost + '/mês (estim.)' : '';
+    return [c + t, cost ? 'cmp-good' : ''];
+  }
+  function transportText(tr) {
+    var v = d(tr).transport;
+    return v ? [v + '/mês', ''] : ['Não informado', 'cmp-empty'];
+  }
+  function titleCell(tr) {
+    var url = d(tr).url;
+    var t = String(d(tr).title || 'sem título');
+    if (t.length > 46) t = t.slice(0, 45) + '…';
+    return url ? '<a href="' + url + '" target="_blank" rel="noopener">' + t + '</a>' : t;
+  }
+  var FACTORS = [
+    ['fit', 'Job Fit (score)', function (tr) { return [String(d(tr).score || '—'), '']; }],
+    ['ready', 'Candidate Fit (readiness)', function (tr) {
+      return d(tr).ready === 'ready' ? ['✅ Pronta p/ revisar', 'cmp-good'] : ['⚠️ Precisa verificação', 'cmp-warn'];
+    }],
+    ['lang', 'Idioma', function (tr) { return [langText(tr), '']; }],
+    ['wa', 'Work authorization', function (tr) { return [waLabel(d(tr).wa), waTone(d(tr).wa)]; }],
+    ['deadline', 'Deadline', deadlineText],
+    ['role', 'Vaga', function (tr) { return [String(d(tr).company || '—') + ' — ' + titleCell(tr), '']; }],
+    ['salary', 'Salário', salaryText],
+    ['mode', 'Work mode', modeText],
+    ['duration', 'Duração', durationText],
+    ['benefits', 'Benefícios (empresa)', function (tr) {
+      return flagText(d(tr).benefits, '✓ informados c/ fonte', '?', 'cmp-good');
+    }],
+    ['career', 'Carreira (desenvolvimento)', function (tr) {
+      return flagText(d(tr).career, '✓ evidência c/ fonte', '?', 'cmp-good');
+    }],
+    ['pathway', 'Internship → Full-time', pathwayText],
+    ['city', 'Cidade', cityText],
+    ['transport', 'Transporte público', transportText],
+  ];
+  function render() {
+    var cbs = checked().slice(0, 4);
+    var out = document.getElementById('cmp-out');
+    var sel = document.getElementById('cmp-selected');
+    var badge = document.getElementById('cmp-count');
+    if (!out) return;
+    var n = checked().length;
+    if (sel) sel.textContent = n ? (n + (n === 1 ? ' vaga selecionada' : ' vagas selecionadas')
+      + (n > 4 ? ' (máx. 4 exibidas)' : '')) : 'nenhuma vaga selecionada';
+    if (badge) badge.textContent = n ? '(' + n + ')' : '';
+    if (!cbs.length) { out.innerHTML = ''; return; }
+    var rows = FACTORS.map(function (f) {
+      var cells = cbs.map(function (cb) {
+        var tr = cb.closest('tr');
+        var res = f[2](tr);
+        return '<td class="' + (res[1] || '') + '">' + (res[0] || '—') + '</td>';
+      });
+      return '<tr><td class="f">' + f[1] + '</td>' + cells.join('') + '</t' + 'r>';
+    }).join('');
+    var head = '<tr><th>fator</th>' + cbs.map(function (cb) {
+      var tr = cb.closest('tr');
+      return '<th>' + titleCell(tr) + '<div class="mut" style="font-weight:400;text-transform:none">' +
+        String(d(tr).company || '') + '</div></th>';
+    }).join('') + '</t' + 'r>';
+    out.innerHTML = '<table>' + head + rows + '</table>' +
+      '<p class="hint">Valores exibidos como dados (Job Fit/Candidate Fit do pipeline; empresa, benefícios, ' +
+      'carreira e pathway dos arquivos curados com fonte; salário/modalidade/duração evidenciados no próprio ' +
+      'anúncio). Nenhuma coluna é “melhor” automaticamente — a decisão é sua.</p>';
+  }
+  function wire(id, evt, fn) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener(evt, fn);
+  }
+  wire('cmp-show', 'click', function () { render(); });
+  wire('cmp-clear', 'click', function () {
+    allCbs().forEach(function (cb) { cb.checked = false; });
+    render();
+  });
+  document.addEventListener('change', function (ev) {
+    if (ev.target && ev.target.classList && ev.target.classList.contains('cmp-cb')) render();
+  });
+})();
 """
 
 
@@ -1401,6 +1904,9 @@ def render_html(
     ref_date: date | None = None,
     intel_map: dict[str, dict] | None = None,
     show_how: bool = True,
+    company_intel_map: dict[str, dict] | None = None,
+    loc_map: dict[str, dict] | None = None,
+    opp_map: dict[str, dict] | None = None,
 ) -> str:
     """Pagina auto-contida (CSS inline, JS vanilla inline, zero external).
 
@@ -1430,6 +1936,12 @@ def render_html(
         ref_date = app_intel.snapshot_ref_date(all_jobs or jobs)
     if intel_map is None:
         intel_map = _intel_map_for(jobs, materials, ref_date)
+    if company_intel_map is None:
+        company_intel_map = opportunity_intel.load_company_intel()
+    if loc_map is None:
+        loc_map = opportunity_intel.load_location_intel()
+    if opp_map is None:
+        opp_map = _opp_map_for(jobs, materials, company_intel_map, loc_map)
     rows: list[str] = []
     for i, j in enumerate(jobs, 1):
         rank = i
@@ -1439,6 +1951,7 @@ def render_html(
             rank, j, top_n=top_n,
             intel=intel_map.get(str(j.get("id"))),
             ref=ref_date,
+            opp=opp_map.get(str(j.get("id"))),
         ))
     rows_html = "\n".join(rows)
 
@@ -1456,6 +1969,7 @@ def render_html(
                 order=_MATERIALS_BREAKDOWN_ORDER,
                 intel=intel_map.get(str(j.get("id"))),
                 ref=ref_date,
+                opp=opp_map.get(str(j.get("id"))),
             ))
         mat_rows_html = "\n".join(mat_rows)
 
@@ -1528,6 +2042,15 @@ def render_html(
   </div>
   {chips}
   {filters_html}
+  <details class="compare" id="compare"><summary>Compare opportunities — selecione vagas para ver fatores de desempate <span id="cmp-count" class="f-badge"></span></summary>
+    <p class="hint">Marque “comparar” em duas ou mais vagas. A tabela mostra <b>dados</b> (fit, candidatura, vaga, empresa, localização) — não escolhe vencedor por você.</p>
+    <div class="cmp-bar" id="cmp-bar">
+      <span class="mut small" id="cmp-selected">nenhuma vaga selecionada</span>
+      <button type="button" id="cmp-show">comparar selecionadas</button>
+      <button type="button" id="cmp-clear">limpar</button>
+    </div>
+    <div class="cmp-out" id="cmp-out"></div>
+  </details>
   <div class="toolbar">
     <input id="q" type="search" placeholder="Buscar por título, empresa ou local…">
     <select id="sort" title="Ordenação">
@@ -1549,7 +2072,7 @@ def render_html(
   </table>
   </div>
   {mat_wrap}
-  <footer>Filtros e ordenação são client-side (JS embutido, sem backend). O score e o score_breakdown exibidos são os do perfil ativo (principal: pipeline; Materials Engineering: materials_score/materials_breakdown próprios). Sinais de candidatura (Candidate Fit / problemas / work authorization / deadline) são objetivos, extraídos do anúncio — nunca inventados; deadline SuccessFactors é validade de feed (fonte), não entra em urgência. Filtros --company/--keyword/--country (se usados) já foram aplicados na geração.</footer>
+  <footer>Filtros e ordenação são client-side (JS embutido, sem backend). O score e o score_breakdown exibidos são os do perfil ativo (principal: pipeline; Materials Engineering: materials_score/materials_breakdown próprios). Sinais de candidatura (Candidate Fit / problemas / work authorization / deadline) são objetivos, extraídos do anúncio — nunca inventados; deadline SuccessFactors é validade de feed (fonte), não entra em urgência. Opportunity Intelligence (empresa, benefícios, carreira, Internship→Full-time, turnover, custo de vida) vem de arquivos curados com fonte+data+qualidade (company_intel/) e de evidências do próprio anúncio (salário, modalidade, duração, cidade) — camada de desempate, NUNCA entra no score de relevância; nenhum score de empresa é calculado. Filtros --company/--keyword/--country (se usados) já foram aplicados na geração.</footer>
 </main>
 <script>
 {_JS}
@@ -1622,6 +2145,21 @@ def main(argv: list[str] | None = None) -> int:
         help="SQLite jobs.db para Freshness (first_seen/last_seen) no caminho "
         "--input; arquivo ausente nao e erro, apenas omite a juncao "
         "(default: data/jobs.db)",
+    )
+    parser.add_argument(
+        "--company-intel",
+        default=None,
+        metavar="PATH",
+        help="JSON curado de Company Intelligence (default: "
+        "company_intel/company_intelligence.json; ausente = secoes "
+        "Not available, sem quebrar a pagina)",
+    )
+    parser.add_argument(
+        "--location-intel",
+        default=None,
+        metavar="PATH",
+        help="JSON curado de custo de vida por cidade (default: "
+        "company_intel/location_intel.json; ausente = Not available)",
     )
     args = parser.parse_args(argv)
 
@@ -1745,6 +2283,10 @@ def main(argv: list[str] | None = None) -> int:
             score_key="materials_score",
         ),
         ref_date=ref_date,
+        # Fase 7 — Company & Location Intelligence (arquivos curados; ausencia
+        # nunca quebra a pagina — secoes viram Not available).
+        company_intel_map=opportunity_intel.load_company_intel(args.company_intel),
+        loc_map=opportunity_intel.load_location_intel(args.location_intel),
     )
 
     out = "-" if args.output == "-" else Path(args.output or DEFAULT_OUTPUT)

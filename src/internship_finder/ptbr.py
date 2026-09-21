@@ -547,3 +547,57 @@ READINESS_LABELS: dict[str, str] = {
     "ready": "Pronta para revisar",
     "verify": "Precisa verificação",
 }
+
+# ---------------------------------------------------------------------------
+# Fase 7 — Opportunity Intelligence (rotulos PT-BR; estados/keys vem de
+# opportunity_intel.py; aqui so a apresentacao em portugues)
+# ---------------------------------------------------------------------------
+
+# Modalidade de trabalho (opportunity_intel.work_mode).
+WORK_MODE_LABELS: dict[str, str] = {
+    "remote": "Remoto",
+    "hybrid": "Híbrido",
+    "on_site": "Presencial",
+    "not_mentioned": "Não mencionado",
+}
+
+# Estados do caminho Internship -> Full-time (opportunity_intel.pathway_state).
+PATHWAY_LABELS: dict[str, str] = {
+    "explicitly_supported": "Explicitly supported",
+    "evidence_available": "Evidence available",
+    "not_mentioned": "Not mentioned",
+    "unknown": "Unknown",
+}
+
+# Qualidade da fonte (opportunity_intel.SOURCE_QUALITIES).
+SOURCE_QUALITY_LABELS: dict[str, str] = {
+    "primary": "Primary (fonte oficial)",
+    "secondary": "Secondary (fonte pública confiável)",
+    "aggregated": "Aggregated (dados agregados de terceiros)",
+    "unknown": "Unknown (fonte insuficiente)",
+}
+
+# Periodo de salario (opportunity_intel.job_salary).
+SALARY_PERIOD_LABELS: dict[str, str] = {
+    "month": "mês",
+    "year": "ano",
+}
+
+# Rotulos dos fatores de comparacao (funcionalidade Compare opportunities).
+COMPARE_FACTOR_LABELS: dict[str, str] = {
+    "fit": "Job Fit (score)",
+    "ready": "Candidate Fit (readiness)",
+    "language": "Idioma",
+    "wa": "Work authorization",
+    "deadline": "Deadline",
+    "role": "Vaga",
+    "salary": "Salário",
+    "mode": "Work mode",
+    "duration": "Duração",
+    "benefits": "Benefícios (empresa)",
+    "career": "Desenvolvimento de carreira",
+    "pathway": "Internship → Full-time",
+    "city": "Cidade",
+    "cost": "Custo de vida",
+    "transport": "Transporte",
+}
