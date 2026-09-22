@@ -77,6 +77,27 @@ Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH).
 +  zero rede em tempo de render (arquivo ausente → Not available, página
 +  continua). Suíte local **29/29**, CI 28→29. Relatório:
 +  `docs/relatorio_fase7_company_location_intel.md`.
++ **Fase 8 (22/09)**: **Decision Support + Application Tracking + Feedback
++  Loop** — camada de decisão PESSOAL, separada do ranking:
++  `scripts/personal_tracker.py` (CLI novo) + banco SQLite PRIVADO
++  `data/personal/jobs_personal.db` (job_status/job_events/job_applications;
++  PK = `Job.id` canônico). Status (new→interesting/review→applied→
++  interview→offer/rejected; withdrawn/ignored), prioridade pessoal
++  (high/normal/low — nunca afeta o score), notas, candidaturas (data/
++  resposta/entrevista/contato), feedback de gostei/ignorei (motivos livres,
++  collect-only — §12: NUNCA altera pesos), histórico append-only com
++  `sync-ranking` diário idempotente (vaga que sai do ranking/ATS ganha
++  evento e NUNCA é apagada — §19). Telegram: `personal_sections` no digest
++  (⚠️ Application reminders com deadline EMPLOYER ≤3 dias apenas — SF
++  feed nunca; 📌 aguardando resposta; notas nunca enviadas; banco ausente
++  → seções vazias, run segue). Interface pública: hint por vaga com o
++  comando do tracker + `data-job-id` (ZERO dado pessoal no HTML — Pages
++  estático/público, limitação documentada); comparação = reuso do Compare
++  Fase 7. Export CSV local; metrics/funnel/ranking-feedback descritivos.
++  Ranking/filtros/coleta intocados (data-scores idênticos; nenhuma função
++  de ranking chamada pelo tracker). Suíte local **30/30 — 1.564 checks —
++  0 falhas** (test_personal_tracker: 20 itens do §25; CI 29→30). Relatório:
++  `docs/relatorio_fase8_decision_tracking.md`.
   (`test_app_intel.py` novo; `test_interface` +11 casos node + Fase 6).
   Detalhes: `docs/relatorio_fase6_candidate_fit.md`. Status pessoal =
   evolução futura (página estática, sem backend); Company Intelligence

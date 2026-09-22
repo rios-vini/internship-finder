@@ -594,6 +594,64 @@ def digest_sections(
 
 
 # ---------------------------------------------------------------------------
+# Fase 8 — secoes PESSOAIS do Telegram (banco privado; best-effort sempre)
+# ---------------------------------------------------------------------------
+
+def personal_sections(db_path: str | Path, current_path: str | Path, *,
+                      ref_date=None, reminders_days: int = 3,
+                      max_shown: int = 3) -> list[str]:
+    """Secoes pessoais do digest (Fase 8): reminders + aguardando resposta.
+
+    Le o banco privado ``data/personal/jobs_personal.db`` via
+    ``scripts/personal_tracker.py`` (mesmo schema; nada de segunda fonte de
+    verdade) e junta com o ranking atual. Regras (spec Fase 8):
+
+    - SO deadline EMPLOYER conta como prazo (validade de feed
+      SuccessFactors NUNCA — regra Fase 6);
+    - shortlist = interesting/review/applied/interview/offer;
+    - notas pessoais completas NUNCA sao enviadas;
+    - banco ausente/corrompido -> ``[]`` silencioso (nunca derruba o run).
+
+    As linhas entram ANTES do link do ranking (o link continua sendo a
+    ultima linha do digest montado pelo chamador).
+    """
+    try:
+        sys_path_scripts = Path(__file__).resolve().parent
+        if str(sys_path_scripts) not in __import__("sys").path:
+            __import__("sys").path.insert(0, str(sys_path_scripts))
+        import personal_tracker as pt
+        conn = pt.connect(db_path)
+    except Exception:  # noqa: BLE001 — banco pessoal nunca derruba o run
+        return []
+    try:
+        ranking = pt.load_ranking(current_path)
+        reminders = pt.reminder_jobs(conn, ranking, ref=ref_date,
+                                     max_days=reminders_days)
+        waiting = pt.waiting_response(conn)
+    except Exception:  # noqa: BLE001 — leitura invalida -> silencio
+        return []
+    finally:
+        conn.close()
+    lines: list[str] = []
+    if reminders:
+        lines.append("")
+        lines.append("\U000026A0\U0000FE0F Application reminders")
+        lines.append(f"{len(reminders)} vaga(s) em sua shortlist vencem nos "
+                     f"proximos {reminders_days} dias:")
+        for r in reminders[:max_shown]:
+            days = "amanha" if r["days"] == 1 else (
+                "hoje" if r["days"] == 0 else f"em {r['days']} dias")
+            lines.append(f"{r['company']} — {r['title']} ({days})")
+        if len(reminders) > max_shown:
+            lines.append(f"(+{len(reminders) - max_shown} outra(s))")
+    if waiting:
+        lines.append("")
+        lines.append(f"\U0001F4CC {waiting} aplicação(ões) aguardando resposta")
+    return lines
+
+
+
+# ---------------------------------------------------------------------------
 # CLI de inspecao (uso manual/testes; NAO e usada pelo refresh)
 # ---------------------------------------------------------------------------
 

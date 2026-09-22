@@ -673,6 +673,67 @@ Relatório oficial: `docs/relatorio_fase7_company_location_intel.md`. Testes:
 `scripts/test_opportunity_intel.py` (novo, 29º), `test_interface`,
 `test_publish_pages` (gate de segurança).
 
+### Decision Support + Application Tracking (Fase 8, 22/09)
+
+Quarta camada: **estado pessoal** — o que EU faço com as vagas. Status,
+prioridade pessoal, notas, candidaturas, feedback e histórico, no banco
+SQLite PRIVADO `data/personal/jobs_personal.db` (dentro de `data/`, que é
+gitignored — nunca versionado, nunca publicado no GitHub Pages; o
+publicador sobe apenas `index.html` e o gate `check_public_safe` bloqueia
+menções a `jobs.db`/caminhos privados).
+
+- **Status (§1)**: `new → interesting/review → applied → interview →
+  offer/rejected`, mais `withdrawn` e `ignored`. Shortlist = interesting /
+  review / applied / interview / offer.
+- **Prioridade pessoal ≠ ranking (§17)**: `high/normal/low` marcada por
+  você; NÃO afeta o score e não é sobrescrita por ele (uma vaga score 14
+  pode ser prioridade alta — a decisão é sua).
+- **Application tracking (§7)**: data de candidatura, resposta, entrevista
+  e contato — o mínimo para não perder o controle; não é um CRM.
+- **Histórico (§10)**: eventos append-only (`marked`, `status_changed`,
+  `applied_at`, `note`, `removed_from_ranking`, `ats_gone`,
+  `feedback_liked`/`feedback_ignored`, ...) — quando a vaga foi marcada,
+  aplicada, mudou de status, saiu do ranking ou desapareceu do ATS.
+- **Expiração (§19)**: vaga que sai do ranking/ATS NÃO é apagada — ganha
+  evento `removed_from_ranking`/`ats_gone` (idempotente) e mantém
+  status/histórico (aplicada não desaparece). No `export`, vaga fora do
+  ranking atual aparece como `No longer active`.
+- **Feedback (§11/§12)**: por que gostei/ignorei (motivos livres). É
+  collect-only: NUNCA altera pesos/score automaticamente. O diagnóstico
+  `ranking-feedback` mostra Top 30 vs fora — dados, sem julgamento.
+- **Métricas descritivas (§14)** e **opportunity funnel (§15)**:
+  contagens, taxa applied/(interesting+review), tempo médio
+  descoberta→candidatura (via `first_seen` do jobs.db) — sem previsões.
+- **Telegram (§9)**: o digest diário ganha `⚠️ Application reminders`
+  (shortlist com deadline EMPLOYER ≤ 3 dias — validade de feed
+  SuccessFactors NUNCA conta, regra Fase 6) e `📌 N aplicações aguardando
+  resposta`. Notas pessoais completas nunca são enviadas. Banco ausente/
+  corrompido → seções somem silenciosamente (o run segue).
+- **Interface pública (§21, limitação documentada)**: GitHub Pages é
+  estático/público — status/notas pessoais NÃO são persistidos no browser
+  nem publicados. Cada vaga mostra um hint com o comando
+  `personal_tracker.py mark <id>` (o `Job.id` canônico aparece no
+  `data-job-id` da linha). Comparação continua sendo o Compare da Fase 7
+  (reuso, sem duplicação).
+- **Identidade (§20)**: tudo pendurado no `Job.id` canônico
+  (`<company>|<source>:<external_id>`), a mesma PK do `jobs.db` — nenhum
+  identificador paralelo.
+- **Export (§23)**: `export --csv data/personal/shortlist.csv` (title,
+  company, location, score, profile, status, application_date, deadline,
+  personal_priority) — nunca vai para o Pages.
+
+```bash
+# uso diário (no VPS, dentro do repo):
+.venv/bin/python scripts/personal_tracker.py mark "<job_id>" --status interesting --note "..."
+.venv/bin/python scripts/personal_tracker.py applied "<job_id>" --date 2026-09-22 --contact LinkedIn
+.venv/bin/python scripts/personal_tracker.py list --shortlist
+.venv/bin/python scripts/personal_tracker.py sync-ranking   # roda sozinho no refresh diario
+.venv/bin/python scripts/personal_tracker.py metrics | funnel | ranking-feedback | export
+```
+
+Relatório oficial: `docs/relatorio_fase8_decision_tracking.md`. Testes:
+`scripts/test_personal_tracker.py` (novo, 30º — cobre os 20 itens do §25).
+
 ## Runbook
 
 ### Como adicionar empresas

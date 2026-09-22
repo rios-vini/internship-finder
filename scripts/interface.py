@@ -376,12 +376,23 @@ def _details_html(
             '<p class="mut desc"><span class="tag tag-orig">Original</span> '
             f'<span class="desc-orig">{html.escape(text)}</span></p>'
         )
+    # Fase 8 — hint do personal tracker: aponta o comando do tracker com o
+    # id CANONICO da vaga (Job.id). Zero dado pessoal aqui (o estado privado
+    # mora no banco local); e apenas o caminho para a acao no terminal.
+    tracker_id = _attr(str(job.get("id") or ""))
+    tracker_hint = (
+        '<p class="mut tracker-hint">Acompanhar esta vaga (shortlist, '
+        'candidatura, notas — dados privados no VPS): '
+        f'<code>scripts/personal_tracker.py mark {tracker_id} '
+        '--status interesting</code></p>'
+    ) if tracker_id else ""
     return (
         "<details class=\"why\">"
         "<summary>por que esta vaga? (score e penalidades)</summary>"
         f"{_breakdown_html(job, breakdown_key=breakdown_key, order=order)}"
         f"{extras}"
         f"{desc_snippet}"
+        f"{tracker_hint}"
         "</details>"
     )
 
@@ -1134,6 +1145,7 @@ def _row_html(
     return (
         f'<tr class="{row_class}"'
         f' data-rank="{rank}"'
+        f' data-job-id="{_attr(str(job.get("id") or ""))}"'
         f' data-title="{d_title}"'
         f' data-company="{d_company}"'
         f' data-location="{d_location}"'
