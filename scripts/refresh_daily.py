@@ -788,6 +788,38 @@ def _archive_run_info(archive_dir: Path, summary: dict, alert_count: int,
         log.warning("run_info.json nao gravado: %s", exc)
 
 
+def _sync_personal_ranking(root: Path, data_dir: Path) -> None:
+    """Fase 8 — sync-ranking diario do banco pessoal (best-effort).
+
+    Registra (idempotentemente) saidas do ranking/ATS das vagas marcadas,
+    chamando o CLI do personal_tracker como subprocesso com os caminhos do
+    checkout REAL (root), nunca do clone de teste. Falha NUNCA derruba o
+    run (o chamador envolve em try/except) e o banco ausente e criado pelo
+    proprio tracker na primeira marcacao.
+    """
+    import subprocess as _sp
+    script = root / "scripts" / "personal_tracker.py"
+    if not script.exists():
+        log.info("sync-ranking pessoal pulado (scripts/personal_tracker.py ausente)")
+        return
+    cmd = [
+        sys.executable, str(script),
+        "--db", str(data_dir / "personal" / "jobs_personal.db"),
+        "--ranking", str(data_dir / "eligible_jobs.json"),
+        "--jobs-db", str(data_dir / "jobs.db"),
+        "sync-ranking",
+    ]
+    env = {**os.environ, "PYTHONPATH": str(root / "src")}
+    proc = _sp.run(cmd, cwd=root, capture_output=True, text=True, timeout=60,
+                   env=env)
+    if proc.returncode == 0:
+        log.info("sync-ranking pessoal: %s", proc.stdout.strip()[:200])
+    else:
+        log.warning("sync-ranking pessoal exit %d: %s",
+                    proc.returncode, (proc.stderr or proc.stdout).strip()[:200])
+
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Refresh diario da coleta (rotacao + coleta real + health"
@@ -921,6 +953,28 @@ def main(argv: list[str] | None = None) -> int:
             )
         except Exception as exc:  # noqa: BLE001 — digest e best-effort
             log.warning("digest do ranking nao montado (run segue normal): %s", exc)
+        # Fase 8 — sync-ranking + secoes PESSOAIS do digest (banco privado
+        # data/personal/jobs_personal.db). Best-effort TOTAL: banco ausente,
+        # corrompido ou falha qualquer -> secoes vazias/log, o run segue.
+        # As secoes entram ANTES do link (o link continua a ultima linha);
+        # se a mensagem final estourar 4096, o compactador existente preserva
+        # a base + link (secoes pessoais somem no compact — documentado).
+        try:
+            personal_lines = ranking_digest.personal_sections(
+                db_path=data_dir / "personal" / "jobs_personal.db",
+                current_path=data_dir / "eligible_jobs.json",
+            )
+            if personal_lines and digest_lines:
+                # insere antes do link (ultima linha do digest)
+                digest_lines = digest_lines[:-1] + personal_lines + [digest_lines[-1]]
+            elif personal_lines and digest_lines is None:
+                digest_lines = personal_lines
+        except Exception as exc:  # noqa: BLE001 — pessoal nunca derruba o run
+            log.warning("secoes pessoais nao montadas (run segue normal): %s", exc)
+        try:
+            _sync_personal_ranking(root, data_dir)
+        except Exception as exc:  # noqa: BLE001 — sync nunca derruba o run
+            log.warning("sync-ranking pessoal falhou (run segue normal): %s", exc)
     else:
         log.info("digest pulado (exit %d != 0 — ranking nao e o oficial)", exit_code)
 

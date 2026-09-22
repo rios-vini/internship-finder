@@ -84,3 +84,21 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
   Beneficios/Carreira/Internship→Full-time/Localizacao/Salario/Turnover/
   Fontes) e a area Compare opportunities (fatores de desempate, sem vencedor
   automatico — JS puro, dados dos data-attributes da linha).
+- **Personal Tracking (Fase 8, 22/09)**: camada de decisao PESSOAL —
+  `scripts/personal_tracker.py` (CLI standalone) + banco SQLite PRIVADO
+  `data/personal/jobs_personal.db` (3 tabelas: job_status/job_events/
+  job_applications; PK = `Job.id` canonico do jobs.db — nenhum identificador
+  paralelo). Estado: status (new/interesting/review/applied/interview/offer/
+  rejected/withdrawn/ignored), prioridade PESSOAL (independente do score),
+  notas, datas de candidatura, feedback (motivos livres, collect-only —
+  NUNCA altera pesos: nenhuma funcao de ranking e chamada). Historico
+  append-only; `sync-ranking` diario (best-effort no refresh) registra
+  saidas do ranking/ATS de forma idempotente e NUNCA apaga estado (vaga
+  aplicada preservada). Telegram: `ranking_digest.personal_sections()`
+  anexa reminders (deadline EMPLOYER <= 3 dias apenas) + aplicacoes
+  aguardando resposta ANTES do link, banco ausente/corrompido -> secoes
+  vazias (run segue). Interface publica: SO um hint por vaga com o comando
+  do tracker (dentro do `<details>`) + `data-job-id` — nenhum dado pessoal
+  no HTML (Pages e estatico/publico; limitacao documentada no relatorio).
+  Comparacao = reuso integral do Compare da Fase 7. Teste dedicado:
+  `scripts/test_personal_tracker.py` (30o script do CI).
