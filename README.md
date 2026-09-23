@@ -142,16 +142,42 @@ sobre o JSONL completo pos-run; (4) **alerta** — 1 mensagem por run, alertas
 deduplicados por fonte, disparado quando exit != 0 (coleta falhou/parcial) OU o
 relatorio tem alertas (queda brusca / erro recorrente / **zero-return**: uma
 fonte que tinha vagas e passou a responder `empty` por ≥3 runs ok>0 anteriores
-— P2 #10); sem anomalia, nada é
+— P2 #10 / **regressão histórica**: empresa com ≥3 runs ok anteriores cujo
+run mais recente terminou em `error`/`timeout`, identificada por
+`(source, company)` — auditoria 23/09); sem anomalia, nada é
 enviado. `--always-notify` envia o resumo mesmo sem anomalia (digest diario;
 desde a Fase 2 o cron usa a flag — ver secao "Digest do Telegram");
-(5) **publicacao GitHub Pages** (Fase 1, opcional via `--pages-dir PATH`) — com
-coleta ok e vagas elegiveis, o ranking e publicado na branch `gh-pages` (ver
-secao abaixo); falha vira linha na mensagem, nunca derruba o run.
+(5) **publicacao GitHub Pages** (Fase 1, opcional via `--pages-dir PATH`) —
+com vagas elegiveis e dataset confiavel, o ranking e publicado na branch
+`gh-pages` (ver secao abaixo); falha vira linha na mensagem, nunca derruba
+o run.
 (6) **digest do ranking no Telegram** (Fase 2) — com coleta OK (exit 0) a
 mensagem ganha o resumo do ranking (perfil/criterios, novas vagas no Top 30,
 Top 5, mudancas e o link do GitHub Pages); o "estado anterior" usado na
 comparacao e o snapshot da propria rotacao (ver secao abaixo).
+
+**Publicacao parcial segura (auditoria 23/09)**: o exit code OPERACIONAL do
+refresh (0/1/2/124, P1.3) e o da coleta e continua disponivel ao
+cron/monitoramento — mas ele NAO decide mais sozinho o que pode ser
+publicado. A decisao vive em UM unico predicado,
+`publish_pages.publication_allowed(exit_code, eligible)`, consultado pela
+publicacao (Pages), pelo digest e pelo sync do tracker (nenhum componente
+tem regra propria): **autoriza** com `eligible > 0` em runs ok (exit 0) OU
+parciais com falhas perifericas de fontes individuais (exit 2 — o CLI salva
+os outputs SEMPRE que ha vagas, com escrita atomica); **bloqueia** dataset
+vazio (exit 1, `eligible == 0`) e run truncado (exit 124 — dataset pode
+estar pela metade). Resultado: as ~17+ quedas perifericas conhecidas (Lidl
+timeout, K+N NXDOMAIN, SMA homonimo, SAP `CompanyNotFoundError`) deixam de
+deixar a pagina publica/digest/sync stale — o ranking parcial e publicado
+como oficial, com a parcialidade VISIVEL no resumo operacional da mensagem
+("⚠️ Coleta parcial: N de M fontes falharam").
+
+**Atribuicao de erro por empresa (auditoria 23/09)**: tenants ATS sao
+compartilhados (`successfactors:jobs` = SAP, BMW, ZF...); cada falha do run e
+atribuida a empresa do REGISTRO QUE FALHOU (identidade `(source, company)`),
+nao ao primeiro company visto no source — erro da SAP nunca mais e anunciado
+como "BMW AG". O health tambem identifica cada serie por `(source, company)`
+(P3 #37) e os alertas chegam `company` na mensagem.
 
 **Comportamento novo (06/09, PR #30)**: a coleta do refresh roda com
 `--sqlite data/jobs.db` (historico `first_seen`/`last_seen`/`active`/`archived`
@@ -282,12 +308,14 @@ contra esse snapshot. Sem snapshot do run anterior (primeiro digest), a
 mensagem avisa que a comparacao comeca no proximo run — nunca trata o Top 30
 inteiro como "novo". Retencao = a do archive (`--retention-days`, 14).
 
-**Gates/robustez**: digest so e montado com coleta OK (exit 0 — mesmo gate da
-publicacao; run parcial reporta a parcialidade no resumo operacional, sem
-digest); falha ao montar nunca derruba o run; o digest respeita o limite do
-Telegram (4096 chars) — em runs com MUITAS anomalias a mensagem base ja e
-longa e o digest vira 1 linha compacta com o link do ranking (o envio nunca
-falha por tamanho). Relevancia de posicao: `MOVER_MIN_DELTA = 5`.
+**Gates/robustez**: o digest e montado com o MESMO gate UNICO da publicacao
+(`publish_pages.publication_allowed` — auditoria 23/09): vagas elegiveis >
+0 com run ok (exit 0) OU parcial com falhas perifericas (exit 2); dataset
+vazio/truncado (exit 1/124) nao monta digest. Falha ao montar nunca derruba
+o run; o digest respeita o limite do Telegram (4096 chars) — em runs com
+MUITAS anomalias a mensagem base ja e longa e o digest vira 1 linha compacta
+com o link do ranking (o envio nunca falha por tamanho). Relevancia de
+posicao: `MOVER_MIN_DELTA = 5`.
 
 ### GitHub Pages (Fase 1)
 
@@ -303,9 +331,12 @@ atomicamente no clone de deploy (`~/internship-finder-ghpages`, fora do repo)
 Implementacao: `scripts/publish_pages.py` (tambem chamavel a mao), invocado
 pelo refresh via `--pages-dir`.
 
-**Gates**: a publicacao so ocorre com coleta bem-sucedida (exit 0) E vagas
-elegiveis > 0 — nunca publica ranking parcial/vazio; a pagina anterior
-permanece. Falha de publicacao nao derruba o run: entra no log e na mensagem
+**Gates**: a publicacao usa o predicado UNICO
+``publish_pages.publication_allowed(exit_code, eligible)`` (auditoria
+23/09) — publica com vagas elegiveis > 0 em runs ok (exit 0) OU parciais com
+falhas perifericas de fontes individuais (exit 2); dataset vazio (exit 1) e
+run truncado (exit 124) nunca publicam e a pagina anterior permanece. Falha
+de publicacao nao derruba o run: entra no log e na mensagem
 do Telegram (`⚠️ Publicação GitHub Pages falhou: ...`).
 
 **Seguranca**: antes do push o conteudo passa por `check_public_safe`
@@ -886,6 +917,15 @@ scripts/interface.py      # interface simples: top vagas ranqueadas + filtros (H
 scripts/test_*.py         # suite standalone ([OK]/[FAIL]; exit 0 = TUDO OK) — test_refresh = refresh diario
 requirements-lock.txt      # snapshot do ambiente (pip freeze; fora do CI; deps = pyproject.toml)
 ```
+
+> **Regra de isolamento (auditoria 23/09)**: testes/validacoes NUNCA escrevem
+> em `data/` de producao. Todo `cli.main` em modo coleta passa `--metrics`
+> explicito (tempdir) — o default `data/collection_metrics.jsonl` e RELATIVO
+> AO CWD e, rodado do repo root, contaminava o JSONL real com fixtures
+> ("Acme"). O teste `test_audit_fixes.py` guarda essa regra com sentinel
+> byte-identical (a suite roda de cwd com `data/` presente e o JSONL de
+> producao nao pode mudar) e grepa o repo por `cli.main` collect-mode sem
+> `--metrics`.
 
 ## Status / Roadmap
 

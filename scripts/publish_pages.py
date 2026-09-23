@@ -10,9 +10,12 @@ Fluxo diario (chamado pelo ``scripts/refresh_daily.py`` apos a coleta):
       -> commit + push na branch ``gh-pages``
       -> GitHub Pages serve a URL estavel.
 
-Garantias (Parte C): nunca publica ranking parcial — os gates sao coleta ok
-(``exit_code == 0``) E vagas elegiveis > 0; a geracao acontece em diretorio
-temporario e o artefato so entra no clone via ``os.replace`` (mesmo
+Garantias (Parte C): o ranking publicado e sempre um dataset VALIDO E COMPLETO
+— a decisao e a funcao unica ``publication_allowed`` (ver docstring): publica
+com vagas elegiveis > 0 em runs ok (exit 0) OU parciais com falhas perifericas
+de fontes individuais (exit 2); dataset vazio, run truncado (exit 124) ou exit
+inesperado nunca publicam (a pagina anterior permanece). A geracao acontece em
+diretorio temporario e o artefato so entra no clone via ``os.replace`` (mesmo
 filesystem); o push contem apenas ``index.html``. Nenhum ranking, peso ou
 filtro e alterado — isto publica o snapshot exatamente como o run o gerou.
 
@@ -60,6 +63,40 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"(?i)TELEGRAM_CHAT_ID"), "variavel TELEGRAM_CHAT_ID"),
     (re.compile(r"(?i)git-credentials"), "referencia a ~/.git-credentials"),
 ]
+
+# Exit codes operacionais do refresh que representam um dataset PUBLICAVEL
+# (ver ``publication_allowed``). 0 = coleta ok; 2 = parcial com falhas
+# perifericas de fontes individuais mas dataset valido salvo (o CLI grava os
+# outputs SEMPRE que ha vagas — ver cli.py); qualquer outro (1 = dataset
+# vazio, 124 = run truncado/estourado) NAO publica.
+_PUBLISHABLE_EXIT_CODES = frozenset({0, 2})
+
+
+def publication_allowed(exit_code: int, eligible: int) -> bool:
+    """Decisao UNICA de publicacao parcial segura (auditoria 23/09).
+
+    Um run pode alimentar Pages/digest/sync quando o dataset produzido e
+    valido e nao-vazio — ``eligible > 0`` — e o run terminou em um estado
+    cujo dataset e confiavel (exit 0 = ok; exit 2 = parcial com falhas
+    perifericas de fontes individuais: Lidl timeout, K+N NXDOMAIN etc.; o
+    CLI salva jobs.json/eligible_jobs.json SEMPRE que ha vagas e a escrita e
+    atomica, entao o ranking existe e esta integro).
+
+    Bloqueiam (dataset vazio/nao confiavel): exit 1 (nenhuma vaga), exit 124
+    (run TRUNCADO pelo teto — o dataset pode estar pela metade) e qualquer
+    exit desconhecido. ``eligible <= 0`` bloqueia sempre.
+
+    O exit code OPERACIONAL do refresh NAO muda (P1.3): esta funcao so
+    decide AUTORIZACAO de publicar; o cron/monitoramento continuam lendo o
+    exit real da coleta. Este predicado e a UNICA regra — Pages
+    (``publish_ranking``), digest e sync do ``refresh_daily`` a consultam;
+    nenhum componente tem regra propria.
+    """
+    return (
+        eligible > 0
+        and exit_code in _PUBLISHABLE_EXIT_CODES
+    )
+
 
 # Fragmentos de caminhos privados/artefatos internos (slash no final distingue
 # caminho real de palavras comuns como "home office").
@@ -225,14 +262,16 @@ def publish_ranking(
 ) -> bool:
     """Publica o ranking do run em GitHub Pages.
 
-    Gates (Parte C): so publica com coleta OK (``exit_code == 0``) E vagas
-    elegiveis > 0 — caso contrario nao produz nada e a pagina anterior
-    permanece (nunca publica ranking parcial/vazio). O HTML e gerado em
-    diretorio temporario e so entra no clone apos a verificacao de seguranca.
+    Gate (funcao UNICA ``publication_allowed``, auditoria 23/09): publica com
+    vagas elegiveis > 0 e dataset confiavel — exit 0 (ok) OU exit 2 (parcial
+    com falhas perifericas de fontes individuais). Dataset vazio (exit 1),
+    run truncado (exit 124) ou exit inesperado nao publicam nada — a pagina
+    anterior permanece. O HTML e gerado em diretorio temporario e so entra no
+    clone apos a verificacao de seguranca.
     """
-    if exit_code != 0 or eligible <= 0:
-        _log(log, "pages: publicacao pulada (exit=%d eligible=%d — ranking incompleto)",
-             exit_code, eligible)
+    if not publication_allowed(exit_code, eligible):
+        _log(log, "pages: publicacao pulada (exit=%d eligible=%d — dataset "
+                  "vazio/truncado)", exit_code, eligible)
         return False
     origin_url = _git(root, "config", "--get", "remote.origin.url")
     ensure_deploy_clone(deploy_dir, origin_url, root=root, log=log)
@@ -254,9 +293,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--top", type=int, default=PUBLIC_TOP,
                         help=f"maximo de vagas na pagina (default: {PUBLIC_TOP} = todas)")
     parser.add_argument("--exit-code", type=int, default=0,
-                        help="exit code do run de coleta (default: 0)")
+                        help="exit code do run de coleta (default: 0). Gate "
+                             "publication_allowed: 0/2 autorizam, 1/124 "
+                             "bloqueiam (com --eligible > 0).")
     parser.add_argument("--eligible", type=int, default=1,
-                        help="vagas elegiveis do run (default: 1)")
+                        help="vagas elegiveis do run (default: 1). "
+                             "eligible <= 0 bloqueia a publicacao.")
     parser.add_argument("--run-id", default=None,
                         help="rotulo do run no commit (default: timestamp atual)")
     parser.add_argument("--dry-run", action="store_true",

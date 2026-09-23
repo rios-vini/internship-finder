@@ -28,7 +28,7 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
 | `app_intel.py` | Application Intelligence (Fase 6): `german_level` (exigência de alemão por EVIDÊNCIA no texto), `english_evidence`, `work_authorization` (5 estados, só com evidência), `deadline_kind` (empregador vs. validade do feed SuccessFactors vs. ausente), `urgency_color`, `candidate_fit`, `possible_problems`, `quality_flags`, `application_readiness` — funções puras e determinísticas; alimenta ranking (componente language) e interface |
 | `metrics.py` | metricas de execucao em JSONL (payload por tenant + resumo do run, com `error_code`) |
 | `errors.py` | `CollectionError` + codigos de erro estruturados (classificador para o payload da queue e `error_code` no JSONL) |
-| `health.py` | relatorio de health por tenant/ATS sobre o JSONL (drop de cobertura, erros recorrentes) + alertas |
+| `health.py` | relatorio de health por serie `(source, company)` sobre o JSONL (queda brusca, erro recorrente, zero-return, regressao historica ok->error — auditoria 23/09) + alertas |
 | `geocoding.py` | fallback de pais por cidade (`INTERNSHIP_FINDER_GEOCODING`, cache-first; OFF por default; integrado no adapter depois de `infer_country_iso`) |
 | `registry.py` | `CompanyRegistry` — fonte única das 101 empresas de coleta em código (`SEED` + `enabled`; P2 #13; estado derivado do JSONL via `company_status`) |
 | `storage/sqlite_store.py` | `SqliteStore` — historico por vaga (`first_seen`/`last_seen`/`active`/`archived`) via `sqlite3` stdlib; flag `--sqlite PATH` |
@@ -47,11 +47,17 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
   (`--timeout` + margem); erro/trava vira linha FAIL e o pipeline segue.
 - Multiprocessing usa o contexto default do SO (fork no Linux, spawn no
   Windows).
-- **Publicacao em GitHub Pages (Fase 1, 18/09)**: o refresh diario reusa
+- **Publicacao em GitHub Pages (Fase 1, 18/09; gate unico 23/09)**: o refresh diario reusa
   `scripts/interface.py` para gerar o HTML do ranking e o publica na branch
   `gh-pages` via `scripts/publish_pages.py` (clone de deploy fora do repo,
-  escrita atomica de `index.html`, commit+push; so com coleta ok e `eligible >
-  0`). Decisao de reuso: o HTML local e a pagina publica sao o MESMO artefato
+  escrita atomica de `index.html`, commit+push). A decisao de publicar e o
+  predicado UNICO `publish_pages.publication_allowed(exit_code, eligible)`
+  — autoriza com `eligible > 0` em runs ok (exit 0) OU parciais com falhas
+  perifericas de fontes individuais (exit 2); bloqueia dataset vazio (exit
+  1) e run truncado (exit 124). O MESMO predicado alimenta o digest do
+  Telegram e o sync do tracker (nenhum componente tem regra propria) e o
+  exit code operacional do refresh permanece o da coleta (P1.3). Decisao de
+  reuso: o HTML local e a pagina publica sao o MESMO artefato
   — sem frontend novo, sem servidor, sem dependencias novas. Nenhum dado
   interno e publicado: gate `check_public_safe` (tokens/caminhos privados)
   antes do push.

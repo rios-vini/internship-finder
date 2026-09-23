@@ -207,14 +207,20 @@ def test_partial_failure_exit() -> None:
         return [job_dict], summary
 
     tmp = tempfile.mkdtemp()
+    # --metrics EXPLICITO em tempdir (auditoria 23/09, item 2): sem ele o
+    # default do modo coleta e ``data/collection_metrics.jsonl`` RELATIVO AO
+    # CWD — rodado do repo root isso escreve no data/ de PRODUCAO (foi a
+    # causa da contaminacao "Acme" de 19-21/09). Testes NUNCA escrevem em
+    # data/ de producao.
+    metrics = f"{tmp}/metrics.jsonl"
     with patch.object(cli, "collect_company", side_effect=_collect_ok):
         rc = cli.main(["--companies", "Acme", "--output", f"{tmp}/j.json",
-                       "--filter-output", f"{tmp}/e.json"])
+                       "--filter-output", f"{tmp}/e.json", "--metrics", metrics])
     check("9a. coleta sem falha -> exit 0", rc == 0, f"rc={rc}")
 
     with patch.object(cli, "collect_company", side_effect=_collect_partial):
         rc = cli.main(["--companies", "Acme", "--output", f"{tmp}/j2.json",
-                       "--filter-output", f"{tmp}/e2.json"])
+                       "--filter-output", f"{tmp}/e2.json", "--metrics", metrics])
     check("9b. coleta parcial com erro -> exit != 0", rc != 0, f"rc={rc}")
     check("9c. output gravado mesmo com falha parcial", Path(f"{tmp}/j2.json").exists())
 

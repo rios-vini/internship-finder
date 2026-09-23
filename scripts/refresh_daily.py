@@ -42,9 +42,12 @@ Fluxo:
    quando informado, apos coleta/health o ranking do run e publicado na
    branch ``gh-pages`` (reusa ``scripts/interface.py`` para o HTML,
    verificacao de seguranca, escrita atomica, commit+push — ver
-   ``scripts/publish_pages.py``). Gates: coleta ok (exit 0) E vagas
-   elegiveis > 0 — nunca publica ranking parcial/vazio; a pagina anterior
-   permanece. Falha NUNCA derruba o run: entra na mensagem como
+   ``scripts/publish_pages.py``). Gate: a decisao UNICA de publicacao parcial
+   segura vive em ``publish_pages.publication_allowed`` (auditoria 23/09) —
+   publica com ``eligible > 0`` em runs ok (exit 0) OU parciais com falhas
+   perifericas de fontes individuais (exit 2); dataset vazio (exit 1), run
+   truncado (exit 124) ou exit inesperado nunca publicam (a pagina anterior
+   permanece). Falha NUNCA derruba o run: entra na mensagem como
    ``⚠️ Publicação GitHub Pages falhou: ...``.
 3. **Health** — ``build_health_report`` sobre o conteudo COMPLETO do JSONL
    apos o run (defensivo: malformados nunca derrubam). Os registros do run
@@ -367,8 +370,10 @@ def summarize_run(records: list[dict]) -> dict:
 
     ``type: run`` -> totais do funil (total_collected/filtered/dedup_removed/
     eligible + run_id/timestamp). ``type: tenant`` -> contagem por status,
-    com ``(source, error_code)`` para timeout/error (``UNKNOWN`` quando o
-    registro antigo nao tem codigo).
+    com ``(source, company, error_code)`` para timeout/error (``company`` e a
+    empresa do registro QUE FALHOU — auditoria 23/09: tenants sao
+    compartilhados, atribuir pelo primeiro company do source apontava a
+    empresa errada; ``UNKNOWN`` quando o registro antigo nao tem codigo).
     """
     summary: dict = {
         "run_id": None,
@@ -397,6 +402,7 @@ def summarize_run(records: list[dict]) -> dict:
         elif rtype == "tenant":
             status = rec.get("status")
             source = rec.get("source") or "?"
+            company = rec.get("company") or ""
             code = rec.get("error_code")
             if source not in summary["source_names"]:
                 summary["source_names"][source] = rec.get("company")
@@ -412,9 +418,9 @@ def summarize_run(records: list[dict]) -> dict:
             elif status == "not_found":
                 summary["not_found"] += 1
             elif status == "timeout":
-                summary["timeout"].append((source, code or "UNKNOWN"))
+                summary["timeout"].append((source, company, code or "UNKNOWN"))
             elif status == "error":
-                summary["error"].append((source, code or "UNKNOWN"))
+                summary["error"].append((source, company, code or "UNKNOWN"))
     return summary
 
 
@@ -442,9 +448,20 @@ def _error_text(code: str | None) -> str:
     return ERROR_CODE_TEXT.get(code, f"erro [{code}]")
 
 
-def _friendly_source(source: str, source_names: dict) -> str:
-    """Nome amigavel da fonte: 'Empresa (source)' quando o JSONL do run
-    conhece a empresa (campo ``company``); senao, o proprio source."""
+def _friendly_source(source: str, source_names: dict,
+                     company: str | None = None) -> str:
+    """Nome amigavel da fonte: ``'Empresa (source)'``.
+
+    Auditoria 23/09 (tenant compartilhado): quando a chamada conhece a
+    empresa exata do registro (``company`` — vaga que falhou ou serie do
+    alerta), ELA tem prioridade sobre ``source_names`` (que guarda o
+    PRIMEIRO company visto no source e pode apontar outra empresa que
+    compartilha o mesmo tenant ATS — ex.: erro da SAP reportado como BMW
+    em ``successfactors:jobs``). Sem company conhecida, mantem o
+    comportamento antigo (primeiro company do run ou o source cru).
+    """
+    if company:
+        return f"{company} ({source})"
     name = (source_names or {}).get(source)
     return f"{name} ({source})" if name else source
 
@@ -464,10 +481,13 @@ def build_message(
     sem anomalia, sem falha e sem ``--always-notify``, nao envia).
 
     Formato didatico (P3 #35, 07/09): status em linguagem natural ("X de Y
-    fontes falharam"), nomes amigaveis de empresa (``company`` do JSONL via
-    ``summary["source_names"]``), codigos de erro traduzidos e reincidencia
-    ("recorrente ha N runs"). ``disk_pct``: percentual de uso do filesystem de
-    ``data/``; quando maior que ``DISK_WARN_PCT`` a mensagem ganha a linha
+    fontes falharam"), nomes amigaveis de empresa, codigos de erro traduzidos
+    e reincidencia ("recorrente ha N runs"). Auditoria 23/09 (item 3): cada
+    falha e atribuida a empresa do REGISTRO QUE FALHOU (identidade
+    ``(source, company)``), nao ao primeiro company do source — tenants
+    compartilhados (ex.: ``successfactors:jobs`` = SAP e BMW) nao trocam mais
+    de empresa. ``disk_pct``: percentual de uso do filesystem de ``data/``;
+    quando maior que ``DISK_WARN_PCT`` a mensagem ganha a linha
     ``⚠️ Disco: N% usado`` e o aviso tambem dispara o envio. Chamadores passam
     o valor medido (ou None). Alertas deduplicados por fonte (1 por fonte por
     run)."""
@@ -483,8 +503,21 @@ def build_message(
     lines.append("")
 
     ok = summary.get("ok", {})
+    # Falhas do run como (source, company, code) — company do registro que
+    # falhou (item 3 da auditoria 23/09). Registros antigos sem company
+    # (tupla de 2) caem em "" e mantem o nome amigavel do source.
+    def _failure_tuple(item):
+        src, company, code = item[0], "", "UNKNOWN"
+        if len(item) >= 3:
+            src, company, code = item[0], item[1] or "", item[2] or "UNKNOWN"
+        elif len(item) == 2:
+            src, code = item[0], item[1] or "UNKNOWN"
+        return src, company, code
+
     failures = list(dict.fromkeys(
-        list(summary.get("timeout", [])) + list(summary.get("error", []))))
+        tuple(f) for f in (
+            list(summary.get("timeout", [])) + list(summary.get("error", [])))))
+    failures = [_failure_tuple(f) for f in failures]
     n_fail = len(failures)
     n_sources = (ok.get("count", 0) + summary.get("empty", 0) + n_fail
                  + summary.get("skipped", 0) + summary.get("not_found", 0))
@@ -519,36 +552,79 @@ def build_message(
             f" · sem tenant {summary.get('not_found', 0)}"
         )
 
-    # Problemas detectados: alertas do health + falhas do run, 1 por fonte
-    # (anti-spam). Alertas recurring ganham o texto traduzido do erro quando a
-    # fonte tambem falhou no run atual.
-    alert_by_source = {a.get("source"): a for a in alerts if a.get("type") == "recurring_error"}
+    # Problemas detectados: alertas do health + falhas do run, 1 por serie
+    # (source, company) (anti-spam; auditoria 23/09, item 3): dois companies
+    # no mesmo source sao problemas DIFERENTES e aparecem separados, cada um
+    # com o proprio nome. Alertas recurring/regression da MESMA serie ganham
+    # anotacao na propria linha de falha (padrao do recurring existente);
+    # alertas de outras series renderizam linha propria.
+    recurring_alerts = [a for a in alerts if a.get("type") == "recurring_error"]
+    regression_alerts = [a for a in alerts if a.get("type") == "regression"]
+    recurring_by_key = {
+        (a.get("source") or "?", a.get("company") or ""): a
+        for a in recurring_alerts
+    }
+    regression_by_key = {
+        (a.get("source") or "?", a.get("company") or ""): a
+        for a in regression_alerts
+    }
+
+    def _recurring_for(src: str, company: str):
+        rec = recurring_by_key.get((src, company))
+        if rec is not None:
+            return rec
+        same_src = [a for a in recurring_alerts if a.get("source") == src]
+        # compat com o comportamento antigo: source com UMA serie recorrente
+        # continua ganhando o sufixo (caso nao-ambiguo); com multiplas series
+        # exige company exato para nao atribuir reincidencia a empresa errada
+        if len(same_src) == 1:
+            return same_src[0]
+        return None
+
     problems: list[str] = []
-    seen: set[str] = set()
-    for src, code in failures:
-        text = f"• {_friendly_source(src, source_names)} — {_error_text(code)}"
-        if src in alert_by_source:
-            text += f" · recorrente há {alert_by_source[src].get('runs_seq', '?')} runs"
+    seen: set[tuple[str, str]] = set()
+    for src, company, code in failures:
+        text = f"• {_friendly_source(src, source_names, company)} — {_error_text(code)}"
+        rec = _recurring_for(src or "", company or "")
+        if rec is not None:
+            text += f" · recorrente há {rec.get('runs_seq', '?')} runs"
+        reg = regression_by_key.get((src or "", company or ""))
+        if reg is not None:
+            # item 4: a falha do run ganha o contexto historico (a serie
+            # funcionava antes) — alerta de regressao da MESMA serie nao
+            # renderiza linha duplicada.
+            text += (f" · antes funcionava ({reg.get('ok_history', '?')} runs ok"
+                     f" e agora falhou)")
         problems.append(text)
-        seen.add(src)
+        seen.add((src or "", company or ""))
     for a in alerts:
-        src = a.get("source", "?")
-        if src in seen:
+        src = a.get("source", "?") or "?"
+        company = a.get("company") or ""
+        if (src, company) in seen:
             continue
         if a.get("type") == "drop":
             problems.append(
-                f"• {_friendly_source(src, source_names)} — queda brusca "
+                f"• {_friendly_source(src, source_names, company)} — queda brusca "
                 f"(collected {a.get('collected_atual')} < 50% da mediana "
                 f"{a.get('mediana_anterior')} · {a.get('pct')})"
             )
         elif a.get("type") == "zero_return":
             problems.append(
-                f"• {_friendly_source(src, source_names)} — voltou a zero (empty) após "
+                f"• {_friendly_source(src, source_names, company)} — voltou a zero (empty) após "
                 f"{a.get('ok_history')} runs com vagas (último ok: {a.get('last_ok_collected')})"
+            )
+        elif a.get("type") == "regression":
+            # item 4 da auditoria 23/09: empresa historicamente ok que passou
+            # a falhar. Quando a serie tambem falhou no run atual, o contexto
+            # ja foi anotado na linha de falha acima (dedup); aqui so chega a
+            # regressao de serie SEM falha correspondente no resumo do run.
+            problems.append(
+                f"• {_friendly_source(src, source_names, company)} — estava funcionando "
+                f"e falhou ({_error_text(a.get('error_code'))})"
             )
         else:  # recurring sem falha correspondente no run atual
             problems.append(
-                f"• {_friendly_source(src, source_names)} — erro recorrente "
+                f"• {_friendly_source(src, source_names, company)} — erro recorrente "
                 f"({a.get('runs_seq')} runs consecutivos)"
             )
     if problems:
@@ -569,7 +645,8 @@ def build_message(
     # mudancas e link do ranking completo). Anexado ao FIM da mensagem: o
     # resumo operacional acima fica intocado e o link e sempre a ultima
     # linha. ``digest_lines`` ja vem com espaco em branco separador inicial;
-    # sem digest (run parcial/sem ranking), nada e anexado.
+    # sem digest (dataset vazio/truncado ou falha na montagem), nada e
+    # anexado.
     base_len = len(lines)
     if digest_lines:
         lines.extend(digest_lines)
@@ -845,9 +922,11 @@ def main(argv: list[str] | None = None) -> int:
                         f"(default {DEFAULT_BACKUP_RETENTION_DAYS}; 0 = desligado)")
     parser.add_argument("--pages-dir", default=None, metavar="PATH",
                         help="clone de deploy do GitHub Pages (branch gh-pages). "
-                        "Quando informado, o ranking do run (exit 0 e vagas "
-                        "elegiveis > 0) e publicado automaticamente apos a "
-                        "coleta. Default: publicacao desligada.")
+                        "Quando informado, o ranking do run e publicado "
+                        "automaticamente apos a coleta (gate UNICO "
+                        "publication_allowed: eligible > 0 com exit 0 ou exit 2 "
+                        "= parcial com falhas perifericas). Default: "
+                        "publicacao desligada.")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -936,15 +1015,18 @@ def main(argv: list[str] | None = None) -> int:
     else:
         log.info("publicacao GitHub Pages desligada (sem --pages-dir)")
 
-    # Fase 2 — digest do ranking para o Telegram. Montado apenas com coleta
-    # VALIDA (exit 0): mesmo gate da publicacao — num run parcial o ranking
-    # pode estar incompleto e o digest nao deve apresenta-lo como oficial
-    # (o resumo operacional acima ja reporta a parcialidade). O "estado
-    # anterior" vem do snapshot da rotacao (``archive_dir/eligible_jobs.
-    # json`` = ranking do run anterior, copiado ANTES da coleta). Falha ao
-    # montar NUNCA derruba o run: vira log e a mensagem segue sem digest.
+    # Fase 2 — digest do ranking para o Telegram. MESMO gate UNICO da
+    # publicacao (``publish_pages.publication_allowed``, auditoria 23/09): um
+    # run parcial (exit 2) com vagas validas e um ranking oficial tao bom
+    # quanto o de um run perfeito — as falhas perifericas de fontes
+    # individuais (Lidl timeout, K+N NXDOMAIN...) ja sao reportadas no resumo
+    # operacional acima, e o "estado anterior" continua vindo do snapshot da
+    # rotacao (``archive_dir/eligible_jobs.json``). Dataset vazio ou run
+    # truncado (exit 1/124) nao montam digest (nao ha ranking confiavel).
+    # Falha ao montar NUNCA derruba o run: vira log e a mensagem segue sem
+    # digest.
     digest_lines: list[str] | None = None
-    if exit_code == 0:
+    if publish_pages.publication_allowed(exit_code, summary.get("eligible") or 0):
         try:
             digest_lines = ranking_digest.digest_sections(
                 current_path=data_dir / "eligible_jobs.json",
@@ -976,7 +1058,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001 — sync nunca derruba o run
             log.warning("sync-ranking pessoal falhou (run segue normal): %s", exc)
     else:
-        log.info("digest pulado (exit %d != 0 — ranking nao e o oficial)", exit_code)
+        log.info("digest/sync pulados (exit %d com eligible %s — gate "
+                  "publication_allowed negativo)", exit_code,
+                  summary.get("eligible"))
 
     message = build_message(summary, report["alerts"], exit_code,
                             always_notify=args.always_notify,

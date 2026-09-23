@@ -182,7 +182,8 @@ def test_real_data() -> None:
           not any(a["type"] == "zero_return" for a in report["alerts"]))
     for a in report["alerts"]:
         check(f"real: alerta {a['type']} com schema valido",
-              a["type"] in ("drop", "recurring_error", "zero_return") and "source" in a)
+              a["type"] in ("drop", "recurring_error", "zero_return",
+                            "regression") and "source" in a)
     size_before = path.stat().st_size
     check("real: somente leitura (tamanho inalterado)", path.stat().st_size == size_before)
 

@@ -3,7 +3,8 @@
 Standalone e OFFLINE (tempfile, sem rede, sem escrever em ``data/`` real):
 rotacao (arquivos falsos -> archive correto), retencao do archive
 (``cleanup_archive``: antigos removidos / recentes mantidos / 0 desliga /
-argparse rejeita negativo), snapshot de linhas do JSONL + resumo do run,
+argparse rejeita negativo), snapshot de linhas do JSONL + resumo do run
+(falhas como tuplas ``(source, company, error_code)`` — auditoria 23/09),
 construcao da mensagem (JSONL fake com anomalia tipo
 ``smartrecruiters:other`` -> alerta presente; sem anomalia -> sem alerta;
 aviso de disco com mock de ``shutil.disk_usage``), anti-spam/exit codes,
@@ -13,6 +14,8 @@ dry-run que nao toca ``data/`` (stat antes x depois; bloco real com SKIP
 quando ``data/`` ausente — padrao CI). Propagacao do exit code da coleta ao
 processo (P1.3): 0/1/2/124 retornados por ``main`` E observaveis no processo
 (harness subprocesso), com Telegram/health/run_info executados antes do fim.
+Gate de digest/sync: predicado UNICO ``publication_allowed`` (auditoria
+23/09) — exit 2 parcial com vagas monta digest; exit 124 truncado nao.
 
 Uso:
 
@@ -125,8 +128,12 @@ def test_snapshot_e_resumo() -> None:
               summary["total_collected"] == 391 and summary["eligible"] == 43
               and summary["dedup_removed"] == 1)
         check("tenant ok agregado", summary["ok"]["count"] == 1 and summary["ok"]["collected"] == 390)
-        check("timeout com error_code", ("smartrecruiters:continental", "TIMEOUT") in summary["timeout"])
-        check("error com error_code UNKNOWN", ("smartrecruiters:other", "UNKNOWN") in summary["error"])
+        # tuplas (source, company, error_code) desde a auditoria 23/09: a
+        # falha carrega a empresa do REGISTRO QUE FALHOU (tenant compartilhado)
+        check("timeout com company + error_code",
+              ("smartrecruiters:continental", "Acme", "TIMEOUT") in summary["timeout"])
+        check("error com company + error_code UNKNOWN",
+              ("smartrecruiters:other", "Acme", "UNKNOWN") in summary["error"])
         # malformado no meio nao derruba
         with metrics.open("a", encoding="utf-8") as fh:
             fh.write("{not-json}\n")
@@ -722,7 +729,7 @@ def test_message_digest() -> None:
 
 
 def test_digest_integrado_fluxo() -> None:
-    print("== Fase 2: digest montado no fluxo do refresh (so exit 0) ==")
+    print("== Fase 2: digest montado no fluxo do refresh (gate UNICO 23/09) ==")
     prev = [{"id": "old-1", "title": "Antiga", "company": "Acme",
              "location": "Berlin", "score": 9.0, "url": "https://ex.com/old-1"}]
     new = [{"id": "fresh-1", "title": "Nova", "company": "SAP",
@@ -731,13 +738,17 @@ def test_digest_integrado_fluxo() -> None:
            {"id": "old-1", "title": "Antiga", "company": "Acme",
             "location": "Berlin", "score": 9.0, "url": "https://ex.com/old-1"}]
 
-    for code in (0, 2):
+    # Auditoria 23/09: o gate de digest/sync e o predicado UNICO
+    # publication_allowed — exit 2 (parcial com falhas perifericas) COM
+    # vagas validas MONTA digest (o ranking e oficial); exit 124 (run
+    # truncado) NAO monta (dataset pode estar pela metade). Antes o gate era
+    # exit_code == 0 cru, o que deixava o digest/publish stale por semanas.
+    for code in (0, 2, 124):
         with tempfile.TemporaryDirectory(prefix="t_digest_") as tmp:
             root = Path(tmp)
             data_dir = root / "data"
             data_dir.mkdir()
-            (data_dir / "collection_metrics.jsonl").write_text(
-                json.dumps(_run_record("r1", 400, 2)) + "\n", encoding="utf-8")
+            (data_dir / "collection_metrics.jsonl").write_text("", encoding="utf-8")
             (data_dir / "eligible_jobs.json").write_text(
                 json.dumps(prev, ensure_ascii=False), encoding="utf-8")
 
@@ -745,11 +756,15 @@ def test_digest_integrado_fluxo() -> None:
             original_root = rd.repo_root
 
             def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
-                # Simula a saida do CLI no fluxo real: exit 0 grava o ranking
-                # NOVO em data/ (o anterior ja foi para o archive pela rotacao).
-                if code == 0:
+                # Simula a saida do CLI no fluxo real: o ranking NOVO e o
+                # registro do run sao gravados em data/ DURANTE a coleta (o
+                # anterior ja foi para o archive pela rotacao).
+                if code in (0, 2):
                     (data_dir / "eligible_jobs.json").write_text(
                         json.dumps(new, ensure_ascii=False), encoding="utf-8")
+                    with (data_dir / "collection_metrics.jsonl").open(
+                            "a", encoding="utf-8") as fh:
+                        fh.write(json.dumps(_run_record("r1", 400, 2)) + "\n")
                 return subprocess.CompletedProcess(args[0], code)
 
             def fake_notify(config, message, *, dry_run) -> dict:
@@ -765,10 +780,10 @@ def test_digest_integrado_fluxo() -> None:
             finally:
                 rd.repo_root = original_root
 
-            if code == 0:
-                check("exit 0: mensagem enviada com digest",
-                      rc == 0 and len(calls["notify"]) == 1)
-                msg = calls["notify"][0] or ""
+            msg = calls["notify"][0] if calls["notify"] else ""
+            if code in (0, 2):
+                check(f"exit {code}: mensagem enviada com digest",
+                      rc == code and len(calls["notify"]) == 1)
                 check("digest com perfil, Top 5 e link",
                       "🎯 Perfil e critérios ativos" in msg
                       and "🏆 Top 5 atual" in msg
@@ -778,8 +793,7 @@ def test_digest_integrado_fluxo() -> None:
                 check("link do ranking completo na ultima linha",
                       msg.rstrip().endswith(rd.ranking_digest.PAGES_URL_FALLBACK))
             else:
-                msg = calls["notify"][0] or ""
-                check(f"exit {code}: mensagem SEM digest (ranking nao oficial)",
+                check(f"exit {code} (truncado): mensagem SEM digest",
                       rc == code and len(calls["notify"]) == 1
                       and "🏆 Top 5" not in msg
                       and "🔗 Ranking completo" not in msg)
