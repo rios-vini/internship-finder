@@ -16,6 +16,12 @@ sem ``company`` caem em ``(source, "")``) e por ATS, alem de dois alertas:
   depois de ``MIN_OK_HISTORY_FOR_ZERO_RETURN`` runs ok anteriores com vagas
   (collected > 0) — regressao de cobertura (tenant que enchia de vagas e
   passou a responder 0), com gate de historico para nao alarmar em flutuacao.
+- **Regressao historica** (auditoria 23/09, item 4): uma serie cujo run MAIS
+  RECENTE terminou ``error``/``timeout`` depois de pelo menos
+  ``MIN_OK_HISTORY_FOR_REGRESSION`` runs ``ok`` anteriores — empresa que
+  funcionava e parou de funcionar (ex.: SAP caindo em
+  ``FETCH_ERROR CompanyNotFoundError`` apos meses de coleta ok). Serie sem
+  historico ok NUNCA alerta por essa regra.
 
 O relatorio e um dict JSON-serializavel pronto para ``json.dumps``. O consumo
 e defensivo: um registro malformado (JSON invalido, campos ausentes) nunca
@@ -57,12 +63,22 @@ CONSECUTIVE_FAILURES = 2
 
 # Numero minimo de runs ok ANTERIORES (com vagas, collected > 0) para um source
 # emitir alerta de zero-return (P2 #10). O ultimo run do source sendo ``empty``
-# depois de uma historia curta (1-2 runs com vagas) pode ser flutucao normal do
+# depois de uma historia curta (1-2 runs com vagas) pode ser flutuacao normal do
 # mercado (vaga aberta/fechada); exigir pelo menos 3 observacoes ok>0 previas
 # separa uma regressao real (tenant que ENCHIA de vagas e voltou 0) de ruido.
 # Espelha o espirito de ``MIN_OK_HISTORY_FOR_DROP``: gate conservador por
 # historico curto. Source empty-consistente (nunca teve ok>0) NUNCA alerta.
 MIN_OK_HISTORY_FOR_ZERO_RETURN = 3
+
+# Numero minimo de runs ok ANTERIORES para uma serie (source, company) cujo run
+# MAIS RECENTE terminou error/timeout emitir alerta de REGRESSAO historica
+# (auditoria 23/09, item 4). Espelha os gates de drop/zero-return: uma empresa
+# com 1-2 runs ok que falha pode ser flutuacao normal (redeploy do tenant,
+# manutencao do site); 3+ runs ok estabelecem que a coleta funcionava de forma
+# estavel e a falha atual e uma regressao operacional REAL. Serie que nunca
+# funcionou (falha desde o 1o run) NUNCA alerta por essa regra — esse estado
+# persistente ja e coberto pelo ``recurring_error``.
+MIN_OK_HISTORY_FOR_REGRESSION = 3
 
 
 def _normalize_duration(value: Any) -> float | None:
@@ -134,6 +150,11 @@ def _tenant_records(records: list[dict], warnings: list[str]) -> list[dict]:
         # em "" (compat).
         company = rec.get("company")
         company = company.strip() if isinstance(company, str) else ""
+        # error_code (auditoria 23/09, item 4): codigo estruturado da falha
+        # (ex.: FETCH_ERROR) quando o registro traz — None em estados
+        # ok/empty/skipped e em registros antigos (append-only, compat).
+        error_code = rec.get("error_code")
+        error_code = error_code.strip() if isinstance(error_code, str) else None
         output.append(
             {
                 "source": source,
@@ -144,6 +165,7 @@ def _tenant_records(records: list[dict], warnings: list[str]) -> list[dict]:
                 "status": status,
                 "collected": rec.get("collected") if isinstance(rec.get("collected"), int) else 0,
                 "duration": _normalize_duration(rec.get("duration")),
+                "error_code": error_code,
             }
         )
     return output
@@ -235,6 +257,40 @@ def _detect_zero_return(rows: list[dict]) -> list[dict]:
     ]
 
 
+def _detect_regression(rows: list[dict]) -> list[dict]:
+    """Regressao historica: serie que funcionava e o run mais recente falhou.
+
+    Alerta quando o run MAIS RECENTE da serie (source, company) terminou em
+    ``error``/``timeout`` E ha pelo menos ``MIN_OK_HISTORY_FOR_REGRESSION``
+    runs ``ok`` anteriores (auditoria 23/09, item 4) — empresa historicamente
+    coletando que passa a falhar (ex.: SAP em ``successfactors:jobs`` apos
+    meses ok). Serie sem historico ok NUNCA alerta por essa regra.
+
+    Interacao com ``recurring_error`` (dedup de estado): ``regression`` dispara
+    na TRANSICAO ok -> falha (o primeiro sintoma de regressao); quando o
+    estado persiste e a sequencia consecutiva chega a
+    ``CONSECUTIVE_FAILURES``, a MESMA serie tambem emite ``recurring_error``
+    no mesmo relatorio — estados diferentes (transicao vs persistencia),
+    1 alerta de cada tipo por serie por run, nunca duplicatas do mesmo tipo.
+    """
+    last = rows[-1]
+    if last["status"] not in ("error", "timeout"):
+        return []
+    prior_ok = [r for r in rows[:-1] if r["status"] == "ok"]
+    if len(prior_ok) < MIN_OK_HISTORY_FOR_REGRESSION:
+        return []
+    return [
+        {
+            "type": "regression",
+            "source": last["source"],
+            "company": last.get("company", ""),
+            "last_status": last["status"],
+            "error_code": last.get("error_code"),
+            "ok_history": len(prior_ok),
+        }
+    ]
+
+
 def _detect_consecutive_failures(rows: list[dict]) -> list[dict]:
     """Erro recorrente: runs mais recentes consecutivos em {timeout, error}.
 
@@ -297,7 +353,12 @@ def build_health_report(
     for (src, company) in sorted(by_series):
         rows = by_series[(src, company)]
         s = _summary_per_source(rows)
-        s["alerts"] = _detect_drops(rows) + _detect_consecutive_failures(rows) + _detect_zero_return(rows)
+        s["alerts"] = (
+            _detect_drops(rows)
+            + _detect_consecutive_failures(rows)
+            + _detect_zero_return(rows)
+            + _detect_regression(rows)
+        )
         sources.append(s)
 
     alert_sources = [a for s in sources for a in s["alerts"]]

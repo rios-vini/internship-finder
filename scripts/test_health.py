@@ -346,7 +346,8 @@ def test_real_data() -> None:
     # os alertas retornados seguem o schema
     for a in report["alerts"]:
         check("real: alerta com type valido",
-              a["type"] in ("drop", "recurring_error", "zero_return"))
+              a["type"] in ("drop", "recurring_error", "zero_return",
+                            "regression"))
         check("real: alerta com fonte", "source" in a)
 
 

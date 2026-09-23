@@ -3,8 +3,11 @@
 Cobre ``scripts/publish_pages.py``: gate de seguranca (Parte D), escrita
 atomica, commit/push condicional (nada a fazer quando o conteudo nao muda),
 renderizacao real via ``scripts/interface.py`` (offline, fixture em tempdir)
-e os gates do fluxo (so publica com coleta ok + vagas elegiveis). Os comandos
-git sao mockados (``_git``) — nenhuma rede/secret envolvida.
+e o gate do fluxo — predicado UNICO ``publication_allowed`` (auditoria
+23/09): publica com ``eligible > 0`` em runs ok (exit 0) OU parciais com
+falhas perifericas (exit 2); dataset vazio (exit 1) e run truncado (exit
+124) bloqueiam. Os comandos git sao mockados (``_git``) — nenhuma
+rede/secret envolvida.
 
 Sem ``data/`` do repo: fixtures em tempdir (bloco real usa SKIP padrao do
 projeto quando o snapshot nao existe — aqui ele nunca e necessario).
@@ -194,7 +197,7 @@ def test_render_ranking_html() -> None:
 
 
 def test_publish_ranking_gates() -> None:
-    print("== gates do fluxo: so publica com coleta ok + vagas elegiveis ==")
+    print("== gates do fluxo: predicado UNICO publication_allowed (23/09) ==")
     with tempfile.TemporaryDirectory(prefix="t_pp_gates_") as tmp:
         root = Path(tmp)
         deploy = Path(tmp) / "pages"
@@ -203,14 +206,24 @@ def test_publish_ranking_gates() -> None:
              mock.patch.object(pp, "render_ranking_html") as render, \
              mock.patch.object(pp, "publish_html") as publish, \
              mock.patch.object(pp, "_git", return_value="https://github.com/x/y.git") as gitm:
+            render.return_value = "<html>ranking</html>"
+            publish.return_value = True
+            # dataset vazio (exit 1 = zero vagas): bloqueado
             r1 = pp.publish_ranking(root, deploy, exit_code=1, eligible=5, run_id="r")
-            check("exit != 0 -> nada publicado", r1 is False
+            check("exit 1 (dataset vazio) -> nada publicado", r1 is False
                   and not ensure.called and not render.called and not publish.called)
             r2 = pp.publish_ranking(root, deploy, exit_code=0, eligible=0, run_id="r")
             check("eligible == 0 -> nada publicado", r2 is False
                   and not ensure.called and not render.called and not publish.called)
-            render.return_value = "<html>ranking</html>"
-            publish.return_value = True
+            # run truncado (exit 124): dataset pode estar pela metade
+            r2b = pp.publish_ranking(root, deploy, exit_code=124, eligible=5, run_id="r")
+            check("exit 124 (truncado) -> nada publicado", r2b is False
+                  and not ensure.called and not render.called and not publish.called)
+            # run PARCIAL com falhas perifericas (exit 2) + vagas validas:
+            # publica (auditoria 23/09 — antes exit != 0 bloqueava tudo)
+            r2c = pp.publish_ranking(root, deploy, exit_code=2, eligible=5, run_id="r-parc")
+            check("exit 2 (parcial) + eligible > 0 -> publica",
+                  r2c is True and ensure.called and render.called and publish.called)
             r3 = pp.publish_ranking(root, deploy, exit_code=0, eligible=5, run_id="r9")
             check("exit 0 + eligible > 0 -> fluxo completo",
                   r3 is True and ensure.called and render.called and publish.called)
