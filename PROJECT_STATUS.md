@@ -1,10 +1,38 @@
 # Project Status
 
-Last updated: 2026-09-21
+Last updated: 2026-09-23
 
 ## Current state
 
-The project has a working company-oriented ATS collection pipeline (collection →
+**Correções da auditoria pós-Fases 1–8 (PR #78, 23/09)** — 4 pontos operacionais,
+nenhuma mudança de ranking/filtros/pesos/coleta:
+
+- **Gate de publicação parcial segura**: predicado ÚNICO
+  `publish_pages.publication_allowed(exit_code, eligible)` — exit 0/2 com
+  eligible > 0 publica (Pages), monta digest e roda o sync-ranking; exit 1
+  (dataset vazio), eligible == 0 e exit 124 (run truncado) bloqueiam. O exit
+  code operacional do refresh (0/1/2/124, P1.3) é preservado para
+  cron/monitoramento — publicar e exit code são decisões independentes. Fim
+  do stale perpétuo: 17+ runs exit 2 seguidos nunca publicavam.
+- **Isolamento estrutural de testes**: cli.main em modo coleta SEM `--metrics`
+  gravava em `data/collection_metrics.jsonl` RELATIVO AO CWD (vetor da
+  contaminação "Acme" 19–21/09, 2ª ocorrência). Fix: `--metrics` explícito em
+  tempdir no test_hardening + teste sentinel byte-identical (pseudo-repo com
+  `data/`, cwd no root — cenário exato do incidente) + guarda estrutural
+  (nenhum cli.main collect-mode sem --metrics). Regra: testes/validações
+  NUNCA escrevem em `data/` de produção.
+- **Atribuição de erro por `(source, company)`**: falhas do run carregam o
+  company do registro QUE FALHOU (não o primeiro company do source); mensagem
+  Telegram aponta a empresa certa em tenants compartilhados (erro da SAP em
+  `successfactors:jobs` não é mais anunciado como "BMW AG").
+- **Alerta de regressão histórica**: `health._detect_regression` — série
+  `(source, company)` historicamente ok (≥3 runs ok) cujo run mais recente
+  falhou (error/timeout) gera alerta com company/source/error_code; sem
+  histórico ok nunca alerta. Schema de alertas: drop / recurring_error /
+  zero_return / **regression**.
+- Suíte CI: 30 → 31 scripts (`scripts/test_audit_fixes.py`, 61 checks).
+
+The project is a working company-oriented ATS collection pipeline (collection →
 filtering → dedup → ranking), with SQLite persistence, structured error codes,
 observability (health), CI and standardized requirement tracking in
 `MASTER_PLAN.md`. Since the **Fase 4 (19/09)**, the eligible set feeds **two
