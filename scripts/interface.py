@@ -354,9 +354,13 @@ def _details_html(
     # Fase 6: deadline classificado pela fonte — valor do empregador vira
     # "candidaturas até"; o valor SuccessFactors e validade do feed da
     # plataforma (fonte) e nao pode ser apresentado como prazo de candidatura.
+    # Item 8: prazo textual (Bewerbungsfrist) vira "candidaturas até" com a
+    # data do TEXTO (deadline_date já devolve a data classificada).
     deadline_kind_ = app_intel.deadline_kind(job)
-    if deadline_kind_ == "employer" and job.get("application_deadline"):
-        parts.append(f"candidaturas até {_fmt_date(job['application_deadline'])}")
+    if deadline_kind_ in ("employer", "employer_textual"):
+        dl = app_intel.deadline_date(job)
+        if dl is not None:
+            parts.append(f"candidaturas até {dl.strftime('%d.%m.%Y')}")
     elif deadline_kind_ == "platform_sf" and job.get("application_deadline"):
         parts.append(f"validade do anúncio na fonte: {_fmt_date(job['application_deadline'])}")
     added = _fmt_date(job.get("first_seen") or job.get("posted_at")
@@ -443,7 +447,7 @@ def _job_intel(job: dict, ref: date) -> dict:
         "kind": kind,
         "dl": dl.isoformat() if dl is not None else None,
         "days": days,
-        "urgency": app_intel.urgency_color(days) if kind == "employer" else None,
+        "urgency": app_intel.urgency_color(days) if kind in ("employer", "employer_textual") else None,
         "problems": problems,
         "flags": app_intel.quality_flags(job, ref),
         "ready": app_intel.application_readiness(problems),
@@ -470,7 +474,7 @@ def _chips_html(intel: dict) -> str:
     exigencia/preferencia de alemao, estado de work authorization e readiness.
     """
     parts: list[str] = []
-    if intel["kind"] == "employer" and intel["dl"]:
+    if intel["kind"] in ("employer", "employer_textual") and intel["dl"]:
         color = intel["urgency"] or "green"
         emoji = _URGENCY_EMOJI.get(color, "🟢")
         days_txt = f" · {intel['days']} d" if intel["days"] is not None else ""
@@ -558,7 +562,7 @@ def _wa_line_html(intel: dict) -> str:
 
 def _deadline_line_html(intel: dict) -> str:
     """Deadline de primeira classe; nunca inventada (spec 4/5)."""
-    if intel["kind"] == "employer" and intel["dl"]:
+    if intel["kind"] in ("employer", "employer_textual") and intel["dl"]:
         color = intel["urgency"] or "green"
         emoji = _URGENCY_EMOJI.get(color, "🟢")
         days_txt = (
@@ -569,7 +573,7 @@ def _deadline_line_html(intel: dict) -> str:
         return (
             f'<div class="wa"><span class="fit-icon">{emoji}</span> '
             f"Deadline: {_fmt_dmy(intel['dl'])}{days_txt} "
-            f"<span class=\"mut small\">({ptbr.DEADLINE_KIND_LABELS['employer']})</span></div>"
+            f"<span class=\"mut small\">({ptbr.DEADLINE_KIND_LABELS[intel['kind']]})</span></div>"
         )
     if intel["kind"] == "platform_sf" and intel["dl"]:
         return (
@@ -800,9 +804,13 @@ def _salary_section(opp: dict) -> str:
 
     period = ptbr.SALARY_PERIOD_LABELS.get(salary["period"], salary["period"])
     if salary["min"] == salary["max"]:
-        value = f"€{euro(salary['min'])} / {period}"
+        value = f"€{euro(salary['min'])}"
+        if period:
+            value = f"{value} / {period}"
     else:
-        value = f"€{euro(salary['min'])}–€{euro(salary['max'])} / {period}"
+        value = f"€{euro(salary['min'])}–€{euro(salary['max'])}"
+        if period:
+            value = f"{value} / {period}"
     return (f'<div class="opp-row"><span class="opp-k">Salary</span>'
             f'<span class="opp-v">{html.escape(value)}</span></div>'
             '<div class="opp-row opp-em"><span class="opp-v mut small">Source: job posting — citação '
@@ -1109,7 +1117,7 @@ def _row_html(
     d_country = _attr(job.get("country_iso") or "")
     d_date = _attr(added_attr)
     d_deadline = (str(intel["days"]) if intel["days"] is not None
-                  and intel["kind"] == "employer" else "")
+                  and intel["kind"] in ("employer", "employer_textual") else "")
     d_wa = _attr(intel["wa"])
     d_lang = "de-" + intel["de"] if intel["de"] != "none" else ""
     d_en = "1" if intel["en"] else ""
@@ -1121,6 +1129,7 @@ def _row_html(
         sal = opp.get("salary")
         d_salary = f"{sal['min']:g}" if sal and sal["min"] == sal["max"] else (
             f"{sal['min']:g}-{sal['max']:g}" if sal else "")
+        d_salary_period = _attr((sal or {}).get("period") or "") if sal else ""
         dur = opp.get("duration")
         d_duration = f"{dur['min']}-{dur['max']}" if dur else ""
         col = opp.get("col")
@@ -1131,7 +1140,7 @@ def _row_html(
         col = opp.get("col")
         d_transport = str(col.get("transport_monthly") or "") if col else ""
     else:
-        d_salary = d_duration = d_cost = d_benefits = d_career = d_has_company = d_transport = ""
+        d_salary = d_salary_period = d_duration = d_cost = d_benefits = d_career = d_has_company = d_transport = ""
     d_mode = _attr(opp["mode"]) if opp else ""
     d_city = _attr(opp.get("city") or "") if opp else ""
     d_pathway = _attr(opp["pathway"]) if opp else ""
@@ -1161,6 +1170,7 @@ def _row_html(
         f' data-ready="{d_ready}"'
         f' data-top="{d_top}"'
         f' data-salary="{d_salary}"'
+        f' data-salary-period="{d_salary_period}"'
         f' data-mode="{d_mode}"'
         f' data-city="{d_city}"'
         f' data-cost="{d_cost}"'
@@ -1660,7 +1670,9 @@ function if_filter_sort(rows, st, sortKey) {
     var v = d(tr).salary;
     if (!v) return ['Not disclosed', 'cmp-empty'];
     var p = String(v).split('-');
-    return [(p.length === 2 ? '€' + p[0] + '–€' + p[1] : '€' + p[0]) + '/mês', 'cmp-good'];
+    var label = (p.length === 2 ? '€' + p[0] + '–€' + p[1] : '€' + p[0]);
+    var per = d(tr).salaryPeriod;
+    return [per ? label + '/' + per : label, 'cmp-good'];
   }
   function modeText(tr) {
     var m = { remote: 'Remoto', hybrid: 'Híbrido', on_site: 'Presencial', not_mentioned: 'Não mencionado' };
@@ -1877,7 +1889,7 @@ def _expiring_note(jobs: list[dict], ref: date) -> str:
         if jid in seen:
             continue
         seen.add(jid)
-        if app_intel.deadline_kind(j) == "employer":
+        if app_intel.deadline_kind(j) in ("employer", "employer_textual"):
             known += 1
             dl = app_intel.deadline_date(j)
             days = app_intel.days_until(dl, ref) if dl is not None else None

@@ -501,6 +501,7 @@ GERMAN_LEVEL_LABELS: dict[str, str] = {
 # Tipos de deadline (app_intel.deadline_kind).
 DEADLINE_KIND_LABELS: dict[str, str] = {
     "employer": "prazo de candidatura (informado na vaga)",
+    "employer_textual": "prazo de candidatura declarado no texto do anúncio",
     "platform_sf": "validade do anúncio na fonte (feed da plataforma, +30 dias)",
     "none": "Not specified",
 }
@@ -535,6 +536,10 @@ QUALITY_TEXTS: dict[str, str] = {
     "platform_validity": (
         "A 'data limite' é validade do feed da plataforma (fonte), "
         "não um prazo de candidatura do empregador"
+    ),
+    "deadline_textual": (
+        "Prazo de candidatura declarado no texto do anúncio "
+        "(Bewerbungsfrist) — evidência do empregador, extraída do texto"
     ),
     "no_location": "Localização ausente",
     "short_description": "Descrição ausente ou muito curta ({arg} caracteres)",

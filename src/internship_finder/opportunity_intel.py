@@ -33,6 +33,12 @@ import json
 import re
 import unicodedata
 from pathlib import Path
+from typing import Any
+
+# Normalização de texto para detectores (item 5, auditoria pós-Fases 1–8):
+# definida em ``app_intel`` (lar dos detectores de idioma/WA); este módulo
+# importa de lá — sem ciclo (``app_intel`` não importa este módulo).
+from internship_finder.app_intel import normalize_text
 
 # ---------------------------------------------------------------------------
 # Arquivos curados (versionados no repo; estruturas reutilizaveis por empresa)
@@ -174,17 +180,79 @@ def _to_number(text: str) -> float | None:
     return value if value > 0 else None
 
 
-def job_salary(job: dict) -> dict | None:
-    """Salario citado NO ANUNCIO; None sem evidencia (nunca inventa).
+def _to_float_or_none(value: Any) -> float | None:
+    """Valor monetário estruturado -> float; None se ausente/inválido/<=0."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if out > 0 else None
 
-    Evidencia = clausula monetaria (moeda explicita OU rotulo
-    Gehalt/Salary/Compensation proximo) AND (rotulo OR periodo monat/month/
-    year). Retorna ``{"min", "max", "period", "text"}`` — ``min``==``max``
-    para valor unico; ``text`` e o trecho exato da fonte. Periodo default
-    ``month`` (salarios de estagio/WS citados sao mensais; nunca converte).
+
+def _norm_period(value: Any) -> str | None:
+    """``MONTH``/``month``/``Monat`` -> ``month``; ``YEAR``/``year`` -> ``year``.
+
+    Preserva a periodicidade que a fonte declara; NUNCA infere quando
+    ausente (upstream recruitee publica ``salary_period`` vazio).
     """
+    if not value:
+        return None
+    v = str(value).strip().casefold()
+    if v in ("month", "monat", "monatlich", "monthly"):
+        return "month"
+    if v in ("year", "jahr", "jahrlich", "jaehrlich", "annually", "annual"):
+        return "year"
+    if v in ("hour", "stunde", "hourly"):
+        return "hour"
+    return None
+
+
+def job_salary(job: dict) -> dict | None:
+    """Salário citado NO ANUNCIO; None sem evidencia (nunca inventa).
+
+    DUAS fontes de evidência, SEM conflito (item 6 da auditoria):
+
+    1. **Campo estruturado do ATS** (``raw.salary_min``/``raw.salary_max``/
+       ``raw.salary_currency``/``raw.salary_period`` — exposto pelo scraper
+       recruitee do ats-scrapers): quando ``salary_min``/``salary_max`` são
+       números > 0, são a evidência mais forte — valor da própria fonte,
+       sem parsing. Moeda preservada; periodicidade preservada quando
+       presente (``MONTH``/``month``) e ``None`` quando ausente (NUNCA
+       inferida — o upstream recruitee não a publica).
+    2. **Clausula monetária no texto** (regex ``_MONEY_CLAUSE`` existente):
+       fallback quando não há campo estruturado.
+
+    Retorna ``{"min", "max", "period", "text", "currency"}`` — ``min``==
+    ``max`` para valor único; ``text`` e o trecho exato da fonte (para o
+    campo estruturado, a representação canônica do valor); ``currency`` só
+    no caminho estruturado (quando a fonte declara). No caminho textual o
+    comportamento e o MESMO de antes (periodo default ``month`` quando a
+    clausula cita valor sem periodo — regra Fase 7; nunca converte).
+    """
+    raw = job.get("raw") if isinstance(job.get("raw"), dict) else {}
+    if raw:
+        lo = _to_float_or_none(raw.get("salary_min"))
+        hi = _to_float_or_none(raw.get("salary_max"))
+    else:
+        lo = hi = None
+    if lo is not None or hi is not None:
+        if lo is None:
+            lo = hi
+        if hi is None:
+            hi = lo
+        period = _norm_period(raw.get("salary_period"))
+        currency = str(raw.get("salary_currency") or "").strip().upper() or None
+        text = f"{currency or 'EUR'} {lo:g}–{hi:g}"
+        if period:
+            text = f"{text} / {period}"
+        return {"min": lo, "max": hi, "period": period,
+                "text": text, "currency": currency}
     text = " ".join(
-        str(x) for x in (job.get("title"), job.get("description")) if x
+        normalize_text(x) for x in (job.get("title"), job.get("description")) if x
     )
     if not text:
         return None
@@ -259,7 +327,7 @@ def work_mode(job: dict) -> str:
     raw = job.get("raw") if isinstance(job.get("raw"), dict) else {}
     if raw.get("is_remote") is True:
         return "remote"
-    text = " ".join(str(x) for x in (job.get("title"), job.get("description")) if x)
+    text = " ".join(normalize_text(x) for x in (job.get("title"), job.get("description")) if x)
     if not text:
         return "not_mentioned"
     if _WORK_MODE_RE["hybrid"].search(text):
@@ -274,6 +342,35 @@ def work_mode(job: dict) -> str:
 # ---------------------------------------------------------------------------
 # Localizacao — cidade/regiao a partir da string real; nunca inferida
 # ---------------------------------------------------------------------------
+
+# Aliases de cidade (item 9, auditoria pós-Fases 1–8): nome EN que aparece
+# em vagas reais do dataset -> CHAVE CANÔNICA já curada no
+# ``location_intel.json``. Somente aliases COMPROVADOS (contagem no
+# run 23/09: Munich 14, Cologne 1, Nuremberg 1 — todos com entrada
+# canônica correspondente no catálogo). Determinístico, sem fuzzy
+# matching: chave exata após a normalização existente (_norm). O alias
+# serve APENAS para localizar o registro de enriquecimento — o valor
+# original exibido ao usuário NUNCA muda.
+CITY_ALIASES: dict[str, str] = {
+    "munich": "munchen",      # EN (Numbeo/careers EN) -> München
+    "cologne": "koln",        # EN -> Köln
+    "nuremberg": "nurnberg",  # EN -> Nürnberg
+}
+
+
+def resolve_city_key(city: str | None) -> str | None:
+    """Chave de enriquecimento da cidade: alias -> canônica; senão _norm.
+
+    ``Munich``/``München``/``Munchen`` colapsam na MESMA chave curada
+    ``munchen``. Cidade desconhecida devolve a própria chave normalizada
+    (lookup falha em ``cost_of_living`` -> None, como antes); cidade vazia
+    -> None. A cidade ORIGINAL exibida ao usuário não é alterada.
+    """
+    if not city or not str(city).strip():
+        return None
+    key = _norm(city)
+    return CITY_ALIASES.get(key, key)
+
 
 # Primeiro segmento com cara de rua (numero/strasse/street/estrada) — nesses
 # casos a cidade e o segmento seguinte ao codigo postal, se houver.
@@ -332,10 +429,16 @@ def city_and_region(job: dict) -> dict:
 
 
 def cost_of_living(city: str | None, loc_map: dict[str, dict]) -> dict | None:
-    """Custo de vida aproximado da cidade; None sem cidade conhecida."""
-    if not city or not str(city).strip():
+    """Custo de vida aproximado da cidade; None sem cidade conhecida.
+
+    O lookup usa a chave de enriquecimento (``resolve_city_key``): aliases
+    explícitos (``Munich`` -> ``munchen``) casam com a entrada canônica
+    curada; o valor original da vaga não é alterado.
+    """
+    key = resolve_city_key(city)
+    if not key:
         return None
-    return loc_map.get(_norm(city))
+    return loc_map.get(key)
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +457,7 @@ def job_duration(job: dict) -> dict | None:
 
     Nunca soma/inventa: ``{"min", "max"}`` quando ha faixa (ex.: "6–12
     Monate"), valor unico caso contrario. Nao deriva de datas."""
-    text = " ".join(str(x) for x in (job.get("title"), job.get("description")) if x)
+    text = " ".join(normalize_text(x) for x in (job.get("title"), job.get("description")) if x)
     m = _DURATION_RE.search(text)
     if not m:
         return None

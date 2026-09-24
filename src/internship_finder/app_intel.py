@@ -58,6 +58,7 @@ Idioma (novo tratamento — Fase 6):
 
 from __future__ import annotations
 
+import html as _html
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -66,7 +67,40 @@ from typing import Any
 from internship_finder.filters import SENIORITY_PATTERNS, STUDENT_TYPE_PATTERNS
 
 # ---------------------------------------------------------------------------
-# Idioma — inglês (evidencia) e alemão (nivel de exigência)
+# Normalização de texto para os DETECTORES (item 5, auditoria pós-Fases 1–8)
+# ---------------------------------------------------------------------------
+
+# Tags HTML encontradas em descrições reais (34/390 no run 22/09; teampicnic
+# usa <p>/<li>/<strong>/<h2>, softgarden <br> etc.). Entidades (&, &nbsp;)
+# aparecem em 189/390. O ZWSP (\u200b) aparece no texto do STIHL.
+_TAG_RE = re.compile(r"<[^>]+>")
+_ZWSP = "\u200b"
+
+
+def normalize_text(text: str | None) -> str:
+    """Texto normalizado para os DETECTORES textuais desta camada.
+
+    Três passos (item 5 da auditoria): ``html.unescape`` (entidades como
+    ``&``/``&nbsp;``), remoção de tags HTML e normalização básica de
+    whitespace (colapso de Runs + trim; ``&nbsp;``/ZWSP viram espaço).
+
+    Delimitação crítica: alimenta SOMENTE os detectores de intel
+    pós-eligibilidade (``german_level``/``work_authorization``/
+    ``english_evidence``/``has_german_mention``/``job_salary`` e o extrator
+    de deadline textual). NUNCA é aplicada em ``filters``/ranking-eligibilidade
+    e NUNCA destrói o ``Job.description`` original — a normalização é local a
+    cada chamada de detector.
+    """
+    if not text:
+        return text or ""
+    out = _html.unescape(str(text))
+    out = _TAG_RE.sub(" ", out)
+    out = out.replace(_ZWSP, " ")
+    return " ".join(out.split())
+
+
+# ---------------------------------------------------------------------------
+# Idioma — inglês (evidência) e alemão (nível de exigência)
 # ---------------------------------------------------------------------------
 
 LANG_EN_PATTERNS = [r"\benglish\b", r"\benglisch"]
@@ -74,7 +108,8 @@ _LANG_EN_RE = [re.compile(p, re.IGNORECASE) for p in LANG_EN_PATTERNS]
 
 
 def english_evidence(text: str | None) -> bool:
-    """Evidencia de ingles no titulo+descricao (perfil: sinal compativel)."""
+    """Evidência de inglês no título+descrição (perfil: sinal compatível)."""
+    text = normalize_text(text)
     return bool(text) and any(rx.search(text) for rx in _LANG_EN_RE)
 
 
@@ -188,6 +223,7 @@ class GermanLevel:
 def has_german_mention(text: str | None) -> bool:
     if not text:
         return False
+    text = normalize_text(text)
     return any(rx.search(text) for rx in _GERMAN_TOKEN_RE)
 
 
@@ -202,6 +238,7 @@ def german_level(text: str | None) -> GermanLevel | None:
     """
     if not text:
         return None
+    text = normalize_text(text)
     tokens: list[re.Match] = []
     for rx in _GERMAN_TOKEN_RE:
         tokens.extend(rx.finditer(text))
@@ -238,6 +275,14 @@ def german_level(text: str | None) -> GermanLevel | None:
                     break
                 if kind == "verb_rev" and soft_in_win:
                     continue  # a exigencia provavelmente e do ingles
+                if kind == "verb_rev":
+                    # "fließend in Deutsch"/"fluency in German" — verbo de
+                    # exigencia na ordem inversa, SEM palavra branda na
+                    # janela: e requisito do alemao (o fall-through anterior
+                    # deixava esses casos em plus/bare — FN medido no run
+                    # 22/09: STIHL "Fließend in Deutsch & Englisch").
+                    local, reason = "required", kind
+                    break
                 if kind in ("verb", "verb_direct", "verb_explicit",
                             "pair_strong", "qual"):
                     local, reason = "required", kind
@@ -309,7 +354,7 @@ def work_authorization(text: str | None) -> dict[str, str]:
     Nunca inferida de empresa multinacional/localizacao: sem vocab -> 
     ``not_mentioned``; vocab sem classificacao -> ``unclear``.
     """
-    text = text or ""
+    text = normalize_text(text or "")
     if not any(rx.search(text) for rx in _WA_VOCAB_RE):
         return {"state": "not_mentioned", "detected": "no_vocab"}
     if any(rx.search(text) for rx in _WA_NO_SUPPORT_RE):
@@ -330,7 +375,55 @@ def work_authorization(text: str | None) -> dict[str, str]:
 # successfactors publicam SOMENTE g:expiration_date (feed = collected+30d).
 SF_SOURCE_PREFIX = "successfactors:"
 
-DEADLINE_KINDS = ("employer", "platform_sf", "none")
+DEADLINE_KINDS = ("employer", "employer_textual", "platform_sf", "none")
+
+# ---------------------------------------------------------------------------
+# Deadline textual ESTRITO (item 8, auditoria pós-Fases 1–8)
+# ---------------------------------------------------------------------------
+
+# Prazo de candidatura EXPLICITAMENTE declarado no texto do anúncio.
+# Padrão alemão comprovado no dataset (run 23/09, 6 ocorrências Fraunhofer):
+# "Bewerbungsfrist: 15.10.2026". A data é OBRIGATÓRIA e imediatamente após
+# o marcador (tolerância: dois pontos/hífen opcional e espaços). Negações
+# ("keine Bewerbungsfrist", 4 ocorrências bahagag) NÃO casam: exigimos o
+# separador de dois-pontos OU hífen seguido de data; "keine" antes do
+# marcador não tem data adjacente e o match exige a data logo após.
+# Variações de capitalização/espacamento suportadas (IGNORECASE + \s*).
+_EMPLOYER_DEADLINE_RE = re.compile(
+    r"\bbewerbungsfrist\s*[:\-]?\s*(?P<d>\d{1,2})\.(?P<m>\d{1,2})\.(?P<y>\d{4})\b",
+    re.IGNORECASE,
+)
+# Marcadores equivalentes inequívocos (mesma semântica de prazo de
+# candidatura, evidência no dataset/enunciado): "Bewerbungsschluss".
+_EMPLOYER_DEADLINE_LABELS = ("bewerbungsfrist", "bewerbungsschluss")
+_EMPLOYER_DEADLINE_ALT_RE = re.compile(
+    r"\bbewerbungsschluss\s*[:\-]?\s*(?P<d>\d{1,2})\.(?P<m>\d{1,2})\.(?P<y>\d{4})\b",
+    re.IGNORECASE,
+)
+
+
+def textual_deadline(text: str | None) -> date | None:
+    """Prazo de candidatura DECLARADO NO TEXTO do anúncio; None sem evidência.
+
+    Extração ALTAMENTE conservadora (item 8): apenas o marcador explícito
+    ``Bewerbungsfrist``/``Bewerbungsschluss`` seguido IMEDIATAMENTE de data
+    DD.MM.YYYY válida. Nada de NLP, frases ambíguas, posted_at+N dias,
+    expiration_date de plataforma ou data de publicação. Datas passadas ou
+    futuras são preservadas com o significado intacto (o consumidor decide
+    urgência; a extração não altera o significado).
+    """
+    if not text:
+        return None
+    text = normalize_text(text)
+    for rx in (_EMPLOYER_DEADLINE_RE, _EMPLOYER_DEADLINE_ALT_RE):
+        m = rx.search(text)
+        if not m:
+            continue
+        try:
+            return date(int(m.group("y")), int(m.group("m")), int(m.group("d")))
+        except ValueError:
+            continue  # data inválida (ex.: 32.13.2026) -> sem deadline
+    return None
 
 URGENCY_GREEN = 14   # > 14 dias
 URGENCY_YELLOW = 7   # 7-14 dias
@@ -354,13 +447,41 @@ def _as_date(value: Any) -> date | None:
 
 
 def deadline_kind(job: dict[str, Any] | Any) -> str:
-    """Classe do ``application_deadline``: employer / platform_sf / none."""
-    if not _as_date(_deadline_value(job)):
-        return "none"
+    """Classe do ``application_deadline``: employer / employer_textual /
+    platform_sf / none.
+
+    Precedência (mais forte primeiro):
+
+    1. Campo estruturado em fonte NÃO-SuccessFactors -> ``employer``
+       (prazo real do empregador exposto pelo ATS; regra Fase 6).
+    2. Prazo DECLARADO NO TEXTO do anúncio (``Bewerbungsfrist:
+       DD.MM.YYYY`` — extrator estrito do item 8) -> ``employer_textual``.
+    3. Campo estruturado em tenant SuccessFactors -> ``platform_sf``
+       (validade de feed g:expiration_date = collected+30d, NUNCA prazo).
+    4. Nenhum -> ``none``.
+    """
+    structural = _as_date(_deadline_value(job))
     source = str((job.to_dict() if hasattr(job, "to_dict") else job).get("source") or "")
-    if source.startswith(SF_SOURCE_PREFIX):
+    textual = textual_deadline(
+        f"{_title_of(job)} {_description_of(job)}"
+    )
+    if structural is not None and not source.startswith(SF_SOURCE_PREFIX):
+        return "employer"
+    if textual is not None:
+        return "employer_textual"
+    if structural is not None:
         return "platform_sf"
-    return "employer"
+    return "none"
+
+
+def _title_of(job: dict[str, Any] | Any) -> str:
+    d = job.to_dict() if hasattr(job, "to_dict") else job
+    return str(d.get("title") or "")
+
+
+def _description_of(job: dict[str, Any] | Any) -> str:
+    d = job.to_dict() if hasattr(job, "to_dict") else job
+    return str(d.get("description") or "")
 
 
 def _deadline_value(job: dict[str, Any] | Any) -> Any:
@@ -369,7 +490,16 @@ def _deadline_value(job: dict[str, Any] | Any) -> Any:
 
 
 def deadline_date(job: dict[str, Any] | Any) -> date | None:
-    """Data crua da fonte (mapeada, nunca derivada)."""
+    """Data do deadline CLASSIFICADO (mapeada, nunca derivada).
+
+    Para ``employer``/``platform_sf`` é o valor estrutural da fonte; para
+    ``employer_textual`` é a data extraída do texto (item 8). Sem deadline
+    -> ``None`` (nunca inventa).
+    """
+    if deadline_kind(job) == "employer_textual":
+        return textual_deadline(
+            f"{_title_of(job)} {_description_of(job)}"
+        )
     return _as_date(_deadline_value(job))
 
 
@@ -521,7 +651,7 @@ def possible_problems(job: dict[str, Any] | Any, ref: date) -> list[dict]:
 
     kind = deadline_kind(d)
     dl = deadline_date(d)
-    if kind == "employer" and dl is not None:
+    if kind in ("employer", "employer_textual") and dl is not None:
         days = days_until(dl, ref)
         problems.append({
             "key": "deadline",
@@ -561,6 +691,8 @@ def quality_flags(job: dict[str, Any] | Any, ref: date) -> list[dict]:
         flags.append({"key": "no_deadline", "detail": "", "severity": "info"})
     elif kind == "platform_sf":
         flags.append({"key": "platform_validity", "detail": "", "severity": "info"})
+    elif kind == "employer_textual":
+        flags.append({"key": "deadline_textual", "detail": "", "severity": "info"})
 
     if not (d.get("location") or "").strip():
         flags.append({"key": "no_location", "detail": "", "severity": "info"})
