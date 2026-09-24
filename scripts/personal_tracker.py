@@ -673,7 +673,9 @@ def reminder_jobs(conn: sqlite3.Connection, ranking: list[dict],
     """Vagas da shortlist com deadline employer ate ``max_days`` dias (§8).
 
     Usa ``app_intel.deadline_kind``/``days_until`` — SO deadline EMPLOYER
-    conta como prazo (validade de feed SuccessFactors NUNCA, regra Fase 6).
+    (estruturado) ou EMPLOYER_TEXTUAL (declarado no texto do anuncio, item 8
+    da auditoria) conta como prazo; validade de feed SuccessFactors NUNCA
+    (regra Fase 6).
     """
     from datetime import date as _date
     if ref is None:
@@ -691,7 +693,7 @@ def reminder_jobs(conn: sqlite3.Connection, ranking: list[dict],
         j = by_id.get(row["job_id"])
         if not j:
             continue  # vaga fora do ranking atual (ja tem evento ats_gone/removed)
-        if app_intel.deadline_kind(j) != "employer":
+        if app_intel.deadline_kind(j) not in ("employer", "employer_textual"):
             continue
         days = app_intel.days_until(app_intel.deadline_date(j), ref)
         if days is not None and 0 <= days <= max_days:

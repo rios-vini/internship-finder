@@ -277,12 +277,21 @@ def test_real_data() -> None:
           len({app_intel.german_level(
               f"{jobs[0].get('title')} {jobs[0].get('description')}").level
               for _ in range(100)}) == 1)
-    # Invariante central: nenhum deadline inventado — todo valor de deadline
-    # presente tem data na fonte e a classe herda a regra da fonte.
+    # Invariante central: nenhum deadline inventado — todo kind != none tem
+    # evidencia real: campo estrutural da fonte (employer/platform_sf) OU
+    # prazo declarado no texto (employer_textual, item 8 da auditoria).
     with_deadline = sum(1 for j in jobs if j.get("application_deadline"))
-    check("deadlines presentes == fonte (nada derivado de first_seen+30)",
-          with_deadline == sum(1 for j in jobs
-                               if app_intel.deadline_kind(j) != "none"))
+    textual = sum(1 for j in jobs
+                  if app_intel.deadline_kind(j) == "employer_textual")
+    check("deadlines presentes == fonte OU textual (nada derivado)",
+          with_deadline + textual == sum(1 for j in jobs
+                                         if app_intel.deadline_kind(j) != "none"))
+    check("employer_textual sempre tem data no texto",
+          textual == sum(1 for j in jobs
+                         if app_intel.deadline_kind(j) == "employer_textual"
+                         and app_intel.textual_deadline(
+                             f"{j.get('title') or ''} {j.get('description') or ''}"
+                         ) is not None))
 
 
 def main() -> int:
