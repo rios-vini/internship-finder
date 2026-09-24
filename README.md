@@ -683,15 +683,26 @@ nenhum "Company Score" é calculado.
   + data de verificação (`checked`) + período. Estrutura reutilizável por
   empresa (a MESMA entrada atende todas as vagas da empresa). Ausência de
   campo → a página mostra `Not mentioned`/`Not available` (nunca inventa).
+- **Política de visto (empresa, item 11 da auditoria)**: estado curado em
+  5 estados (`explicit_support` / `explicit_no_support` /
+  `candidate_must_have_authorization` / `unclear` / `not_verified`) com
+  fonte oficial — declarações CONDICIONAIS ("may sponsor", "for eligible
+  roles", "coverage varies") viram `unclear` com a citação preservada;
+  ausência de evidência → `Não verificado` (nunca promovido). É da
+  EMPRESA, distinta do work authorization da VAGA (detector textual do
+  anúncio) — nunca um deriva do outro e nenhum entra no score. Seção
+  "Política de visto (empresa)" no bloco recolhível, com fonte (URL +
+  verificado em) quando existir.
 - **Do anúncio (evidência, nunca estimativa)**: salário citado ("Gehalt:
   2.117 €/Monat"; 18 vagas no run 20/09), work mode
   (hybrid/remote/on_site/not_mentioned), duração em meses, cidade/região da
   string real (endereço com CEP → cidade; "Germany" não vira cidade).
 - **Por vaga (recolhível, mobile-friendly)**: seções Empresa / Benefícios /
   Carreira / Internship→Full-time (estados Explicitly supported · Evidence
-  available · Not mentioned · Unknown — nunca probabilidade) / Localização
-  (cidade, região, país, work mode, custo de vida contexto) / Salário /
-  Turnover (fato com fonte e período, sem avaliação) / Fontes.
+  available · Not mentioned · Unknown — nunca probabilidade) / Política de
+  visto (empresa) / Localização (cidade, região, país, work mode, custo de
+  vida contexto) / Salário / Turnover (fato com fonte e período, sem
+  avaliação) / Fontes.
 - **Compare opportunities**: marque 2–4 vagas e veja uma tabela de fatores
   (fit, candidatura, vaga, empresa, localização) — dados com fonte, sem
   vencedor automático.

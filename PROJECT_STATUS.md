@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-23
+Last updated: 2026-09-24
 
 ## Current state
 
@@ -43,6 +43,21 @@ nenhuma mudança de ranking/filtros/pesos/coleta:
   estourariam a janela 85s do fetch_with_timeout — Bosch/Infineon/ABB/Bayer/RedBull/Roche;
   ver Log 24/09 do MASTER_PLAN; pendência de decisão: timeout por tenant escalado ou fetch
   seletivo por ATS). Eligible/ids idênticos (391==391); ranking/filters/pesos intocados.
+- **Itens 10–11 (24/09, branch `feature/audit2-itens10-11`, PR aberto)** — WA vocab + visa_policy:
+  suíte CI 32 → 33 (`scripts/test_visa_policy.py`, 43 checks). **Item 10** (snapshot 23/09, 391
+  eligible): WA 23/6/362 → **23 existing / 4 unclear / 364 not_mentioned** (2 celonis
+  unclear→not_mentioned pela saída de `relocat\w*` do tema — FP2 corrigido; FP1 corrigido:
+  required+relocation → existing_required; 8 FNs de suporte + custeio cobertos por teste —
+  padrões prontos p/ coletas futuras, sem ocorrência no dataset; negações expandidas EN/DE com
+  contrapartes testadas; existing already/vorhanden/EU passport; precedência inalterada).
+  **Item 11**: `visa_policy` da empresa (5 estados; condicional → unclear) — SAP + BoschGroup
+  `unclear` c/ fonte primary verificada 2026-09-23, 10 empresas `not_verified` c/ nota de
+  rastreabilidade; INDEPENDÊNCIA visa_policy(empresa) × work_authorization(vaga) verificada
+  (ambos preservados e distintos; visa_policy NÃO entra no score — data-attrs idênticos).
+  Fix pré-existente: invariante de deadline do test_app_intel (dupla contagem campo SF +
+  textual; suíte local c/ data/ real 31/32 desde o PR #79 → 33/33). Eligible/ids idênticos
+  (391==391); ranking recomputado antes/depois: sequência+scores idênticos (0 diffs); data/
+  byte-identical antes==depois. Detalhes: `docs/relatorio_itens10_11.md`.
 
 The project is a working company-oriented ATS collection pipeline (collection →
 filtering → dedup → ranking), with SQLite persistence, structured error codes,

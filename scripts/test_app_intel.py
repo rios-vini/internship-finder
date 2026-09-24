@@ -120,6 +120,61 @@ def test_work_authorization() -> None:
         ("Please send us your CV", "not_mentioned"),
         ("Visa questions can be discussed during the interview", "unclear"),
     ]
+    # Item 10 da auditoria — expansão do vocabulário/detector (FNs conhecidos
+    # corrigidos, FPs corrigidos, negações testadas, determinismo):
+    cases += [
+        # FNs conhecidos (spec item 10): suporte explícito EN/DE.
+        ("We support you with the visa process", "support"),
+        ("Assistance with visa application provided", "support"),
+        ("Wir unterst\u00fctzen bei der Beantragung eines Visums", "support"),
+        ("Wir \u00fcbernehmen die Beantragung der Arbeitserlaubnis", "support"),
+        ("Support with residence permit application", "support"),
+        ("The company will assist with work authorization", "support"),
+        ("\u00dcbernahme der Visakosten", "support"),  # custeio
+        ("Hilfe bei der Arbeitsgenehmigung wird angeboten", "support"),
+        ("Visa costs are covered by us", "support"),
+        # FP1 (spec): requisito existente + relocation NÃO é suporte.
+        ("Applicants must already have a valid work permit. "
+         "We can provide relocation assistance.", "existing_required"),
+        ("Candidates already possessing a work permit are eligible",
+         "existing_required"),
+        ("must already have a valid work permit", "existing_required"),
+        # FP2 (spec): relocation sem visto NÃO toca no tema.
+        ("We support your relocation to Munich.", "not_mentioned"),
+        ("Relocation package available", "not_mentioned"),
+        # Relocation + visa no texto: support (visa manda).
+        ("Relocation support including visa sponsorship", "support"),
+        # Combinação documentada: requisito + patrocínio -> support
+        # (aviso mais útil ao candidato; precedência inalterada).
+        ("must have valid work permit + we sponsor visas", "support"),
+        # Negações expandidas (spec direção 5): cada padrão novo tem
+        # contraparte negada testada.
+        ("no visa support", "no_sponsorship"),
+        ("We do not provide visa assistance", "no_sponsorship"),
+        ("we cannot help with visa", "no_sponsorship"),
+        ("cannot help with work permit applications", "no_sponsorship"),
+        ("keine Unterst\u00fctzung bei Visa", "no_sponsorship"),
+        ("ohne \u00dcbernahme der Visakosten", "no_sponsorship"),
+        ("keine \u00dcbernahme der Visageb\u00fchren", "no_sponsorship"),
+        ("visa costs not covered", "no_sponsorship"),
+        ("Visakosten werden nicht \u00fcbernommen", "no_sponsorship"),
+        # existing_required expandido (spec direção 6).
+        ("Applicants must already hold a valid work permit",
+         "existing_required"),
+        ("bereits vorhandene Arbeitserlaubnis", "existing_required"),
+        ("Aufenthaltstitel bereits vorhanden", "existing_required"),
+        ("valid EU passport required", "existing_required"),
+        ("F\u00fcr Nicht-EU-B\u00fcrger: g\u00fcltiger Aufenthaltstitel erforderlich",
+         "existing_required"),
+        # NÃO-inferência (spec direção 8): isolados nunca geram estado.
+        ("International candidates welcome", "not_mentioned"),
+        ("English-speaking environment", "not_mentioned"),
+        ("Fahrerlaubnis Klasse B", "not_mentioned"),  # permissão de DIRIGIR
+        # HTML com entidades -> suportado via normalize_text (item 5).
+        ("You need a valid work&nbsp;permit", "existing_required"),
+        ("Wir unterst\u00fctzen&nbsp;bei der Beantragung eines Visums",
+         "support"),
+    ]
     for text, expected in cases:
         got = app_intel.work_authorization(text)["state"]
         check(f"{expected:16} <- '{text[:52]}'", got == expected)
@@ -127,6 +182,14 @@ def test_work_authorization() -> None:
           app_intel.work_authorization(
               "We cannot sponsor visas, but relocation support exists"
           )["state"] == "no_sponsorship")
+    # Texto sem sinal -> not_mentioned (nunca inferido).
+    check("sem sinal -> not_mentioned",
+          app_intel.work_authorization(None)["state"] == "not_mentioned")
+    # Determinismo: mesma entrada 100x.
+    _det = "Wir \u00fcbernehmen die Beantragung der Arbeitserlaubnis"
+    check("determinismo: 100 repeticoes iguais",
+          len({app_intel.work_authorization(_det)["state"]
+               for _ in range(100)}) == 1)
 
 
 def test_deadline() -> None:
@@ -280,18 +343,26 @@ def test_real_data() -> None:
     # Invariante central: nenhum deadline inventado — todo kind != none tem
     # evidencia real: campo estrutural da fonte (employer/platform_sf) OU
     # prazo declarado no texto (employer_textual, item 8 da auditoria).
-    with_deadline = sum(1 for j in jobs if j.get("application_deadline"))
-    textual = sum(1 for j in jobs
-                  if app_intel.deadline_kind(j) == "employer_textual")
+    # NB: um job SF pode TER o campo estrutural (validade de feed) e um
+    # prazo textual no texto AO MESMO TEMPO — o kind é employer_textual
+    # (textual vence SF), então o campo conta UMA vez pelo kind, nunca duas.
+    # O invariante correto é por KIND, não por soma de contagens.
     check("deadlines presentes == fonte OU textual (nada derivado)",
-          with_deadline + textual == sum(1 for j in jobs
-                                         if app_intel.deadline_kind(j) != "none"))
+          all(app_intel.deadline_kind(j) in (
+              "employer", "employer_textual", "platform_sf")
+          for j in jobs if j.get("application_deadline")
+          or app_intel.textual_deadline(
+              f"{j.get('title') or ''} {j.get('description') or ''}")
+          is not None)
+          and all(app_intel.deadline_kind(j) != "none"
+                  for j in jobs if j.get("application_deadline")))
     check("employer_textual sempre tem data no texto",
-          textual == sum(1 for j in jobs
-                         if app_intel.deadline_kind(j) == "employer_textual"
-                         and app_intel.textual_deadline(
-                             f"{j.get('title') or ''} {j.get('description') or ''}"
-                         ) is not None))
+          sum(1 for j in jobs if app_intel.deadline_kind(j) == "employer_textual")
+          == sum(1 for j in jobs
+                 if app_intel.deadline_kind(j) == "employer_textual"
+                 and app_intel.textual_deadline(
+                     f"{j.get('title') or ''} {j.get('description') or ''}"
+                 ) is not None))
 
 
 def main() -> int:

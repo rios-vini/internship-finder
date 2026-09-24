@@ -298,42 +298,112 @@ def german_level(text: str | None) -> GermanLevel | None:
 # Work authorization — estados por EVOLUÇÃO EXPLÍCITA no anuncio
 # ---------------------------------------------------------------------------
 
-# Vocabulario que indica que o anuncio TOCA o tema (sen interromper: sem
-# esse vocab, "not mentioned").
+# Vocabulario que indica que o anuncio TOCA o tema (sem interromper: sem
+# esse vocab, "not mentioned"). Relocation NÃO faz parte do tema (item 10
+# da auditoria): mudança de cidade ≠ autorização de trabalho/imigração —
+# "We support your relocation" não diz NADA sobre visto.
 _WA_VOCAB = [
     r"\bvisa\w*", r"\b(work|working)?\s?permits?\w*", r"\bsponsor\w*",
-    r"\brelocat\w*", r"\barbeitserlaubnis\w*", r"\baufenthaltserlaubnis\w*",
+    r"\barbeitserlaubnis\w*", r"\baufenthaltserlaubnis\w*",
+    r"\barbeitsgenehmigung\w*", r"\baufenthaltstitel\w*",
     r"\bvisum\w*", r"\bright to work\b", r"\bwork authorization\b",
     r"\bimmigration\b", r"\b(eu-?bürger|eu?\s?bürger)\w*",
     r"\b(eu|european)\s+(citizens?|nationals?|passports?)\b",
 ]
+# Tema + classificadores (item 10 da auditoria). O gabarito de suporte é
+# BIDIRECIONAL: verbo de suporte logo ANTES (~30 chars) ou DEPOIS (~25
+# chars) do tema. Temas são os do _WA_VOCAB (visa, work permit,
+# arbeitserlaubnis, aufenthaltserlaubnis, arbeitsgenehmigung,
+# aufenthaltstitel, visum, residence permit, work authorization, right to
+# work, immigration) — relocation NÃO é tema.
+_WA_THEME = (
+    r"(?:\bvisa\w*|\bwork(?:ing)?\s?permits?\w*|arbeitserlaubnis\w*|"
+    r"arbeitsgenehmigung\w*|aufenthaltserlaubnis\w*|aufenthaltstitel\w*|"
+    r"\bvisum\w*|residence\s+permits?\w*|work\s+authorization|"
+    r"right\s+to\s+work|immigration)"
+)
+# Verbos/nominais de suporte material ao PROCESSO de visto/autorização
+# (custeio, papelada, acompanhamento). "help" só conta com TEMA na janela
+# ("help identify opportunities" sem tema não é suporte de visto).
+_WA_VERB = (
+    r"(?:\bsupport\w*|\bassist\w*|\bhelp\w*|\bunterstütz\w*|\bunterstuetz\w*|"
+    r"\bhilfe\w*|\bübernehm\w*|\buebernehm\w*|\bübernahme\b|\buebernahme\b|"
+    r"\bbegleit\w*|\bbehilflich\b)"
+)
+# Janela: verbo ANTES do tema (~30) ou DEPOIS (~25) — dois sentidos.
 _WA_SUPPORT = [
+    # Ordem direta: "visa sponsorship", "sponsoring visas", "support with
+    # the visa process" (verbo DEPOIS do tema, tema antes).
     r"\bvisa\w*\s+sponsor\w*",
-    r"\bsponsor\w*[\w\s,()-]{0,25}(visa\w*|work\s+permits?|arbeitserlaubnis\w*|visum\w*)",
-    r"\b(visa\w*|work\s+permits?|arbeitserlaubnis\w*|visum\w*)[\w\s,()-]{0,25}"
-    r"\b(support\w*|sponsor\w*|übernehm\w*|uebernehm\w*|assist\w*|help\w*)",
-    r"\brelocat\w*[\w\s,()-]{0,20}(support|assistance|package|benefit|allowance)",
-    r"\b(support|assistance|package)[\w\s,()-]{0,20}relocat\w*",
+    r"\bsponsor\w*[\w\s,()-]{0,25}(visa\w*|work\s+permits?|arbeitserlaubnis\w*|arbeitsgenehmigung\w*|aufenthaltserlaubnis\w*|visum\w*|residence\s+permits?)",
+    # Tema ... depois verbo de suporte ("We support you with the visa
+    # process" -> "visa process"; "Assistance with visa application
+    # provided" -> assist antes, tema depois).
+    rf"{_WA_THEME}[\w\s,()/-]{{0,25}}{_WA_VERB}",
+    # Verbo ... depois tema ("Wir unterstützen bei der Beantragung eines
+    # Visums"; "Support with residence permit application").
+    rf"{_WA_VERB}[\w\s,()/-]{{0,30}}{_WA_THEME}",
+    # Custeio explícito (suporte material): "Übernahme der Visakosten",
+    # "visa costs covered/paid by us", "Visakosten übernehmen wir".
+    r"(?:übernahme|uebernahme|coverage|covering)\s+(?:der\s+)?visa\w*(?:gebühren|kosten|gebuehren|costs?|fees?)",
+    r"\bvisa\w*\s*(?:gebühren|kosten|gebuehren|costs?|fees?)\s+[\w\s,()-]{0,20}(covered|paid|übernommen|uebernommen|übernehmen|uebernehmen|by\s+us|wir)",
 ]
+# Negação de suporte (precedência MÁXIMA — aviso útil ao candidato).
+# Expandida no item 10: além de "sponsor", nega o vocab de suporte
+# ("no visa support", "we do not provide visa assistance", "keine
+# Unterstützung bei Visa", "ohne Übernahme der Visakosten").
 _WA_NO_SUPPORT = [
     r"\bno\s+(visa\w*\s+)?sponsor\w*",
     r"\b(not|cannot|can'?t|can not|does\s+not)\w*[\w\s,()-]{0,20}sponsor\w*",
     r"\bno\s+relocat\w*", r"\bkein\w*\s+sponsor\w*", r"\bsponsor\w*\s+not\b",
     r"\bunfortunately[\w\s,()-]{0,25}sponsor\w*",
+    # Negação do suporte genérico (EN): "no visa support", "we do not
+    # provide visa assistance", "cannot help with visa/work permit".
+    r"\bno\s+(visa\w*|work\s+permits?|work\s+authorization|residence\s+permits?)\s+(support|assistance|sponsor\w*|help)\b",
+    r"\b(not|cannot|can'?t|can not|do\s+not|does\s+not|don'?t|doesn'?t)\w*"
+    r"[\w\s,()-]{0,20}(provide|offer|give|help)\w*"
+    r"[\w\s,()-]{0,20}(visa\w*|work\s+permits?|arbeitserlaubnis\w*|residence\s+permits?)",
+    r"\bcannot\s+help\s+with\s+(the\s+)?(visa|work\s+permit|work\s+authorization|residence\s+permit)",
+    # Negação do suporte genérico (DE): "keine Unterstützung bei Visa",
+    # "keine Übernahme der Visakosten", "ohne Übernahme der Visa(kosten)".
+    r"\bkein\w*\s+(unterstützung|hilfe)\w*[\w\s,()-]{0,25}(visa\w*|visum\w*|arbeitserlaubnis\w*|arbeitsgenehmigung\w*|aufenthalt\w*|erlaubnis\w*)",
+    r"\b(ohne|kein\w*|keine)\s+übernahme\s+(?:der\s+)?visa\w*",
+    # Negação de custeio EN/DE: "visa costs not covered", "Visakosten
+    # werden nicht übernommen".
+    r"\bvisa\w*\s*(?:gebühren|kosten|gebuehren|costs?|fees?)[\w\s,()-]{0,15}\bnot\b"
+    r"[\w\s,()-]{0,15}(covered|paid|included|übernommen|uebernommen)",
+    r"\bvisa\w*\s*(?:gebühren|kosten|gebuehren)[\w\s,()-]{0,15}\bnicht\b"
+    r"[\w\s,()-]{0,15}(übernommen|uebernommen|übernehmen|getragen|erstattet)",
 ]
+# Requisito de autorização JÁ EXISTENTE do candidato (aviso de barreira).
 _WA_EXISTING = [
     r"\b(must|need|require|requires?)\w*[\w\s,()-]{0,30}"
     r"\b(existing\s+)?(work\s+authorization|right\s+to\s+work|"
-    r"(valid\s+)?(work|working)\s+permits?|arbeitserlaubnis\w*)\b",
-    r"\b(work\s+authorization|right\s+to\s+work|arbeitserlaubnis\w*)"
-    r"[\w\s,()-]{0,30}\b(required|must|need)\b",
-    r"\b(valid|gültige|gueltige)\s+(arbeits-?\s*und\s*aufenthaltserlaubnis|"
-    r"arbeitserlaubnis|work\s+(and\s+residence\s+)?permits?|"
-    r"residence\s+permits?)\b",
+    r"(valid\s+)?(work|working)\s+permits?|arbeitserlaubnis\w*|arbeitsgenehmigung\w*|aufenthaltstitel\w*)\b",
+    r"\b(work\s+authorization|right\s+to\s+work|arbeitserlaubnis\w*|arbeitsgenehmigung\w*|aufenthaltstitel\w*)"
+    r"[\w\s,()-]{0,30}\b(required|must|need|erforderlich|vorausgesetzt)\b",
+    r"\b(valid|gültige|gueltige|gültiger|gueltiger)\s+(arbeits-?\s*(und|/&|und,)?\s*aufenthaltserlaubnis|"
+    r"arbeits-?\s*und\s*aufenthaltserlaubnis|arbeitserlaubnis\w*|arbeitsgenehmigung\w*|"
+    r"work\s+(and\s+residence\s+)?permits?|residence\s+permits?|aufenthaltstitel\w*)\b",
     r"\b(eu-?bürger|european\s+(citizens?|nationals?)|eu\s+(citizens?|nationals?))"
     r"(?:\s*(only|required|are\s+eligible))?",
     r"\baufenthaltserlaubnis\w*",
-    r"\bnon-?(eu|german)\s+(citizens?|nationals?)\s+need\b",
+    r"\bnon-?(eu|german)\s+(citizens?|nationals?|bürgerinnen?)\s+(need|benötigen|brauchen|erforderlich|required)?\b",
+    # "must already have", "already holds/possesses" + tema na sequência
+    # (EN, ordem direta e inversa: "Candidates already possessing a work
+    # permit" e "must already hold a valid visa").
+    r"\b(must|need|have|should|candidates?|applicants?)\b[\w\s,()-]{0,15}\balready\b"
+    r"[\w\s,()-]{0,25}\b(hold\w*|possess\w*|have)\w*[\w\s,()-]{0,20}"
+    r"(valid\s+)?(work\s+permits?|visa\w*|arbeitserlaubnis\w*|aufenthaltstitel\w*|residence\s+permits?)",
+    # DE: "vorhandene Arbeitserlaubnis/Aufenthaltstitel", "bereits
+    # vorhanden", "bereits vorhanden" + tema.
+    r"\bvorhandene[rnms]?\s+(arbeitserlaubnis\w*|aufenthaltstitel\w*|arbeitsgenehmigung\w*|aufenthaltserlaubnis\w*)",
+    r"\b(arbeitserlaubnis\w*|aufenthaltstitel\w*|arbeitsgenehmigung\w*|aufenthaltserlaubnis\w*)"
+    r"[\w\s,()-]{0,20}\bbereits\s+(vorhanden|vorliegen\w*|besitzen)\b",
+    # Passaporte/cidadania EU como requisito: "valid EU passport
+    # required", "EU passport required".
+    r"\bvalid\s+eu\s+passport\s+(required|necessary|needed)\b"
+    r"|\beu\s+passport\s+(required|necessary|needed)\b",
 ]
 _WA_VOCAB_RE = [re.compile(p, re.IGNORECASE) for p in _WA_VOCAB]
 _WA_SUPPORT_RE = [re.compile(p, re.IGNORECASE) for p in _WA_SUPPORT]

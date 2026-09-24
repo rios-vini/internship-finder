@@ -574,6 +574,17 @@ PATHWAY_LABELS: dict[str, str] = {
     "unknown": "Unknown",
 }
 
+# Politica de visto/autorizacao da EMPRESA (opportunity_intel.visa_policy_state,
+# item 11 da auditoria pos-Fases 1-8). Curada com fonte oficial; distinta do
+# work_authorization da VAGA (detector textual do anuncio).
+VISA_POLICY_LABELS: dict[str, str] = {
+    "explicit_support": "Suporte explícito ao processo de visto (fonte oficial)",
+    "explicit_no_support": "Sem patrocínio de visto (fonte oficial)",
+    "candidate_must_have_authorization": "Candidato deve ter autorização própria",
+    "unclear": "Política condicional/não clara (fonte oficial)",
+    "not_verified": "Não verificado",
+}
+
 # Qualidade da fonte (opportunity_intel.SOURCE_QUALITIES).
 SOURCE_QUALITY_LABELS: dict[str, str] = {
     "primary": "Primary (fonte oficial)",

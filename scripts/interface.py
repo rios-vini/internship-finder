@@ -633,6 +633,7 @@ def _job_opportunity(job: dict, company_intel_map: dict, loc_map: dict) -> dict:
         "pathway": opportunity_intel.pathway_state(entry),
         "pathway_pct": opportunity_intel.pathway_percentage(entry),
         "turnover": opportunity_intel.turnover_summary(entry),
+        "visa_policy": opportunity_intel.visa_policy_state(entry),
     }
 
 
@@ -746,6 +747,38 @@ def _pathway_section(opp: dict) -> str:
                 f'<span class="opp-v">{html.escape(str(pct.get("value")))} ' \
                 f'— {html.escape(str(pct.get("text") or ""))}</span></div>'
     return rows
+
+
+def _visa_policy_section(opp: dict) -> str:
+    """Política de visto da EMPRESA (item 11): estado curado + fonte.
+
+    Diferente do work authorization da VAGA (detector textual do anúncio,
+    exibido na seção de sinais de candidatura): aqui o estado vem da
+    curadoria com fonte oficial. ``not_verified`` sem fonte é exibido
+    honestamente; nunca promovido. Zero rede; nada entra no score.
+    """
+    state = opp.get("visa_policy") or "not_verified"
+    label = ptbr.VISA_POLICY_LABELS.get(state, state)
+    rows = f'<div class="opp-row"><span class="opp-k">Política de visto</span>' \
+           f'<span class="opp-v">{html.escape(label)}</span></div>'
+    entry = opp.get("company") or {}
+    srcs = None
+    sf = entry.get("sources_for") if isinstance(entry, dict) else None
+    if isinstance(sf, dict):
+        vp = sf.get("visa_policy")
+        if isinstance(vp, list) and vp:
+            srcs = vp
+        elif isinstance(vp, dict):
+            srcs = [vp]
+    note = None
+    if isinstance(entry, dict) and entry.get("visa_policy_note"):
+        note = str(entry["visa_policy_note"])
+    out = rows
+    if srcs:
+        out += _source_list(srcs, None)
+    if note and state == "not_verified":
+        out += (f'<p class="mut small">{html.escape(note)}</p>')
+    return out
 
 
 def _location_section(opp: dict, job: dict) -> str:
@@ -862,8 +895,9 @@ def _opportunity_html(job: dict, opp: dict) -> str:
     """Bloco recolhivel 'Oportunidade' (Company & Location Intelligence).
 
     Secoes: Empresa / Benefícios / Carreira / Internship→Full-time /
-    Localização / Salário / Turnover / Fontes. Tudo fechado por padrão
-    (mobile: abre so o que o usuario quer); nenhum score geral de empresa.
+    Política de visto (empresa) / Localização / Salário / Turnover /
+    Fontes. Tudo fechado por padrão (mobile: abre so o que o usuario
+    quer); nenhum score geral de empresa.
     """
     entry = opp.get("company") or {}
     sections = [
@@ -871,6 +905,7 @@ def _opportunity_html(job: dict, opp: dict) -> str:
         ("Benefícios", _benefits_section(entry)),
         ("Carreira e desenvolvimento", _career_section(entry)),
         ("Internship → Full-time", _pathway_section(opp)),
+        ("Política de visto (empresa)", _visa_policy_section(opp)),
         ("Localização", _location_section(opp, job)),
         ("Salário", _salary_section(opp)),
         ("Turnover / força de trabalho", _turnover_section(opp)),

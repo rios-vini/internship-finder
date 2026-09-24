@@ -15,7 +15,9 @@
       "sources": [
         {"text": "Wikipedia — BMW (infobox e lead)", "url": "https://en.wikipedia.org/wiki/BMW", "quality": "secondary", "checked": "2026-09-20", "period": "2025"},
         {"text": "Página de carreiras BMW Group (domínio do anúncio)", "url": "https://jobs.bmwgroup.com", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "not_verified",
+      "visa_policy_note": "Páginas oficiais de carreiras checadas 2026-09-23 sem declaração pública aplicável sobre visto/autorização para os contextos das vagas (DE)."
     },
     {
       "company": "SAP",
@@ -31,7 +33,13 @@
       "sources": [
         {"text": "Wikipedia — SAP (infobox)", "url": "https://en.wikipedia.org/wiki/SAP", "quality": "secondary", "checked": "2026-09-20", "period": "2025"},
         {"text": "Página de carreiras SAP (jobs.sap.com)", "url": "https://jobs.sap.com/", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "unclear",
+      "sources_for": {
+        "visa_policy": [
+          {"text": "SAP Careers — Privacy Statement (global mobility services para working visa/residency permit)", "url": "https://jobs.sap.com/en/sap-privacy-statement-careers?locale=en_US", "quality": "primary", "checked": "2026-09-23", "note": "Declara suporte via mobility service provider para obter working visa ou residency permit; declaração condicional de processo, não garantia de sponsorship."}
+        ]
+      }
     },
     {
       "company": "BoschGroup",
@@ -47,7 +55,13 @@
       "sources": [
         {"text": "Wikipedia — Robert Bosch GmbH (infobox)", "url": "https://en.wikipedia.org/wiki/Robert_Bosch_GmbH", "quality": "secondary", "checked": "2026-09-20", "period": "2024"},
         {"text": "Portal de carreiras Bosch (SmartRecruiters, domínio do anúncio)", "url": "https://jobs.smartrecruiters.com/BoschGroup", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "unclear",
+      "sources_for": {
+        "visa_policy": [
+          {"text": "Bosch Careers FAQ — 'Does Bosch sponsor visas or work permits...?'", "url": "https://www.bosch.com/careers/faq", "quality": "primary", "checked": "2026-09-23", "note": "'For eligible roles and locations, Bosch may sponsor visas or work permits and provide relocation support... Coverage varies by country and role.' Condicional/seletivo."}
+        ]
+      }
     },
     {
       "company": "Volkswagen AG",
@@ -63,7 +77,9 @@
       "sources": [
         {"text": "Wikipedia — Volkswagen Group (infobox)", "url": "https://en.wikipedia.org/wiki/Volkswagen_Group", "quality": "secondary", "checked": "2026-09-20", "period": "2024"},
         {"text": "Portal de vagas Volkswagen Group (domínio do anúncio)", "url": "https://jobs.volkswagen-group.com/en", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "not_verified",
+      "visa_policy_note": "Páginas oficiais de carreiras checadas 2026-09-23 sem declaração pública aplicável sobre visto/autorização para os contextos das vagas (DE)."
     },
     {
       "company": "Fraunhofer-Gesellschaft",
@@ -88,7 +104,9 @@
         "career": [
           {"text": "Fraunhofer — Jobs and Career (seção Students / Entry-level)", "url": "https://www.fraunhofer.de/en/jobs-and-career.html", "quality": "primary", "checked": "2026-09-20"}
         ]
-      }
+      },
+      "visa_policy": "not_verified",
+      "visa_policy_note": "Páginas oficiais de carreiras checadas 2026-09-23 sem declaração pública aplicável sobre visto/autorização para os contextos das vagas (DE)."
     },
     {
       "company": "Knorr-Bremse",
@@ -104,7 +122,9 @@
       "sources": [
         {"text": "Wikipedia — Knorr-Bremse (infobox)", "url": "https://en.wikipedia.org/wiki/Knorr-Bremse", "quality": "secondary", "checked": "2026-09-20", "period": "2023"},
         {"text": "Portal de carreiras Knorr-Bremse (domínio do anúncio)", "url": "https://careers.knorr-bremse.com", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "not_verified",
+      "visa_policy_note": "Páginas oficiais de carreiras checadas 2026-09-23 sem declaração pública aplicável sobre visto/autorização para os contextos das vagas (DE)."
     },
     {
       "company": "Liebherr-International S.A.",
@@ -120,7 +140,9 @@
       "sources": [
         {"text": "Wikipedia — Liebherr Group (infobox)", "url": "https://en.wikipedia.org/wiki/Liebherr_Group", "quality": "secondary", "checked": "2026-09-20", "period": "2023"},
         {"text": "Portal de carreiras Liebherr (domínio do anúncio)", "url": "https://careers.liebherr.com", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "not_verified",
+      "visa_policy_note": "Páginas oficiais de carreiras checadas 2026-09-23 sem declaração pública aplicável sobre visto/autorização para os contextos das vagas (DE)."
     },
     {
       "company": "BASF SE",
@@ -136,7 +158,9 @@
       "sources": [
         {"text": "Wikipedia — BASF (infobox)", "url": "https://en.wikipedia.org/wiki/BASF", "quality": "secondary", "checked": "2026-09-20", "period": "2023"},
         {"text": "Portal de vagas BASF (basf.jobs, domínio do anúncio)", "url": "https://basf.jobs", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "not_verified",
+      "visa_policy_note": "Páginas oficiais de carreiras checadas 2026-09-23 sem declaração pública aplicável sobre visto/autorização para os contextos das vagas (DE)."
     },
     {
       "company": "STIHL",
@@ -152,7 +176,9 @@
       "sources": [
         {"text": "Wikipedia — Stihl (infobox)", "url": "https://en.wikipedia.org/wiki/Stihl", "quality": "secondary", "checked": "2026-09-20", "period": "2025"},
         {"text": "Portal de carreiras STIHL (domínio do anúncio)", "url": "https://jobs.stihl.com/", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "not_verified",
+      "visa_policy_note": "Páginas oficiais de carreiras checadas 2026-09-23 sem declaração pública aplicável sobre visto/autorização para os contextos das vagas (DE)."
     },
     {
       "company": "Schaeffler Technologies AG & Co. KG",
@@ -177,7 +203,9 @@
       "sources": [
         {"text": "Wikipedia — Schaeffler Group (infobox e histórico)", "url": "https://en.wikipedia.org/wiki/Schaeffler_Group", "quality": "secondary", "checked": "2026-09-20", "period": "2023–2024"},
         {"text": "Portal de vagas Schaeffler (domínio do anúncio)", "url": "https://jobs.schaeffler.com", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "not_verified",
+      "visa_policy_note": "Páginas oficiais de carreiras checadas 2026-09-23 sem declaração pública aplicável sobre visto/autorização para os contextos das vagas (DE)."
     },
     {
       "company": "Bayer",
@@ -193,7 +221,9 @@
       "sources": [
         {"text": "Wikipedia — Bayer (infobox)", "url": "https://en.wikipedia.org/wiki/Bayer", "quality": "secondary", "checked": "2026-09-20", "period": "2024"},
         {"text": "Portal de carreiras Bayer (domínio do anúncio)", "url": "https://jobs.bayer.com", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "not_verified",
+      "visa_policy_note": "Páginas oficiais de carreiras checadas 2026-09-23 sem declaração pública aplicável sobre visto/autorização para os contextos das vagas (DE)."
     },
     {
       "company": "teampicnic",
@@ -209,7 +239,9 @@
       "checked": "2026-09-20",
       "sources": [
         {"text": "Portal de vagas (domínio do anúncio)", "url": "https://jobs.picnic.app", "quality": "primary", "checked": "2026-09-20"}
-      ]
+      ],
+      "visa_policy": "not_verified",
+      "visa_policy_note": "Páginas oficiais de carreiras checadas 2026-09-23 sem declaração pública aplicável sobre visto/autorização para os contextos das vagas (DE)."
     }
   ]
 }
