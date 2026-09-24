@@ -494,6 +494,54 @@ def pathway_state(intel: dict | None) -> str:
     return state if state in INTERNSHIP_PATHWAY_STATES else "unknown"
 
 
+# ---------------------------------------------------------------------------
+# Visa policy (item 11 da auditoria) — estado da EMPRESA, curado com fonte
+# ---------------------------------------------------------------------------
+
+# Estados da politica de visto/autorizacao da empresa (analogia exata com
+# INTERNSHIP_PATHWAY_STATES; ``visa_policy`` e da EMPRESA e
+# ``work_authorization`` e da VAGA — nunca um deriva do outro).
+#
+# - ``explicit_support``: fonte oficial declara suporte INCONDICIONAL ao
+#   processo de visto/autorizacao ("we support you with the visa process").
+# - ``explicit_no_support``: fonte oficial declara que NAO patrocina/assist
+#   ("we do not sponsor visas", "no visa sponsorship").
+# - ``candidate_must_have_authorization``: fonte oficial exige autorizacao
+#   previa do candidato ("must have a valid work permit to apply").
+# - ``unclear``: fonte oficial TOCA no tema mas de forma condicional/
+#   seletiva ("may sponsor", "case-by-case", "for eligible roles").
+# - ``not_verified``: sem evidencia publica verificavel (default).
+VISA_POLICY_STATES = (
+    "explicit_support",
+    "explicit_no_support",
+    "candidate_must_have_authorization",
+    "unclear",
+    "not_verified",
+)
+
+
+def visa_policy_state(intel: dict | None) -> str:
+    """Estado da politica de visto da empresa; ``not_verified`` default.
+
+    Le o campo curado ``visa_policy`` (string de estado) da entrada de
+    Company Intelligence — a curadoria ja aplicou a regra semantica:
+    declaracoes CONDICIONAIS ("may sponsor", "case-by-case", "for
+    eligible roles and locations", "coverage varies") sao registradas
+    como ``unclear`` com a citacao textual preservada na fonte. Entrada
+    ausente, campo ausente ou valor invalido -> ``not_verified``
+    (analogia exata com ``pathway_state``; nunca promove a explicit_*).
+
+    Independencia estrutural: ``visa_policy`` e da EMPRESA (curada,
+    fonte oficial) e ``work_authorization`` e da VAGA (detector textual
+    do anuncio) — nunca um deriva do outro e nenhum dos dois entra no
+    score de relevancia.
+    """
+    if not intel:
+        return "not_verified"
+    state = str(intel.get("visa_policy") or "not_verified")
+    return state if state in VISA_POLICY_STATES else "not_verified"
+
+
 def pathway_percentage(intel: dict | None) -> dict | None:
     """Percentual oficial de efetivacao (dado factual de fonte), se houver.
 
