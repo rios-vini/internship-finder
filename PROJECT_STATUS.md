@@ -31,6 +31,18 @@ nenhuma mudança de ranking/filtros/pesos/coleta:
   histórico ok nunca alerta. Schema de alertas: drop / recurring_error /
   zero_return / **regression**.
 - Suíte CI: 30 → 31 scripts (`scripts/test_audit_fixes.py`, 61 checks).
+- **PR #79 (24/09, main `b1f5a2e`)** — itens 5–9 da auditoria (qualidade de dados): suíte CI 31 → 32
+  (`scripts/test_audit2_quality.py`, 67 checks). German (snapshot 23/09, 391 eligible): required
+  192 / preferred 36 / plus 4 / none 159 (25 FNs corrigidos pela normalização HTML + fix `verb_rev`;
+  pesos intocados). WA inalterado (23/6/362). Deadlines: `platform_sf` 212 / **`employer_textual`
+  6** (Fraunhofer, "Bewerbungsfrist: 23.10.2026" — novo; 0 employer estruturado; SF nunca vira
+  employer). Salary 21/391 (18 textual + 3 recruitee estruturado €1.400–1.500/mês —
+  `raw.salary_min/max/currency/period` mapeados antes do regex; period None quando ausente).
+  Custo de vida 179/391 (aliases determinísticos munich/cologne/nuremberg → chaves canônicas;
+  valor exibido inalterado). `--include-descriptions` AVALIADO e NÃO ativado (6 tenants
+  estourariam a janela 85s do fetch_with_timeout — Bosch/Infineon/ABB/Bayer/RedBull/Roche;
+  ver Log 24/09 do MASTER_PLAN; pendência de decisão: timeout por tenant escalado ou fetch
+  seletivo por ATS). Eligible/ids idênticos (391==391); ranking/filters/pesos intocados.
 
 The project is a working company-oriented ATS collection pipeline (collection →
 filtering → dedup → ranking), with SQLite persistence, structured error codes,
