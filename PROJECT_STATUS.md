@@ -59,6 +59,28 @@ nenhuma mudança de ranking/filtros/pesos/coleta:
   (391==391); ranking recomputado antes/depois: sequência+scores idênticos (0 diffs); data/
   byte-identical antes==depois. Detalhes: `docs/relatorio_itens10_11.md`.
 
+- **Camada de enrichment (isolada) — 25/09, branch `feature/enrichment-layer` (commit
+  local, sem PR)**: primeira versão da camada de enriquecimento por LLM, ferramenta
+  STANDALONE — nenhum módulo existente importa o novo pacote
+  `src/internship_finder/enrichment/` (schema/fetch/html_norm/llm/runner/store) e
+  nenhum módulo existente mudou (só ci.yml + docs). O que é: amostra determinística
+  (top 16 + 4 WA + 4 sem description de `data/eligible_jobs.json`) → fetch da página
+  oficial → normalização HTML→texto → extração GLM-5.3-Flash (JSON estruturado com
+  evidência por campo, taxonomia WA de 8 conceitos separados, guardas pós-LLM para os
+  2 FPs reais do spike: condicional "ggf." → unclear, frase DEI → not_mentioned) →
+  record pydantic (`schema_version=1`) → JSONL incremental com escrita atômica.
+  Como rodar: `scripts/enrichment_run.py --dry-run` (plano, zero rede) e, com
+  `NVIDIA_API_KEY` exportada no env, `scripts/enrichment_run.py` (sequencial,
+  16–290s/vaga; cache por job_id+final_url+content_hash; retry 3× backoff
+  30/60s em 429/5xx/rede/vazio/parse_error). Onde persiste:
+  `data/enrichment/enrichment_results.jsonl` (gitignored, key=job_id, upsert com
+  preservação de sucesso por content_hash). O que NÃO faz: não altera
+  eligibility/score/ranking, não usa LLM como filtro/decisor, não integra ao
+  HTML/Telegram/Pages, sem browser (JS-render fica `js_rendered`). Testes:
+  `scripts/test_enrichment.py` no CI (33→34; 114 checks offline, TUDO OK); suíte no
+  clone 33/34 (única falha = drift pré-existente do `test_visa_policy`). Detalhes:
+  `docs/enrichment.md`.
+
 The project is a working company-oriented ATS collection pipeline (collection →
 filtering → dedup → ranking), with SQLite persistence, structured error codes,
 observability (health), CI and standardized requirement tracking in
