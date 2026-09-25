@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-24
+Last updated: 2026-09-25
 
 ## Current state
 
@@ -59,8 +59,7 @@ nenhuma mudança de ranking/filtros/pesos/coleta:
   (391==391); ranking recomputado antes/depois: sequência+scores idênticos (0 diffs); data/
   byte-identical antes==depois. Detalhes: `docs/relatorio_itens10_11.md`.
 
-- **Camada de enrichment (isolada) — 25/09, branch `feature/enrichment-layer` (commit
-  local, sem PR)**: primeira versão da camada de enriquecimento por LLM, ferramenta
+- **Camada de enrichment (isolada) — 25/09, PR #81 MERGEADO (squash `64683fd`, CI do PR verde 34/34 + CI main pós-merge verde; carga real inicial: 12 records gravados, 6 extrações completas — 5 high — na janela degradada da API, falhas persistidas para retry)**: primeira versão da camada de enriquecimento por LLM, ferramenta
   STANDALONE — nenhum módulo existente importa o novo pacote
   `src/internship_finder/enrichment/` (schema/fetch/html_norm/llm/runner/store) e
   nenhum módulo existente mudou (só ci.yml + docs). O que é: amostra determinística
