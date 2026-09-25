@@ -797,10 +797,19 @@ if data_path.exists():
     check("amostra: ids unicos no teto",
           len(set(str(j["id"]) for j in small)) == 5)
 else:  # CI (sem data/): fixture sintetica
+    # Descricoes COM vocab de WA real (existing_required no detector —
+    # conferido contra app_intel) para o bucket extra_wa encontrar vagas;
+    # a fixture anterior usava "Werkstudent Data Analytics", que NAO
+    # dispara o detector (not_mentioned) e esvaziava o bucket.
     synth = [
         {"id": f"S{i}", "company": f"C{i}", "title": f"Job {i}",
          "source": "ats:s", "url": f"http://x/{i}", "score": float(i),
-         "description": "" if i % 2 else "Werkstudent Data Analytics"}
+         "description": (
+             "" if i % 2 else
+             "Sie besitzen eine gültige Arbeitserlaubnis."
+             if i % 4 == 0 else
+             "Werkstudent Data Analytics"
+         )}
         for i in range(20)
     ]
     a = runner.select_sample(synth, top=5, extra_wa=2, extra_nodesc=2)
@@ -809,6 +818,13 @@ else:  # CI (sem data/): fixture sintetica
     check("amostra: composicao 5+2+2", len(a) == 9, f"got {len(a)}")
     check("amostra: ids unicos (fixture)",
           len(set(str(j["id"]) for j in a)) == 9)
+    check("amostra: extras WA disparam detector (fixture)",
+          all(app_intel.work_authorization(
+              f"{j.get('title') or ''} {j.get('description') or ''}"
+          )["state"] != "not_mentioned"
+              for j in a[5:7]))
+    check("amostra: extras sem description (fixture)",
+          all(not (j.get("description") or "").strip() for j in a[7:9]))
 
 # ---------------------------------------------------------------------------
 # 11. Segredo: a key nunca vaza em prompt/erro/artefato
