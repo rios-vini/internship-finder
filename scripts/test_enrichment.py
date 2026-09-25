@@ -637,6 +637,35 @@ with tempfile.TemporaryDirectory() as tmp:
     check("store: record atual reflete o estado novo",
           store.load()["A|ats:1"]["page_status"] == "not_found")
 
+    # REGRESSAO (fix do orquestrador): fetch falho (content_hash=None,
+    # conteudo DESCONHECIDO — timeout/rede) NUNCA apaga sucesso anterior.
+    success_after = build_record(
+        make_job("A|ats:1"), fetched_at="t5", page_status="ok",
+        final_url="http://a/1", content_hash="h3", http_status=200,
+        model=llm.MODEL, extracted_at="t5",
+    )
+    check("store: re-sucesso apos not_found -> written",
+          store.upsert(success_after) == "written")
+    fetch_fail = build_record(
+        make_job("A|ats:1"), fetched_at="t6", page_status="timeout",
+        content_hash=None, http_status=None, error="request_error:ReadTimeout",
+    )
+    check("store: fetch falho (hash None) -> preserved",
+          store.upsert(fetch_fail) == "preserved")
+    kept = store.load()["A|ats:1"]
+    check("store: extracao valida preservada apos fetch falho",
+          kept["extracted_at"] == "t5" and kept["content_hash"] == "h3"
+          and kept["page_status"] == "ok")
+    check("store: falha de fetch fica auditavel no record (last_error)",
+          kept.get("last_error") == "request_error:ReadTimeout"
+          and kept.get("last_failed_at") == "t6")
+    check("store: falha de fetch LLM (hash None) tambem preserva",
+          store.upsert(build_record(
+              make_job("A|ats:1"), fetched_at="t7", page_status="ok",
+              final_url="http://a/1", content_hash=None, http_status=200,
+              error="llm_error:http_429", model=llm.MODEL,
+          )) == "preserved")
+
     # escrita atomica: sem temporarios residuais no diretorio
     residue = [p.name for p in out.parent.iterdir() if p.name != out.name]
     check("store: sem arquivos temporarios residuais", residue == [])

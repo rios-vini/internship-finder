@@ -74,6 +74,12 @@ class EnrichmentStore:
         - record de FALHA + anterior bem-sucedido com o MESMO content_hash
           -> "preserved" (o sucesso fica; falha repetida de conteudo igual
           nao destrui extracao valida);
+        - record de FALHA sem content_hash (fetch falho: conteudo desconhecido —
+          timeout/rede/nao-200) + anterior bem-sucedido -> "preserved" tambem:
+          o requisito e NAO PERDER a extracao valida em falha transitatoria. A
+          falha fica auditavel em ``last_error``/``last_failed_at`` dentro do
+          record preservado (nao e estado escondido) sem apagar os campos
+          extraidos;
         - record de FALHA de conteudo diferente (ou sem anterior) -> gravada.
         """
         rec = (
@@ -90,10 +96,20 @@ class EnrichmentStore:
             existing is not None
             and is_success_record(existing)
             and not is_success_record(rec)
-            and existing.get("content_hash") is not None
-            and existing.get("content_hash") == rec.get("content_hash")
         ):
-            return "preserved"
+            # Falha nao pode destruir extracao valida: preserva quando o
+            # conteudo e o MESMO (hash igual) ou DESCONHECIDO (hash None:
+            # fetch falho). So uma falha de conteudo comprovadamente NOVO
+            # substitui (o estado da pagina mudou e isso e dado).
+            if rec.get("content_hash") is None or existing.get("content_hash") == rec.get("content_hash"):
+                # Auditoria da falha dentro do record preservado (campos
+                # last_*): a extracao valida continua, a falha fica visivel.
+                existing = dict(existing)
+                existing["last_error"] = rec.get("error")
+                existing["last_failed_at"] = rec.get("fetched_at")
+                current[str(job_id)] = existing
+                self._write_all(list(current.values()))
+                return "preserved"
         current[str(job_id)] = rec
         self._write_all(list(current.values()))
         return "written"
