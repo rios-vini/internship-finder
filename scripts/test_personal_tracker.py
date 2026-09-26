@@ -22,7 +22,7 @@ import json
 import sqlite3
 import sys
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -192,13 +192,13 @@ def test_shortlist_and_views() -> None:
     print("== bloco 12, 14, 16: shortlist, deadline, export ==")
     tmp, db, ranking, jobs_db = fresh_env()
     seed_jobs_db(jobs_db, [(JOB1, 1)])
-    today = datetime.now(UTC).date()
-    dl = (datetime.now(UTC).strftime("%Y-%m-%d")
-          if True else None)
+    # deadline curto RELATIVO (hoje +1d): fixture com data fixa expira e
+    # quebra o CI por puro drift temporal (visto 26/09: deadline 2026-09-25)
+    dl_iso = (datetime.now(UTC).date() + timedelta(days=1)).isoformat() + "T00:00:00Z"
     seed_ranking(ranking, [
         {"id": JOB1, "title": "Praktikant", "company": "BMW AG",
          "location": "München", "score": 14.0,
-         "application_deadline": "2026-09-25T00:00:00Z"},
+         "application_deadline": dl_iso},
     ])
     for s in ("interesting", "review", "applied", "offer", "ignored"):
         run_cli(db, ranking, jobs_db, "mark", JOB1 if s != "ignored" else JOB2,
@@ -221,7 +221,7 @@ def test_shortlist_and_views() -> None:
     check("16b: header CSV tem os campos do §23", want.issubset(set(header)))
     # 14: deadline reminder — shortlist com deadline <= 3 dias
     reminders = pt.reminder_jobs(pt.connect(db), pt.load_ranking(ranking))
-    # JOB1 tem deadline 2026-09-25 (kind employer por campo explicito) e
+    # JOB1 tem deadline curto (hoje +1d, kind employer por campo explicito) e
     # status offer -> deve aparecer
     check("14: reminder com deadline curto inclui a vaga da shortlist",
           any(j["job_id"] == JOB1 for j in reminders))
@@ -237,10 +237,12 @@ def test_telegram_sections() -> None:
         import ranking_digest
     tmp, db, ranking, jobs_db = fresh_env()
     seed_jobs_db(jobs_db, [(JOB1, 1), (JOB2, 1)])
+    # deadline curto RELATIVO (hoje +1d) — mesmo drift temporal do bloco 14
+    dl_iso = (datetime.now(UTC).date() + timedelta(days=1)).isoformat() + "T00:00:00Z"
     seed_ranking(ranking, [
         {"id": JOB1, "title": "Praktikant Einkauf", "company": "BMW AG",
          "location": "München", "score": 14.0,
-         "application_deadline": "2026-09-25T00:00:00Z"},
+         "application_deadline": dl_iso},
         {"id": JOB2, "title": "Working Student", "company": "SAP",
          "score": 9.5},
     ])

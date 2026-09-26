@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
-"""Enrichment LLM isolado — runner standalone da camada de enriquecimento.
+"""Enrichment LLM incremental — runner standalone da camada de enriquecimento.
 
-Primeira versao permanente da camada de enrichment por LLM (spec da fase,
-baseada no spike 24/09): selecao deterministica de amostra do ranking
-elegivel -> fetch da pagina oficial -> normalizacao HTML->texto ->
-extracao GLM-5.3-Flash (JSON estruturado com evidencias) -> record
-validado (pydantic) -> JSONL persistente com escrita atomica e upsert
-incremental. Ferramenta STANDALONE: nenhum modulo do pipeline chama isto;
-a camada pode falhar por completo sem afetar coleta, eligibility, dedup,
-ranking, Telegram ou publicacao.
+Fase 2: o enrichment virou INCREMENTAL, automatico e operacionalmente
+seguro. Fluxo: planejamento deterministico sobre o corte do ranking
+(``--top-n`` mais bem ranqueadas; ``new``/``retry``/``seen``) -> fetch
+sweep do corte (fetch + normalize + SHA-256) -> ``seen`` identico ao
+record e sem pendencia = ``cache_hit`` (zero LLM) -> pool ``retry -> new
+-> changed/changed_source`` (score desc) com cap de CHAMADAS LLM por run
+-> extracao GLM-5.3-Flash sequencial -> upsert atomico (falha nova NUNCA
+apaga sucesso anterior; conteudo novo com falha vira
+``pending_content_hash`` no record preservado) -> resumo operacional +
+status file ``data/enrichment/enrichment_status.json``. Vagas fora do
+corte NUNCA entram no backlog (records preservados; cobertura ao
+reentrar no corte). Continua STANDALONE: nenhum modulo do pipeline chama
+isto; a camada pode falhar por completo sem afetar coleta, eligibility,
+dedup, ranking, Telegram ou publicacao.
 
 Uso:
 
-    .venv/bin/python scripts/enrichment_run.py --dry-run   # plano da amostra, SEM rede
-    .venv/bin/python scripts/enrichment_run.py              # carga real (precisa NVIDIA_API_KEY no env)
-    .venv/bin/python scripts/enrichment_run.py --top 16 --extra-wa 4 --extra-nodesc 4
-    .venv/bin/python scripts/enrichment_run.py --limit 5   # teto de vagas do run
+    .venv/bin/python scripts/enrichment_run.py --dry-run   # plano pre-fetch, SEM rede
+    .venv/bin/python scripts/enrichment_run.py              # incremental (precisa NVIDIA_API_KEY no env)
+    .venv/bin/python scripts/enrichment_run.py --limit 24   # cap de extracoes LLM do run
     .venv/bin/python scripts/enrichment_run.py --input data/eligible_jobs.json \\
         --output data/enrichment/enrichment_results.jsonl
 
@@ -24,9 +29,14 @@ nunca em log). Sem key (exceto ``--dry-run``): mensagem clara + exit 1.
 Modelo fixo ``z-ai/glm-5.3-flash`` (o 5.3 queima todo o max_tokens em
 raciocinio interno — medido no spike A/B 5/5 falhas; NAO trocar).
 
+Concorrencia (spec secao 14): o modo real adquire flock exclusivo em
+``<dir do --output>/.enrichment.lock``; segunda execucao concorrente sai
+com exit 3 sem tocar o store. ``--dry-run`` e read-only e nao trava.
+
 Exit codes: 0 = run concluido (falha individual de vaga e dado, nao erro);
-1 = erro de setup (input ilegivel, amostra vazia, key ausente, modelo
-indisponivel); 2 = nenhuma vaga processada.
+1 = erro de setup (input ilegivel, eligible vazio, key ausente, modelo
+indisponivel); 2 = nenhuma vaga processada (ex.: pool pendente com
+``--limit 0``); 3 = execucao concorrente detectada.
 """
 
 from __future__ import annotations
@@ -42,27 +52,23 @@ from internship_finder.enrichment import runner  # noqa: E402
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Camada de enrichment LLM isolada (fetch + GLM-5.3-Flash)"
+        description="Camada de enrichment LLM incremental (fetch + GLM-5.3-Flash)"
     )
     parser.add_argument(
-        "--top", type=int, default=16,
-        help="top N do ranking (score desc, id desc) na amostra (default 16)",
+        "--top-n", type=int, default=runner.DEFAULT_TOP_N,
+        help="corte do ranking: somente as N vagas mais bem ranqueadas "
+        "(score desc, id desc) entram no plano/backlog (default 30); "
+        "vagas fora do corte ficam com seus records preservados e sao "
+        "cobertas ao reentrar no corte",
     )
     parser.add_argument(
-        "--extra-wa", type=int, default=4,
-        help="extras fora do top com work authorization no feed (default 4)",
-    )
-    parser.add_argument(
-        "--extra-nodesc", type=int, default=4,
-        help="extras fora do top sem description no feed (default 4)",
-    )
-    parser.add_argument(
-        "--limit", type=int, default=None,
-        help="teto de vagas processadas neste run (default: sem teto)",
+        "--limit", type=int, default=runner.DEFAULT_LIMIT,
+        help="cap de extracoes LLM deste run (default 24); o backlog "
+        "restante fica pendente para o proximo run",
     )
     parser.add_argument(
         "--dry-run", action="store_true",
-        help="somente selecao + store + plano impresso — SEM rede nenhuma",
+        help="somente plano pre-fetch (counts new/retry/seen + cap) — SEM rede",
     )
     parser.add_argument(
         "--input", default="data/eligible_jobs.json",
@@ -73,8 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSONL de records (default data/enrichment/enrichment_results.jsonl)",
     )
     parser.add_argument(
-        "--sleep-fetch", type=float, default=2.0,
-        help="pausa em segundos entre fetches (default 2.0)",
+        "--sleep-fetch", type=float, default=runner.DEFAULT_SLEEP_FETCH,
+        help="pausa em segundos entre fetches do sweep (default 2.0)",
     )
     return parser
 
