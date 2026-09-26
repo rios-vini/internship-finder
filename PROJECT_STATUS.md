@@ -105,6 +105,29 @@ nenhuma mudança de ranking/filtros/pesos/coleta:
   propagação `--top-n`); zero API NVIDIA. Detalhes:
   `docs/enrichment.md` (reescrito para a fase 2) e Log 26/09 do MASTER_PLAN.
 
+- **Enrichment Fase 3 (integração aos produtos) — 26/09, PR #83 MERGEADO (squash
+  `19b0972`; CI do PR verde ×2 — membership `test_enrichment_present` conferida no
+  log do run, array 34→35 — + CI main pós-merge verde)**: o enrichment agora INFORMA
+  os três produtos sob a regra "Deterministic pipeline decides. LLM enrichment
+  informs." — A/B programático comprovado (sequências data-score/data-job-id/data-rank
+  IDÊNTICAS com/sem enrichment; zero diff em ranking/filters/app_intel/publish/
+  refresh). Novo `enrichment/present.py` (view read-only: `not_mentioned`→omissão
+  nunca "não", `unclear`→"incerto", PIP=false invisível, stale por
+  `pending_content_hash`, evidências ≤200 chars escapadas e rotuladas "trecho citado
+  da página oficial"). Ranking HTML: bloco "🔎 Análise da página oficial (LLM)" por
+  vaga + chip 🔎 LLM (auto-detect do store — a página pública ganha enrichment sozinha
+  no próximo run). Candidate Fit: linhas enr_* ADITIVAS após os sinais determinísticos;
+  `eu_citizenship_required=true` → ⚠ (teampicnic #8/#9, evidência real). Telegram:
+  seção "🔎 Enrichment — dados da página oficial (Top 5 com análise)" antes do link,
+  best-effort (sem store → seção some; corrompido → idem). Cobertura medida (spec
+  §11, `scripts/enrichment_coverage.py`): student 78% · internship 78% · location
+  78% · english 78% · german 56% · salary 22% · work_mode 22% · deadline 0% ·
+  eu_citizenship 22% — NENHUM campo entra no score (§12: candidato futuro denso =
+  eu_citizenship_required, decisão do dono). Testes: `test_enrichment_present.py`
+  NOVO (75 checks, 35º no CI) + interface (152) + digest (82); suíte VPS 34/35 —
+  `test_lifecycle` falha PREEXISTENTE na base (reproduzida em worktree limpo; passa
+  no CI). Detalhes: Log 26/09 (Fase 3) do MASTER_PLAN e `docs/enrichment.md`.
+
 The project is a working company-oriented ATS collection pipeline (collection →
 filtering → dedup → ranking), with SQLite persistence, structured error codes,
 observability (health), CI and standardized requirement tracking in
