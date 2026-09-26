@@ -63,6 +63,7 @@ import interface  # noqa: E402
 import publish_pages  # noqa: E402 (gate de seguranca do bloco real)
 from internship_finder import app_intel  # noqa: E402
 from internship_finder import ptbr  # noqa: E402
+from internship_finder.enrichment import present as enr_present  # noqa: E402
 from internship_finder.materials_ranking import rank_materials_jobs  # noqa: E402
 from internship_finder.models.job import Job  # noqa: E402
 from internship_finder.storage.sqlite_store import SqliteStore  # noqa: E402
@@ -944,6 +945,138 @@ def test_main() -> None:
             os.chdir(cwd)
 
 
+# ---------------------------------------------------------------------------
+# Fase 3 (enrichment) — bloco 'Analise da pagina oficial (LLM)' + fit + chips
+# ---------------------------------------------------------------------------
+
+def _enr_record(job_id: str, *, pip: bool = True, stale: bool = False,
+                evil_evidence: bool = False) -> dict:
+    """Record sintetico (shape persistido pelo store) p/ os checks de Fase 3."""
+    ev = ('"<script>alert(1)</script>" Vergütung' if evil_evidence
+          else "Vergütung von 2.280 € brutto pro Monat")
+    rec = {
+        "job_id": job_id, "company": "X", "title": "T", "source": "s",
+        "extracted_at": "2026-09-26T09:30:00+00:00",
+        "fetched_at": "2026-09-26T09:00:00+00:00",
+        "page_status": "ok", "confidence": "high",
+        "page_is_job_posting": {"value": pip, "confidence": "high"},
+        "student_status_required": {"value": "true", "evidence": "Immatrikulation",
+                                    "confidence": "high"},
+        "internship_compatible": {"value": "true", "evidence": "Praktikum",
+                                  "confidence": "high"},
+        "eu_citizenship_required": {
+            "value": "true",
+            "evidence": "Du besitzt die Staatsbürgerschaft eines EU-Mitgliedstaates",
+            "confidence": "high"},
+        "salary": {"value": "2.280", "period": "month", "currency": "EUR",
+                   "evidence": ev, "confidence": "high"},
+        "work_mode": {"value": "hybrid", "evidence": "Hybrid",
+                      "confidence": "medium"},
+        "location": {"value": "Berlin / Deutschland", "evidence": "ARBEITSORT",
+                     "confidence": "high"},
+        "german_requirement": {"level": "not_mentioned", "evidence": None,
+                               "confidence": "medium"},
+        "english_requirement": {"level": "fluent", "evidence": "Very good",
+                                "confidence": "high"},
+    }
+    if stale:
+        rec["pending_content_hash"] = "other-hash"
+    return rec
+
+
+def test_enrichment_render() -> None:
+    print("== Fase 3: bloco enrichment no HTML (com/sem map, score intacto) ==")
+    fx = interface.sort_ranked(FIXTURE)
+    records = {
+        "sap:1": _enr_record("sap:1"),
+        "sap:2": _enr_record("sap:2", pip=False),          # PIP=false: invisivel
+        "siemens:1": _enr_record("siemens:1", stale=True),  # stale: nota
+        "bosch:1": _enr_record("bosch:1", evil_evidence=True),  # escape check
+    }
+    emap = enr_present.view_map(records)
+    check("view_map: PIP=false fora", set(emap) == {"sap:1", "siemens:1", "bosch:1"})
+    page = _render(fx, enrichment_map=emap)
+    body_com = page.split("<tbody>")[1]
+    check("bloco 'Análise da página oficial (LLM)' presente",
+          page.count("Análise da página oficial (LLM)") == 3)
+    check("chip 🔎 LLM nas 3 vagas com view",
+          page.count('class="chip c-enr"') == 3)
+    # bloco exatamente nas utilizaveis (2 tabelas: biz + mat)
+    check("evidencia literal ESCAPADA no bloco (script neutralizado)",
+          "&lt;script&gt;alert(1)&lt;/script&gt;" in body_com
+          and "<script>alert(1)</script>" not in body_com)
+
+    check("citação rotulada como trecho da página oficial",
+          "trecho citado da página oficial" in page)
+    check("conceitos WA separados (cidadania UE na linha propria)",
+          "cidadania UE" in page and "matrícula universitária" in page)
+    check("ausencia explicita quando TODOS os WA ausentes",
+          "nada mencionado sobre autorização de trabalho" not in page
+          or "demais conceitos: não mencionados" in page)
+    check("nota de staleness na vaga com pendencia",
+          "a página mudou desde esta extração" in page)
+    check("rodape fixo da regra da fase",
+          "não entram no score nem na elegibilidade" in page)
+    check("salary formatada no bloco", "€2.280/mês" in page)
+    check("fit enrichment: cidadania UE como alerta",
+          "Exige cidadania UE (página oficial)" in page)
+    check("fit enrichment: matrícula como ok",
+          "Exige matrícula universitária (página oficial)" in page)
+    # SEM map: mesmo HTML da Fase 8 (compat) — zero blocos, zero chips
+    page_sem = _render(fx)
+    body_sem = page_sem.split("<tbody>")[1]
+    check("sem enrichment_map: NENHUM bloco",
+          "Análise da página oficial" not in page_sem)
+    check("sem enrichment_map: NENHUM chip LLM no corpo",
+          "c-enr" not in body_sem)
+    # score/ordem INTACTOS com vs sem enrichment (REGRA 2)
+    seq_com = re.findall(r'data-score="([^"]*)" data-date', page)
+    ids_com = re.findall(r'data-job-id="([^"]*)"', page)
+    seq_sem = re.findall(r'data-score="([^"]*)" data-date', page_sem)
+    ids_sem = re.findall(r'data-job-id="([^"]*)"', page_sem)
+    check("sequência data-score IDÊNTICA com/sem enrichment",
+          seq_com == seq_sem and len(seq_com) > 0)
+    check("sequência data-job-id IDÊNTICA com/sem enrichment",
+          ids_com == ids_sem)
+    # fallback: store malformado via CLI -> página normal (sem bloco)
+    with tempfile.TemporaryDirectory(prefix="t_if_enr_") as td:
+        bad = Path(td) / "bad.jsonl"
+        bad.write_text("{corrompido\n", encoding="utf-8")
+        pjson = Path(td) / "eligible_jobs.json"
+        pjson.write_text(json.dumps(FIXTURE[:3]), encoding="utf-8")
+        out = Path(td) / "out.html"
+        rc = interface.main(["--input", str(pjson), "--top", "3",
+                             "--enrichment", str(bad), "--output", str(out)])
+        pg = out.read_text(encoding="utf-8")
+        check("store malformado -> rc 0, página normal SEM bloco",
+              rc == 0 and "Análise da página oficial" not in pg
+              and "<!doctype html>" in pg)
+        # auto-detect: data/enrichment do CWD (sem data/ -> sem bloco)
+        cwd = os.getcwd()
+        try:
+            os.chdir(td)
+            out2 = Path(td) / "out2.html"
+            rc = interface.main(["--input", str(pjson), "--top", "3",
+                                 "--output", str(out2)])
+            pg2 = out2.read_text(encoding="utf-8")
+            check("auto-detect sem data/ -> rc 0, sem bloco",
+                  rc == 0 and "Análise da página oficial" not in pg2)
+            # auto-detect COM store no layout data/enrichment/
+            (Path(td) / "data" / "enrichment").mkdir(parents=True)
+            good = Path(td) / "data" / "enrichment" / "enrichment_results.jsonl"
+            good.write_text(json.dumps(_enr_record("sap:1")) + "\n",
+                            encoding="utf-8")
+            out3 = Path(td) / "out3.html"
+            rc = interface.main(["--input", str(pjson), "--top", "3",
+                                 "--output", str(out3)])
+            pg3 = out3.read_text(encoding="utf-8")
+            check("auto-detect COM store -> bloco na vaga correspondente",
+                  rc == 0 and "Análise da página oficial" in pg3
+                  and pg3.count("Análise da página oficial") == 2)  # biz+mat
+        finally:
+            os.chdir(cwd)
+
+
 def main() -> int:
     test_load_json()
     test_sort_ranked()
@@ -956,6 +1089,7 @@ def main() -> int:
     test_client_js_core()
     test_dual_profile_render()
     test_fase6_features()
+    test_enrichment_render()
     test_real_snapshot()
     test_main()
     print()
