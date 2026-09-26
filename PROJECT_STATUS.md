@@ -80,21 +80,29 @@ nenhuma mudança de ranking/filtros/pesos/coleta:
   clone 33/34 (única falha = drift pré-existente do `test_visa_policy`). Detalhes:
   `docs/enrichment.md`.
 
-- **Enrichment Fase 2 (incremental) — 26/09, branch `feature/enrichment-fase2`
-  (base `867dfe3`), commits locais, PR a abrir pelo orquestrador**: a camada virou
+- **Enrichment Fase 2 (incremental) — 26/09, PR #82 MERGEADO (squash
+  `ce40285`; CI do PR verde ×2 + CI main pós-merge verde, membership dos
+  testes novos conferida no log do run)**: a camada virou
   processo incremental integrado ao refresh diário, sem mudar
   score/eligibility/ranking/Telegram/HTML. Delta por `(job_id, final_url,
-  content_hash)` sobre TODAS as elegíveis (planejamento new/retry/seen + fetch
-  sweep + cache_hit sem LLM); pool `retry → new → changed/changed_source` com cap
-  `--limit` (default 24 extrações LLM/run; backlog esvazia em runs futuros);
-  `refresh_daily.py --enrichment --enrichment-limit N` (default OFF; gate único
-  `publication_allowed`; key env/.env injetada no subprocesso; exit do refresh
-  NUNCA muda); concorrência via flock (exit 3); preservação com pendência
+  content_hash)` sobre o **corte do ranking `--top-n` (default 30, decisão
+  do dono 26/09 — só o topo do dia entra no plano; vagas fora do corte
+  nunca acumulam backlog e são cobertas ao reentrar)** (planejamento
+  new/retry/seen + fetch sweep do corte + cache_hit sem LLM); pool
+  `retry → new → changed/changed_source` com cap `--limit` (default 24
+  extrações LLM/run; backlog máx ~30 — cap 24 quase esvazia no dia
+  seguinte); `refresh_daily.py --enrichment --enrichment-limit N
+  --enrichment-top-n N` (default OFF; gate único `publication_allowed`;
+  key env/.env injetada no subprocesso; exit do refresh NUNCA muda);
+  concorrência via flock (exit 3); preservação com pendência
   (`pending_content_hash` — falha de conteúdo novo não apaga o último sucesso
   válido); health em `data/enrichment/enrichment_status.json`; exit codes 0/1/2/3.
-  Testes offline: `test_enrichment.py` 114→153 checks, `test_refresh.py` +26 (gate,
-  exit inalterado, key ausente pulada com log); zero API NVIDIA. Validação real
-  (carga em produção) a cargo do orquestrador pós-deploy. Detalhes:
+  Cron de produção ativado com `--enrichment` (26/09) + `NVIDIA_API_KEY` no
+  `.env`. Fix no mesmo PR: fixture do `test_personal_tracker` com deadline
+  fixo expirou (quebrou o CI da base) — deadline agora relativo.
+  Testes offline: `test_enrichment.py` 114→159 checks (+6 do corte top-N),
+  `test_refresh.py` +27 (gate, exit inalterado, key ausente pulada com log,
+  propagação `--top-n`); zero API NVIDIA. Detalhes:
   `docs/enrichment.md` (reescrito para a fase 2) e Log 26/09 do MASTER_PLAN.
 
 The project is a working company-oriented ATS collection pipeline (collection →
