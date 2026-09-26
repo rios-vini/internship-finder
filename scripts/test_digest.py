@@ -357,6 +357,95 @@ def test_materials_lines() -> None:
     check("sem ranking atual -> []", rdg.materials_lines([], prev) == [])
 
 
+def test_enrichment_section() -> None:
+    print("== Fase 3: secao enrichment do digest (best-effort, nunca obrigatoria) ==")
+
+    def _enr(job_id: str, *, pip: bool = True, stale: bool = False) -> dict:
+        rec = {
+            "job_id": job_id, "company": "C", "title": "T", "source": "s",
+            "extracted_at": "2026-09-26T09:30:00+00:00",
+            "fetched_at": "2026-09-26T09:00:00+00:00",
+            "page_status": "ok", "confidence": "high",
+            "page_is_job_posting": {"value": pip, "confidence": "high"},
+            "student_status_required": {"value": "true", "evidence": "Immatrikulation",
+                                        "confidence": "high"},
+            "salary": {"value": "2.280", "period": "month", "currency": "EUR",
+                       "evidence": "Vergütung von 2.280 € brutto", "confidence": "high"},
+            "english_requirement": {"level": "fluent", "evidence": "Very good",
+                                    "confidence": "high"},
+            "location": {"value": "Leverkusen", "evidence": "Standort",
+                         "confidence": "high"},
+            "work_mode": {"value": "hybrid", "evidence": "Hybrid",
+                          "confidence": "medium"},
+        }
+        if stale:
+            rec["pending_content_hash"] = "hash-novo"
+        return rec
+
+    with tempfile.TemporaryDirectory(prefix="t_dg_enr_") as tmp:
+        base = Path(tmp)
+        cur = [_job(f"j{i}", f"Job {i}", 20 - i) for i in range(8)]
+        # j2 tem enrichment; j3 PIP=false (invisivel); j5 stale
+        cur[2]["company"] = "Bayer"
+        cur[5]["company"] = "Uniper"
+        store = base / "enrichment" / "enrichment_results.jsonl"
+        store.parent.mkdir(parents=True)
+        store.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in (
+            _enr("j2"), _enr("j3", pip=False), _enr("j5", stale=True),
+        )) + "\n", encoding="utf-8")
+        cur_path, prev_path = _fixture_files(base, cur, cur[:])
+        url = "https://x.github.io/r/"
+        sections = rdg.digest_sections(cur_path, prev_path, pages_url=url)
+        text = "\n".join(sections or [])
+        check("secao presente com store valido",
+              "🔎 Enrichment — dados da página oficial" in text)
+        check("posicao: ANTES do link (link continua ultima linha)",
+              text.index("🔎 Enrichment") < text.index("🔗 Ranking completo")
+              and (sections or [])[-1].startswith("🔗"))
+        enr_slice = text[text.index("🔎 Enrichment"):text.index("🔗 Ranking")]
+        check("1 linha por vaga com dados (formato compacto)",
+              "#3 — Job 2 — Bayer — €2.280/mês" in enr_slice)
+        check("max 5 vagas na secao", enr_slice.count("#") <= 5)
+        check("PIP=false NAO aparece (j3 invisivel)", "#4 — Job 3" not in enr_slice)
+        check("stale ganha sufixo '(extração antiga)'",
+              "(extração antiga)" in enr_slice and "#6 — Job 5" in enr_slice)
+        # determinismo
+        sections_b = rdg.digest_sections(cur_path, prev_path, pages_url=url)
+        check("determinismo da secao", sections == sections_b)
+        # secao sozinha nao estoura o limite do Telegram
+        check("secao sozinha < 4096 chars", len(enr_slice) < 4096)
+        # SEM store: secao inteira some; saida identica a de antes das
+        # mudancas (comportamento Fase 8 — nenhum rastro do enrichment)
+        sections_sem = rdg.digest_sections(
+            cur_path, prev_path, pages_url=url,
+            enrichment_path=base / "nao_existe.jsonl",
+        )
+        text_sem = "\n".join(sections_sem or [])
+        check("sem store: secao ausente", "🔎 Enrichment" not in text_sem)
+        # default AUTO: <dir do current>/enrichment/enrichment_results.jsonl
+        # (o fixture escreveu em base/enrichment/ e current esta em base/)
+        sections_auto = rdg.digest_sections(cur_path, prev_path, pages_url=url)
+        check("auto-detect acha o store pelo layout data/",
+              "🔎 Enrichment" in "\n".join(sections_auto or []))
+        # store corrompido -> best-effort: sem secao, sem crash
+        (base / "enrichment" / "enrichment_results.jsonl").write_text(
+            "{corrompido\n", encoding="utf-8")
+        sections_bad = rdg.digest_sections(cur_path, prev_path, pages_url=url)
+        check("store corrompido: sem secao, digest segue",
+              "🔎 Enrichment" not in "\n".join(sections_bad or []))
+        # mais de 5 utilizaveis: corta em 5
+        many = [_job(f"k{i}", f"Job K{i}", 20 - i) for i in range(10)]
+        store2 = base / "enrichment" / "enrichment_results.jsonl"
+        store2.write_text("\n".join(json.dumps(_enr(f"k{i}")) for i in range(10))
+                          + "\n", encoding="utf-8")
+        cur2_path, prev2_path = _fixture_files(base, many, many[:])
+        secs2 = rdg.digest_sections(cur2_path, prev2_path, pages_url=url)
+        enr2 = "\n".join(secs2 or [])
+        n_linhas = sum(1 for ln in enr2.splitlines()
+                       if ln.startswith("#") and "€2.280" in ln)
+        check("corte em 5 vagas na secao", n_linhas == 5)
+
+
 def main() -> int:
     test_load_ranking()
     test_top_positions()
@@ -370,6 +459,7 @@ def main() -> int:
     test_mensagem_sem_novas()
     test_materials_lines()
     test_digest_deterministico()
+    test_enrichment_section()
     print()
     if FAILURES:
         print(f"FALHAS: {len(FAILURES)} -> {FAILURES}")

@@ -230,3 +230,122 @@ persistido: `last_error`, `last_failed_at`, `pending_content_hash`.
   backlog por serem novas). `--enrichment-limit` e `--enrichment-top-n`
   ajustam vazão e abrangência.
 - O condicional `oder` é tratado só no prompt (decisão de taxonomia v1).
+
+## Fase 3 — integração aos produtos (26/09)
+
+**Regra arquitetural (inalterável):** *Deterministic pipeline decides. LLM
+enrichment informs.* A camada agora alimenta os produtos EXISTENTES —
+ranking HTML, Candidate Fit e Telegram Daily Digest — apenas como
+**contexto de apresentação**: nunca decide elegibilidade, nunca
+altera/cria score, nunca reordena, nunca exclui vaga, nunca bloqueia
+publicação.
+
+### Módulo de apresentação (`src/internship_finder/enrichment/present.py`)
+
+Ponto de CONTATO ÚNICO entre os produtos e a camada. Somente
+`scripts/interface.py` e `scripts/ranking_digest.py` importam este módulo
+(read-only); `ranking.py`, `filters.py`, `materials_ranking.py`, `dedup.py`,
+`app_intel.py`, `cli.py`, adapters e coleta seguem SEM importar nada do
+pacote — score/eligibilidade intactos **por construção**. Funções puras:
+
+- `load_enrichment(path)` — reusa `EnrichmentStore.load()`; qualquer
+  exceção → `{}` (nunca derruba render/digest; aviso no stderr);
+- `is_usable(record)` — `extracted_at` presente E
+  `page_is_job_posting.value is True` (PIP=false → **invisível**: o texto
+  extraído não é do anúncio);
+- `is_stale(record)` — `pending_content_hash` presente (sucesso preservado
+  de conteúdo antigo, Fase 2);
+- `view(record)` — record utilizável → dict de campos PRONTOS com labels
+  PT-BR decididos uma vez (salary_text, work_mode, location, german,
+  english, student_status, wa por conceito, internship_compatible,
+  deadline_date, evidences dos campos prioritários, stale, confidence);
+  não-utilizável → `None`. `view_map(records)` filtra tudo de uma vez;
+- `fit_lines(view)` — linhas `{"key","kind","detail"}` para o Candidate
+  Fit (prioridade eu_citizenship > student_status > internship_compatible
+  > idiomas > WA; máx. 6).
+
+### Semântica obrigatória (spec §5/§8)
+
+`not_mentioned` NUNCA vira "não"/false — vira omissão, ou a ausência
+EXPLÍCITA "nada mencionado sobre autorização de trabalho na página" quando
+todos os 8 conceitos são ausentes (nunca lida como negativa). `unclear`
+NUNCA vira conclusão — vira "incerto". Record de não-extração nunca é
+exibido e nunca vira `not_mentioned`. Ausência de evidência nunca vira
+negativa. Os 8 conceitos de work authorization são exibidos SEPARADOS
+(student status ≠ work authorization ≠ sponsorship ≠ EU citizenship...).
+
+### Ranking HTML (`scripts/interface.py`)
+
+- Flag `--enrichment PATH` (default: auto-detect
+  `data/enrichment/enrichment_results.jsonl` do CWD — mesmo padrão do
+  `--db-join`; ausente não é erro). O auto-detect é o que faz a página
+  pública ganhar o bloco sem tocar `publish_pages.py`/`refresh_daily.py`
+  (zero diff em ambos).
+- `render_html(..., enrichment_map=None)`: `None` = SEM bloco (HTML
+  idêntico ao da Fase 8 — compat garantida); map id→view liga, por vaga:
+  chip discreto `🔎 LLM` sempre visível + `<details>` "🔎 Análise da
+  página oficial (LLM)" com campos compactos, bloco WA com conceitos
+  separados, `<details>` aninhado "ver trecho da página oficial" (citação
+  literal escapada, apenas campos prioritários: WA/sponsorship/student
+  status/idioma/deadline/salary), nota de staleness quando
+  `pending_content_hash` e rodapé fixo "não entram no score nem na
+  elegibilidade".
+- Candidate Fit: `present.fit_lines` ADICIONA linhas depois dos sinais
+  determinísticos (`app_intel.py` intocado — nunca substitui, sem nova
+  pontuação). `eu_citizenship_required=true` → ⚠ alerta (bloqueador real
+  para um candidato brasileiro).
+- Segurança: TODO texto do record passa por `html.escape`; o view NÃO
+  carrega `content_hash`/`final_url`/`http_status`/`usage`/model/prompts/
+  resposta bruta (teste dedicado). O gate `publish_pages.check_public_safe`
+  segue o mesmo.
+
+### Telegram Daily Digest (`scripts/ranking_digest.py`)
+
+`digest_sections(..., enrichment_path=None)`: `None` = AUTO
+`<dir do current>/enrichment/enrichment_results.jsonl` (layout `data/` da
+Fase 2 — `refresh_daily.py` e o `main()` do digest NÃO mudaram). Nova
+seção `🔎 Enrichment — dados da página oficial (Top 5 com análise)`:
+até 5 vagas do Top 30 com view utilizável, na ordem do ranking, 1 linha
+por vaga apenas com campos presentes. Store ausente/corrompido → seção
+inteira some (enrichment NUNCA obrigatório). Evidências ficam no HTML
+(tamanho). `stale` → sufixo "(extração antiga)". Se a mensagem final
+estourar 4096, o compactador existente preserva base+link e a seção some
+(mesmo comportamento documentado das seções pessoais).
+
+### Staleness (spec §9)
+
+Política = a existente: metadados `content_hash`/`fetched_at`/
+`extracted_at` + `pending_content_hash` (Fase 2) como marcador interno.
+NENHUMA política de expiração nova. Record stale é exibido como o ÚLTIMO
+enriquecimento válido, com nota de que a página mudou desde a extração —
+nunca como extração da versão atual da página.
+
+### Cobertura medida (26/09, 9 records com extração)
+
+salary 22% · work mode 22% (33% contando `unclear`) · location 78% ·
+student status 78% · internship compatible 78% · english 78% · german
+56% · employer deadline **0%** · algum conceito WA 78% (quase todo o valor
+vem de `eu_citizenship_required` 22% + student status). Ferramenta:
+`scripts/enrichment_coverage.py` (offline, read-only, uso manual — não
+entra no CI).
+
+### O que a Fase 3 NÃO faz
+
+Não cria score LLM, não substitui o score determinístico, não deixa a LLM
+decidir elegibilidade/excluir vagas, não altera filtros de país/employment
+type, não altera a lógica de deadline, não adiciona JS client-side, não
+cria política de expiração nova, não expõe dados privados do tracker. A
+decisão de usar campos do enrichment no RANKING fica para fase posterior,
+com dados (§12 do relatório da fase).
+
+### Testes
+
+`scripts/test_enrichment_present.py` (novo, 35º do CI — 75 checks):
+semântica not_mentioned/unclear, PIP=false, stale, evidência literal,
+is_usable, view, fit_lines, segurança do view, fallback de store ilegível.
+`scripts/test_interface.py` ganha `test_enrichment_render` (bloco/chips/
+escape com `<script>` na evidência, staleness, compat sem map, sequências
+`data-score`/`data-job-id` IDÊNTICAS com vs sem enrichment, auto-detect,
+store malformado). `scripts/test_digest.py` ganha `test_enrichment_section`
+(seção presente/ausente, ≤5 linhas, PIP=false fora, stale, determinismo,
+limite 4096). Todos OFFLINE — zero rede, zero API NVIDIA no CI.

@@ -45,6 +45,7 @@ from pathlib import Path
 
 from internship_finder import filters
 from internship_finder import ranking as ranking_mod
+from internship_finder.enrichment import present as enr_present
 from internship_finder.materials_ranking import rank_materials_jobs
 
 # ---------------------------------------------------------------------------
@@ -65,6 +66,9 @@ NEW_MAX_SHOWN = 15
 # Fase 4: Tetos da secao do perfil Materials (compacta — mesma mensagem).
 MATERIALS_TOP5 = 5
 MATERIALS_NEW_MAX = 5
+
+# Fase 3 (enrichment): tetos da secao de dados da pagina oficial.
+ENRICH_TOP5 = 5
 
 # Spec de pais do filtro (espelha o default de ``cli.py --country``; o teste
 # test_digest confere os dois — se o CLI mudar o default, o teste falha).
@@ -531,6 +535,75 @@ def materials_lines(current: list[dict], previous: list[dict]) -> list[str]:
     return lines
 
 
+def enrichment_lines(
+    current: list[dict],
+    enrichment_path: str | Path | None,
+    *,
+    top: int = DIGEST_TOP,
+    max_shown: int = ENRICH_TOP5,
+) -> list[str]:
+    """Secao '🔎 Enrichment — dados da pagina oficial' (Fase 3, best-effort).
+
+    Ate ``max_shown`` vagas do Top 30 com view UTILIZAVEL (na ordem do
+    ranking — sem reordenar; PIP=false e nao-extracoes ficam fora), 1 linha
+    por vaga com so campos presentes (salary, work mode, local, idiomas,
+    student status, WA relevantes, deadline). Evidencias NAO vem ao
+    Telegram (tamanho) — ficam no HTML. ``stale`` ganha sufixo
+    "(extracao antiga)". Store ausente/malformado -> secao inteira some
+    (enrichment NUNCA e obrigatoria; load tolerante -> {}).
+    """
+    records = enr_present.load_enrichment(enrichment_path or "")
+    if not records:
+        return []
+    views = enr_present.view_map(records)
+    if not views:
+        return []
+    lines = ["🔎 Enrichment — dados da página oficial (Top 5 com análise)"]
+    shown = 0
+    for pos, job in top_positions(current, top):
+        jid = str(job.get("id") or "")
+        view = views.get(jid)
+        if view is None:
+            continue
+        parts: list[str] = []
+        if view.get("salary_text"):
+            parts.append(view["salary_text"])
+        if view.get("work_mode"):
+            parts.append(f"modalidade: {view['work_mode']}")
+        if view.get("location"):
+            parts.append(f"local: {view['location']}")
+        if view.get("english"):
+            parts.append(f"inglês: {view['english']}")
+        if view.get("german"):
+            parts.append(f"alemão: {view['german']}")
+        if view.get("student_status"):
+            parts.append(f"estudante: {view['student_status']}")
+        wa = view.get("wa") or {}
+        for concept in ("eu_citizenship_required", "visa_sponsorship",
+                        "existing_work_authorization_required",
+                        "work_permit_required", "residence_permit_required"):
+            entry = wa.get(concept)
+            if entry is not None:
+                label = enr_present.WA_CONCEPT_LABELS.get(concept, concept)
+                parts.append(f"{label}: {entry['label']}")
+        if view.get("deadline_date"):
+            parts.append(f"deadline: {view['deadline_date']}")
+        if not parts:
+            continue
+        stale = " (extração antiga)" if view.get("stale") else ""
+        lines.append(
+            f"#{pos} — {_short_title(job)} — {job.get('company') or '—'} — "
+            + " · ".join(parts[:6])
+            + stale
+        )
+        shown += 1
+        if shown >= max_shown:
+            break
+    if shown == 0:
+        return []
+    return lines
+
+
 def digest_sections(
     current_path: str | Path,
     previous_path: str | Path,
@@ -538,6 +611,7 @@ def digest_sections(
     pages_url: str,
     country_spec: str = DEFAULT_COUNTRY_SPEC,
     top: int = DIGEST_TOP,
+    enrichment_path: str | Path | None = None,
 ) -> list[str] | None:
     """Secoes do digest do Telegram; ``None`` quando nao ha ranking atual.
 
@@ -587,6 +661,18 @@ def digest_sections(
     if mat_lines:
         lines.append("")
         lines.extend(mat_lines)
+
+    # Fase 3 (enrichment): secao de dados da pagina oficial (antes do link;
+    # store ausente -> secao inteira some — enrichment nunca e obrigatorio).
+    # Default AUTO: <dir do current>/enrichment/enrichment_results.jsonl
+    # (layout de data/ da Fase 2; refresh_daily/main() NAO precisam mudar).
+    enr_path = enrichment_path
+    if enr_path is None:
+        enr_path = Path(current_path).parent / "enrichment" / "enrichment_results.jsonl"
+    enr_lines = enrichment_lines(current, enr_path, top=top)
+    if enr_lines:
+        lines.append("")
+        lines.extend(enr_lines)
 
     lines.append("")
     lines.append(f"🔗 Ranking completo (todas as vagas elegíveis): {pages_url}")
