@@ -87,6 +87,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from internship_finder import app_intel  # noqa: E402  (Fase 6: Candidate Fit + Application Intelligence)
 from internship_finder import opportunity_intel  # noqa: E402  (Fase 7: Company & Location Intelligence)
 from internship_finder.countries import matches_country, parse_country_spec  # noqa: E402
+from internship_finder.enrichment import present as enr_present  # noqa: E402  (Fase 3 enrichment: APENAS view read-only)
 from internship_finder.materials_ranking import rank_materials_jobs  # noqa: E402
 from internship_finder import ptbr  # noqa: E402  (Fase 5: camada PT-BR deterministica)
 
@@ -499,8 +500,16 @@ def _chips_html(intel: dict) -> str:
     return '<div class="chips">' + " ".join(parts) + "</div>"
 
 
-def _fit_lines_html(job: dict) -> str:
-    """Candidate fit: sinais objetivos (app_intel.candidate_fit), PT-BR."""
+def _fit_lines_html(job: dict, enr_view: dict | None = None) -> str:
+    """Candidate fit: sinais objetivos (app_intel.candidate_fit), PT-BR.
+
+    Fase 3 (enrichment): ``enr_view`` (view utilizavel da camada
+    enrichment) ADICIONA linhas DEPOIS dos sinais deterministicos — nunca
+    substitui, nunca cria pontuacao (app_intel.py intocado). Rotulos vem do
+    proprio texto da linha (present.fit_lines ja entrega detail PT-BR); as
+    chaves ``enr_*`` nao tem entrada em FIT_LABELS e caem no fallback do
+    proprio detail.
+    """
     lines: list[str] = []
     for s in app_intel.candidate_fit(job):
         label = ptbr.FIT_LABELS.get(s["key"], s["key"])
@@ -512,6 +521,12 @@ def _fit_lines_html(job: dict) -> str:
         lines.append(
             f'<div class="fit-line fit-{s["kind"]}">'
             f"<span class=\"fit-icon\">{icon}</span> {html.escape(label)}</div>"
+        )
+    for s in enr_present.fit_lines(enr_view):
+        icon = {"ok": "✓", "warn": "⚠", "info": "?"}.get(s["kind"], "?")
+        lines.append(
+            f'<div class="fit-line fit-{s["kind"]}">'
+            f"<span class=\"fit-icon\">{icon}</span> {html.escape(s['detail'])}</div>"
         )
     return '<div class="fit">' + "".join(lines) + "</div>"
 
@@ -935,7 +950,7 @@ def _compare_cell(value: str, tone: str = "") -> str:
     return f'<td{cls}>{value}</td>'
 
 
-def _intel_html(job: dict, intel: dict) -> str:
+def _intel_html(job: dict, intel: dict, enr_view: dict | None = None) -> str:
     """Bloco recolhível 'sinais de candidatura e possíveis problemas'."""
     n_prob = len(intel["problems"])
     summary = "sinais de candidatura e possíveis problemas"
@@ -952,12 +967,149 @@ def _intel_html(job: dict, intel: dict) -> str:
     )
     return (
         f"<details class=\"intel\"><summary>{summary}</summary>"
-        f'{_fit_lines_html(job)}'
+        f'{_fit_lines_html(job, enr_view)}'
         f"{_wa_line_html(intel)}"
         f"{_deadline_line_html(intel)}"
         f"{_problems_html(intel)}"
         f"{readiness_line}"
         f"{_freshness_html(job)}"
+        "</details>"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fase 3 (enrichment) — Analise da pagina oficial por LLM (APRESENTACAO pura)
+# ---------------------------------------------------------------------------
+
+# Rotulos PT-BR dos campos do view (labels decididos na camada de view —
+# aqui so a apresentacao compacta por linha).
+_ENR_FIELD_LABELS: tuple[tuple[str, str], ...] = (
+    ("salary_text", "Salário (página):"),
+    ("work_mode", "Modalidade:"),
+    ("location", "Local (página):"),
+    ("german", "Alemão (página):"),
+    ("english", "Inglês (página):"),
+    ("student_status", "Matrícula universitária:"),
+    ("internship_compatible", "Estágio/praktikum:"),
+    ("deadline_date", "Prazo do empregador:"),
+)
+
+# Nota fixa do bloco: o enrichment INFORMA, nunca decide (regra da fase).
+_ENR_FOOTER = (
+    "dados extraídos da página oficial por LLM — não entram no score "
+    "nem na elegibilidade"
+)
+
+
+def _enr_evidence_details(view_data: dict, fields: tuple[str, ...]) -> str:
+    """<details> aninhado com a CITACAO LITERAL dos campos prioritarios.
+
+    A evidencia e texto de pagina EXTERNA: escapada com html.escape e
+    rotulada como trecho citado da pagina oficial — a interpretacao da LLM
+    nunca aparece como texto/declaracao da empresa (spec secao 3). Somente
+    os campos prioritarios (WA/sponsorship/student status/idioma/deadline/
+    salary); nunca todas as evidencias de uma vez.
+    """
+    evs = view_data.get("evidences") or {}
+    rows = []
+    for name in fields:
+        text = evs.get(name)
+        if not text:
+            continue
+        label = dict(_ENR_FIELD_LABELS).get(name) or enr_present.WA_CONCEPT_LABELS.get(name) or name
+        rows.append(
+            f'<div class="enr-ev-field">{html.escape(label)}</div>'
+            f'<div class="enr-ev-quote">"{html.escape(text)}"</div>'
+        )
+    if not rows:
+        return ""
+    return (
+        '<details class="enr-ev"><summary>ver trecho da página oficial</summary>'
+        '<p class="mut small">trecho citado da página oficial (extração '
+        'literal, não interpretação):</p>' + "".join(rows) + "</details>"
+    )
+
+
+def _enr_wa_block(view_data: dict) -> str:
+    """Bloco 'Autorizacao de trabalho (pagina)': conceitos SEPARADOS.
+
+    Spec secao 5: cada conceito com valor aparece na PROPRIA linha (nunca
+    colapsado em "visto: nao"); TODOS ausentes -> UMA linha explicita de
+    ausencia (nunca lida como negativa); algum com valor -> rodape de que os
+    demais nao foram mencionados.
+    """
+    wa = view_data.get("wa") or {}
+    rows = []
+    for concept, label in enr_present.WA_CONCEPT_LABELS.items():
+        entry = wa.get(concept)
+        if entry is None:
+            continue
+        rows.append(
+            f'<div class="enr-row"><span class="enr-k">{html.escape(label)}'
+            f'</span><span class="enr-v">{html.escape(entry["label"])}</span></div>'
+        )
+    if not rows:
+        return (
+            '<div class="sec"><span class="sec-t">'
+            "Autorização de trabalho (página)</span>"
+            '<div class="enr-row">nada mencionado sobre autorização de '
+            "trabalho na página</div></div>"
+        )
+    return (
+        '<div class="sec"><span class="sec-t">'
+        "Autorização de trabalho (página) — conceitos separados</span>"
+        + "".join(rows)
+        + '<div class="mut small">demais conceitos: não mencionados</div>'
+        "</div>"
+    )
+
+
+def _enr_fields_block(view_data: dict) -> str:
+    """Linhas compactas dos campos disponiveis (ausentes ficam fora)."""
+    rows = []
+    for key, label in _ENR_FIELD_LABELS:
+        value = view_data.get(key)
+        if not value:
+            continue
+        rows.append(
+            f'<div class="enr-row"><span class="enr-k">{html.escape(label)}'
+            f'</span><span class="enr-v">{html.escape(str(value))}</span></div>'
+        )
+    return "".join(rows)
+
+
+def _enrichment_html(view_data: dict | None) -> str:
+    """Bloco recolhivel 'Analise da pagina oficial (LLM)' de UMA vaga.
+
+    Presente SOMENTE quando a vaga tem view utilizavel (extracted_at +
+    page_is_job_posting=true); vagas sem enrichment (ou PIP=false) nao ganham
+    bloco — a pagina funciona 100% sem a camada (spec secao 8). Conteudo
+    compacto (spec secao 10): campos disponiveis, bloco WA com conceitos
+    separados, evidencias prioritarias em <details> aninhado, nota de
+    staleness quando o conteudo da pagina mudou e rodape fixo da regra da
+    fase. Todo texto do record passa por html.escape.
+    """
+    if not view_data:
+        return ""
+    stale_note = ""
+    if view_data.get("stale"):
+        stale_note = (
+            '<div class="mut small">a página mudou desde esta extração — '
+            "dados são o último enrichment válido, não da versão atual</div>"
+        )
+    confidence = view_data.get("confidence")
+    conf_note = (
+        f'<span class="mut small"> · confiança: {html.escape(confidence)}</span>'
+        if confidence else ""
+    )
+    return (
+        '<details class="enr"><summary>🔎 Análise da página oficial (LLM)'
+        f"{conf_note}</summary>"
+        f"{_enr_fields_block(view_data)}"
+        f"{_enr_wa_block(view_data)}"
+        f"{_enr_evidence_details(view_data, enr_present._EVIDENCE_FIELDS)}"
+        f"{stale_note}"
+        f'<p class="mut small">{html.escape(_ENR_FOOTER)}</p>'
         "</details>"
     )
 
@@ -1068,6 +1220,7 @@ def _row_html(
     intel: dict | None = None,
     ref: date | None = None,
     opp: dict | None = None,
+    enr_view: dict | None = None,
 ) -> str:
     """Uma linha da tabela (tudo escapado; URL clicavel, abre em nova aba).
 
@@ -1139,8 +1292,15 @@ def _row_html(
     if intel is None:
         ref_date = ref or app_intel.snapshot_ref_date([job])
         intel = _job_intel(job, ref_date)
-    chips = _chips_html(intel)
-    intel_details = _intel_html(job, intel)
+    # Fase 3 (enrichment) — chip discreto QUANDO a vaga tem view utilizavel
+    # (sem valor alem do sinal de que ha analise; PIP=false nao ganha chip).
+    enr_chip = ' <span class="chip c-enr">🔎 LLM</span>' if enr_view else ""
+    chips = _chips_html(intel) + enr_chip
+    intel_details = _intel_html(job, intel, enr_view)
+    # Fase 3 — bloco recolhivel da analise da pagina oficial (depois dos
+    # sinais de candidatura; ausente quando nao ha view -> pagina igual a
+    # Fase 8 para vagas sem enrichment).
+    enr_details = _enrichment_html(enr_view)
     # Fase 7 — Opportunity Intelligence: bloco recolhivel por vaga + data-
     # attributes para o Compare opportunities (sempre dados, nunca vencedor).
     opp_details = _opportunity_html(job, opp) if opp else ""
@@ -1218,7 +1378,7 @@ def _row_html(
         f' data-url="{d_url}">'
         f'<td class="score" data-label="#">{rank}</td>'
         f'<td class="score" data-label="score">{_fmt_score(score)}</td>'
-        f"<td data-label=\"vaga\">{compare_box}{link}{badge}{chips}{intel_details}{opp_details}{_details_html(job, breakdown_key=breakdown_key, order=order)}</td>"
+        f"<td data-label=\"vaga\">{compare_box}{link}{badge}{chips}{intel_details}{enr_details}{opp_details}{_details_html(job, breakdown_key=breakdown_key, order=order)}</td>"
         f'<td data-label="empresa">{company}</td>'
         f'<td class="loc" data-label="local">{location}</td>'
         f'<td data-label="tipo">{type_txt}</td>'
@@ -1346,6 +1506,17 @@ _CSS = """
   .flag::before { content:"ⓘ "; color:var(--mut); }
   .fresh { font-size:.76rem; color:var(--mut); }
   details.intel .fit, details.intel .wa, details.intel .sec { border-bottom:1px dashed var(--line); padding:4px 0; }
+  /* ---- Fase 3 (enrichment): bloco 'Analise da pagina oficial (LLM)' ---- */
+  details.enr { margin-top:4px; border:1px solid var(--line); border-radius:8px; padding:4px 8px; background:#fbfcfe; max-width:640px; }
+  details.enr > summary { font-size:.76rem; font-weight:600; color:#33475b; cursor:pointer; }
+  .enr-row { display:flex; gap:8px; font-size:.78rem; color:#33475b; padding:1px 0; }
+  .enr-k { flex:0 0 auto; min-width:150px; color:var(--mut); }
+  .enr-v { flex:1 1 auto; }
+  .enr-ev { margin:4px 0 2px; }
+  .enr-ev summary { font-size:.74rem; color:var(--mut); cursor:pointer; }
+  .enr-ev-field { font-size:.72rem; color:var(--mut); margin-top:4px; }
+  .enr-ev-quote { font-size:.78rem; color:#3d4c5c; background:#f6f9fc; border-left:3px solid var(--line); padding:4px 8px; margin:1px 0 3px; }
+  .chip.c-enr { background:#f3e8fd; border-color:#dcc5f2; color:#6b3fa0; }
   details.upd { margin:6px 0 2px; }
   details.upd summary { cursor:pointer; color:var(--mut); font-size:.72rem; }
   details.how { margin:12px 0 4px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; }
@@ -1415,7 +1586,7 @@ _CSS = """
     td.act a.open { display:inline-block; padding:9px 22px; font-size:.85rem; }
     details.intel, details.why { font-size:.9rem; }
     .bd-body { max-width:100%; }
-    .toolbar { gap:8px; }
+    details.enr { max-width:100%; }
     input#q { flex:1 1 100%; max-width:none; font-size:16px; }
     .fgrid { flex-direction:column; gap:8px; }
     .how-body { padding:6px 2px; }
@@ -1966,6 +2137,7 @@ def render_html(
     company_intel_map: dict[str, dict] | None = None,
     loc_map: dict[str, dict] | None = None,
     opp_map: dict[str, dict] | None = None,
+    enrichment_map: dict[str, dict] | None = None,
 ) -> str:
     """Pagina auto-contida (CSS inline, JS vanilla inline, zero external).
 
@@ -1987,6 +2159,13 @@ def render_html(
     snapshot) fixa a urgencia; ``intel_map`` (py id -> ``_job_intel``)
     alimenta filtros/chips/sinais; ``show_how`` liga a secao 'Como este
     ranking funciona' (pesos REAIS das constantes).
+
+    Fase 3 (enrichment): ``enrichment_map`` (py id -> view utilizavel da
+    camada enrichment; ``present.view_map``) liga o bloco 'Analise da
+    pagina oficial (LLM)', as linhas de Candidate Fit e o chip 🔎 por vaga.
+    ``None`` = SEM bloco (compat com a Fase 8 garantido — mesmo HTML). O
+    enrichment apenas APRESENTA contexto: nunca altera score/ordem/eligibi-
+    lidade (mapas por id, lidos no render das linhas).
     """
     if stats is None:
         stats = _compute_stats(jobs, total=total)
@@ -2011,6 +2190,7 @@ def render_html(
             intel=intel_map.get(str(j.get("id"))),
             ref=ref_date,
             opp=opp_map.get(str(j.get("id"))),
+            enr_view=enrichment_map.get(str(j.get("id"))) if enrichment_map else None,
         ))
     rows_html = "\n".join(rows)
 
@@ -2029,6 +2209,7 @@ def render_html(
                 intel=intel_map.get(str(j.get("id"))),
                 ref=ref_date,
                 opp=opp_map.get(str(j.get("id"))),
+                enr_view=enrichment_map.get(str(j.get("id"))) if enrichment_map else None,
             ))
         mat_rows_html = "\n".join(mat_rows)
 
@@ -2220,6 +2401,15 @@ def main(argv: list[str] | None = None) -> int:
         help="JSON curado de custo de vida por cidade (default: "
         "company_intel/location_intel.json; ausente = Not available)",
     )
+    parser.add_argument(
+        "--enrichment",
+        default=None,
+        metavar="PATH",
+        help="Store de enrichment (JSONL, key=job_id) para o bloco 'Análise "
+        "da página oficial (LLM)' por vaga (default: auto-detect "
+        "data/enrichment/enrichment_results.jsonl do CWD, mesmo padrão do "
+        "--db-join; ausente NÃO é erro — página sem o bloco)",
+    )
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -2327,6 +2517,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.country:
         filters_desc.append(f"pais: {args.country}")
 
+    # Fase 3 (enrichment) — store da camada LLM, APENAS apresentacao.
+    # Default AUTO-DETECT pelo caminho relativo de data/ do CWD (mesmo
+    # padrao do --db-join): e isso que faz a pagina publica ganhar o bloco
+    # amanha sem tocar publish_pages/refresh_daily (que nao passam flags).
+    # Ausente/malformado NUNCA e erro: load tolerante -> {} -> sem bloco.
+    enrichment_path = (
+        Path(args.enrichment) if args.enrichment
+        else Path("data/enrichment/enrichment_results.jsonl")
+    )
+    enrichment_map = enr_present.view_map(
+        enr_present.load_enrichment(enrichment_path)
+    )
+
     page = render_html(
         top_jobs,
         total=len(filtered),
@@ -2346,6 +2549,8 @@ def main(argv: list[str] | None = None) -> int:
         # nunca quebra a pagina — secoes viram Not available).
         company_intel_map=opportunity_intel.load_company_intel(args.company_intel),
         loc_map=opportunity_intel.load_location_intel(args.location_intel),
+        # Fase 3 — enrichment LLM (view read-only; ausente -> sem bloco).
+        enrichment_map=enrichment_map,
     )
 
     out = "-" if args.output == "-" else Path(args.output or DEFAULT_OUTPUT)
