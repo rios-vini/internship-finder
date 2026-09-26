@@ -776,6 +776,23 @@ menções a `jobs.db`/caminhos privados).
 Relatório oficial: `docs/relatorio_fase8_decision_tracking.md`. Testes:
 `scripts/test_personal_tracker.py` (novo, 30º — cobre os 20 itens do §25).
 
+### Enrichment LLM (camada opcional — Fases 1–3, 24–26/09)
+
+Camada isolada que extrai dados estruturados da **página oficial da vaga**
+(GLM-5.3-Flash via API NVIDIA, evidência literal ≤200 chars por campo).
+A Fase 3 **integrou os dados aos produtos** — ranking HTML, Candidate Fit e
+Telegram Daily Digest — sempre como **contexto de apresentação**: nunca
+decide elegibilidade, nunca altera score, nunca reordena, nunca exclui
+vaga. No HTML, cada vaga analisada ganha um bloco recolhível `🔎 Análise
+da página oficial (LLM)` (salário, modalidade, local, idiomas, matrícula,
+os 8 conceitos de work authorization SEPARADOS, deadline do empregador,
+evidências citadas da página) e linhas extras no Candidate Fit (ex.:
+cidadania UE como alerta); o Telegram ganha a seção compacta
+`🔎 Enrichment` (até 5 vagas, 1 linha cada). Tudo funciona 100% sem
+enrichment (vagas sem análise simplesmente não mostram o bloco) e nenhum
+dado privado do tracker é exposto. Documento autoritativo:
+`docs/enrichment.md`.
+
 ## Runbook
 
 ### Como adicionar empresas
