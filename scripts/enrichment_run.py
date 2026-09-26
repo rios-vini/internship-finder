@@ -2,17 +2,19 @@
 """Enrichment LLM incremental — runner standalone da camada de enriquecimento.
 
 Fase 2: o enrichment virou INCREMENTAL, automatico e operacionalmente
-seguro. Fluxo: planejamento deterministico sobre TODAS as elegiveis
-(``new``/``retry``/``seen``) -> fetch sweep de todas (fetch + normalize +
-SHA-256) -> ``seen`` identico ao record e sem pendencia = ``cache_hit``
-(zero LLM) -> pool ``retry -> new -> changed/changed_source`` (score desc)
-com cap de CHAMADAS LLM por run -> extracao GLM-5.3-Flash sequencial ->
-upsert atomico (falha nova NUNCA apaga sucesso anterior; conteudo novo
-com falha vira ``pending_content_hash`` no record preservado) -> resumo
-operacional + status file ``data/enrichment/enrichment_status.json``.
-Continua STANDALONE: nenhum modulo do pipeline chama isto; a camada pode
-falhar por completo sem afetar coleta, eligibility, dedup, ranking,
-Telegram ou publicacao.
+seguro. Fluxo: planejamento deterministico sobre o corte do ranking
+(``--top-n`` mais bem ranqueadas; ``new``/``retry``/``seen``) -> fetch
+sweep do corte (fetch + normalize + SHA-256) -> ``seen`` identico ao
+record e sem pendencia = ``cache_hit`` (zero LLM) -> pool ``retry -> new
+-> changed/changed_source`` (score desc) com cap de CHAMADAS LLM por run
+-> extracao GLM-5.3-Flash sequencial -> upsert atomico (falha nova NUNCA
+apaga sucesso anterior; conteudo novo com falha vira
+``pending_content_hash`` no record preservado) -> resumo operacional +
+status file ``data/enrichment/enrichment_status.json``. Vagas fora do
+corte NUNCA entram no backlog (records preservados; cobertura ao
+reentrar no corte). Continua STANDALONE: nenhum modulo do pipeline chama
+isto; a camada pode falhar por completo sem afetar coleta, eligibility,
+dedup, ranking, Telegram ou publicacao.
 
 Uso:
 
@@ -51,6 +53,13 @@ from internship_finder.enrichment import runner  # noqa: E402
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Camada de enrichment LLM incremental (fetch + GLM-5.3-Flash)"
+    )
+    parser.add_argument(
+        "--top-n", type=int, default=runner.DEFAULT_TOP_N,
+        help="corte do ranking: somente as N vagas mais bem ranqueadas "
+        "(score desc, id desc) entram no plano/backlog (default 30); "
+        "vagas fora do corte ficam com seus records preservados e sao "
+        "cobertas ao reentrar no corte",
     )
     parser.add_argument(
         "--limit", type=int, default=runner.DEFAULT_LIMIT,

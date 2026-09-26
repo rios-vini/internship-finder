@@ -775,6 +775,47 @@ with tempfile.TemporaryDirectory() as tmp:
           == ["A|ats:1", "B|ats:1", "C|ats:1", "D|ats:1"])
     check("plano: vaga sem id pulada", len(plan) == 4)
 
+# 9a-bis. corte do ranking (--top-n, decisao do dono 26/09): SOMENTE as N
+#     vagas mais bem ranqueadas entram no plano; fora do corte nunca entra
+#     no backlog por ser nova; vaga fora que reentra e coberta no plano do
+#     dia; record de vaga fora do corte permanece intocado no store.
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp) / "out.jsonl"
+    store = EnrichmentStore(out)
+    # record de FALHA numa vaga que esta FORA do corte (rank 4 com top 3)
+    fail_out = build_record(
+        make_job("Z|ats:9", score=1.0), fetched_at="t1", page_status="ok",
+        final_url="http://z/9", http_status=200, content_hash="hz",
+        error="llm_error:http_429", model=llm.MODEL,
+    )
+    store.upsert(fail_out)
+    jobs = [
+        make_job("A|ats:1", score=9.0),
+        make_job("B|ats:1", score=8.0),
+        make_job("C|ats:1", score=7.0),
+        make_job("Z|ats:9", score=1.0),  # fora do corte top 3
+    ]
+    plan3 = runner.plan_jobs(jobs, store.load(), top_n=3)
+    check("top-n: plano limitado as N mais bem ranqueadas",
+          [str(p.job["id"]) for p in plan3]
+          == ["A|ats:1", "B|ats:1", "C|ats:1"])
+    check("top-n: vaga fora do corte NUNCA entra no plano",
+          all(str(p.job["id"]) != "Z|ats:9" for p in plan3))
+    # reentrada: com corte maior a vaga volta (retry — record de falha)
+    plan4 = runner.plan_jobs(jobs, store.load(), top_n=4)
+    check("top-n: vaga fora do corte e coberta ao reentrar",
+          [p.bucket for p in plan4] == ["new", "new", "new", "retry"])
+    # record de vaga fora do corte permanece intocado (Caso E da spec)
+    check("top-n: record de vaga fora do corte preservado no store",
+          store.load()["Z|ats:9"]["error"] == "llm_error:http_429")
+    # top_n=0: plano vazio (corte legitimo; run real -> exit 2 via 'nao
+    # processado' — defensivo, documentado)
+    plan0 = runner.plan_jobs(jobs, store.load(), top_n=0)
+    check("top-n: corte 0 -> plano vazio", plan0 == [])
+    # sem top_n (None): comportamento corpus completo (backward-compat)
+    plan_all = runner.plan_jobs(jobs, store.load(), top_n=None)
+    check("top-n: top_n=None -> plano completo", len(plan_all) == 4)
+
 # 9b. vaga nova -> enrichment (D8.1); ja enriquecida + hash igual ->
 #     cache_hit com ZERO chamadas LLM (D8.2); idempotencia (D8.12)
 with tempfile.TemporaryDirectory() as tmp:

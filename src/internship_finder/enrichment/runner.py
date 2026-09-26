@@ -59,6 +59,7 @@ from internship_finder.enrichment.store import EnrichmentStore
 # Cap default de chamadas LLM por run (decisao D2/D15: backlog e processado
 # naturalmente em execucoes futuras; 24 extracoes x 16-290s medidos).
 DEFAULT_LIMIT = 24
+DEFAULT_TOP_N = 30
 DEFAULT_SLEEP_FETCH = 2.0
 
 # Lock de concorrencia (spec secao 14): flock do SO no diretorio do store —
@@ -93,15 +94,25 @@ def job_sort_key(job: dict) -> tuple:
     return (float(job.get("score") or 0), str(job.get("id")))
 
 
-def plan_jobs(jobs: list, records: dict) -> list:
-    """Plano deterministico sobre TODAS as vagas elegiveis.
+def plan_jobs(jobs: list, records: dict, top_n: int | None = None) -> list:
+    """Plano deterministico sobre o corte do ranking (spec fase 2 + decisao
+    do dono 26/09): quando ``top_n`` e dado, SOMENTE as ``top_n`` vagas mais
+    bem ranqueadas (score desc, id desc) entram no plano — o sweep, o pool,
+    o cap de LLM e o backlog operam sobre esse subconjunto. Vagas fora do
+    corte NUNCA entram no backlog por serem novas; seus records existentes
+    (sucessos/falhas/pendencias) sao preservados no store intocados e a vaga
+    e coberta no dia em que reentrar no corte. Isso espelha o desenho do
+    spike original (top 30) e mantem o custo diario bornado pelo corte, nao
+    pelo corpus.
 
     Bucket por record existente no store: sem record -> ``new``; record de
-    falha (``extracted_at=None``) -> ``retry``; record de sucesso ->
-    ``seen`` (indeciso ate o fetch — o delta so e conhecido apos o hash).
+    falha (``extracted_at=None``) -> ``retry``; record de sucesso ->``seen``
+    (indeciso ate o fetch — o delta so e conhecido apos o hash).
     Vagas sem ``id`` sao puladas (input malformado; o schema exige job_id).
     """
     ordered = sorted(jobs, key=job_sort_key, reverse=True)
+    if top_n is not None and top_n >= 0:
+        ordered = ordered[:top_n]
     items: list = []
     for job in ordered:
         job_id = str(job.get("id") or "")
@@ -184,6 +195,7 @@ def run_incremental(
     store: EnrichmentStore,
     *,
     limit: int = DEFAULT_LIMIT,
+    top_n: int | None = None,
     transport=None,
     backoff: tuple = llm.DEFAULT_BACKOFF_S,
     sleep_fetch: float = DEFAULT_SLEEP_FETCH,
@@ -390,6 +402,7 @@ def run_incremental(
     duration = round(time.monotonic() - started, 1)
     return {
         "total_eligible": total,
+        "top_n": top_n,
         "cache_hits": counts["cache_hits"],
         "new": counts["bucket_new"],
         "retry": counts["bucket_retry"],
@@ -425,6 +438,7 @@ def format_summary(summary: dict) -> str:
     lines = [
         "== Resumo do enrichment (fase 2) ==",
         f"vagas elegiveis: {summary.get('total_eligible', 0)}",
+        f"corte do ranking: top {summary.get('top_n', '-')}",
         f"cache hits: {summary.get('cache_hits', 0)}",
         "pool: "
         f"new {summary.get('new', 0)} | retry {summary.get('retry', 0)} | "
@@ -566,7 +580,7 @@ def run(args, *, transport=None, backoff: tuple = llm.DEFAULT_BACKOFF_S, log=pri
     output_path = Path(args.output)
     store = EnrichmentStore(output_path)
     records = store.load()
-    plan = plan_jobs(jobs, records)
+    plan = plan_jobs(jobs, records, top_n=getattr(args, "top_n", None))
 
     if args.dry_run:
         buckets = Counter(item.bucket for item in plan)
@@ -578,6 +592,7 @@ def run(args, *, transport=None, backoff: tuple = llm.DEFAULT_BACKOFF_S, log=pri
             f"seen={buckets['seen']}"
         )
         print(
+            f"corte do ranking: top {int(getattr(args, 'top_n', 0) or 0)} | "
             f"cap de extracoes LLM: {max(0, int(args.limit))} | "
             f"store: {len(records)} records"
         )
@@ -615,6 +630,7 @@ def run(args, *, transport=None, backoff: tuple = llm.DEFAULT_BACKOFF_S, log=pri
             key,
             store,
             limit=args.limit,
+            top_n=getattr(args, "top_n", None),
             transport=transport,
             backoff=backoff,
             sleep_fetch=args.sleep_fetch,

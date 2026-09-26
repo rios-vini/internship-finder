@@ -905,6 +905,8 @@ def test_enrichment_gate_e_exitcode() -> None:
         check("subprocesso e o enrichment_run.py com --limit",
               cmd[1].endswith("enrichment_run.py")
               and "--limit" in cmd and "24" in cmd)
+        check("subprocesso propaga o corte do ranking (--top-n 30)",
+              "--top-n" in cmd and "30" in cmd)
         check("cwd do subprocesso = raiz do repo", cwd == root)
         check("NVIDIA_API_KEY injetada no env do subprocesso",
               (env or {}).get("NVIDIA_API_KEY") == "fake-key-refresh-test")

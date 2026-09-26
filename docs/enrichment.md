@@ -7,7 +7,8 @@ enriquece com evidência, NUNCA decide eligibility, score ou ranking.
 
 Novidades da Fase 2 sobre a v1: **delta incremental** (somente o que mudou
 vai à LLM), **execução automática após o refresh** (`refresh_daily.py
---enrichment`), **limite de carga por run** (`--limit`), **lock de
+--enrichment`), **corte do ranking** (`--top-n`, default 30 — só o topo do
+dia entra no plano), **limite de carga por run** (`--limit`), **lock de
 concorrência** (flock, exit 3), **preservação com pendência** (falha de
 conteúdo novo nunca apaga o último sucesso válido) e **health file**
 (`enrichment_status.json`).
@@ -17,11 +18,14 @@ conteúdo novo nunca apaga o último sucesso válido) e **health file**
 ```
 refresh diário (cron 09:00 UTC)
   → coleta → eligibility → ranking → outputs (Pages/Telegram)   [fluxo existente]
-  → refresh_daily.py --enrichment --enrichment-limit 24
+  → refresh_daily.py --enrichment --enrichment-limit 24 --enrichment-top-n 30
       → scripts/enrichment_run.py (subprocesso standalone)
-          → planejamento (TODAS as elegíveis, ordem (score desc, id desc))
+          → planejamento (corte do ranking: as --top-n mais bem ranqueadas,
+            ordem (score desc, id desc); default 30)
               sem record → new | falha → retry | sucesso → seen
-          → fetch sweep (fetch + normalize_html + SHA-256, TODAS, 1 tentativa,
+              vagas fora do corte NUNCA entram no backlog (records
+              preservados; cobertura ao reentrar no corte)
+          → fetch sweep do corte (fetch + normalize_html + SHA-256, 1 tentativa,
             pausa --sleep-fetch entre fetches)
           → delta: seen + (job_id, final_url, content_hash) idêntico ao record
             e SEM pendência → cache_hit (zero LLM, zero escrita)
@@ -90,17 +94,18 @@ Regra central: **uma falha nova NUNCA apaga um enrichment válido anterior.**
 
 # incremental manual (key exclusivamente do env — nunca em arquivo):
 export NVIDIA_API_KEY="..."
-.venv/bin/python scripts/enrichment_run.py --limit 24
+.venv/bin/python scripts/enrichment_run.py --top-n 30 --limit 24
 ```
 
 **Diária (produção)**: o `refresh_daily.py` ganhou `--enrichment`
-(default OFF — preserva o comportamento atual e o `--dry-run`) e
-`--enrichment-limit N` (default 24). No fim do `main()`, após TODOS os
+(default OFF — preserva o comportamento atual e o `--dry-run`),
+`--enrichment-limit N` (default 24) e `--enrichment-top-n N` (default
+30, corte do ranking — decisão do dono 26/09). No fim do `main()`, após TODOS os
 dados principais (rotate → coleta → backup → health → publish → digest →
 mensagem → run_info), se `--enrichment` e o gate
 `publish_pages.publication_allowed(exit_code, eligible)` liberarem
 (exit 0/2 com eligible > 0 — a MESMA decisão da publicação), o refresh
-roda `scripts/enrichment_run.py --limit N` como subprocesso. A key é
+roda `scripts/enrichment_run.py --limit N --top-n N` como subprocesso. A key é
 montada no env do subprocesso: `NVIDIA_API_KEY` de `os.environ` OU do
 `.env` (via `load_env_config`); ausente em ambos → log "enrichment
 pulado: NVIDIA_API_KEY ausente" e o refresh segue (NUNCA é erro).
@@ -115,10 +120,19 @@ segundo scheduler: é a mesma linha do refresh diário.
 
 - **Sequencial**, uma vaga por vez (latência 16–290s/vaga; paralelismo
   esbarraria em rate limit). `--sleep-fetch` (default 2s) entre fetches.
+- **Corte do ranking (`--top-n N` / `--enrichment-top-n N`, default 30)**
+  — decisão do dono 26/09: SOMENTE as N vagas mais bem ranqueadas do dia
+  entram no plano (sweep, pool e backlog operam sobre o corte). Vagas fora
+  do corte **nunca** entram no backlog por serem novas; seus records
+  (sucessos, falhas, pendências) ficam preservados no store e a vaga é
+  coberta no dia em que reentrar no corte. O custo diário fica limitado
+  pelo corte, não pelo corpus (~406 vagas hoje). `--top-n 0` = corte
+  vazio (plano vazio); o default do projeto é 30.
 - **`--limit N`** (default 24) = cap de CHAMADAS LLM por run, sobre o pool
-  `retry → new → changed/changed_source`. O excedente fica
-  `pending_backlog` e é pego naturalmente pelo próximo run (backlog de
-  ~400 vagas esvazia em ~17 dias com cap 24).
+  `retry → new → changed/changed_source` do corte. O excedente fica
+  `pending_backlog` e é pego naturalmente pelo próximo run (com o corte
+  em 30, o backlog máximo é ~30 — um run de cap 24 quase sempre esvazia
+  no dia seguinte).
 - Uma vaga nunca bloqueia as demais: exceção vira record de erro
   (`runner_error:<Tipo>`) e o lote segue.
 
@@ -149,6 +163,7 @@ do cron):
 ```
 == Resumo do enrichment (fase 2) ==
 vagas elegiveis: N
+corte do ranking: top N
 cache hits: N
 pool: new N | retry N | changed N | changed_source N
 selecionadas p/ LLM: N (cap N) | backlog pendente: N
@@ -205,11 +220,13 @@ persistido: `last_error`, `last_failed_at`, `pending_content_hash`.
 ## Limitações conhecidas
 
 - **JS-render fora de escopo** (~7% no spike): ficam `js_rendered`.
-- **Sweep diário de fetch de TODAS as elegíveis** (~406 GETs com pausa de
-  2s ≈ 14 min): é o custo de detectar mudança por hash; aceitável para
-  uma vez ao dia, mas é o gargalo do run.
+- **Sweep diário de fetch do corte** (30 GETs com pausa de 2s ≈ 1 min no
+  corte default; ~406 GETs ≈ 14 min apenas com `--top-n` alto): é o custo
+  de detectar mudança por hash; com o corte em 30 deixa de ser gargalo.
 - **`glm-5.3` (não-flash) proibido**: queima max_tokens em reasoning
   (A/B 5/5 no spike); o flash é o único modelo suportado.
-- Backlog inicial (~380 vagas sem record) esvazia em ~2 semanas com cap
-  24; `--enrichment-limit` ajusta a vazão se necessário.
+- Com o corte em 30, o backlog máximo é ~30 vagas/dia: um run de cap 24
+  quase sempre esvazia no dia seguinte (vagas fora do corte não acumulam
+  backlog por serem novas). `--enrichment-limit` e `--enrichment-top-n`
+  ajustam vazão e abrangência.
 - O condicional `oder` é tratado só no prompt (decisão de taxonomia v1).
