@@ -1,305 +1,551 @@
-"""Runner sequencial da camada de enrichment (Fase enrichment v1).
+"""Runner incremental da camada de enrichment (Fase 2 — enrichment LLM v2).
 
-Fluxo por vaga (processamento INDEPENDENTE — excecao de uma vaga vira
-record de erro e o lote segue; latencia real 16-290s/vaga torna o
-sequencial a unica opcao segura contra rate limit):
+Fluxo do run (spec da fase 2):
 
-  selecao deterministica -> fetch -> normalizacao -> cache (job_id +
-  final_url + content_hash) -> extracao GLM-5.3-Flash -> EnrichmentRecord
-  -> upsert incremental no JSONL (escrita atomica).
+  planejamento deterministico sobre eligible_jobs.json
+    (ordem (score desc, id desc); bucket por record existente:
+     sem record -> new; record de falha -> retry; sucesso -> seen)
+  -> fetch sweep: TODAS as vagas do plano -> fetch + normalize + SHA-256
+     (delta = job_id + final_url + content_hash, infra da Fase 1)
+  -> seen + identico ao record de sucesso e SEM pendencia -> cache_hit
+     (zero LLM, zero escrita)
+  -> pool p/ LLM: retry -> new -> changed/changed_source (cada bloco por
+     score desc), cap ``--limit`` sobre CHAMADAS LLM; excedente fica
+     ``pending_backlog`` p/ o proximo run
+  -> extracao GLM-5.3-Flash sequencial (3 tentativas, backoff 30/60s,
+     isolamento por vaga — uma vaga nunca bloqueia as demais)
+  -> EnrichmentRecord -> upsert (escrita atomica; falha nova NUNCA apaga
+     sucesso anterior — conteudo novo com falha vira PENDENCIA no record
+     preservado, spec secao 9)
+  -> resumo operacional + status file de health (enrichment_status.json)
 
 A LLM apenas enriquece com evidencia — NUNCA decide eligibility, score ou
 ranking; nenhum modulo existente importa este pacote.
+
+Exit codes (spec fase 2 / decisao D5):
+
+- 0: run concluido (falha individual de vaga e dado, nao e erro);
+- 1: erro de setup (input ilegivel, eligible vazio, key ausente, modelo
+  indisponivel);
+- 2: nenhuma vaga processada (ex.: ``--limit 0`` com pool pendente);
+- 3: execucao concorrente detectada (lock ocupado).
 """
 
 from __future__ import annotations
 
+import fcntl
 import json
+import os
 import statistics
 import sys
+import tempfile
 import time
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from internship_finder import app_intel
 from internship_finder.enrichment import fetch as fetch_mod
 from internship_finder.enrichment import html_norm
 from internship_finder.enrichment import llm
 from internship_finder.enrichment.schema import (
     CONTENT_LIMIT,
-    EnrichmentRecord,
     build_record,
     fields_from_llm,
     hash_content,
 )
 from internship_finder.enrichment.store import EnrichmentStore
 
-DEFAULT_TOP = 16
-DEFAULT_EXTRA_WA = 4
-DEFAULT_EXTRA_NODES = 4
+# Cap default de chamadas LLM por run (decisao D2/D15: backlog e processado
+# naturalmente em execucoes futuras; 24 extracoes x 16-290s medidos).
+DEFAULT_LIMIT = 24
 DEFAULT_SLEEP_FETCH = 2.0
+
+# Lock de concorrencia (spec secao 14): flock do SO no diretorio do store —
+# processo morto libera sozinho, sem stale lock, sem cleanup manual.
+LOCK_FILE_NAME = ".enrichment.lock"
+
+# Health da camada (spec secao 12): um JSON ao lado do store, escrita atomica.
+STATUS_FILE_NAME = "enrichment_status.json"
 
 
 def now_iso() -> str:
-    """Timestamp ISO UTC (segundos) — fetched_at/extracted_at."""
+    """Timestamp ISO UTC (segundos) — fetched_at/extracted_at/last_run_at."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def select_sample(
-    jobs: list,
-    top: int = DEFAULT_TOP,
-    extra_wa: int = DEFAULT_EXTRA_WA,
-    extra_nodesc: int = DEFAULT_EXTRA_NODES,
-) -> list:
-    """Amostra deterministica e representativa, sem rede e sem LLM.
+# ---------------------------------------------------------------------------
+# Planejamento (pre-fetch, deterministico, sem rede)
+# ---------------------------------------------------------------------------
 
-    Ordena por ``(score desc, id desc)`` e compoe: top N + primeiras M fora
-    do top com work authorization detectada no feed (detector atual, read-
-    only via ``app_intel.work_authorization``) + primeiras M sem
-    ``description`` no feed (a pagina oficial e a unica fonte para elas).
-    Duas chamadas identicas -> mesmo resultado; ids unicos (cada vaga entra
-    em no maximo um bucket). Amostra, nao corpus: nao processamos as 406
-    indiscriminadamente (latencia/tokens medidos no spike).
+
+@dataclass
+class PlanItem:
+    """Uma vaga do plano: job do ranking + bucket + record atual do store."""
+
+    job: dict
+    bucket: str  # new | retry | seen
+    record: dict | None
+
+
+def job_sort_key(job: dict) -> tuple:
+    """Ordem deterministica do plano: (score desc, id desc)."""
+    return (float(job.get("score") or 0), str(job.get("id")))
+
+
+def plan_jobs(jobs: list, records: dict) -> list:
+    """Plano deterministico sobre TODAS as vagas elegiveis.
+
+    Bucket por record existente no store: sem record -> ``new``; record de
+    falha (``extracted_at=None``) -> ``retry``; record de sucesso ->
+    ``seen`` (indeciso ate o fetch — o delta so e conhecido apos o hash).
+    Vagas sem ``id`` sao puladas (input malformado; o schema exige job_id).
     """
-    ordered = sorted(
-        jobs,
-        key=lambda j: (float(j.get("score") or 0), str(j.get("id"))),
-        reverse=True,
-    )
-    selected: list = ordered[:top]
-    seen = {str(j.get("id")) for j in selected}
-    rest = ordered[top:]
-
-    wa_extras: list = []
-    for job in rest:
-        if len(wa_extras) >= extra_wa:
-            break
-        if str(job.get("id")) in seen:
+    ordered = sorted(jobs, key=job_sort_key, reverse=True)
+    items: list = []
+    for job in ordered:
+        job_id = str(job.get("id") or "")
+        if not job_id:
             continue
-        text = f"{job.get('title') or ''} {job.get('description') or ''}"
-        if app_intel.work_authorization(text)["state"] != "not_mentioned":
-            wa_extras.append(job)
-            seen.add(str(job.get("id")))
-
-    nodesc_extras: list = []
-    for job in rest:
-        if len(nodesc_extras) >= extra_nodesc:
-            break
-        if str(job.get("id")) in seen:
-            continue
-        if not (job.get("description") or "").strip():
-            nodesc_extras.append(job)
-            seen.add(str(job.get("id")))
-
-    return selected + wa_extras + nodesc_extras
+        record = records.get(job_id)
+        if record is None:
+            bucket = "new"
+        elif record.get("extracted_at") is None:
+            bucket = "retry"
+        else:
+            bucket = "seen"
+        items.append(PlanItem(job=job, bucket=bucket, record=record))
+    return items
 
 
-def should_skip(
-    store: EnrichmentStore, job_id: str, final_url: str | None, content_hash: str | None
-) -> bool:
-    """Cache/idempotencia: record bem-sucedido com MESMO job_id + final_url
-    + content_hash -> skip da LLM. Record anterior e falha -> retry permitido.
-    Conteudo mudou (hash diferente) -> novo enrichment (upsert)."""
-    previous = store.get(job_id)
-    if previous is None or previous.get("extracted_at") is None:
-        return False
-    return (
-        previous.get("final_url") == final_url
-        and previous.get("content_hash") == content_hash
-    )
+def classify_seen(record: dict, final_url: str | None, content_hash: str | None) -> str:
+    """Classifica pos-fetch uma vaga com record de sucesso (delta, D2/D6).
+
+    - ``final_url`` diferente -> ``changed_source`` (a origem mudou;
+      reprocessar — a chave de cache inclui a URL);
+    - hash igual ao do sucesso E sem pendencia -> ``cache_hit``;
+    - hash igual ao ``pending_content_hash`` -> ``retry`` (a versao pendente
+      voltou; reprocessar);
+    - demais casos -> ``changed`` (mudou de novo, ou reverteu ao conteudo do
+      sucesso com pendencia registrada — conservador: reprocessa).
+
+    Conservador por design (dados preservados > performance): quando ha
+    pendencia o cache_hit so acontece se o hash casar E a pendencia nao
+    existir — uma pendencia nunca e silenciada por um cache.
+    """
+    if final_url != record.get("final_url"):
+        return "changed_source"
+    if (
+        content_hash is not None
+        and content_hash == record.get("content_hash")
+        and not record.get("pending_content_hash")
+    ):
+        return "cache_hit"
+    if (
+        content_hash is not None
+        and content_hash == record.get("pending_content_hash")
+    ):
+        return "retry"
+    return "changed"
 
 
-def process_job(
-    job: dict,
+# ---------------------------------------------------------------------------
+# Concorrencia (spec secao 14)
+# ---------------------------------------------------------------------------
+
+
+def acquire_lock(output_path: Path):
+    """flock exclusivo nao-bloqueante em ``<dir do --output>/.enrichment.lock``.
+
+    Retorna o fd aberto (o chamador segura ate o fim do run e fecha no
+    finally) ou ``None`` quando outra execucao detem o lock. flock do SO:
+    processo morto libera sozinho — sem stale lock, sem cleanup manual.
+    ``--dry-run`` nao passa por aqui (read-only).
+    """
+    lock_path = output_path.parent / LOCK_FILE_NAME
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return None
+    return fd
+
+
+# ---------------------------------------------------------------------------
+# Execucao incremental (sweep + pool + LLM)
+# ---------------------------------------------------------------------------
+
+
+def run_incremental(
+    plan: list,
     key: str,
     store: EnrichmentStore,
     *,
-    transport=None,
-    backoff: tuple = llm.DEFAULT_BACKOFF_S,
-    model: str = llm.MODEL,
-) -> tuple[dict, str]:
-    """Processa UMA vaga de ponta a ponta. Retorna (record dict, evento).
-
-    Eventos: page_status da vaga / ``cache_hit`` / ``upsert:written`` /
-    ``upsert:preserved``. Excecao nao capturada aqui e problema do codigo —
-    ``process_batch`` isola por vaga e transforma em record de erro.
-    """
-    url = str(job.get("url") or "")
-    company = str(job.get("company") or "")
-    title = str(job.get("title") or "")
-    source = str(job.get("source") or "")
-    job_id = str(job.get("id") or "")
-
-    resp = fetch_mod.fetch_page(url, transport)
-    text = html_norm.normalize_html(resp.html or "") if resp.html is not None else ""
-    content_hash = hash_content(text) if resp.html is not None else None
-    status = fetch_mod.classify_page(resp, text, job)
-    common = dict(
-        job=job,
-        fetched_at=now_iso(),
-        page_status=status,
-        final_url=resp.final_url,
-        http_status=resp.http_status,
-        content_hash=content_hash,
-    )
-
-    if status != "ok":
-        record = build_record(
-            **common,
-            error=(resp.error if resp.error else None),
-            model=model,
-        )
-        event = store.upsert(record)
-        return record.model_dump(mode="json"), f"{status}:{event}"
-
-    # So page_status=ok chega aqui — cache por (job_id, final_url, content_hash)
-    if should_skip(store, job_id, resp.final_url, content_hash):
-        return store.get(job_id), "cache_hit"
-
-    truncated = len(text) > CONTENT_LIMIT
-    content = text[:CONTENT_LIMIT] if truncated else text
-    prompt = llm.build_prompt(company, title, content)
-    parsed, usage, latency, attempts, error = llm.extract(
-        key, prompt, model=model, transport=transport, backoff=backoff
-    )
-
-    if parsed is None:
-        record = build_record(
-            **common,
-            error=f"llm_error:{error or 'unknown'}",
-            model=model,
-            attempts=attempts,
-            latency_s=latency,
-            usage=usage,
-        )
-        event = store.upsert(record)
-        return record.model_dump(mode="json"), f"llm_error:{event}"
-
-    record = build_record(
-        **common,
-        fields=fields_from_llm(parsed),
-        content_truncated=truncated,
-        model=model,
-        extracted_at=now_iso(),
-        attempts=attempts,
-        latency_s=latency,
-        usage=usage,
-    )
-    event = store.upsert(record)
-    return record.model_dump(mode="json"), f"ok:{event}"
-
-
-def process_batch(
-    jobs: list,
-    key: str,
-    store: EnrichmentStore,
-    *,
+    limit: int = DEFAULT_LIMIT,
     transport=None,
     backoff: tuple = llm.DEFAULT_BACKOFF_S,
     sleep_fetch: float = DEFAULT_SLEEP_FETCH,
     log=print,
 ) -> dict:
-    """Lote sequencial com isolamento por vaga + resumo agregado.
+    """Sweep completo + pool com cap + extracao sequencial. Retorna o resumo.
 
-    Cada vaga: try/except completo — excecao vira record de erro
-    (``runner_error:<Tipo>``) e o lote segue. Resumo: counts por
-    page_status, extracoes ok/falha, cache_hits, latencias min/med/max e
-    tokens totais do run.
+    Isolamento por vaga em TODAS as fases: excecao vira record de erro
+    (``runner_error:<Tipo>``) e o lote segue (spec secao 8 — uma vaga nao
+    bloqueia permanentemente as demais). Fetch de UMA tentativa por URL
+    (retry na camada LLM; martelar servidor de carreira nao e aceitavel).
     """
-    records: list[dict] = []
-    stats: Counter = Counter()
-    latencies: list[float] = []
+    counts: Counter = Counter()
+    page_status_counts: Counter = Counter()
+    fetch_secs: list[float] = []
+    llm_secs: list[float] = []
     tokens_in = tokens_out = 0
-    total = len(jobs)
-    for index, job in enumerate(jobs, 1):
+    last_error: str | None = None
+    total = len(plan)
+    started = time.monotonic()
+
+    def _upsert_failure(job: dict, common: dict, error: str | None) -> str:
+        """Record de nao-extracao + upsert (preserva sucesso anterior)."""
+        record = build_record(**common, error=error, model=llm.MODEL)
+        return store.upsert(record)
+
+    # --- fetch sweep: TODAS as vagas do plano (fetch + normalize + hash) ---
+    pool: list[dict] = []
+    for index, item in enumerate(plan, 1):
+        job = item.job
+        company = str(job.get("company") or "")
+        title = str(job.get("title") or "")
         try:
-            record, event = process_job(
-                job, key, store, transport=transport, backoff=backoff
+            t0 = time.monotonic()
+            resp = fetch_mod.fetch_page(str(job.get("url") or ""), transport)
+            fetch_secs.append(round(time.monotonic() - t0, 2))
+            text = (
+                html_norm.normalize_html(resp.html or "")
+                if resp.html is not None
+                else ""
             )
-        except Exception as exc:  # isolamento por vaga — o lote segue
-            record = build_record(
+            content_hash = hash_content(text) if resp.html is not None else None
+            status = fetch_mod.classify_page(resp, text, job)
+            common = dict(
                 job=job,
                 fetched_at=now_iso(),
-                page_status="fetch_error",
-                error=f"runner_error:{type(exc).__name__}",
-            ).model_dump(mode="json")
-            event = "runner_error:written"
+                page_status=status,
+                final_url=resp.final_url,
+                http_status=resp.http_status,
+                content_hash=content_hash,
+            )
+            if status != "ok":
+                # Fetch falho: conta nas metricas e segue pelo caminho normal
+                # de falha (upsert preserva sucesso anterior com last_error).
+                page_status_counts[status] += 1
+                error = resp.error or f"page_status:{status}"
+                event = _upsert_failure(job, common, error)
+                if event == "preserved":
+                    counts["preserved"] += 1
+                last_error = f"{job.get('id')}: {error}"
+                log(
+                    f"[{index}/{total}] {status:<14} {company[:20]:<22} "
+                    f"{title[:40]} upsert:{event}"
+                )
+            else:
+                if item.bucket == "seen":
+                    bucket = classify_seen(
+                        item.record or {}, resp.final_url, content_hash
+                    )
+                else:
+                    bucket = item.bucket
+                if bucket == "cache_hit":
+                    counts["cache_hits"] += 1
+                    log(
+                        f"[{index}/{total}] cache_hit      {company[:20]:<22} "
+                        f"{title[:40]}"
+                    )
+                else:
+                    counts[f"bucket_{bucket}"] += 1
+                    pool.append(
+                        dict(
+                            job=job,
+                            bucket=bucket,
+                            text=text,
+                            content_hash=content_hash,
+                            final_url=resp.final_url,
+                            http_status=resp.http_status,
+                            fetched_at=common["fetched_at"],
+                        )
+                    )
+                    log(
+                        f"[{index}/{total}] pool:{bucket:<11} {company[:20]:<22} "
+                        f"{title[:40]}"
+                    )
+        except Exception as exc:  # isolamento por vaga — o lote segue
+            page_status_counts["fetch_error"] += 1
             try:
-                store.upsert(record)
+                record = build_record(
+                    job=job,
+                    fetched_at=now_iso(),
+                    page_status="fetch_error",
+                    error=f"runner_error:{type(exc).__name__}",
+                )
+                event = store.upsert(record)
+                if event == "preserved":
+                    counts["preserved"] += 1
             except Exception:
-                pass  # persistencia falhou: registro fica so no resumo
-        records.append(record)
-        stats[str(record.get("page_status"))] += 1
-        if event.startswith("cache_hit"):
-            stats["cache_hits"] += 1
-        usage = record.get("usage") or {}
-        tokens_in += usage.get("prompt_tokens") or 0
-        tokens_out += usage.get("completion_tokens") or 0
-        if record.get("extracted_at") is not None:
-            stats["extractions_ok"] += 1
-            if record.get("latency_s") is not None:
-                latencies.append(float(record["latency_s"]))
-        else:
-            stats["extractions_fail"] += 1
-        log(
-            f"[{index}/{total}] {str(record.get('page_status')):<14} "
-            f"{str(record.get('company'))[:20]:<22} "
-            f"{str(record.get('title'))[:40]} {event}"
-        )
-        if sleep_fetch > 0:
+                event = "runner_error:lost"  # persistencia falhou
+            last_error = f"{job.get('id')}: runner_error:{type(exc).__name__}"
+            log(f"[{index}/{total}] runner_error  {company[:20]:<22} {event}")
+        if sleep_fetch > 0 and index < total:
             time.sleep(sleep_fetch)
-    summary = {
-        "page_status": dict(stats),
-        "processed": total,
-        "cache_hits": stats["cache_hits"],
-        "extractions_ok": stats["extractions_ok"],
-        "extractions_fail": stats["extractions_fail"],
-        "latencies": latencies,
+
+    # --- pool p/ LLM: retry -> new -> changed/changed_source (score desc) ---
+    cap = max(0, int(limit))
+    ordered_pool = (
+        [p for p in pool if p["bucket"] == "retry"]
+        + [p for p in pool if p["bucket"] == "new"]
+        + [p for p in pool if p["bucket"] in ("changed", "changed_source")]
+    )
+    selected = ordered_pool[:cap]
+    counts["pending_backlog"] = len(ordered_pool) - len(selected)
+
+    for index, pool_item in enumerate(selected, 1):
+        job = pool_item["job"]
+        company = str(job.get("company") or "")
+        title = str(job.get("title") or "")
+        text = pool_item["text"]
+        truncated = len(text) > CONTENT_LIMIT
+        content = text[:CONTENT_LIMIT] if truncated else text
+        common = dict(
+            job=job,
+            fetched_at=pool_item["fetched_at"],
+            page_status="ok",
+            final_url=pool_item["final_url"],
+            http_status=pool_item["http_status"],
+            content_hash=pool_item["content_hash"],
+        )
+        try:
+            prompt = llm.build_prompt(company, title, content)
+            parsed, usage, latency, attempts, error = llm.extract(
+                key, prompt, transport=transport, backoff=backoff
+            )
+            counts["llm_calls"] += 1
+            counts["llm_retries"] += max(0, attempts - 1)
+            if latency is not None:
+                llm_secs.append(float(latency))
+            usage = usage or {}
+            tokens_in += usage.get("prompt_tokens") or 0
+            tokens_out += usage.get("completion_tokens") or 0
+            if parsed is None:
+                record = build_record(
+                    **common,
+                    error=f"llm_error:{error or 'unknown'}",
+                    model=llm.MODEL,
+                    attempts=attempts,
+                    latency_s=latency,
+                    usage=usage,
+                )
+                event = store.upsert(record)
+                if event == "preserved":
+                    counts["preserved"] += 1
+                counts["extractions_fail"] += 1
+                last_error = f"{job.get('id')}: llm_error:{error}"
+                log(
+                    f"[LLM {index}/{len(selected)}] falha  {company[:20]:<22} "
+                    f"{title[:40]} {error} upsert:{event}"
+                )
+            else:
+                record = build_record(
+                    **common,
+                    fields=fields_from_llm(parsed),
+                    content_truncated=truncated,
+                    model=llm.MODEL,
+                    extracted_at=now_iso(),
+                    attempts=attempts,
+                    latency_s=latency,
+                    usage=usage,
+                )
+                event = store.upsert(record)
+                counts["extractions_ok"] += 1
+                log(
+                    f"[LLM {index}/{len(selected)}] ok     {company[:20]:<22} "
+                    f"{title[:40]} upsert:{event}"
+                )
+        except Exception as exc:  # isolamento por vaga — o lote segue
+            try:
+                record = build_record(
+                    job=job,
+                    fetched_at=now_iso(),
+                    page_status="fetch_error",
+                    error=f"runner_error:{type(exc).__name__}",
+                )
+                event = store.upsert(record)
+                if event == "preserved":
+                    counts["preserved"] += 1
+            except Exception:
+                event = "runner_error:lost"
+            counts["extractions_fail"] += 1
+            last_error = f"{job.get('id')}: runner_error:{type(exc).__name__}"
+            log(f"[LLM {index}/{len(selected)}] runner_error {company[:20]:<22} {event}")
+
+    page = page_status_counts
+    duration = round(time.monotonic() - started, 1)
+    return {
+        "total_eligible": total,
+        "cache_hits": counts["cache_hits"],
+        "new": counts["bucket_new"],
+        "retry": counts["bucket_retry"],
+        "changed": counts["bucket_changed"],
+        "changed_source": counts["bucket_changed_source"],
+        "selected": len(pool),
+        "cap": cap,
+        "llm_calls": counts["llm_calls"],
+        "llm_retries": counts["llm_retries"],
+        "extractions_ok": counts["extractions_ok"],
+        "extractions_fail": counts["extractions_fail"],
+        "fetch_failures": page["timeout"] + page["fetch_error"],
+        "timeouts": page["timeout"],
+        "http_errors": page["http_error"] + page["not_found"],
+        "js_rendered": page["js_rendered"],
+        "skipped": page["js_rendered"] + page["empty_content"] + page["redirected"],
+        "preserved": counts["preserved"],
+        "pending_backlog": counts["pending_backlog"],
+        "page_status": dict(page),
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
+        "duration_s": duration,
+        "fetch_avg_s": round(statistics.mean(fetch_secs), 2) if fetch_secs else None,
+        "llm_avg_s": round(statistics.mean(llm_secs), 2) if llm_secs else None,
+        "last_error": last_error,
     }
-    return {"records": records, "summary": summary}
 
 
 def format_summary(summary: dict) -> str:
-    """Resumo final do run (counts por status, latencias, tokens)."""
-    status_counts = {
-        k: v
-        for k, v in sorted(summary.get("page_status", {}).items())
-        if k not in ("cache_hits", "extractions_ok", "extractions_fail")
-    }
-    latencies = summary.get("latencies") or []
+    """Resumo operacional do run (spec secao 4 — TODOS os campos)."""
+    fetch_avg = summary.get("fetch_avg_s")
+    llm_avg = summary.get("llm_avg_s")
     lines = [
-        "== Resumo do run ==",
-        f"vagas processadas: {summary.get('processed', 0)}",
-        "page_status: " + (
-            " ".join(f"{k}={v}" for k, v in status_counts.items()) or "nenhuma"
-        ),
-        f"extracoes: ok={summary.get('extractions_ok', 0)} "
-        f"falha={summary.get('extractions_fail', 0)}",
-        f"cache_hits: {summary.get('cache_hits', 0)}",
+        "== Resumo do enrichment (fase 2) ==",
+        f"vagas elegiveis: {summary.get('total_eligible', 0)}",
+        f"cache hits: {summary.get('cache_hits', 0)}",
+        "pool: "
+        f"new {summary.get('new', 0)} | retry {summary.get('retry', 0)} | "
+        f"changed {summary.get('changed', 0)} | "
+        f"changed_source {summary.get('changed_source', 0)}",
+        f"selecionadas p/ LLM: {summary.get('selected', 0)} "
+        f"(cap {summary.get('cap', 0)}) | "
+        f"backlog pendente: {summary.get('pending_backlog', 0)}",
+        f"LLM: chamadas {summary.get('llm_calls', 0)} | "
+        f"retries {summary.get('llm_retries', 0)} | "
+        f"ok {summary.get('extractions_ok', 0)} | "
+        f"falha {summary.get('extractions_fail', 0)}",
+        f"fetch: falhas {summary.get('fetch_failures', 0)} "
+        f"(timeouts {summary.get('timeouts', 0)}) | "
+        f"HTTP errors {summary.get('http_errors', 0)} | "
+        f"js_rendered {summary.get('js_rendered', 0)} | "
+        f"skipped {summary.get('skipped', 0)}",
+        f"preservados (falha nao apagou sucesso): {summary.get('preserved', 0)}",
+        f"tokens: in {summary.get('tokens_in', 0)} out {summary.get('tokens_out', 0)}",
+        "tempos (s): "
+        f"total {summary.get('duration_s', 0)} | "
+        f"fetch medio {fetch_avg if fetch_avg is not None else '-'} | "
+        f"LLM medio {llm_avg if llm_avg is not None else '-'}",
     ]
-    if latencies:
-        lines.append(
-            "latencia LLM (s): "
-            f"min={min(latencies):.1f} med={statistics.median(latencies):.1f} "
-            f"max={max(latencies):.1f}"
-        )
-    lines.append(
-        f"tokens: in={summary.get('tokens_in', 0)} "
-        f"out={summary.get('tokens_out', 0)}"
-    )
     return "\n".join(lines)
 
 
-def run(args) -> int:
+# ---------------------------------------------------------------------------
+# Status file (health — spec secao 12)
+# ---------------------------------------------------------------------------
+
+
+def status_path_for(output_path: Path) -> Path:
+    """Caminho do status file (ao lado do store)."""
+    return output_path.parent / STATUS_FILE_NAME
+
+
+def _read_status(path: Path) -> dict:
+    """Status anterior (tolerante: ausente/malformado -> {})."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _write_status_json(path: Path, payload: dict) -> None:
+    """Escrita atomica (tmp no mesmo diretorio + os.replace)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_name = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            dir=path.parent,
+            prefix=".status-",
+            suffix=".tmp",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            tmp_name = tmp.name
+            tmp.write(json.dumps(payload, ensure_ascii=False, indent=2))
+        os.replace(tmp_name, path)
+    except BaseException:
+        if tmp_name and os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+        raise
+
+
+def _write_run_status(
+    output_path: Path,
+    exit_code: int,
+    summary: dict | None,
+    duration_s: float,
+    last_error: str | None,
+) -> None:
+    """Health do run (spec secao 12). Best-effort: falha nunca derruba o run.
+
+    ``last_success_at`` so avanca em exit 0 (run concluido) — um run de
+    setup falho preserva o ultimo sucesso, que e exatamente o sinal de
+    \"o enrichment parou de funcionar\" quando parado no tempo.
+    """
+    path = status_path_for(output_path)
+    previous = _read_status(path)
+    success_at = now_iso() if exit_code == 0 else previous.get("last_success_at")
+    counts = {
+        k: v
+        for k, v in (summary or {}).items()
+        if isinstance(v, int) and not isinstance(v, bool)
+    }
+    payload = {
+        "last_run_at": now_iso(),
+        "last_success_at": success_at,
+        "last_exit_code": exit_code,
+        "model": llm.MODEL,
+        "counts": counts,
+        "last_error": last_error,
+        "duration_s": round(duration_s or 0.0, 1),
+    }
+    try:
+        _write_status_json(path, payload)
+    except OSError as exc:
+        print(f"[aviso] status de enrichment nao gravado: {exc}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Entry point (scripts/enrichment_run.py)
+# ---------------------------------------------------------------------------
+
+
+def run(args, *, transport=None, backoff: tuple = llm.DEFAULT_BACKOFF_S, log=print) -> int:
     """Entry point do runner (scripts/enrichment_run.py). Exit codes:
 
     - 0: run concluido (falha individual de vaga e dado, nao e erro);
-    - 1: erro de setup (input ilegivel, amostra vazia, key ausente, modelo
-      indisponivel);
-    - 2: nada processado (sample vazia apos --limit 0).
+    - 1: erro de setup (input ilegivel, eligible vazio, key ausente,
+      modelo indisponivel);
+    - 2: nenhuma vaga processada (ex.: ``--limit 0`` com pool pendente);
+    - 3: execucao concorrente detectada (lock ocupado).
+
+    Ordem: input -> plano -> ``--dry-run`` (read-only, sai 0) -> key ->
+    lock -> validacao do modelo (fail fast, sem disperdiciar sweep) ->
+    sweep + LLM -> resumo -> status file.
     """
     input_path = Path(args.input)
     try:
@@ -313,35 +559,29 @@ def run(args) -> int:
     if not isinstance(jobs, list):
         print("ERRO: input nao e lista de vagas", file=sys.stderr)
         return 1
+    if not jobs:
+        print("ERRO: nenhuma vaga elegivel no input", file=sys.stderr)
+        return 1
 
-    sample = select_sample(
-        jobs, top=args.top, extra_wa=args.extra_wa, extra_nodesc=args.extra_nodesc
-    )
-    if args.limit is not None:
-        sample = sample[: max(0, args.limit)]
-
-    store = EnrichmentStore(args.output)
+    output_path = Path(args.output)
+    store = EnrichmentStore(output_path)
+    records = store.load()
+    plan = plan_jobs(jobs, records)
 
     if args.dry_run:
-        if not sample:
-            print("ERRO: amostra vazia", file=sys.stderr)
-            return 1
-        print(f"--dry-run: {len(sample)} vagas selecionadas (sem rede, sem LLM)")
-        for index, job in enumerate(sample, 1):
-            print(
-                f"[{index}/{len(sample)}] {job.get('id')} | "
-                f"{str(job.get('company'))[:24]} | "
-                f"{str(job.get('title'))[:48]} | ats={job.get('source')} | "
-                f"score={job.get('score')}"
-            )
-        sources = {str(j.get("source")) for j in sample}
-        print(f"ATS distintos na amostra: {len(sources)}")
-        print(f"store: {args.output} ({len(store.load())} records existentes)")
+        buckets = Counter(item.bucket for item in plan)
+        print(
+            f"--dry-run: {len(plan)} vagas no sweep (sem rede, sem LLM, sem lock)"
+        )
+        print(
+            f"plano pre-fetch: new={buckets['new']} retry={buckets['retry']} "
+            f"seen={buckets['seen']}"
+        )
+        print(
+            f"cap de extracoes LLM: {max(0, int(args.limit))} | "
+            f"store: {len(records)} records"
+        )
         return 0
-
-    if not sample:
-        print("ERRO: amostra vazia", file=sys.stderr)
-        return 1
 
     key = llm.get_api_key()
     if not key:
@@ -350,21 +590,60 @@ def run(args) -> int:
             "(a key NUNCA vai em arquivo)",
             file=sys.stderr,
         )
+        _write_run_status(
+            output_path, 1, None, 0.0, "setup: NVIDIA_API_KEY ausente"
+        )
         return 1
 
-    ok, model_error = llm.validate_model(key)
-    if not ok:
-        print(f"ERRO: modelo indisponivel/key invalida: {model_error}", file=sys.stderr)
-        return 1
+    lock_fd = acquire_lock(output_path)
+    if lock_fd is None:
+        print("execucao concorrente detectada — saindo", file=sys.stderr)
+        return 3
 
-    result = process_batch(
-        sample,
-        key,
-        store,
-        sleep_fetch=args.sleep_fetch,
-    )
-    print(format_summary(result["summary"]))
-    if result["summary"]["processed"] == 0:
-        print("ERRO: nenhuma vaga foi processada", file=sys.stderr)
-        return 2
-    return 0
+    try:
+        ok, model_error = llm.validate_model(key, transport)
+        if not ok:
+            print(
+                f"ERRO: modelo indisponivel/key invalida: {model_error}",
+                file=sys.stderr,
+            )
+            _write_run_status(output_path, 1, None, 0.0, f"setup: {model_error}")
+            return 1
+
+        summary = run_incremental(
+            plan,
+            key,
+            store,
+            limit=args.limit,
+            transport=transport,
+            backoff=backoff,
+            sleep_fetch=args.sleep_fetch,
+            log=log,
+        )
+        print(format_summary(summary))
+
+        exit_code = 0
+        touched = (
+            summary["cache_hits"]
+            + summary["llm_calls"]
+            + summary["fetch_failures"]
+            + summary["http_errors"]
+            + summary["skipped"]
+        )
+        if summary["llm_calls"] == 0 and summary["selected"] > 0:
+            # havia trabalho no pool e nenhuma extracao foi feita
+            # (ex.: --limit 0 com backlog pendente) — sinal operacional,
+            # nao e erro de setup.
+            exit_code = 2
+        elif not touched:
+            exit_code = 2  # defensivo: nada foi processado (impossivel com sweep)
+        _write_run_status(
+            output_path,
+            exit_code,
+            summary,
+            summary["duration_s"],
+            summary.get("last_error"),
+        )
+        return exit_code
+    finally:
+        os.close(lock_fd)

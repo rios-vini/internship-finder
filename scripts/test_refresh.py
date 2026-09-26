@@ -799,6 +799,231 @@ def test_digest_integrado_fluxo() -> None:
                       and "🔗 Ranking completo" not in msg)
 
 
+def _fake_notify_ok(config, message, *, dry_run) -> dict:
+    return {"sent": True}
+
+
+def _make_enrichment_subproc_spy(calls: dict, exit_code: int):
+    """Mock de subprocess.run que so intercepta o enrichment_run.py.
+
+    O digest (gate liberado) chama `git config` via subprocess.run — essas
+    chamadas sao repassadas ao subprocess.run REAL (capturado antes do
+    patch) e nunca poluem a lista `calls` do teste.
+    """
+    real_run = subprocess.run
+
+    def fake(command, *args, **kwargs):
+        if any("enrichment_run.py" in str(c) for c in command):
+            calls["subproc"].append(
+                (command, kwargs.get("cwd"), kwargs.get("env")))
+            return subprocess.CompletedProcess(command, exit_code)
+        return real_run(command, *args, **kwargs)
+
+    return fake
+
+
+def test_enrichment_gate_e_exitcode() -> None:
+    print("== Fase 2: --enrichment integrado; falha NUNCA muda o exit do refresh ==")
+    # gate + key ausente: pulado com log, exit inalterado
+    with tempfile.TemporaryDirectory(prefix="t_enrich1_") as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir()
+        metrics_path = data_dir / "collection_metrics.jsonl"
+        metrics_path.write_text("", encoding="utf-8")
+
+        calls: dict = {"notify": [], "subproc": []}
+        original_root = rd.repo_root
+
+        def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+            with metrics_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(_run_record("r1", 400, 50)) + "\n")
+            return subprocess.CompletedProcess(args[0], 0)
+
+        def fake_notify(config, message, *, dry_run) -> dict:
+            calls["notify"].append(message)
+            return {"sent": True}
+
+        rd.repo_root = lambda: root
+        saved_key = os.environ.pop("NVIDIA_API_KEY", None)
+        try:
+            with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "notify_or_log", side_effect=fake_notify), \
+                 mock.patch.object(rd.subprocess, "run",
+                                   side_effect=_make_enrichment_subproc_spy(calls, 1)):
+                # sem --enrichment: nada roda (default OFF, comportamento atual)
+                rc = rd.main(["--config", str(root / ".env")])
+                check("sem --enrichment: subprocesso do enrichment NAO roda",
+                      rc == 0 and calls["subproc"] == [])
+                # gate negado (exit 1 = dataset vazio): pulado com log
+                calls["subproc"].clear()
+                rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
+                check("--enrichment sem key: pulado (log), exit inalterado",
+                      rc == 0 and calls["subproc"] == [])
+        finally:
+            rd.repo_root = original_root
+            if saved_key is not None:
+                os.environ["NVIDIA_API_KEY"] = saved_key
+
+    # key presente + enrichment FALHANDO (exit 3/1): refresh exit INALTERADO
+    with tempfile.TemporaryDirectory(prefix="t_enrich2_") as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir()
+        (data_dir / "collection_metrics.jsonl").write_text("", encoding="utf-8")
+
+        calls: dict = {"subproc": []}
+        original_root = rd.repo_root
+
+        def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+            with (data_dir / "collection_metrics.jsonl").open(
+                    "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(_run_record("r1", 400, 50)) + "\n")
+            return subprocess.CompletedProcess(args[0], 0)
+
+        fake_subproc_run = _make_enrichment_subproc_spy(calls, 3)  # concorrencia
+
+        rd.repo_root = lambda: root
+        saved_key = os.environ.get("NVIDIA_API_KEY")
+        os.environ["NVIDIA_API_KEY"] = "fake-key-refresh-test"
+        try:
+            with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "notify_or_log",
+                                   side_effect=_fake_notify_ok), \
+                 mock.patch.object(rd.subprocess, "run", side_effect=fake_subproc_run):
+                rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
+        finally:
+            rd.repo_root = original_root
+            if saved_key is None:
+                os.environ.pop("NVIDIA_API_KEY", None)
+            else:
+                os.environ["NVIDIA_API_KEY"] = saved_key
+
+        check("enrichment falho (exit 3) NAO muda o exit do refresh",
+              rc == 0 and len(calls["subproc"]) == 1)
+        cmd, cwd, env = calls["subproc"][0]
+        check("subprocesso e o enrichment_run.py com --limit",
+              cmd[1].endswith("enrichment_run.py")
+              and "--limit" in cmd and "24" in cmd)
+        check("cwd do subprocesso = raiz do repo", cwd == root)
+        check("NVIDIA_API_KEY injetada no env do subprocesso",
+              (env or {}).get("NVIDIA_API_KEY") == "fake-key-refresh-test")
+        check("--input/--output apontam para data/ do repo",
+              "data/eligible_jobs.json" in cmd
+              and "data/enrichment/enrichment_results.jsonl" in cmd)
+
+    # gate negado: refresh invalido (exit 124) NAO roda enrichment
+    with tempfile.TemporaryDirectory(prefix="t_enrich3_") as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir()
+        (data_dir / "collection_metrics.jsonl").write_text("", encoding="utf-8")
+
+        calls: dict = {"subproc": []}
+        original_root = rd.repo_root
+
+        def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+            return subprocess.CompletedProcess(args[0], 124)
+
+        fake_subproc_run = _make_enrichment_subproc_spy(calls, 0)
+
+        rd.repo_root = lambda: root
+        saved_key = os.environ.get("NVIDIA_API_KEY")
+        os.environ["NVIDIA_API_KEY"] = "fake-key-refresh-test"
+        try:
+            with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "notify_or_log",
+                                   side_effect=_fake_notify_ok), \
+                 mock.patch.object(rd.subprocess, "run", side_effect=fake_subproc_run):
+                rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
+        finally:
+            rd.repo_root = original_root
+            if saved_key is None:
+                os.environ.pop("NVIDIA_API_KEY", None)
+            else:
+                os.environ["NVIDIA_API_KEY"] = saved_key
+
+        check("gate negado (exit 124): enrichment pulado, exit do refresh ok",
+              rc == 124 and calls["subproc"] == [])
+
+    # --enrichment-limit propagado ao subprocesso
+    with tempfile.TemporaryDirectory(prefix="t_enrich4_") as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir()
+        (data_dir / "collection_metrics.jsonl").write_text("", encoding="utf-8")
+
+        calls: dict = {"subproc": []}
+        original_root = rd.repo_root
+
+        def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+            with (data_dir / "collection_metrics.jsonl").open(
+                    "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(_run_record("r1", 400, 50)) + "\n")
+            return subprocess.CompletedProcess(args[0], 0)
+
+        fake_subproc_run = _make_enrichment_subproc_spy(calls, 0)
+
+        rd.repo_root = lambda: root
+        saved_key = os.environ.get("NVIDIA_API_KEY")
+        os.environ["NVIDIA_API_KEY"] = "fake-key-refresh-test"
+        try:
+            with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "notify_or_log",
+                                   side_effect=_fake_notify_ok), \
+                 mock.patch.object(rd.subprocess, "run", side_effect=fake_subproc_run):
+                rc = rd.main(["--config", str(root / ".env"),
+                              "--enrichment", "--enrichment-limit", "7"])
+        finally:
+            rd.repo_root = original_root
+            if saved_key is None:
+                os.environ.pop("NVIDIA_API_KEY", None)
+            else:
+                os.environ["NVIDIA_API_KEY"] = saved_key
+
+        check("--enrichment-limit propagado (--limit 7)",
+              rc == 0 and len(calls["subproc"]) == 1
+              and calls["subproc"][0][0][calls["subproc"][0][0].index("--limit") + 1] == "7")
+
+    # key no .env (nao no environ): injetada no subprocesso
+    with tempfile.TemporaryDirectory(prefix="t_enrich5_") as tmp:
+        root = Path(tmp)
+        data_dir = root / "data"
+        data_dir.mkdir()
+        (data_dir / "collection_metrics.jsonl").write_text("", encoding="utf-8")
+        (root / ".env").write_text(
+            "NVIDIA_API_KEY=fake-key-from-dotenv\n", encoding="utf-8")
+
+        calls: dict = {"subproc": []}
+        original_root = rd.repo_root
+
+        def fake_run(*args, **kwargs) -> subprocess.CompletedProcess:
+            with (data_dir / "collection_metrics.jsonl").open(
+                    "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(_run_record("r1", 400, 50)) + "\n")
+            return subprocess.CompletedProcess(args[0], 0)
+
+        fake_subproc_run = _make_enrichment_subproc_spy(calls, 0)
+
+        rd.repo_root = lambda: root
+        saved_key = os.environ.pop("NVIDIA_API_KEY", None)
+        try:
+            with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "notify_or_log",
+                                   side_effect=_fake_notify_ok), \
+                 mock.patch.object(rd.subprocess, "run", side_effect=fake_subproc_run):
+                rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
+        finally:
+            rd.repo_root = original_root
+            if saved_key is not None:
+                os.environ["NVIDIA_API_KEY"] = saved_key
+
+        check("key do .env injetada no env do subprocesso",
+              rc == 0 and len(calls["subproc"]) == 1
+              and (calls["subproc"][0][2] or {}).get("NVIDIA_API_KEY")
+              == "fake-key-from-dotenv")
+
+
 def main() -> int:
     test_rotacao()
     test_snapshot_e_resumo()
@@ -822,6 +1047,7 @@ def main() -> int:
     test_dry_run_nao_toca_data()
     test_exit_code_propagado()
     test_exit_code_processo_observavel()
+    test_enrichment_gate_e_exitcode()
     print()
     if FAILURES:
         print(f"FALHAS: {len(FAILURES)} -> {FAILURES}")

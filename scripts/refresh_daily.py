@@ -154,6 +154,11 @@ DEFAULT_RETENTION_DAYS = 14
 # Mesma politica do archive: simples, documentada, sem lifecycle complexo.
 DEFAULT_BACKUP_RETENTION_DAYS = 14
 
+# Cap default de extracoes LLM por run do enrichment (--enrichment-limit).
+# Espelha o DEFAULT_LIMIT do runner (decisao D2: backlog processado
+# naturalmente em execucoes futuras, 24 x 16-290s medidos).
+DEFAULT_ENRICHMENT_LIMIT = 24
+
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 # Nomes das chaves aceitas no .env.
@@ -896,6 +901,59 @@ def _sync_personal_ranking(root: Path, data_dir: Path) -> None:
                     proc.returncode, (proc.stderr or proc.stdout).strip()[:200])
 
 
+def run_enrichment(root: Path, exit_code: int, eligible: int, limit: int,
+                   config: dict | None) -> None:
+    """Fase 2 — enrichment incremental LLM apos o fluxo principal.
+
+    Subprocesso standalone ``scripts/enrichment_run.py`` (mesmo padrao da
+    coleta). Gates de entrada:
+
+    - **gate UNICO** ``publish_pages.publication_allowed(exit_code,
+      eligible)`` — a MESMA decisao da publicacao/digest (auditoria 23/09):
+      refresh invalido (exit 1/124 ou eligible 0) -> enrichment pulado com
+      log; o ranking que o enrichment consumiria nao e confiavel;
+    - ``NVIDIA_API_KEY``: heranca de ``os.environ`` OU injecao a partir do
+      ``.env`` (``load_env_config``); ausente em ambos -> pulado com log —
+      NUNCA e erro e a key jamais vai para log/exception.
+
+    Qualquer exit do subprocesso vira UMA linha de log (``enrichment: exit
+    3 (concorrencia)``) e qualquer excecao vira ``enrichment FALHOU: ...``.
+    O exit code do refresh NUNCA muda por causa do enrichment (spec secao
+    5: ``refresh exit 0`` + ``enrichment parcialmente falho`` e estado
+    operacionalmente valido). stdout/stderr herdados: o resumo do run cai
+    no log do cron.
+    """
+    if not publish_pages.publication_allowed(exit_code, eligible):
+        log.info("enrichment pulado (refresh inválido: exit %d, eligible %s)",
+                 exit_code, eligible)
+        return
+    env = {**os.environ}
+    key = env.get("NVIDIA_API_KEY") or (config or {}).get("NVIDIA_API_KEY")
+    if not key:
+        log.info("enrichment pulado: NVIDIA_API_KEY ausente (env/.env)")
+        return
+    env["NVIDIA_API_KEY"] = key
+    command = [
+        sys.executable, "scripts/enrichment_run.py",
+        "--limit", str(limit),
+        "--input", "data/eligible_jobs.json",
+        "--output", "data/enrichment/enrichment_results.jsonl",
+    ]
+    log.info("enrichment: subprocesso %s (cwd=%s)", " ".join(command), root)
+    try:
+        proc = subprocess.run(command, cwd=root, env=env, check=False)
+    except Exception as exc:  # noqa: BLE001 — enrichment nunca derruba o refresh
+        log.error("enrichment FALHOU: %s: %s", type(exc).__name__, exc)
+        return
+    if proc.returncode == 0:
+        log.info("enrichment: concluido (exit 0)")
+    else:
+        # exit 1 = setup (key/modelo/input); 2 = nada processado;
+        # 3 = concorrencia. Tudo e dado do enrichment — o refresh segue.
+        log.info("enrichment: exit %d (falha é dado; refresh segue)",
+                 proc.returncode)
+
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
@@ -927,6 +985,17 @@ def main(argv: list[str] | None = None) -> int:
                         "publication_allowed: eligible > 0 com exit 0 ou exit 2 "
                         "= parcial com falhas perifericas). Default: "
                         "publicacao desligada.")
+    parser.add_argument("--enrichment", action="store_true",
+                        help="roda o enrichment incremental LLM (scripts/"
+                        "enrichment_run.py) apos o fluxo principal. MESMO gate "
+                        "da publicacao (publication_allowed: exit 0/2 com "
+                        "eligible > 0); falha do enrichment NUNCA muda o exit "
+                        "code do refresh. Default: desligado.")
+    parser.add_argument("--enrichment-limit", type=_non_negative_int,
+                        default=DEFAULT_ENRICHMENT_LIMIT, metavar="N",
+                        help="cap de extracoes LLM por run do enrichment "
+                        f"(default {DEFAULT_ENRICHMENT_LIMIT}; passa --limit "
+                        "ao enrichment_run.py)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -1083,6 +1152,22 @@ def main(argv: list[str] | None = None) -> int:
 
     _archive_run_info(archive_dir, summary, len(report["alerts"]),
                       publish_error=publish_error)
+
+    # Fase 2 — enrichment incremental (apos TODOS os dados principais e a
+    # mensagem: refresh -> eligibility -> ranking -> outputs -> enrichment).
+    # Gates: --enrichment (default OFF) + gate UNICO publication_allowed +
+    # NVIDIA_API_KEY (env herdado OU .env). Best-effort TOTAL: qualquer
+    # exit/exception vira log de UMA linha e o exit code do refresh NUNCA
+    # muda por causa do enrichment (spec secao 5).
+    if args.enrichment:
+        try:
+            run_enrichment(root, exit_code, summary.get("eligible") or 0,
+                           args.enrichment_limit, load_env_config(config_path))
+        except Exception as exc:  # noqa: BLE001 — enrichment nunca derruba o refresh
+            log.error("enrichment FALHOU: %s: %s", type(exc).__name__, exc)
+    else:
+        log.info("enrichment desligado (sem --enrichment)")
+
     # P1.3: o exit code final e o da coleta (0/1/2; 124 = teto estourado).
     # Toda a observabilidade (health/metricas/Telegram/limpeza/run_info) ja
     # rodou acima — so o status entregue ao SO muda. Antes o refresh sempre

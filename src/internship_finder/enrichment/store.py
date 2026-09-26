@@ -5,11 +5,15 @@ SUBSTITUI o record do mesmo job_id — upsert). Escrita atomica com
 temporario no MESMO diretorio + ``os.replace`` (mesma mecanica do
 ``_write_atomic`` do cli.py — quem le nunca ve arquivo pela metade).
 
-Preservacao: record bem-sucedido anterior NUNCA e apagado por uma falha
-nova do MESMO conteudo (``content_hash`` identico) — a falha e descartada
-e o sucesso preservado. Falha de conteudo NOVO (hash diferente) e gravada
-normalmente (o estado atual da pagina e dado valido). ``load()`` pula
-linhas malformadas com aviso, nunca crasha.
+Preservacao (Fase 2, spec secao 9): um sucesso anterior NUNCA e apagado
+por uma falha nova. Falha do MESMO conteudo (hash igual) ou de conteudo
+DESCONHECIDO (fetch falho, hash None) -> sucesso preservado com a falha
+auditavel em ``last_error``/``last_failed_at``. Falha de conteudo NOVO
+(hash diferente) -> sucesso preservado COM PENDENCIA: a versao nova da
+pagina fica registrada em ``pending_content_hash`` (o planejador
+reprocessa essa versao quando ela voltar a ser vista). Novo sucesso
+SEMPRE substitui tudo (pendencia some). ``load()`` pula linhas
+malformadas com aviso, nunca crasha.
 """
 
 from __future__ import annotations
@@ -70,17 +74,22 @@ class EnrichmentStore:
     def upsert(self, record) -> str:
         """Grava o record por job_id. Retorna "written" | "preserved".
 
-        - record novo/sucesso -> substitui o anterior (upsert);
-        - record de FALHA + anterior bem-sucedido com o MESMO content_hash
-          -> "preserved" (o sucesso fica; falha repetida de conteudo igual
-          nao destrui extracao valida);
-        - record de FALHA sem content_hash (fetch falho: conteudo desconhecido —
-          timeout/rede/nao-200) + anterior bem-sucedido -> "preserved" tambem:
-          o requisito e NAO PERDER a extracao valida em falha transitatoria. A
-          falha fica auditavel em ``last_error``/``last_failed_at`` dentro do
-          record preservado (nao e estado escondido) sem apagar os campos
-          extraidos;
-        - record de FALHA de conteudo diferente (ou sem anterior) -> gravada.
+        - record novo/sucesso -> substitui o anterior (upsert; se o
+          anterior tinha pendencia, ela some — a re-extracao resolveu);
+        - record de FALHA + anterior bem-sucedido -> "preserved": o
+          sucesso anterior fica, a falha fica auditavel no proprio
+          record preservado (``last_error``/``last_failed_at``). Quando
+          a falha e de conteudo comprovadamente NOVO (``content_hash``
+          diferente do sucesso preservado), a versao nova da pagina e
+          registrada em ``pending_content_hash`` — spec secao 9: o
+          sucesso anterior e o ultimo enrichment VALIDO e NUNCA e
+          apagado por indisponibilidade da API; o planejador manda a
+          versao pendente de volta ao pool quando a vir novamente.
+          Falha com hash igual ou desconhecido (fetch falho, hash
+          None) preserva sem pendencia (o conteudo do sucesso
+          continua sendo o estado atual conhecido);
+        - record de FALHA sem anterior bem-sucedido -> gravada
+          normalmente (o estado atual, mesmo falho, e dado).
         """
         rec = (
             record
@@ -97,19 +106,19 @@ class EnrichmentStore:
             and is_success_record(existing)
             and not is_success_record(rec)
         ):
-            # Falha nao pode destruir extracao valida: preserva quando o
-            # conteudo e o MESMO (hash igual) ou DESCONHECIDO (hash None:
-            # fetch falho). So uma falha de conteudo comprovadamente NOVO
-            # substitui (o estado da pagina mudou e isso e dado).
-            if rec.get("content_hash") is None or existing.get("content_hash") == rec.get("content_hash"):
-                # Auditoria da falha dentro do record preservado (campos
-                # last_*): a extracao valida continua, a falha fica visivel.
-                existing = dict(existing)
-                existing["last_error"] = rec.get("error")
-                existing["last_failed_at"] = rec.get("fetched_at")
-                current[str(job_id)] = existing
-                self._write_all(list(current.values()))
-                return "preserved"
+            # Falha nunca destrroi extracao valida (spec secao 9).
+            # So grava quando o anterior e falha OU nao existe.
+            existing = dict(existing)
+            existing["last_error"] = rec.get("error")
+            existing["last_failed_at"] = rec.get("fetched_at")
+            new_hash = rec.get("content_hash")
+            if new_hash is not None and new_hash != existing.get("content_hash"):
+                # Conteudo NOVO com falha de re-extracao: pendencia
+                # registrada, sucesso preservado como ultimo valido.
+                existing["pending_content_hash"] = new_hash
+            current[str(job_id)] = existing
+            self._write_all(list(current.values()))
+            return "preserved"
         current[str(job_id)] = rec
         self._write_all(list(current.values()))
         return "written"

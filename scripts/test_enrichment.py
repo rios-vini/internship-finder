@@ -13,7 +13,9 @@ Uso:
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -496,7 +498,7 @@ check("normalize: header com titulo preservado", "Job Title" in header_text)
 check("normalize: html vazio -> string vazia", html_norm.normalize_html("") == "")
 
 # ---------------------------------------------------------------------------
-# 6. Cache por (job_id, final_url, content_hash)
+# 6. Delta pos-fetch: classify_seen (cache por job_id + final_url + content_hash)
 # ---------------------------------------------------------------------------
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -507,23 +509,23 @@ with tempfile.TemporaryDirectory() as tmp:
         fields=good_fields, model=llm.MODEL, extracted_at="2026-09-25T00:00:01+00:00",
     )
     store.upsert(success)
-    job_id = make_job()["id"]
-    check("cache: mesmo job_id+final_url+hash -> skip",
-          runner.should_skip(store, job_id, "http://a/job", "hash-1"))
-    check("cache: content_hash diferente -> reprocessa",
-          not runner.should_skip(store, job_id, "http://a/job", "hash-2"))
-    check("cache: final_url diferente -> reprocessa",
-          not runner.should_skip(store, job_id, "http://a/job-2", "hash-1"))
-    failure = build_record(
-        make_job(job_id), fetched_at="2026-09-25T00:00:00+00:00", page_status="ok",
-        final_url="http://a/job", http_status=200, content_hash="hash-3",
-        error="llm_error:http_429", model=llm.MODEL,
-    )
-    store.upsert(failure)
-    check("cache: record de falha -> retry permitido",
-          not runner.should_skip(store, job_id, "http://a/job", "hash-3"))
-    check("cache: job nunca processado -> processa",
-          not runner.should_skip(store, "OUTRO|ats:9", "http://a/job", "hash-1"))
+    record = store.load()[make_job()["id"]]
+    check("cache: mesmo job_id+final_url+hash -> cache_hit",
+          runner.classify_seen(record, "http://a/job", "hash-1") == "cache_hit")
+    check("cache: content_hash diferente -> changed",
+          runner.classify_seen(record, "http://a/job", "hash-2") == "changed")
+    check("cache: final_url diferente -> changed_source",
+          runner.classify_seen(record, "http://a/job-2", "hash-1")
+          == "changed_source")
+    # pendencia (D6): hash atual == pending_content_hash -> retry (a versao
+    # pendente voltou); hash diferente de ambos -> changed (mudou de novo)
+    pending = dict(record, pending_content_hash="hash-2")
+    check("pendencia: hash atual == pending -> retry",
+          runner.classify_seen(pending, "http://a/job", "hash-2") == "retry")
+    check("pendencia: hash atual == sucesso MAS pendencia existe -> changed",
+          runner.classify_seen(pending, "http://a/job", "hash-1") == "changed")
+    check("pendencia: hash diferente de ambos -> changed",
+          runner.classify_seen(pending, "http://a/job", "hash-9") == "changed")
 
 # ---------------------------------------------------------------------------
 # 7. Retry/error handling da LLM (transport injetado, backoff 0)
@@ -627,15 +629,41 @@ with tempfile.TemporaryDirectory() as tmp:
           store.load()["A|ats:1"]["company"] == "NOVA EMPRESA"
           and store.load()["A|ats:1"]["extracted_at"] == "t2")
 
-    # falha de conteudo NOVO e gravada (estado atual e dado)
+    # FASE 2 (spec secao 9 / decisao D6): falha de re-extracao de conteudo
+    # NOVO NAO substitui mais o sucesso — o comportamento antigo (gravar a
+    # falha por cima) perdia a extracao valida por indisponibilidade da
+    # API. Agora: sucesso preservado + pendencia registrada.
     failure_new = build_record(
-        make_job("A|ats:1"), fetched_at="t4", page_status="not_found",
-        content_hash="h2", http_status=404,
+        make_job("A|ats:1"), fetched_at="t4", page_status="ok",
+        final_url="http://a/1", content_hash="h2", http_status=200,
+        error="llm_error:http_429", model=llm.MODEL,
     )
-    check("store: falha de conteudo novo -> written",
-          store.upsert(failure_new) == "written")
-    check("store: record atual reflete o estado novo",
-          store.load()["A|ats:1"]["page_status"] == "not_found")
+    check("store: falha de conteudo novo -> preserved (spec secao 9)",
+          store.upsert(failure_new) == "preserved")
+    kept_new = store.load()["A|ats:1"]
+    check("store: sucesso preservado com pendencia (nada apagado)",
+          kept_new["extracted_at"] == "t2" and kept_new["company"] == "NOVA EMPRESA"
+          and kept_new["page_status"] == "ok")
+    check("store: pendencia registra o hash novo",
+          kept_new.get("pending_content_hash") == "h2"
+          and kept_new.get("last_error") == "llm_error:http_429"
+          and kept_new.get("last_failed_at") == "t4")
+    # falha de FETCH posterior (timeout, hash desconhecido): preserva o
+    # sucesso E MANTENM a pendencia anterior — a pagina provavelmente
+    # continua sendo a versao pendente (hash None nao prova que voltou)
+    failure_gone = build_record(
+        make_job("A|ats:1"), fetched_at="t4b", page_status="timeout",
+        final_url="http://a/1", content_hash=None, http_status=None,
+        error="timeout",
+    )
+    check("store: falha de fetch apos pendencia -> preserved",
+          store.upsert(failure_gone) == "preserved")
+    kept_gone = store.load()["A|ats:1"]
+    check("store: pendencia anterior MANTIDA em fetch falho (hash None)",
+          kept_gone.get("extracted_at") == "t2"
+          and kept_gone.get("pending_content_hash") == "h2"
+          and kept_gone.get("last_error") == "timeout"
+          and kept_gone.get("last_failed_at") == "t4b")
 
     # REGRESSAO (fix do orquestrador): fetch falho (content_hash=None,
     # conteudo DESCONHECIDO — timeout/rede) NUNCA apaga sucesso anterior.
@@ -687,39 +715,474 @@ with tempfile.TemporaryDirectory() as tmp:
           set(loaded.keys()) == {"A|ats:1", "B|ats:2"})
 
 # ---------------------------------------------------------------------------
-# 9. Isolamento por vaga no lote
+# 9. FASE 2 — planejamento incremental (plan_jobs) + sweep + cap + idempotencia
 # ---------------------------------------------------------------------------
 
-class BoomTransport:
+def _page_for(content: str, url: str) -> tuple:
+    return (200, "<html><body><h1>Praktikum Data Analytics</h1><p>"
+            + content + "</p></body></html>", url)
+
+
+class SweepTransport:
+    """Transport falso: mapa url -> (status, html, final_url) + contador LLM."""
+
+    def __init__(self, pages, llm_success=True):
+        self.pages = pages
+        self.llm_success = llm_success
+        self.posts = 0
+
+    def get(self, url, headers, timeout):
+        if "integrate.api.nvidia.com" in url:  # GET /v1/models do validate_model
+            return 200, json.dumps({"data": [{"id": llm.MODEL}]}), url
+        return self.pages[url]
+
+    def post(self, url, headers, payload, timeout):
+        self.posts += 1
+        if not self.llm_success:
+            return 429, ""
+        return 200, llm_body(json.dumps(VALID_EXTRACTION))
+
+
+# 9a. plano deterministico: new/retry/seen na ordem (score desc, id desc)
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp) / "out.jsonl"
+    store = EnrichmentStore(out)
+    ok_rec = build_record(
+        make_job("B|ats:1"), fetched_at="t1", page_status="ok",
+        final_url="http://b/1", http_status=200, content_hash="hb",
+        fields=good_fields, model=llm.MODEL, extracted_at="t1",
+    )
+    fail_rec = build_record(
+        make_job("C|ats:1"), fetched_at="t1", page_status="ok",
+        final_url="http://c/1", http_status=200, content_hash="hc",
+        error="llm_error:http_429", model=llm.MODEL,
+    )
+    store.upsert(ok_rec)
+    store.upsert(fail_rec)
+    jobs = [
+        make_job("A|ats:1", score=9.0),   # new
+        make_job("B|ats:1", score=8.0),   # sucesso -> seen
+        make_job("C|ats:1", score=7.0),   # falha -> retry
+        make_job("D|ats:1", score=6.0),   # new
+        {"id": "", "company": "X", "title": "sem id", "source": "s",
+         "url": "http://x/0", "score": 99.0},  # sem id -> pulada
+    ]
+    plan = runner.plan_jobs(jobs, store.load())
+    check("plano: buckets new/retry/seen",
+          [p.bucket for p in plan] == ["new", "seen", "retry", "new"])
+    check("plano: ordem (score desc, id desc)",
+          [str(p.job["id"]) for p in plan]
+          == ["A|ats:1", "B|ats:1", "C|ats:1", "D|ats:1"])
+    check("plano: vaga sem id pulada", len(plan) == 4)
+
+# 9b. vaga nova -> enrichment (D8.1); ja enriquecida + hash igual ->
+#     cache_hit com ZERO chamadas LLM (D8.2); idempotencia (D8.12)
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp) / "out.jsonl"
+    store = EnrichmentStore(out)
+    url = "http://acme.test/job/1"
+    pages = {url: _page_for("conteudo util " * 50, url)}
+    tr = SweepTransport(pages)
+    jobs = [make_job("ACME|ats:1", url=url)]
+    plan = runner.plan_jobs(jobs, store.load())
+    s1 = runner.run_incremental(plan, FAKE_KEY, store, transport=tr,
+                                backoff=(0, 0), sleep_fetch=0, log=lambda *_: None)
+    check("fase2: vaga nova -> 1 extracao LLM",
+          s1["llm_calls"] == 1 and s1["extractions_ok"] == 1 and tr.posts == 1)
+    check("fase2: vaga nova gravada com extracted_at",
+          store.load()["ACME|ats:1"]["extracted_at"] is not None)
+
+    tr2 = SweepTransport(pages)
+    plan2 = runner.plan_jobs(jobs, store.load())
+    s2 = runner.run_incremental(plan2, FAKE_KEY, store, transport=tr2,
+                                backoff=(0, 0), sleep_fetch=0, log=lambda *_: None)
+    check("fase2: idempotencia — 2a run zero LLM, tudo cache_hit",
+          s2["llm_calls"] == 0 and s2["cache_hits"] == 1 and tr2.posts == 0)
+
+# 9c. conteudo alterado (hash diferente) -> novo enrichment (D8.3);
+#     URL final alterada -> changed_source (D8.4)
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp) / "out.jsonl"
+    store = EnrichmentStore(out)
+    url = "http://acme.test/job/1"
+    tr = SweepTransport({url: _page_for("versao A " * 50, url)})
+    jobs = [make_job("ACME|ats:1", url=url)]
+    s1 = runner.run_incremental(runner.plan_jobs(jobs, {}), FAKE_KEY, store,
+                                transport=tr, backoff=(0, 0), sleep_fetch=0,
+                                log=lambda *_: None)
+    # conteudo muda
+    tr_changed = SweepTransport({url: _page_for("versao B " * 50, url)})
+    s2 = runner.run_incremental(runner.plan_jobs(jobs, store.load()), FAKE_KEY,
+                                store, transport=tr_changed, backoff=(0, 0),
+                                sleep_fetch=0, log=lambda *_: None)
+    check("fase2: conteudo alterado -> novo enrichment",
+          s2["llm_calls"] == 1 and s2["changed"] == 1)
+    check("fase2: novo sucesso substitui (regra da Fase 1)",
+          store.load()["ACME|ats:1"]["extracted_at"] is not None)
+    # URL final muda (redirect), conteudo IGUAL ao do sucesso — prova que
+    # changed_source dispara pela URL, independentemente do hash
+    tr_src = SweepTransport(
+        {url: (200, _page_for("versao B " * 50, url)[1],
+               "http://acme.test/job/1-new")})
+    s3 = runner.run_incremental(runner.plan_jobs(jobs, store.load()), FAKE_KEY,
+                                store, transport=tr_src, backoff=(0, 0),
+                                sleep_fetch=0, log=lambda *_: None)
+    check("fase2: URL final alterada -> changed_source + LLM",
+          s3["llm_calls"] == 1 and s3["changed_source"] == 1)
+
+# 9d. falha temporaria -> retry no run seguinte (D8.5); falha NAO apaga
+#     sucesso anterior; pendencia reprocessada no run seguinte (D8.7)
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp) / "out.jsonl"
+    store = EnrichmentStore(out)
+    url = "http://acme.test/job/1"
+    tr = SweepTransport({url: _page_for("conteudo util " * 50, url)})
+    jobs = [make_job("ACME|ats:1", url=url)]
+    runner.run_incremental(runner.plan_jobs(jobs, {}), FAKE_KEY, store,
+                           transport=tr, backoff=(0, 0), sleep_fetch=0,
+                           log=lambda *_: None)
+    success_before = dict(store.load()["ACME|ats:1"])
+
+    # conteudo NOVO + LLM falha (429 em rajada)
+    tr_fail = SweepTransport({url: _page_for("conteudo novo " * 50, url)},
+                             llm_success=False)
+    s2 = runner.run_incremental(runner.plan_jobs(jobs, store.load()), FAKE_KEY,
+                                store, transport=tr_fail, backoff=(0, 0),
+                                sleep_fetch=0, log=lambda *_: None)
+    kept = store.load()["ACME|ats:1"]
+    check("fase2: falha de hash novo preserva sucesso + pendencia",
+          kept["extracted_at"] == success_before["extracted_at"]
+          and kept.get("pending_content_hash") is not None
+          and kept.get("last_error") is not None)
+    check("fase2: falha individual conta e o lote segue",
+          s2["extractions_fail"] == 1 and s2["llm_calls"] == 1)
+
+    # run seguinte: MESMO conteudo novo, LLM OK -> pendencia reprocessada
+    tr_ok = SweepTransport({url: _page_for("conteudo novo " * 50, url)})
+    s3 = runner.run_incremental(runner.plan_jobs(jobs, store.load()), FAKE_KEY,
+                                store, transport=tr_ok, backoff=(0, 0),
+                                sleep_fetch=0, log=lambda *_: None)
+    after = store.load()["ACME|ats:1"]
+    check("fase2: pendencia reprocessada no run seguinte",
+          s3["llm_calls"] == 1 and s3["retry"] == 1
+          and "pending_content_hash" not in after
+          and after["extracted_at"] is not None
+          and after["content_hash"] == hash_content(html_norm.normalize_html(
+              _page_for("conteudo novo " * 50, url)[1])))
+
+    # fetch falho (timeout) sobre sucesso com pendencia ja resolvida:
+    # preserva sem pendencia nova (hash None = desconhecido)
+    class TimeoutTransport(SweepTransport):
+        def get(self, url, headers, timeout):
+            raise requests.ConnectTimeout("scripted timeout")
+
+    s4 = runner.run_incremental(runner.plan_jobs(jobs, store.load()), FAKE_KEY,
+                                store, transport=TimeoutTransport({}),
+                                backoff=(0, 0), sleep_fetch=0, log=lambda *_: None)
+    kept4 = store.load()["ACME|ats:1"]
+    check("fase2: fetch falho preserva o ultimo sucesso",
+          kept4["extracted_at"] == after["extracted_at"]
+          and kept4.get("last_error") == "timeout"
+          and s4["fetch_failures"] == 1 and s4["timeouts"] == 1)
+
+# 9e. falha permanente (4xx nao-retryavel) -> registrado, sem retry
+#     infinito (D8.6) — testado na camada LLM (secao 7); aqui o comportamento
+#     integrado: extracao falha 1x, record de falha gravado, lote segue
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp) / "out.jsonl"
+    store = EnrichmentStore(out)
+    url = "http://acme.test/job/1"
+
+    class PermanentFailTransport(SweepTransport):
+        def post(self, url, headers, payload, timeout):
+            self.posts += 1
+            return 400, "bad request"
+
+    tr = PermanentFailTransport({url: _page_for("conteudo util " * 50, url)})
+    jobs = [make_job("ACME|ats:1", url=url)]
+    s1 = runner.run_incremental(runner.plan_jobs(jobs, {}), FAKE_KEY, store,
+                                transport=tr, backoff=(0, 0), sleep_fetch=0,
+                                log=lambda *_: None)
+    check("fase2: 4xx permanente -> 1 tentativa, sem retry infinito",
+          tr.posts == 1 and s1["llm_calls"] == 1
+          and s1["extractions_fail"] == 1)
+    check("fase2: record de falha gravado e retryavel",
+          store.load()["ACME|ats:1"]["error"] == "llm_error:http_400"
+          and store.load()["ACME|ats:1"]["attempts"] == 1)
+
+# 9f. backlog limitado: pool > cap -> LLM calls == cap, excedente pending
+#     (D8.8); prioridade do pool: retry -> new -> changed (D2)
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp) / "out.jsonl"
+    store = EnrichmentStore(out)
+    pages = {}
+    jobs = []
+    for i in range(5):
+        url = f"http://acme.test/job/{i}"
+        pages[url] = _page_for(f"conteudo {i} " * 50, url)
+        jobs.append(make_job(f"ACME|ats:{i}", url=url, score=float(10 - i)))
+    tr = SweepTransport(pages)
+    s1 = runner.run_incremental(runner.plan_jobs(jobs, {}), FAKE_KEY, store,
+                                limit=2, transport=tr, backoff=(0, 0),
+                                sleep_fetch=0, log=lambda *_: None)
+    check("fase2: backlog — LLM calls == cap",
+          s1["llm_calls"] == 2 and s1["extractions_ok"] == 2)
+    check("fase2: excedente fica pending_backlog",
+          s1["pending_backlog"] == 3)
+    # run 2: backlog continua (2 do cap + 1 que sobrou)
+    tr2 = SweepTransport(pages)
+    s2 = runner.run_incremental(runner.plan_jobs(jobs, store.load()), FAKE_KEY,
+                                store, limit=2, transport=tr2, backoff=(0, 0),
+                                sleep_fetch=0, log=lambda *_: None)
+    check("fase2: backlog processado naturalmente no run seguinte",
+          s2["llm_calls"] == 2 and s2["pending_backlog"] == 1)
+    tr3 = SweepTransport(pages)
+    s3 = runner.run_incremental(runner.plan_jobs(jobs, store.load()), FAKE_KEY,
+                                store, limit=2, transport=tr3, backoff=(0, 0),
+                                sleep_fetch=0, log=lambda *_: None)
+    check("fase2: backlog esgotado — 3 runs processam as 5 vagas",
+          s3["llm_calls"] == 1 and s3["pending_backlog"] == 0
+          and len(store.load()) == 5)
+    tr4 = SweepTransport(pages)
+    s4 = runner.run_incremental(runner.plan_jobs(jobs, store.load()), FAKE_KEY,
+                                store, limit=2, transport=tr4, backoff=(0, 0),
+                                sleep_fetch=0, log=lambda *_: None)
+    check("fase2: backlog esgotado -> run 100% cache_hit",
+          s4["llm_calls"] == 0 and s4["cache_hits"] == 5
+          and s4["pending_backlog"] == 0)
+
+    # prioridade do pool: retry primeiro, depois new (score desc dentro do
+    # bloco) — vaga de falha com score MENOR entra na frente de new maior
+    store2 = EnrichmentStore(Path(tmp) / "prio.jsonl")
+    fail_low = build_record(
+        make_job("LOW|ats:1", score=1.0), fetched_at="t1", page_status="ok",
+        final_url="http://acme.test/job/low", http_status=200,
+        content_hash="x", error="llm_error:http_429", model=llm.MODEL,
+    )
+    store2.upsert(fail_low)
+    pages2 = dict(pages)
+    pages2["http://acme.test/job/low"] = _page_for("baixa prioridade " * 50,
+                                                   "http://acme.test/job/low")
+    jobs2 = jobs + [make_job("LOW|ats:1", url="http://acme.test/job/low",
+                             score=1.0)]
+    trp = SweepTransport(pages2)
+    sp = runner.run_incremental(runner.plan_jobs(jobs2, store2.load()),
+                                FAKE_KEY, store2, limit=3, transport=trp,
+                                backoff=(0, 0), sleep_fetch=0, log=lambda *_: None)
+    check("fase2: pool prioriza retry sobre new (D2)",
+          sp["llm_calls"] == 3 and sp["retry"] >= 1)
+
+# 9g. métricas do resumo + status file batem com o cenário (D8.10)
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp) / "out.jsonl"
+    store = EnrichmentStore(out)
+    url = "http://acme.test/job/1"
+    tr = SweepTransport({url: _page_for("conteudo util " * 50, url)})
+    jobs = [make_job("ACME|ats:1", url=url)]
+    plan = runner.plan_jobs(jobs, {})
+    s1 = runner.run_incremental(plan, FAKE_KEY, store, transport=tr,
+                                backoff=(0, 0), sleep_fetch=0, log=lambda *_: None)
+    text = runner.format_summary(s1)
+    check("fase2: resumo cobre todos os campos da secao 4",
+          all(field in text for field in (
+              "vagas elegiveis", "cache hits", "pool:", "selecionadas",
+              "backlog pendente", "LLM:", "fetch:", "preservados", "tokens:",
+              "tempos")))
+    check("fase2: resumo com valores do cenario",
+          "vagas elegiveis: 1" in text and "chamadas 1" in text)
+    runner._write_run_status(out, 0, s1, s1["duration_s"], s1.get("last_error"))
+    status = json.loads(runner.status_path_for(out).read_text(encoding="utf-8"))
+    check("fase2: status file com health da secao 12",
+          status["last_exit_code"] == 0 and status["model"] == "z-ai/glm-5.3-flash"
+          and status["last_success_at"] is not None
+          and status["counts"]["llm_calls"] == 1)
+    # falha de setup: last_success_at preservado
+    runner._write_run_status(out, 1, None, 0.0, "setup: sem key")
+    status2 = json.loads(runner.status_path_for(out).read_text(encoding="utf-8"))
+    check("fase2: run falho preserva last_success_at anterior",
+          status2["last_exit_code"] == 1
+          and status2["last_success_at"] == status["last_success_at"]
+          and status2["last_error"] == "setup: sem key")
+    # escrita atomica: sem temporarios residuais
+    residue = [p.name for p in out.parent.iterdir()
+               if p.name not in (out.name, runner.STATUS_FILE_NAME,
+                                 runner.LOCK_FILE_NAME)]
+    check("fase2: status/store sem temporarios residuais", residue == [])
+
+# ---------------------------------------------------------------------------
+# 10. FASE 2 — concorrencia (flock) + run() exit codes
+# ---------------------------------------------------------------------------
+
+# 10a. duas execucoes concorrentes: a segunda detecta lock e sai 3 sem
+# tocar o store (D8.9). A key precisa estar no env — o exit 1 de "key
+# ausente" vem ANTES da aquisicao do lock.
+with tempfile.TemporaryDirectory() as tmp:
+    base = Path(tmp)
+    out = base / "out.jsonl"
+    eligible = base / "eligible_jobs.json"
+    eligible.write_text(json.dumps(
+        [make_job("X|ats:1", url="http://x/1")], ensure_ascii=False),
+        encoding="utf-8")
+    EnrichmentStore(out).upsert(build_record(
+        make_job("X|ats:1"), fetched_at="t1", page_status="ok",
+        final_url="http://x/1", http_status=200, content_hash="hx",
+        fields=good_fields, model=llm.MODEL, extracted_at="t1",
+    ))
+    before = out.read_bytes()
+    fd = runner.acquire_lock(out)
+    check("lock: primeiro adquire", fd is not None)
+    assert fd is not None
+    old_key = os.environ.get("NVIDIA_API_KEY")
+    os.environ["NVIDIA_API_KEY"] = FAKE_KEY
+    try:
+        rc = runner.run(argparse.Namespace(
+            input=str(eligible), output=str(out),
+            limit=1, sleep_fetch=0, dry_run=False,
+        ), transport=SweepTransport({}), backoff=(0, 0), log=lambda *_: None)
+        check("concorrencia: run com lock ocupado -> exit 3",
+              rc == 3)
+        check("concorrencia: store intocado pela run recusada",
+              out.read_bytes() == before)
+        os.close(fd)
+        # lock liberado: run volta a passar (com transport vazio o fetch
+        # da vaga falha como fetch_error — exit 0, dado do cenario)
+        rc = runner.run(argparse.Namespace(
+            input=str(eligible), output=str(out),
+            limit=1, sleep_fetch=0, dry_run=False,
+        ), transport=SweepTransport({}), backoff=(0, 0), log=lambda *_: None)
+        check("lock: liberado apos close (run nao sai mais 3)",
+              rc == 0)
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass  # ja fechado no bloco try
+        if old_key is None:
+            os.environ.pop("NVIDIA_API_KEY", None)
+        else:
+            os.environ["NVIDIA_API_KEY"] = old_key
+
+# 10b. exit codes do run() com input real (D5)
+class _Args:
+    def __init__(self, input, output, limit, dry_run=False, sleep_fetch=0):
+        self.input = input
+        self.output = output
+        self.limit = limit
+        self.dry_run = dry_run
+        self.sleep_fetch = sleep_fetch
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    base = Path(tmp)
+    eligible = base / "eligible_jobs.json"
+    eligible.write_text(json.dumps(
+        [make_job("ACME|ats:1", url="http://acme.test/job/1")],
+        ensure_ascii=False), encoding="utf-8")
+    out = base / "enrichment" / "enrichment_results.jsonl"
+
+    # --dry-run: plano pre-fetch, sem rede, sem lock, exit 0
+    rc = runner.run(_Args(str(eligible), str(out), 24, dry_run=True),
+                    transport=SweepTransport({}), backoff=(0, 0),
+                    log=lambda *_: None)
+    check("run: --dry-run exit 0 e nao cria lock",
+          rc == 0 and not (out.parent / runner.LOCK_FILE_NAME).exists())
+
+    # key ausente -> exit 1 + status file registrado
+    old_key = os.environ.pop("NVIDIA_API_KEY", None)
+    try:
+        rc = runner.run(_Args(str(eligible), str(out), 24),
+                        transport=SweepTransport({}), backoff=(0, 0),
+                        log=lambda *_: None)
+        check("run: key ausente -> exit 1", rc == 1)
+        status = json.loads(runner.status_path_for(out).read_text(encoding="utf-8"))
+        check("run: key ausente registrada no status",
+              status["last_exit_code"] == 1
+              and "NVIDIA_API_KEY" in (status["last_error"] or ""))
+    finally:
+        if old_key is not None:
+            os.environ["NVIDIA_API_KEY"] = old_key
+
+    # run real com transport valido: exit 0 + status + store escritos
+    os.environ["NVIDIA_API_KEY"] = FAKE_KEY
+    try:
+        url = "http://acme.test/job/1"
+        tr = SweepTransport({url: _page_for("conteudo util " * 50, url)})
+        rc = runner.run(_Args(str(eligible), str(out), 24),
+                        transport=tr, backoff=(0, 0), log=lambda *_: None)
+        check("run: run real exit 0", rc == 0)
+        check("run: store gravado com 1 record",
+              len(EnrichmentStore(out).load()) == 1)
+        status = json.loads(runner.status_path_for(out).read_text(encoding="utf-8"))
+        check("run: status file exit 0 + counts",
+              status["last_exit_code"] == 0
+              and status["counts"]["extractions_ok"] == 1)
+
+        # idempotencia: 2a run exit 0, zero LLM, tudo cache_hit
+        tr2 = SweepTransport({url: _page_for("conteudo util " * 50, url)})
+        rc2 = runner.run(_Args(str(eligible), str(out), 24),
+                         transport=tr2, backoff=(0, 0), log=lambda *_: None)
+        status2 = json.loads(runner.status_path_for(out).read_text(encoding="utf-8"))
+        check("run: idempotente — 2a run 100% cache_hit (exit 0)",
+              rc2 == 0 and status2["counts"]["llm_calls"] == 0
+              and status2["counts"]["cache_hits"] == 1)
+
+        # --limit 0 com pool pendente -> exit 2 (nada processado)
+        eligible2 = base / "eligible2.json"
+        eligible2.write_text(json.dumps(
+            [make_job("ACME|ats:9", url="http://acme.test/job/9")],
+            ensure_ascii=False), encoding="utf-8")
+        tr3 = SweepTransport(
+            {"http://acme.test/job/9": _page_for("outra vaga " * 50,
+                                                "http://acme.test/job/9")})
+        rc3 = runner.run(_Args(str(eligible2), str(out), 0),
+                         transport=tr3, backoff=(0, 0), log=lambda *_: None)
+        status3 = json.loads(runner.status_path_for(out).read_text(encoding="utf-8"))
+        check("run: --limit 0 com pool pendente -> exit 2",
+              rc3 == 2 and status3["counts"].get("pending_backlog") == 1)
+
+        # input ilegivel -> exit 1
+        rc4 = runner.run(_Args(str(base / "nao_existe.json"), str(out), 24),
+                         transport=SweepTransport({}), backoff=(0, 0),
+                         log=lambda *_: None)
+        check("run: input ilegivel -> exit 1", rc4 == 1)
+        bad = base / "bad.json"
+        bad.write_text("{not json", encoding="utf-8")
+        rc5 = runner.run(_Args(str(bad), str(out), 24),
+                         transport=SweepTransport({}), backoff=(0, 0),
+                         log=lambda *_: None)
+        check("run: input malformado -> exit 1", rc5 == 1)
+        empty = base / "empty.json"
+        empty.write_text("[]", encoding="utf-8")
+        rc6 = runner.run(_Args(str(empty), str(out), 24),
+                         transport=SweepTransport({}), backoff=(0, 0),
+                         log=lambda *_: None)
+        check("run: eligible vazio -> exit 1", rc6 == 1)
+    finally:
+        if old_key is not None:
+            os.environ["NVIDIA_API_KEY"] = old_key
+        else:
+            os.environ.pop("NVIDIA_API_KEY", None)
+
+# ---------------------------------------------------------------------------
+# 11. Isolamento por vaga (heranca da Fase 1 — mesma garantia, novo fluxo)
+# ---------------------------------------------------------------------------
+
+class BoomTransport(SweepTransport):
     """LLM OK, mas fetch da vaga 2 explode com excecao nao-request."""
 
     def __init__(self, boom_url):
+        super().__init__({})
         self.boom_url = boom_url
         self.pages = {
-            "http://acme.test/job/1": (
-                200,
-                "<html><body><h1>Praktikum Data Analytics</h1>"
-                "<p>descricao longa " + "x" * 400 + "</p></body></html>",
-                "http://acme.test/job/1",
-            ),
-            "http://acme.test/job/3": (
-                200,
-                "<html><body><h1>Praktikum Data Analytics</h1>"
-                "<p>descricao longa " + "y" * 400 + "</p></body></html>",
-                "http://acme.test/job/3",
-            ),
+            "http://acme.test/job/1": _page_for("x" * 400, "http://acme.test/job/1"),
+            "http://acme.test/job/3": _page_for("y" * 400, "http://acme.test/job/3"),
         }
-        self.posts = 0
 
     def get(self, url, headers, timeout):
         if url == self.boom_url:
             raise RuntimeError("boom na vaga 2")
         status, html, final_url = self.pages[url]
         return status, html, final_url
-
-    def post(self, url, headers, payload, timeout):
-        self.posts += 1
-        return 200, llm_body(json.dumps(VALID_EXTRACTION))
 
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -730,101 +1193,17 @@ with tempfile.TemporaryDirectory() as tmp:
         make_job("ACME|ats:3", url="http://acme.test/job/3"),
     ]
     boom = BoomTransport("http://acme.test/job/2")
-    result = runner.process_batch(
-        jobs, FAKE_KEY, store, transport=boom, backoff=(0, 0), sleep_fetch=0,
-        log=lambda *_: None,
-    )
-    records = {r["job_id"]: r for r in result["records"]}
-    check("lote: 3 records retornados (nada abortou)", len(records) == 3)
-    check("lote: vaga 2 -> record de erro",
+    s = runner.run_incremental(runner.plan_jobs(jobs, {}), FAKE_KEY, store,
+                                transport=boom, backoff=(0, 0), sleep_fetch=0,
+                                log=lambda *_: None)
+    records = store.load()
+    check("lote: vaga 2 -> record de erro, lote segue",
           records["ACME|ats:2"]["error"] == "runner_error:RuntimeError")
     check("lote: vagas 1 e 3 extraidas",
           records["ACME|ats:1"]["extracted_at"] is not None
           and records["ACME|ats:3"]["extracted_at"] is not None)
     check("lote: resumo consistente",
-          result["summary"]["extractions_ok"] == 2
-          and result["summary"]["extractions_fail"] == 1)
-
-# cache_hit dentro do lote: rerun idempotente nao chama LLM
-with tempfile.TemporaryDirectory() as tmp:
-    store = EnrichmentStore(Path(tmp) / "out.jsonl")
-    page = ("http://acme.test/job/1",
-            (200, "<html><body><h1>Praktikum Data Analytics</h1><p>"
-             + "conteudo " * 100 + "</p></body></html>",
-             "http://acme.test/job/1"))
-    class OnePageTransport:
-        posts = 0
-        def get(self, url, headers, timeout):
-            return page[1][0], page[1][1], page[1][2]
-        def post(self, url, headers, payload, timeout):
-            self.posts += 1
-            return 200, llm_body(json.dumps(VALID_EXTRACTION))
-    tr = OnePageTransport()
-    jobs = [make_job("ACME|ats:1", url="http://acme.test/job/1")]
-    runner.process_batch(jobs, FAKE_KEY, store, transport=tr, backoff=(0, 0), sleep_fetch=0, log=lambda *_: None)
-    first_posts = tr.posts
-    result2 = runner.process_batch(jobs, FAKE_KEY, store, transport=tr, backoff=(0, 0), sleep_fetch=0, log=lambda *_: None)
-    check("lote: rerun idempotente -> cache_hit",
-          result2["summary"]["cache_hits"] == 1 and tr.posts == first_posts)
-
-# ---------------------------------------------------------------------------
-# 10. select_sample: determinismo, composicao, unicos, teto
-# ---------------------------------------------------------------------------
-
-data_path = Path(__file__).resolve().parent.parent / "data" / "eligible_jobs.json"
-if data_path.exists():
-    real_jobs = json.loads(data_path.read_text(encoding="utf-8"))
-    s1 = runner.select_sample(real_jobs)
-    s2 = runner.select_sample(real_jobs)
-    check("amostra: deterministica (2 chamadas identicas)", s1 == s2)
-    check("amostra: 16+4+4=24 vagas", len(s1) == 24, f"got {len(s1)}")
-    check("amostra: ids unicos", len(set(str(j['id']) for j in s1)) == 24)
-    ats = {str(j["source"]) for j in s1}
-    check("amostra: multiplos ATS", len(ats) >= 5, f"got {len(ats)}")
-    ordered = sorted(real_jobs, key=lambda j: (float(j.get("score") or 0), str(j.get("id"))), reverse=True)
-    check("amostra: top 16 sao os 16 maiores scores",
-          [str(j["id"]) for j in s1[:16]] == [str(j["id"]) for j in ordered[:16]])
-    wa = [j for j in s1[16:20]]
-    check("amostra: extras WA detectados no feed",
-          all(app_intel.work_authorization(
-              f"{j.get('title') or ''} {j.get('description') or ''}"
-          )["state"] != "not_mentioned" for j in wa))
-    nodesc = [j for j in s1[20:24]]
-    check("amostra: extras sem description",
-          all(not (j.get("description") or "").strip() for j in nodesc))
-    small = runner.select_sample(real_jobs, top=3, extra_wa=1, extra_nodesc=1)
-    check("amostra: teto respeitado (3+1+1=5)", len(small) == 5, f"got {len(small)}")
-    check("amostra: ids unicos no teto",
-          len(set(str(j["id"]) for j in small)) == 5)
-else:  # CI (sem data/): fixture sintetica
-    # Descricoes COM vocab de WA real (existing_required no detector —
-    # conferido contra app_intel) para o bucket extra_wa encontrar vagas;
-    # a fixture anterior usava "Werkstudent Data Analytics", que NAO
-    # dispara o detector (not_mentioned) e esvaziava o bucket.
-    synth = [
-        {"id": f"S{i}", "company": f"C{i}", "title": f"Job {i}",
-         "source": "ats:s", "url": f"http://x/{i}", "score": float(i),
-         "description": (
-             "" if i % 2 else
-             "Sie besitzen eine gültige Arbeitserlaubnis."
-             if i % 4 == 0 else
-             "Werkstudent Data Analytics"
-         )}
-        for i in range(20)
-    ]
-    a = runner.select_sample(synth, top=5, extra_wa=2, extra_nodesc=2)
-    b = runner.select_sample(synth, top=5, extra_wa=2, extra_nodesc=2)
-    check("amostra: deterministica (fixture)", a == b)
-    check("amostra: composicao 5+2+2", len(a) == 9, f"got {len(a)}")
-    check("amostra: ids unicos (fixture)",
-          len(set(str(j["id"]) for j in a)) == 9)
-    check("amostra: extras WA disparam detector (fixture)",
-          all(app_intel.work_authorization(
-              f"{j.get('title') or ''} {j.get('description') or ''}"
-          )["state"] != "not_mentioned"
-              for j in a[5:7]))
-    check("amostra: extras sem description (fixture)",
-          all(not (j.get("description") or "").strip() for j in a[7:9]))
+          s["extractions_ok"] == 2 and s["extractions_fail"] == 0)
 
 # ---------------------------------------------------------------------------
 # 11. Segredo: a key nunca vaza em prompt/erro/artefato
