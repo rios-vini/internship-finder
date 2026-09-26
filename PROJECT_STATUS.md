@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-25
+Last updated: 2026-09-26
 
 ## Current state
 
@@ -79,6 +79,23 @@ nenhuma mudança de ranking/filtros/pesos/coleta:
   `scripts/test_enrichment.py` no CI (33→34; 114 checks offline, TUDO OK); suíte no
   clone 33/34 (única falha = drift pré-existente do `test_visa_policy`). Detalhes:
   `docs/enrichment.md`.
+
+- **Enrichment Fase 2 (incremental) — 26/09, branch `feature/enrichment-fase2`
+  (base `867dfe3`), commits locais, PR a abrir pelo orquestrador**: a camada virou
+  processo incremental integrado ao refresh diário, sem mudar
+  score/eligibility/ranking/Telegram/HTML. Delta por `(job_id, final_url,
+  content_hash)` sobre TODAS as elegíveis (planejamento new/retry/seen + fetch
+  sweep + cache_hit sem LLM); pool `retry → new → changed/changed_source` com cap
+  `--limit` (default 24 extrações LLM/run; backlog esvazia em runs futuros);
+  `refresh_daily.py --enrichment --enrichment-limit N` (default OFF; gate único
+  `publication_allowed`; key env/.env injetada no subprocesso; exit do refresh
+  NUNCA muda); concorrência via flock (exit 3); preservação com pendência
+  (`pending_content_hash` — falha de conteúdo novo não apaga o último sucesso
+  válido); health em `data/enrichment/enrichment_status.json`; exit codes 0/1/2/3.
+  Testes offline: `test_enrichment.py` 114→153 checks, `test_refresh.py` +26 (gate,
+  exit inalterado, key ausente pulada com log); zero API NVIDIA. Validação real
+  (carga em produção) a cargo do orquestrador pós-deploy. Detalhes:
+  `docs/enrichment.md` (reescrito para a fase 2) e Log 26/09 do MASTER_PLAN.
 
 The project is a working company-oriented ATS collection pipeline (collection →
 filtering → dedup → ranking), with SQLite persistence, structured error codes,

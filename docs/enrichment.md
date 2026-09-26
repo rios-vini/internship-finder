@@ -1,222 +1,215 @@
-# Camada de Enrichment LLM (isolada) — v1
+# Camada de Enrichment LLM — Fase 2 (incremental, automática, operacionalmente segura)
 
-**Fase**: enrichment v1 (branch `feature/enrichment-layer`). Primeira versão
-permanente da camada de enriquecimento por LLM, deliberadamente **isolada**:
-nenhum módulo do pipeline importa o pacote `internship_finder.enrichment` —
-ela é uma ferramenta standalone (`scripts/enrichment_run.py`). A camada pode
-falhar por completo sem impedir: coleta, eligibility, dedup, ranking, geração
-do ranking, Telegram ou publicação.
+**Fase**: enrichment v2 (branch `feature/enrichment-fase2`, base = Fase 1 /
+PR #81). A camada continua **isolada por design**: nenhum módulo do pipeline
+importa `internship_finder.enrichment`. A LLM é opcional e não-crítica —
+enriquece com evidência, NUNCA decide eligibility, score ou ranking.
 
-Base: spike de 24/09 (`/home/ubuntu/internship-finder-spike`, veredito SIM
-com condições). Os fatos medidos no spike são reutilizados; os 2 falsos
-positivos reais que o spike expôs viraram few-shots obrigatórios no prompt e
-guardas determinísticas no normalizador.
+Novidades da Fase 2 sobre a v1: **delta incremental** (somente o que mudou
+vai à LLM), **execução automática após o refresh** (`refresh_daily.py
+--enrichment`), **limite de carga por run** (`--limit`), **lock de
+concorrência** (flock, exit 3), **preservação com pendência** (falha de
+conteúdo novo nunca apaga o último sucesso válido) e **health file**
+(`enrichment_status.json`).
 
 ## Arquitetura e fluxo
 
 ```
-eligible/ranked jobs (data/eligible_jobs.json)
-  → select_sample (determinística: top 16 + 4 WA + 4 sem description)
-  → fetch_page (requests, 1 tentativa, redirects, timeout (10, 30))
-  → normalize_html (BeautifulSoup → texto)
-  → classify_page (page_status)
-  → [cache] store: job_id + final_url + content_hash → skip da LLM
-  → extração GLM-5.3-Flash (JSON estruturado com evidências)
-  → EnrichmentRecord (pydantic, schema_version 1)
-  → EnrichmentStore.upsert (JSONL, escrita atômica, incremental)
+refresh diário (cron 09:00 UTC)
+  → coleta → eligibility → ranking → outputs (Pages/Telegram)   [fluxo existente]
+  → refresh_daily.py --enrichment --enrichment-limit 24
+      → scripts/enrichment_run.py (subprocesso standalone)
+          → planejamento (TODAS as elegíveis, ordem (score desc, id desc))
+              sem record → new | falha → retry | sucesso → seen
+          → fetch sweep (fetch + normalize_html + SHA-256, TODAS, 1 tentativa,
+            pausa --sleep-fetch entre fetches)
+          → delta: seen + (job_id, final_url, content_hash) idêntico ao record
+            e SEM pendência → cache_hit (zero LLM, zero escrita)
+          → pool p/ LLM: retry → new → changed/changed_source (score desc em
+            cada bloco), cap --limit sobre CHAMADAS LLM; excedente =
+            pending_backlog (próximo run continua)
+          → GLM-5.3-Flash sequencial (3 tentativas, backoff 30/60s,
+            isolamento por vaga)
+          → EnrichmentStore.upsert (JSONL atômico; preservação/pendência)
+          → resumo no stdout + data/enrichment/enrichment_status.json
 ```
 
 Módulos (`src/internship_finder/enrichment/`):
 
-- **`schema.py`** — contrato de dados: `EnrichmentRecord`, enums (`WAValue`,
-  `PageStatus`, confiança), shapes por campo (value/evidence/confidence),
-  normalização do JSON da LLM (`fields_from_llm`) com guardas determinísticas,
-  confiança record-level (`compute_record_confidence`).
-- **`fetch.py`** — fetch da página oficial: `fetch_page` (uma tentativa,
-  exceções capturadas por tipo), `classify_page` (8 estados), `title_match`
-  (threshold 0.5, do spike), `looks_js_rendered`. Transport HTTP injetável
-  (`Transport`/`RequestsTransport`).
-- **`html_norm.py`** — HTML → texto: remove script/style/noscript/template/
-  svg/head, nav/footer e header boilerplate (header com `<nav>`); entidades
-  decodificadas; sem markdown.
-- **`llm.py`** — cliente GLM-5.3-Flash: key exclusivamente de
-  `NVIDIA_API_KEY`; `validate_model` (fail fast); `extract` (máx. 3
-  tentativas, backoff injetável, erros sanitizados); `parse_llm_json`
-  (tolerante: think-blocks, fences, texto envolvente, `raw_decode`);
-  `EXTRACTION_PROMPT` (conservador, 3 few-shots obrigatórios).
-- **`runner.py`** — `select_sample` (determinística), `should_skip` (cache),
-  `process_job` (fluxo por vaga), `process_batch` (isolamento por vaga,
-  resumo), `run` (entry point com exit codes).
-- **`store.py`** — `EnrichmentStore`: JSONL key=job_id, escrita atômica
-  (tmp + `os.replace`), upsert incremental, preservação de sucessos, `load`
-  tolerante a linhas malformadas.
+- **`schema.py`** — inalterado da v1 (EnrichmentRecord, guardas, fields_from_llm).
+- **`fetch.py`** — inalterado (fetch_page 1 tentativa, classify_page 8 estados).
+- **`html_norm.py`** — inalterado.
+- **`llm.py`** — inalterado (GLM-5.3-Flash fixo, retry 3×, key só de env).
+- **`runner.py`** — reescrito na fase 2: `plan_jobs` (buckets), `classify_seen`
+  (delta pós-fetch), `run_incremental` (sweep + pool + LLM + métricas),
+  `acquire_lock` (flock), `format_summary`, `_write_run_status`, `run`.
+- **`store.py`** — upsert com preservação unificada (ver "Preservação e
+  pendência").
+
+## Planejamento e delta (o que significa "mudou")
+
+Para cada vaga elegível, na ordem `(score desc, id desc)`:
+
+- **Caso A — já enriquecida, página não mudou**: `job_id` + `final_url` +
+  `content_hash` idênticos ao record de sucesso e **sem pendência** →
+  `cache_hit`. Nenhuma chamada LLM, nenhuma escrita.
+- **Caso B — vaga nova** (sem record): bucket `new`.
+- **Caso C — conteúdo mudou** (`content_hash` diferente): `changed`.
+- **Caso D — record de falha** (`extracted_at=None`, inclui fetch falho e
+  LLM falho): bucket `retry` — tentar de novo.
+- **Caso E — vaga sumiu de `eligible_jobs.json`**: nada é apagado — o
+  record fica no store para auditoria/cache (seção 2 da spec).
+
+A chave de delta é a da Fase 1: `job_id + final_url + content_hash`, onde
+`content_hash` = SHA-256 do texto normalizado. `final_url` diferente →
+`changed_source` (a origem mudou; reprocessar). Sem versionamento além
+disso.
+
+## Preservação e pendência (spec seção 9)
+
+Regra central: **uma falha nova NUNCA apaga um enrichment válido anterior.**
+
+- Falha + sucesso anterior + hash IGUAL ou hash `None` (fetch falho,
+  conteúdo desconhecido) → sucesso preservado; a falha fica auditável em
+  `last_error`/`last_failed_at` no próprio record.
+- Falha + sucesso anterior + hash DIFERENTE → sucesso preservado **com
+  pendência**: o hash novo é registrado em `pending_content_hash` e nada
+  do sucesso é apagado (o sucesso é o último enrichment VÁLIDO).
+- O planejador considera a pendência: `cache_hit` só se o hash atual ==
+  `content_hash` do sucesso E não há pendência; hash atual ==
+  `pending_content_hash` → bucket `retry` (a versão pendente voltou);
+  diferente de ambos → `changed`.
+- Re-extração pendente bem-sucedida → upsert normal (pendência some).
+  **Novo sucesso sempre substitui** (regra da v1).
+
+## Execução manual e diária
+
+```bash
+# plano pré-fetch, SEM rede, SEM lock:
+.venv/bin/python scripts/enrichment_run.py --dry-run
+
+# incremental manual (key exclusivamente do env — nunca em arquivo):
+export NVIDIA_API_KEY="..."
+.venv/bin/python scripts/enrichment_run.py --limit 24
+```
+
+**Diária (produção)**: o `refresh_daily.py` ganhou `--enrichment`
+(default OFF — preserva o comportamento atual e o `--dry-run`) e
+`--enrichment-limit N` (default 24). No fim do `main()`, após TODOS os
+dados principais (rotate → coleta → backup → health → publish → digest →
+mensagem → run_info), se `--enrichment` e o gate
+`publish_pages.publication_allowed(exit_code, eligible)` liberarem
+(exit 0/2 com eligible > 0 — a MESMA decisão da publicação), o refresh
+roda `scripts/enrichment_run.py --limit N` como subprocesso. A key é
+montada no env do subprocesso: `NVIDIA_API_KEY` de `os.environ` OU do
+`.env` (via `load_env_config`); ausente em ambos → log "enrichment
+pulado: NVIDIA_API_KEY ausente" e o refresh segue (NUNCA é erro).
+Qualquer exit (1/2/3) ou exceção do enrichment vira UMA linha de log —
+o exit code do refresh NUNCA muda (P1.3 preservado).
+
+O cron de produção (orquestrador edita pós-merge) roda às **09:00 UTC**,
+fora da janela degradada da API NVIDIA (~19:30–21:30 UTC). Nada de
+segundo scheduler: é a mesma linha do refresh diário.
+
+## Controle de carga e backlog
+
+- **Sequencial**, uma vaga por vez (latência 16–290s/vaga; paralelismo
+  esbarraria em rate limit). `--sleep-fetch` (default 2s) entre fetches.
+- **`--limit N`** (default 24) = cap de CHAMADAS LLM por run, sobre o pool
+  `retry → new → changed/changed_source`. O excedente fica
+  `pending_backlog` e é pego naturalmente pelo próximo run (backlog de
+  ~400 vagas esvazia em ~17 dias com cap 24).
+- Uma vaga nunca bloqueia as demais: exceção vira record de erro
+  (`runner_error:<Tipo>`) e o lote segue.
+
+## Retry
+
+- **LLM** (reuso da v1): máx. 3 tentativas, backoff 30/60s. Retryáveis:
+  `http_429`, `http_5xx`, `request_error` (timeout/rede), `empty_content`,
+  `parse_error`. Não-retryáveis (1 tentativa): demais 4xx. Sequência
+  anormal de falhas de API não destrói resultados anteriores (isolamento
+  por vaga + preservação do store).
+- **Fetch**: UMA tentativa por URL (martelar servidor de carreira não é
+  aceitável); a vaga volta no próximo run pelo bucket `retry`.
+
+## Concorrência
+
+`enrichment_run.py` (modo real) adquire `fcntl.flock LOCK_EX|LOCK_NB` em
+`<dir do --output>/.enrichment.lock` e segura o fd até o fim do run.
+Segunda execução: print `execução concorrente detectada — saindo` +
+**exit 3**, sem tocar o store. flock do SO: processo morto libera
+sozinho (sem stale lock, sem cleanup manual). `--dry-run` não trava
+(read-only). O flock do refresh (cron) já impede refresh sobre refresh.
+
+## Métricas e health
+
+Resumo impresso no stdout ao fim de cada run (todas as linhas caem no log
+do cron):
+
+```
+== Resumo do enrichment (fase 2) ==
+vagas elegiveis: N
+cache hits: N
+pool: new N | retry N | changed N | changed_source N
+selecionadas p/ LLM: N (cap N) | backlog pendente: N
+LLM: chamadas N | retries N | ok N | falha N
+fetch: falhas N (timeouts N) | HTTP errors N | js_rendered N | skipped N
+preservados (falha não apagou sucesso): N
+tokens: in N out N
+tempos (s): total N | fetch medio N | LLM medio N
+```
+
+**Status file** `data/enrichment/enrichment_status.json` (escrita atômica,
+mesmo padrão do store): `{last_run_at, last_success_at, last_exit_code,
+model, counts{...}, last_error, duration_s}`. É o health mínimo para
+detectar "o enrichment parou de funcionar" (ex.: `last_success_at` parado
+no tempo, `last_exit_code` != 0 recorrente, `last_error` persistente).
+Nenhuma stack de observabilidade nova; nada vai ao Telegram.
+
+## Artefatos (todos em `data/`, gitignored — nunca ao GitHub/Pages)
+
+- `data/enrichment/enrichment_results.jsonl` — store (1 record/linha,
+  key=job_id, escrita atômica tmp+os.replace).
+- `data/enrichment/enrichment_status.json` — health do último run.
+- `data/enrichment/.enrichment.lock` — lock de concorrência (fd do flock).
+
+## Exit codes (`enrichment_run.py`)
+
+- `0` — run concluído (falha individual de vaga é dado, não erro);
+- `1` — erro de setup (input ilegível, eligible vazio, key ausente,
+  modelo indisponível);
+- `2` — nenhuma vaga processada (ex.: `--limit 0` com pool pendente);
+- `3` — execução concorrente detectada.
+
+O refresh NÃO propaga nenhum deles: exit do enrichment é dado operacional.
+
+## Comportamento em falha da API NVIDIA
+
+- Refresh sempre válido: coleta/ranking/Pages/Telegram independem do
+  enrichment; `refresh exit 0` + `enrichment parcialmente falho` é estado
+  operacionalmente aceitável.
+- Dentro do enrichment: falhas retryáveis esgotam 3 tentativas com
+  backoff; a vaga vira record de falha (bucket `retry` no próximo run);
+  sucesso anterior preservado (com pendência se o conteúdo mudou).
+- Rajada de falhas (janela degradada): o lote segue vaga a vaga, nada é
+  perdido, `last_error`/counts registram o estado.
 
 ## Schema do record
 
-Identidade/origem: `job_id`, `company`, `title`, `source`, `original_url`,
-`final_url`, `fetched_at` (ISO UTC), `http_status`, `page_status` ∈
-`ok | redirected | not_found | empty_content | js_rendered | http_error |
-timeout | fetch_error`.
-
-Processamento: `content_hash` (SHA-256 do texto normalizado), `extractor`
-(constante `llm-glm-5.3-flash`), `model`, `extracted_at`, `confidence`
-(high/medium/low/None), `error`, `attempts`, `latency_s`, `usage` (tokens
-in/out), `content_truncated`, `schema_version` (constante 1).
-
-Extração (shape `value | evidence | confidence`):
-
-- **8 campos WA** (`WAValue` = `true | false | not_mentioned | unclear`):
-  `student_status_required`, `work_authorization_required`,
-  `existing_work_authorization_required`, `work_permit_required`,
-  `residence_permit_required`, `visa_sponsorship`,
-  `international_candidates_explicitly_accepted`, `eu_citizenship_required` —
-  mais `internship_compatible`.
-- **Conteúdo**: `salary` (valor literal + período + moeda + evidência),
-  `work_mode` (on_site/hybrid/remote/not_mentioned/unclear), `location`
-  (declarado na página), `german_requirement`/`english_requirement`
-  (none/conversational/fluent/business/native/not_mentioned/unclear),
-  `employer_deadline` (data explicitamente declarada, YYYY-MM-DD),
-  `page_is_job_posting` (bool, âncora company+title).
-
-Regras de valor (contrato):
-
-- `true`/`false` EXIGEM `evidence` (citação literal ≤200 chars) e
-  `confidence` por campo — violação é rejeitada pelo schema.
-- Ausência de informação → `not_mentioned` (NUNCA `false`).
-- Evidência conflitante, insuficiente ou CONDICIONAL → `unclear`.
-- `salary`/`employer_deadline` sem evidência → valor descartado (nunca
-  inventado).
-- Record de não-extração (fetch falhou/página inútil/LLM falhou): campos de
-  extração ficam `None` — ausência de valor nunca vira `not_mentioned`.
-
-**Confiança record-level (determinística)**: `high` = extração completa,
-todo true/false com evidência, `page_is_job_posting=true`, sem truncamento;
-`medium` = idem com truncamento; `low` = `page_is_job_posting=false` ou
-true/false sem evidência; `None` = não extraído.
-
-## Decisões de taxonomia (WA)
-
-Os 8 conceitos são DISTINTOS, nunca sinônimos — cada campo é avaliado
-INDEPENDENTEMENTE (a evidência de um não prova nada sobre os outros):
-
-1. `student_status_required` — matrícula universitária (Immatrikulation).
-   Comprovar matrícula NÃO comprova autorização/sponsorship/residence permit.
-2. `work_authorization_required` — afirmação genérica, sem especificar qual.
-3. `existing_work_authorization_required` — candidato JÁ POSSUA autorização
-   válida. **Regra do condicional**: `ggf.` / `falls erforderlich` /
-   `if applicable` etc. → `unclear` com a evidência, NUNCA `true` (FP real
-   do spike: "sowie ggf. eine gültige Arbeits- und Aufenthaltserlaubnis" —
-   prompt ensina E o normalizador confere).
-4. `work_permit_required` — Arbeitserlaubnis/work permit como requisito
-   (mesma regra do condicional).
-5. `residence_permit_required` — Aufenthaltserlaubnis/residence permit como
-   requisito (mesma regra).
-6. `visa_sponsorship` — empregador patrocina/cobre/assiste visto. Ausência
-   de promoção → `not_mentioned`, nunca `false`.
-7. `international_candidates_explicitly_accepted` — aceitação EXPLÍCITA na
-   VAGA. Frase genérica de DEI da EMPRESA ("Bayer begrüßt Bewerbungen aller
-   Menschen ungeachtet ... nationaler Herkunft") NÃO conta → `not_mentioned`
-   (FP real do spike, few-shot + guarda).
-8. `eu_citizenship_required` — cidadania UE explicitamente exigida.
-
-Nota sobre `oder`: o prompt lista "oder" como marcador condicional (quando
-conecta o termo de autorização a uma alternativa), mas a guarda
-determinística NÃO usa `oder` sozinho — "Arbeitserlaubnis oder
-Aufenthaltstitel erforderlich" permanece requisito duro. `oder` exigiria
-análise sintática que o normalizador não faz; errar para `unclear` em toda
-frase com "oder" destruiria precisão (o termo aparece em qualquer texto).
-
-## Cache/idempotência
-
-Antes da chamada LLM (após fetch — a chave de cache precisa de
-`final_url` + `content_hash`): existe record bem-sucedido com mesmo
-`job_id` + `final_url` + `content_hash` → **skip** (log `cache_hit`), LLM
-não é chamada. Conteúdo mudou (`content_hash` diferente) → novo enrichment
-(upsert). Record anterior é falha → retry permitido. Store vazio → processa
-tudo da amostra. Sem políticas de expiração (deliberado).
-
-## Retry (camada LLM)
-
-- **Retryáveis** (máx. 3 tentativas, backoff injetável default 30s/60s):
-  `http_429`, `http_5xx`, `request_error` (timeout/rede), `empty_content`
-  (resposta vazia), `parse_error` (JSON picado em janela degradada — medido
-  no spike).
-- **Não-retryáveis** (1 tentativa, erro registrado): outros 4xx (auth/
-  request inválido não se resolve esperando).
-- Fetch: UMA tentativa por URL — retry na camada de fetch martelaria
-  servidores de carreira; a vaga volta no próximo run.
-- Runner: sequencial (latência 16–290s/vaga; paralelismo esbarraria em rate
-  limit), isolamento por vaga (exceção de uma vaga = record de erro, lote
-  segue).
-
-## Persistência
-
-- Arquivo: `data/enrichment/enrichment_results.jsonl` — 1 record por linha,
-  key = `job_id`. `data/` é gitignored: nunca vai ao GitHub/Pages.
-- Escrita ATÔMICA (tmp no mesmo diretório + `os.replace`), mesmo padrão do
-  `_write_atomic` do cli.py.
-- Upsert incremental: cada record salvo logo após sua extração (crash no
-  meio não perde o que já foi). Reprocessar uma vaga substitui o record do
-  mesmo `job_id`.
-- **Preservação**: record bem-sucedido anterior NUNCA é apagado por falha
-  nova do MESMO conteúdo (`content_hash` idêntico → falha descartada).
-  Falha de conteúdo novo (hash diferente) é gravada — o estado atual da
-  página (ex.: not_found) é dado válido.
-- `load()` tolerante: linha malformada pula com aviso, nunca crasha.
-
-## Como rodar a carga inicial
-
-```bash
-# plano da amostra, SEM rede nenhuma:
-.venv/bin/python scripts/enrichment_run.py --dry-run
-
-# carga real (a key vem EXCLUSIVAMENTE do env — nunca em arquivo):
-export NVIDIA_API_KEY="..."   # no shell/cron, nunca versionado
-.venv/bin/python scripts/enrichment_run.py
-```
-
-Flags: `--top 16`, `--extra-wa 4`, `--extra-nodesc 4`, `--limit N` (teto de
-vagas do run), `--input` (default `data/eligible_jobs.json`), `--output`
-(default `data/enrichment/enrichment_results.jsonl`), `--sleep-fetch 2.0`.
-Exit: 0 = run concluído (falha individual é dado); 1 = erro de setup (input,
-amostra vazia, key, modelo); 2 = nenhuma vaga processada.
-
-O runner valida o modelo no início (`GET /v1/models`, fail fast) e loga por
-vaga `[i/N] status empresa título`. Resumo final: counts por `page_status`,
-extrações ok/falha, cache_hits, latências (min/med/max), tokens totais.
-
-## Amostra
-
-Determinística (`(score desc, id desc)`): top 16 do ranking + primeiras 4
-fora do top com work authorization detectada no feed (detector atual,
-read-only) + primeiras 4 sem `description` no feed (a página oficial é a
-única fonte para elas). Duas chamadas idênticas → mesmo resultado; ids
-únicos. Amostra representativa (múltiplos ATS, redirect, sem description,
-WA, salário, DE, EN) — não processa as ~400 vagas indiscriminadamente
-(latência/tokens medidos no spike tornam isso inviável e desnecessário).
-
-## O que NÃO faz (deliberadamente fora desta fase)
-
-- Não altera eligibility/score/ranking; não coloca LLM dentro do modelo
-  `Job`; não usa LLM como filtro/decisor; não substitui detectores
-  determinísticos.
-- Browser/headless (páginas JS-render ficam `js_rendered` — fora de escopo).
-- Não enriquece todas as vagas indiscriminadamente.
-- Sem PostgreSQL/Redis/DuckDB/ORM/Docker.
-- Sem integração ao HTML/Telegram/ranking/GitHub Pages.
-- Sem políticas complexas de expiração de cache.
+Inalterado da v1 (ver git history / PR #81 para o contrato completo:
+identidade/origem, processamento, 8 campos WA + conteúdo com
+evidence/confidence, `schema_version` 1). Fase 2 adiciona apenas campos
+de auditoria FORA do schema Pydantic, gravados pelo store no dict
+persistido: `last_error`, `last_failed_at`, `pending_content_hash`.
 
 ## Limitações conhecidas
 
-- **JS-render fora de escopo** (~7% das páginas no spike): ficam
-  `js_rendered` e não são extraídas.
-- **Latência real 16–290s/vaga** (API NVIDIA free tier): 24 vagas ≈ 30–90
-  min sequenciais; janela degradada pode esgotar retries (record de falha,
-  retriable no próximo run).
-- **Amostra ≠ corpus**: 24 vagas do topo + WA + sem-description; a taxa de
-  extração em vagas de score baixo não foi medida.
-- **`glm-5.3` (não-flash) é inviável** para JSON estrito (queima todo o
-  max_tokens em reasoning — A/B 5/5 no spike); o flash é o único modelo
-  suportado pela camada.
-- O condicional `oder` é tratado só no prompt (não na guarda — ver decisão
-  de taxonomia acima).
+- **JS-render fora de escopo** (~7% no spike): ficam `js_rendered`.
+- **Sweep diário de fetch de TODAS as elegíveis** (~406 GETs com pausa de
+  2s ≈ 14 min): é o custo de detectar mudança por hash; aceitável para
+  uma vez ao dia, mas é o gargalo do run.
+- **`glm-5.3` (não-flash) proibido**: queima max_tokens em reasoning
+  (A/B 5/5 no spike); o flash é o único modelo suportado.
+- Backlog inicial (~380 vagas sem record) esvazia em ~2 semanas com cap
+  24; `--enrichment-limit` ajusta a vazão se necessário.
+- O condicional `oder` é tratado só no prompt (decisão de taxonomia v1).
