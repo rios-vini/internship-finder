@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-26
+Last updated: 2026-09-27
 
 ## Current state
 
@@ -127,6 +127,23 @@ nenhuma mudança de ranking/filtros/pesos/coleta:
   NOVO (75 checks, 35º no CI) + interface (152) + digest (82); suíte VPS 34/35 —
   `test_lifecycle` falha PREEXISTENTE na base (reproduzida em worktree limpo; passa
   no CI). Detalhes: Log 26/09 (Fase 3) do MASTER_PLAN e `docs/enrichment.md`.
+
+- **Fase A — Hidratação seletiva de descriptions — 27/09, PR #84 MERGEADO (squash
+  `7460a122`; CI do PR verde ×2 no SHA exato — membership `test_hydration` conferida
+  no log, array 35→36 — + CI main pós-merge verde; suíte 36/36 rodada de forma
+  independente pelo orquestrador)**: estágio entre dedup e rank preenche a
+  description AUSENTE das vagas elegíveis via `ats-scrapers 0.3.0`
+  `get_description` (detail por vaga, best-effort — falha não derruba o run nem
+  muda exit codes; budget 600s). ATS com endpoint: SR/WD/EF/PS; softgarden no feed
+  (`include_descriptions=True` local na coleta, custo zero); phenom pendente (29
+  teasers só contados). Proveniência: `Job.description_source` ("hydration" vs
+  ausente=feed). Métricas: registro `type: hydration` no JSONL (coverage
+  antes/depois, por ATS, feed vs hydration, duração). A/B (staged 26/09, 411
+  eligible): B1 sem hidratação = 0 divergência; B2 real 77/77 em ~58s, cobertura
+  **79,8% → 98,5%**; 74 scores mudaram APENAS em language/skills (detectores
+  existentes vendo texto novo — 0 mudança nas não-hidratadas; critérios/pesos
+  intocados). Relatório: `~/.hermes/handoff/hydration-fase-a/relatorio_fase_a.md`;
+  Log 27/09 do MASTER_PLAN.
 
 The project is a working company-oriented ATS collection pipeline (collection →
 filtering → dedup → ranking), with SQLite persistence, structured error codes,
