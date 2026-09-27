@@ -1,6 +1,6 @@
 # Project Status
 
-Last updated: 2026-09-27
+Last updated: 2026-09-27 (Fase B — consumo dos campos estruturados do raw, PR #85)
 
 ## Current state
 
@@ -127,6 +127,8 @@ nenhuma mudança de ranking/filtros/pesos/coleta:
   NOVO (75 checks, 35º no CI) + interface (152) + digest (82); suíte VPS 34/35 —
   `test_lifecycle` falha PREEXISTENTE na base (reproduzida em worktree limpo; passa
   no CI). Detalhes: Log 26/09 (Fase 3) do MASTER_PLAN e `docs/enrichment.md`.
+
+- **Fase B — Consumo dos campos estruturados do `raw` — 27/09, PR #85 MERGEADO (squash `3cd7424`; CI do PR verde ×2 no SHA `0db1899` — membership `test_structured_fields` nos logs de ambos, array 36→37 — + CI main pós-merge verde; produção `data/` intocada)**: novo `src/internship_finder/structured_fields.py` (acessores puros read-only sobre `job["raw"]`, padrão `opportunity_intel`) + métricas de conflito (`employment_type_relation`, `remote_relation`). Consumido: `apply_url` → botão "candidatar-se" quando ≠ `job.url` (`job.url` nunca substituído); `department` → linha "área:" nos detalhes; enum `employment_type` → linha "classificação ATS" só quando difere do label exibido (0 ocorrências no dataset). `commitment` = origem do label canônico (57/61) — permanece evidência. Cobertura (411 eligible): department 63,3% · enum ET 17,5% (INTERN 9) · is_remote 71 · apply_url 22 (16 úteis) · requisition_id 119 · global_id 100%. Conflitos: ET **17 match / 55 conflict / 339 missing** (enum = regime do contrato, não natureza da vaga) — NUNCA substitui o filtro de tipo; remote 70 match / 1 conflict. requisition_id: 112 únicos, 7 dups/tenant = 4 mirrors DE/EN legítimos (Bosch ×3, ABOUT YOU) + 3 FPs → req_id sozinho não é chave de dedup; combinado com título normalizado é o caminho p/ uma futura Fase C (decisão do dono). global_id: único, 0 colisões — identidade P1.1 mantida. A/B: 0 diffs de score/ranking/Top 30; HTML idêntico exceto fragmentos aditivos. Produção real (run cron 27/09): 32 botões candidatar-se + 382 linhas "área" publicados. Testes: `test_structured_fields.py` (51 checks, 37º no CI); `structured_fields_coverage.py` manual. Suíte VPS: 37/37 estáveis (race do cron `test_countries` e drift pré-existente `test_visa_policy` explicados; ambos passam re-executados/CI). Docs: README + architecture.md. Detalhes: Log 27/09 do MASTER_PLAN.
 
 - **Fase A — Hidratação seletiva de descriptions — 27/09, PR #84 MERGEADO (squash
   `7460a122`; CI do PR verde ×2 no SHA exato — membership `test_hydration` conferida
