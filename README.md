@@ -942,7 +942,7 @@ employment_type, country_iso, raw`.
   (Graduate Trainee, Management Trainee, Junior Managers Program/JMP) sao
   EXCLUIDOS mesmo com `employment_type` "trainee" (regra do dono,
   pos-auditoria — `filters.PROGRAM_EXCLUSION_PATTERNS`).
-- `raw` guarda os campos extras do ATS (sem duplicar a `description`).
+- `raw` guarda os campos extras do ATS (sem duplicar a `description`). Os campos estruturados do `ats-scrapers` que chegam nele (`department`, `employment_type`, `is_remote`, `apply_url`, `requisition_id`, `global_id`, `commitment`) são expostos por `internship_finder.structured_fields` (Fase B) como evidência complementar — display (`apply_url` como botão "candidatar-se", `department` como "área") e métricas de conflito; NENHUM entra em score/elegibilidade/dedup (`docs/architecture.md`).
 
 ### Saida (JSON/CSV) — contrato P3 #20/ACH-18
 

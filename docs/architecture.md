@@ -28,6 +28,7 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
 | `materials_ranking.py` | ranking do perfil secundário (Fase 4): `materials_score_job` + `rank_materials_jobs` — MESMAS vagas elegíveis, score/breakdown próprios, independentes do principal |
 | `ptbr.py` | camada PT-BR (Fase 5): glossário determinístico (`title_pt`), `detect_language`, `employment_type_pt`, `country_label`, `relevance_signals`/`penalties` — só apresentação; nunca toca score/ranking |
 | `app_intel.py` | Application Intelligence (Fase 6): `german_level` (exigência de alemão por EVIDÊNCIA no texto), `english_evidence`, `work_authorization` (5 estados, só com evidência), `deadline_kind` (empregador vs. validade do feed SuccessFactors vs. ausente), `urgency_color`, `candidate_fit`, `possible_problems`, `quality_flags`, `application_readiness` — funções puras e determinísticas; alimenta ranking (componente language) e interface |
+| `structured_fields.py` | Campos estruturados do `raw` (Fase B): acessores puros (`department`, `employment_type_enum`, `is_remote_flag`, `commitment_label`, `apply_url`, `requisition_id`, `global_id`) + métricas de conflito (`employment_type_relation`, `remote_relation`) sobre o que o `ats-scrapers 0.3.0` preserva no `raw`; read-only, nada entra em score/filtro/dedup |
 | `metrics.py` | metricas de execucao em JSONL (payload por tenant + resumo do run, com `error_code`) |
 | `errors.py` | `CollectionError` + codigos de erro estruturados (classificador para o payload da queue e `error_code` no JSONL) |
 | `health.py` | relatorio de health por serie `(source, company)` sobre o JSONL (queda brusca, erro recorrente, zero-return, regressao historica ok->error — auditoria 23/09) + alertas |
@@ -110,3 +111,34 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
   no HTML (Pages e estatico/publico; limitacao documentada no relatorio).
   Comparacao = reuso integral do Compare da Fase 7. Teste dedicado:
   `scripts/test_personal_tracker.py` (30o script do CI).
+- **Campos estruturados do raw (Fase B, 27/09)**: o `ats-scrapers 0.3.0`
+  preserva no `raw` campos estruturados que o pipeline não consumia.
+  `structured_fields.py` os expõe com funções puras (padrão
+  `opportunity_intel`), SEM promover nenhum ao modelo canônico `Job`
+  (o `raw` continua a fonte estruturada; display lê direto) e SEM tocar
+  ranking/elegibilidade/dedup/arquitetura. Consumo real desta fase:
+  `apply_url` (segundo botão "candidatar-se" no card quando existe, passa
+  `_safe_url` e DIFERE de `job.url` — que permanece o link da vaga/origem),
+  `department` (linha "área: X" nos detalhes, escapada) e
+  `employment_type` enum (linha "classificação ATS" apenas quando difere
+  do label já exibido — nunca corrige a classificação). `commitment` NÃO
+  vai para a UI: é a ORIGEM do label canônico `employment_type` (cadeia
+  de fallback do adapter termina em `commitment`) — exibir seria
+  duplicação; permanece no `raw` como evidência. `is_remote` segue o
+  consumo da Fase 7 (`work_mode` já lê `raw.is_remote=True`); a
+  contribuição da Fase B é a MÉTRICA de conflito estruturado × textual.
+  `requisition_id` NÃO participa de dedup nesta fase: a análise
+  (`scripts/structured_fields_coverage.py`, manual) mostra 7 valores
+  duplicados por tenant no snapshot 26/09 — 4 mirrors DE/EN legítimos
+  (Bosch ×3, ABOUT YOU ×1) e 3 falsos positivos (títulos distintos
+  compartilhando req_id: celonis ×2, hellofresh) — ou seja, o campo é
+  sinal ÚTIL mas NÃO suficiente sozinho para dedup (futura Fase C/D:
+  combinar req_id + normalização de título, nunca req_id isolado).
+  `global_id` não substitui a identidade tenant-scoped (P1.1): 100%
+  cobertura/411 únicos/0 colisões no snapshot, mas o projeto já tem sua
+  identidade estável e o `global_id` fica como evidência futura.
+  Métricas: `employment_type_relation` (17 match / 55 conflict / 339
+  missing) mostra que o enum descreve o REGIME do contrato (Praktikum
+  FULL_TIME), não a natureza da vaga — por isso é evidência, nunca
+  substituto do filtro `is_student_role`. Teste dedicado:
+  `scripts/test_structured_fields.py` (37o script do CI).
