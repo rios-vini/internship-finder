@@ -5,8 +5,9 @@ global do ats-scrapers pode travar):
 
 ```
 Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeout)
-        → AtsJobAdapter → Job (pydantic) → filters → dedup → ranking
-        → print/save (JSON/CSV)
+        → AtsJobAdapter → Job (pydantic) → filters → dedup
+        → hydration (description ausente, detail por vaga — best-effort)
+        → ranking → print/save (JSON/CSV)
 ```
 
 ## Modulos
@@ -22,6 +23,7 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
 | `filters.py` | `is_student_role(title, description)` — heuristica EN/PT/DE (intern, internship, student, Werkstudent, Praktikum, iXp...) com exclusao de senior/manager/etc. |
 | `countries.py` | país/localização — `COUNTRY_CODES`, `EUROPE_COUNTRIES`, `COUNTRY_NAMES`, `infer_country_iso`, `parse_country_spec` (extraído de `filters.py` no P2 #12; `filters.py` re-exporta os símbolos) |
 | `dedup.py` | deduplicacao deterministica por chave de confiabilidade (`external_id`/`id`, URL normalizada, `company+title+location`) |
+| `hydration.py` | hidratacao seletiva de descriptions (Fase A): preenche description AUSENTE das vagas ELEGIVEIS pos-dedup via `ats-scrapers` `get_description` (detail por vaga, best-effort — SR/WD/EF/PS; softgarden via feed na coleta; phenom pendente); stats no JSONL (`type: hydration`), orcamento total defensivo |
 | `ranking.py` | ranking do perfil principal: `score_job` (score + breakdown) e `rank_jobs`, ordem deterministica |
 | `materials_ranking.py` | ranking do perfil secundário (Fase 4): `materials_score_job` + `rank_materials_jobs` — MESMAS vagas elegíveis, score/breakdown próprios, independentes do principal |
 | `ptbr.py` | camada PT-BR (Fase 5): glossário determinístico (`title_pt`), `detect_language`, `employment_type_pt`, `country_label`, `relevance_signals`/`penalties` — só apresentação; nunca toca score/ranking |

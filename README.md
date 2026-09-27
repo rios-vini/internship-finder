@@ -485,7 +485,8 @@ Flags do CLI:
 | `--rank` / `--no-rank` | rankeia por compatibilidade com o perfil: score + TOP 20 (default: ligado; `--no-rank` mantem a ordem original) |
 | `--timeout` | teto de segundos por scraper (defensivo: uma empresa que trava nao derruba o resto); valor `<= 0` -> erro claro, exit 2 (P3 #20) |
 | `--limit N` | maximo de vagas por tenant, aplicado APOS a coleta (0 = sem limite); valor negativo -> erro claro, exit 2 (P3 #20) |
-| `--include-descriptions` | busca a descricao por vaga (mais lento em ATS que exigem uma chamada por vaga, ex. SmartRecruiters) |
+| `--include-descriptions` | busca a descricao por vaga (mais lento em ATS que exigem chamada por vaga, ex. SmartRecruiters) |
+| `--hydrate-descriptions` / `--no-hydrate-descriptions` | **Hidratacao seletiva (Fase A)**: preenche a description AUSENTE das vagas ELEGIVEIS via detail-fetch do `ats-scrapers`, entre dedup e ranking (default: ligado; best-effort — falha por vaga nao derruba o run nem muda exit codes). Diferente de `--include-descriptions`, que busca descricao por vaga durante a COLETA inteira (bulk, mais lento) |
 | `--metrics PATH` | JSONL de metricas da execucao (modo coleta; default: `data/collection_metrics.jsonl`) |
 | `--sqlite PATH` | modo coleta: persiste o historico de cada vaga (`first_seen`/`last_seen`/`active`/`archived`) em banco `sqlite3` na PATH (default: desligado). **P1.2**: o lifecycle (archive de nao-vistos) e atualizado POR UNIDADE de coleta confiavel `(company, source)` — empresas/tenants com timeout/erro/not_found nao tem vagas arquivadas (ausencia observada != ausencia por falha de coleta) |
 | `--health [PATH]` | modo health (unico quando presente): relatorio JSON por tenant/ATS sobre o JSONL de metricas + alertas; arquivo inexistente -> erro no stderr e exit != 0 |
@@ -521,6 +522,47 @@ eligible 258 -> 236 (22 removidas, todas pela chave 3; 0 por external_id/URL).
 Com o dedup 2.0 (P2 #14) o pipeline produzia **232** (4 duplicatas TRUE a mais —
 pares EN/DE do mesmo cargo; ver `MASTER_PLAN.md` #14). No run 18/09:
 507 -> 476 eligible (31 removidas).
+
+### Hidratacao seletiva de descriptions (Fase A)
+
+Entre a deduplicacao e o ranking, o pipeline **hidrata a description das
+vagas elegiveis que estao sem ela** (`src/internship_finder/hydration.py`,
+default ligado; `--no-hydrate-descriptions` desliga). O criterio e simples:
+description vazia/None. Teasers curtos (ex.: phenom, mediana ~301 chars) NAO
+sao candidatos nesta fase — apenas o contador observacional
+`phenom_teaser_count` registra a situacao.
+
+- **Quem hidrata**: `BaseScraper.get_description(job)` do `ats-scrapers`
+  (detail por vaga) para os ATS com endpoint de detail na 0.3.0:
+  **smartrecruiters, workday, eightfold, personio**. O scraper e construido
+  por vaga a partir do `source` (slug do tenant; Workday usa a careers URL
+  derivada da `job.url`).
+- **Softgarden** e a excecao resolvida na COLETA: o feed ja embute a
+  description completa sem custo adicional de requests, entao
+  `collect_company` forca `include_descriptions=True` SO para softgarden
+  (excecao explicita e local — nunca um flag global).
+- **Phenom** fica pendente: o `ats-scrapers` 0.3.0 nao tem endpoint de
+  detail para ele; nenhuma tentativa e feita (vaga preservada com o teaser).
+- **Best-effort**: falha por vaga e registrada e o run segue (exit codes
+  inalterados — hidratacao e enriquecimento, nao requisito de elegibilidade).
+  Um orcamento total (`HYDRATION_BUDGET_SECONDS = 600`) garante que um
+  tenant lento nao bloqueia o refresh; quem sobra vira `hydration_skipped`.
+- **Proveniencia**: vaga hidratada ganha `description_source = "hydration"`;
+  description do feed fica com o campo ausente (`None`).
+- **Metricas**: um registro `type: "hydration"` no JSONL de metricas
+  (modo coleta/cron) carrega `eligible_before_hydration`,
+  `hydration_candidates/success/failed/skipped`, `already_has_description`,
+  `unsupported_no_detail`, `description_coverage_before/after`,
+  `hydration_duration`, `feed_description_count`,
+  `hydration_description_count`, `phenom_teaser_count` e `by_ats`.
+
+A hidratacao NAO muda criterios: elegibilidade congelou antes (a cascata le
+description), e o ranking apenas passa a ver texto que antes estava ausente
+(os detectores existentes de german/skills/area passam a pontuar sobre o
+conteudo hidratado). Validacao A/B real (26/09): cobertura 328/411 (79,8%)
+-> 405/411 (**98,5%**), 77/77 hidratacoes com sucesso (SR 46, WD 20, EF 7,
+PS 4) em ~58s; 6 softgarden do snapshot antigo ficam `unsupported` ate a
+proxima coleta (o flag D4 resolve na origem).
 
 ### Ranking por perfil
 
