@@ -86,6 +86,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from internship_finder import app_intel  # noqa: E402  (Fase 6: Candidate Fit + Application Intelligence)
 from internship_finder import opportunity_intel  # noqa: E402  (Fase 7: Company & Location Intelligence)
+from internship_finder import structured_fields  # noqa: E402  (Fase B: campos estruturados do raw)
 from internship_finder.countries import matches_country, parse_country_spec  # noqa: E402
 from internship_finder.enrichment import present as enr_present  # noqa: E402  (Fase 3 enrichment: APENAS view read-only)
 from internship_finder.materials_ranking import rank_materials_jobs  # noqa: E402
@@ -345,6 +346,18 @@ def _details_html(
             parts.append(f"tipo do anúncio: {html.escape(pt_type)} ({html.escape(raw_type)})")
         else:
             parts.append(f"tipo do anúncio: {html.escape(raw_type)}")
+    # Fase B — campos estruturados do raw (evidência complementar; nunca
+    # alteram a classificação exibida acima): área declarada pelo ATS e o
+    # enum normalizado quando DIFERE do label já exibido (ex.: "classificação
+    # ATS: FULL_TIME" numa vaga Werkstudent — conflito é métrica, a UI não
+    # corrige nada). raw ausente (caminho SQLite) -> linhas simplesmente não
+    # aparecem (helpers toleram raw=None).
+    dep = structured_fields.department(job)
+    if dep:
+        parts.append(f"área: {html.escape(dep)}")
+    ats_enum = structured_fields.employment_type_enum(job)
+    if ats_enum and ats_enum.upper() != str(job.get("employment_type") or "").upper():
+        parts.append(f"classificação ATS: {html.escape(ats_enum)}")
     if _fmt_bool(job.get("internship")):
         parts.append("estágio")
     if _fmt_bool(job.get("remote")):
@@ -1287,6 +1300,16 @@ def _row_html(
         f'<a class="open" href="{url}" target="_blank" rel="noopener">abrir&nbsp;↗</a>'
         if safe_url else '<span class="mut">—</span>'
     )
+    # Fase B — link DIRETO de candidatura (raw.apply_url) como segundo botão,
+    # ao lado do "abrir ↗". Regra: job.url continua sendo a URL da vaga/origem
+    # (título + "abrir"); apply_url só aparece quando existe, passa _safe_url
+    # (http/https) e DIFERE de job.url — nunca substitui silenciosamente.
+    safe_apply = _safe_url(structured_fields.apply_url(job))
+    if safe_apply and safe_url and safe_apply != safe_url:
+        open_btn += (
+            f' <a class="open apply" href="{html.escape(safe_apply)}" '
+            f'target="_blank" rel="noopener">candidatar-se&nbsp;↗</a>'
+        )
     # Fase 6 — Application Intelligence da vaga (computado UMA vez por vaga
     # no render_html e reusado nas duas tabelas; fallback sob demanda aqui).
     if intel is None:
@@ -1465,6 +1488,10 @@ _CSS = """
   .desc-orig { display:inline; }
   a.open { display:inline-block; white-space:nowrap; font-size:.78rem; border:1px solid var(--acc); color:var(--acc); border-radius:999px; padding:3px 10px; }
   a.open:hover { background:var(--acc); color:#fff; text-decoration:none; }
+  /* Fase B: botão de candidatura direta (raw.apply_url) — mesmo formato do
+     "abrir", destaque verde sutil para diferenciar a ação. */
+  a.open.apply { border-color:#1c7a4a; color:#1c7a4a; margin-left:6px; }
+  a.open.apply:hover { background:#1c7a4a; }
   details.why { margin-top:5px; }
   summary { cursor:pointer; color:var(--mut); font-size:.78rem; }
   .bd-body { margin:6px 0 2px; padding:8px 10px; background:#f6f9fc; border:1px solid var(--line); border-radius:8px; max-width:560px; display:grid; grid-template-columns:auto auto 1fr; gap:4px 12px; align-items:center; }
