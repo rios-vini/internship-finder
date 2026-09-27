@@ -258,7 +258,15 @@ def collect_company(
             continue
         t0 = time.time()
         try:
-            raw_jobs = fetch_with_timeout(company, timeout, include_descriptions)
+            # Fase A (D4): Softgarden e a excecao explicita — o feed de vagas
+            # ja embute a description completa sem custo adicional de
+            # requests (a auditoria do ecossistema 0.3.0 mediu isso ao vivo);
+            # sem o flag ela e descartada na origem. Todos os demais ATS
+            # seguem o flag global (nunca bulk desnecessario).
+            tenant_include_descriptions = (
+                include_descriptions or company.ats == "softgarden"
+            )
+            raw_jobs = fetch_with_timeout(company, timeout, tenant_include_descriptions)
             if limit and len(raw_jobs) > limit:
                 raw_jobs = raw_jobs[:limit]
             # Os dicts ja saem normalizados (single-pass no subprocesso).

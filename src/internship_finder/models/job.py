@@ -23,6 +23,7 @@ _OPTIONAL_STR_FIELDS = (
     "location",
     "country",
     "description",
+    "description_source",
     "employment_type",
     "country_iso",
     "external_id",
@@ -85,6 +86,11 @@ class Job(BaseModel):
     employment_type: str | None = None
     country_iso: str | None = None
     raw: dict[str, Any] | None = None
+    # Proveniencia da description (Fase A): ``"hydration"`` quando obtida por
+    # detail-fetch pos-dedup (``hydration.py``); ausente/None = description do
+    # feed/coleta original. Distincao explicita de fonte (AGENTS.md) sem
+    # camada nova — um campo str opcional no modelo existente.
+    description_source: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serializacao JSON-friendly (datetimes viram ISO strings)."""

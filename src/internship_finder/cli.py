@@ -53,6 +53,7 @@ from internship_finder.collectors.ats_scraper import collect_company
 from internship_finder.dedup import deduplicate
 from internship_finder.filters import parse_country_spec, select_eligible
 from internship_finder.health import build_health_report
+from internship_finder.hydration import hydrate_descriptions, print_hydration_report
 from internship_finder.metrics import read_metrics, utcnow_iso, write_metrics
 from internship_finder.models.job import Job, normalize_job_dict
 from internship_finder.ranking import rank_jobs
@@ -239,6 +240,7 @@ def run_filter_pipeline(
     output: Path,
     dedup: bool = True,
     rank: bool = True,
+    hydrate: bool = True,
     metrics: Path | None = None,
     run_id: str | None = None,
 ) -> int:
@@ -250,11 +252,20 @@ def run_filter_pipeline(
     vaga, ordena desc (melhores primeiro) e imprime o TOP 20; ``rank=False``
     (--no-rank) mantem a ordem original e imprime exemplos como antes.
 
+    Hidratacao seletiva (Fase A, ``hydrate=True`` default): entre dedup e
+    rank, vagas elegiveis SEM description ganham a description completa via
+    ``ats-scrapers`` (detail por vaga, best-effort — falha nao derruba o run
+    nem muda exit codes; ``--no-hydrate-descriptions`` desliga). Elegibilidade
+    congela ANTES (a cascata le description); o ranking e os enriquecimentos
+    downstream (app_intel sobre eligible_jobs.json) passam a ver o texto.
+
     Se ``metrics`` for fornecido, grava um registro de resumo do run
     (``type: run``) em JSONL com ``total_collected``/``filtered``/
     ``dedup_removed``/``eligible`` (o total coletado e o ``len(jobs)`` de
     entrada; ``filtered`` e o final da cascata; ``dedup_removed`` so conta
-    quando ``dedup=True``).
+    quando ``dedup=True``) e, quando a hidratacao roda, um registro
+    ``type: hydration`` com as estatisticas da fase (cobertura antes/depois,
+    sucesso/falha/skip por ATS, duracao).
     """
     # Normaliza as strings de entrada (mesma regra dos validators do Job)
     # antes da cascata. O caminho filtro opera sobre dicts, sem reconstruir
@@ -270,9 +281,24 @@ def run_filter_pipeline(
         country=country,
     )
     print_cascade(counts, country)
+    dedup_stats: dict[str, int] = {}
     if dedup:
         selected, dedup_stats, _ = deduplicate(selected)
         print_dedup_report(dedup_stats)
+    if hydrate:
+        # Fase A: hidratacao seletiva das descriptions AUSENTES, pos-dedup e
+        # pre-ranking. Best-effort: qualquer falha por vaga e registrada e o
+        # pipeline segue (exit codes inalterados). O try externo cobre uma
+        # falha estrutural da hidratacao inteira (ex.: import/bug) — nesse
+        # caso o pipeline atual segue com as descriptions que existem.
+        try:
+            selected, hydration_stats = hydrate_descriptions(selected)
+            print_hydration_report(hydration_stats)
+        except Exception as exc:  # noqa: BLE001 - hidratacao nunca e fatal
+            log.warning("hidratacao de descriptions falhou (%s); pipeline segue", exc)
+            hydration_stats = None
+    else:
+        hydration_stats = None
     if rank:
         selected = rank_jobs(selected)
     print(f"\n=== {len(selected)} vagas eligible{', ranqueadas por perfil' if rank else ''} ===")
@@ -283,20 +309,27 @@ def run_filter_pipeline(
     save_outputs(selected, output)
 
     if metrics is not None:
-        write_metrics(
-            metrics,
-            [
+        records = [
+            {
+                "type": "run",
+                "run_id": run_id or utcnow_iso(),
+                "timestamp": utcnow_iso(),
+                "total_collected": len(jobs),
+                "filtered": counts["pais"],
+                "dedup_removed": sum(dedup_stats.values()) if dedup else 0,
+                "eligible": len(selected),
+            }
+        ]
+        if hydration_stats is not None:
+            records.append(
                 {
-                    "type": "run",
+                    "type": "hydration",
                     "run_id": run_id or utcnow_iso(),
                     "timestamp": utcnow_iso(),
-                    "total_collected": len(jobs),
-                    "filtered": counts["pais"],
-                    "dedup_removed": sum(dedup_stats.values()) if dedup else 0,
-                    "eligible": len(selected),
+                    **hydration_stats,
                 }
-            ],
-        )
+            )
+        write_metrics(metrics, records)
     return 0 if selected else 1
 
 
@@ -435,6 +468,15 @@ def main(argv: list[str] | None = None) -> int:
         "--include-descriptions",
         action="store_true",
         help="Busca descricao por vaga (mais lento em ATS que exigem chamada por vaga)",
+    )
+    parser.add_argument(
+        "--hydrate-descriptions",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Hidrata description AUSENTE das vagas ELEGIVEIS via detail-fetch do "
+        "ats-scrapers (pos-dedup, pre-ranking, best-effort; default: ligado; "
+        "--no-hydrate-descriptions desliga). Diferente de --include-descriptions, "
+        "que busca descricao por vaga durante a COLETA inteira (bulk, mais lento).",
     )
     parser.add_argument(
         "--student",
@@ -698,6 +740,7 @@ def main(argv: list[str] | None = None) -> int:
             output=Path(args.filter_output),
             dedup=args.dedup,
             rank=args.rank,
+            hydrate=args.hydrate_descriptions,
             metrics=metrics_path,
             run_id=run_id,
         )
@@ -722,6 +765,7 @@ def main(argv: list[str] | None = None) -> int:
         output=output,
         dedup=args.dedup,
         rank=args.rank,
+        hydrate=args.hydrate_descriptions,
     )
 
 
