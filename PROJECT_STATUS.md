@@ -1,8 +1,10 @@
 # Project Status
 
-Last updated: 2026-09-27 (Fase B — consumo dos campos estruturados do raw, PR #85)
+Last updated: 2026-09-28 (Fase C — deduplicação de mirrors DE/EN, PR #86)
 
 ## Current state
+
+- **Fase C — Deduplicação de mirrors DE/EN — 28/09, PR #86 MERGEADO (squash `fd9862d`; CI do PR verde ×2 no SHA `8d34505` — membership `test_mirror_dedup` nos logs de ambos, array 37→38 — + CI main pós-merge verde; produção `data/` intocada)**: estágio `deduplicate_mirrors_de_en` ENTRE `deduplicate` e `hydrate_descriptions` (`src/internship_finder/mirror_dedup.py`; `--mirror-dedup` default ON; `--no-mirror-dedup` restaura byte-a-byte). Candidato = mesma empresa + tenant + `requisition_id` duplicado (escopo por empresa P1.1 — fix do orquestrador; 7 grupos no snapshot). Mirror = `normalize_title` idêntica OU par de marcadores de tipo DE+EN (Pflichtpraktikum/Praktikum/Praktikant/Werkstudent × Internship/Working Student/Intern) + guardrails country/employment_type. Canonical = lado EN. A/B snapshot 27/09: 412→408, 4 TP (Bosch ×3, ABOUT YOU — lados DE removidos) / 0 FP (hellofresh, celonis ×2 preservados); 0 score diffs; Top 30 Materials intocado; Top 30 Business só perde o próprio mirror; histórico SQLite intocado por construção. req_id sozinho não basta (3 FPs da Fase B); o par de marcadores diferencia os 4 mirrors reais (3 são traduções completas). Testes: `test_mirror_dedup.py` (57 checks, 38º no CI); suíte 38/38. Detalhes: Log 28/09 do MASTER_PLAN.
 
 **Correções da auditoria pós-Fases 1–8 (PR #78, 23/09)** — 4 pontos operacionais,
 nenhuma mudança de ranking/filtros/pesos/coleta:

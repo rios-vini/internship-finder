@@ -482,6 +482,7 @@ Flags do CLI:
 | `--country`/`--countries` | pais/localizacao: ISO alpha-2 (`de`, `de,at,ch`), `europe`, `remote` ou `all` (default: `de`; valores fora desses -> erro claro, exit 2) |
 | `--all` | desliga os tres filtros de uma vez (copia o conjunto inteiro) |
 | `--dedup` / `--no-dedup` | remove duplicatas da saida (default: ligado) |
+| `--mirror-dedup` / `--no-mirror-dedup` | **Mirrors DE/EN (Fase C)**: remove a versao alema de vagas espelhadas DE/EN detectadas por `requisition_id` + marcadores de tipo (apos a dedup classica, antes da hidratacao; default: ligado) |
 | `--rank` / `--no-rank` | rankeia por compatibilidade com o perfil: score + TOP 20 (default: ligado; `--no-rank` mantem a ordem original) |
 | `--timeout` | teto de segundos por scraper (defensivo: uma empresa que trava nao derruba o resto); valor `<= 0` -> erro claro, exit 2 (P3 #20) |
 | `--limit N` | maximo de vagas por tenant, aplicado APOS a coleta (0 = sem limite); valor negativo -> erro claro, exit 2 (P3 #20) |
@@ -522,6 +523,31 @@ eligible 258 -> 236 (22 removidas, todas pela chave 3; 0 por external_id/URL).
 Com o dedup 2.0 (P2 #14) o pipeline produzia **232** (4 duplicatas TRUE a mais —
 pares EN/DE do mesmo cargo; ver `MASTER_PLAN.md` #14). No run 18/09:
 507 -> 476 eligible (31 removidas).
+
+#### Mirrors DE/EN por requisition_id (Fase C)
+
+Apos a dedup classica, um sub-estagio (`src/internship_finder/mirror_dedup.py`,
+`--mirror-dedup` default ligado) remove **mirrors linguisticos DE/EN** que a
+cascata de chaves nao pega: a mesma oportunidade publicada em alema e ingles
+com `requisition_id` igual. Regra conservadora e deterministica:
+
+- **Candidato**: mesma empresa + mesmo tenant (`source`) + `requisition_id`
+  duplicado (`requisition_id` vem do `raw` — Fase B; ausente = nunca candidato).
+  `requisition_id` sozinho NAO basta: vagas distintas compartilham req_id
+  (hellofresh, celonis — falsos positivos conhecidos da Fase B).
+- **Mirror**: `normalize_title` identica OU um titulo com marcador de tipo DE
+  (`Pflichtpraktikum`/`Praktikum`/`Praktikant`/`Werkstudent`) e o outro com
+  marcador EN (`Internship`/`Working Student`/`Intern`); guardrails: `country`
+  e `employment_type` iguais quando ambos presentes.
+- **Canonical**: o lado EN (representacao util para candidatura; score igual
+  ou maior nos casos reais); o lado DE sai apenas do conjunto elegivel —
+  historico SQLite intocado por construcao.
+- Reversivel: `--no-mirror-dedup` restaura o comportamento anterior
+  byte-a-byte. Nao ha fuzzy/embeddings/LLM/traducao automatica; nao ha merge
+  de campos.
+
+No snapshot 27/09 (412 eligible): 4 mirrors DE/EN detectados (Bosch x3,
+ABOUT YOU x1), 3 falsos positivos conhecidos preservados; 412 -> 408.
 
 ### Hidratacao seletiva de descriptions (Fase A)
 

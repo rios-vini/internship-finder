@@ -24,9 +24,54 @@ execução da suíte (18/09) ou nos docs.
 
 ---
 
-## 1. Estado verificado em 2026-09-24
+## 1. Estado verificado em 2026-09-28
 
 ### Main público (GitHub)
+- `main` = `fd9862d` (28/09 — **FASE C — DEDUPLICAÇÃO DE MIRRORS DE/EN; PR #86 squash;
+  CI do PR verde ×2 no SHA `8d34505` (membership `test_mirror_dedup` conferida nos logs
+  de AMBOS os runs — array 37→38) + CI main pós-merge verde; 0 PRs, branch remota
+  deletada; produção `data/` intocada)**: deduplicação conservadora de mirrors
+  linguísticos DE/EN sobre o conjunto ELEGÍVEL — **sem fuzzy/embeddings/LLM/tradução,
+  sem tocar identidade/ranking/filtros/pesos/exit codes**. Novo estágio ENTRE
+  `deduplicate` e `hydrate_descriptions` (`src/internship_finder/mirror_dedup.py`;
+  flag `--mirror-dedup` BooleanOptionalAction default ON; stats somam em
+  `dedup_removed` do JSONL `type: run`; label `mirrors_de_en` no relatório do CLI).
+  **Regra**: candidato = mesma EMPRESA + mesmo tenant (`source`) + mesmo
+  `requisition_id` (escopo por empresa P1.1 — igual à dedup clássica; 7 grupos no
+  snapshot, universo fechado; fix do orquestrador pós-revisão: a 1ª versão usava só
+  `(source, req_id)` e poderia fundir empresas distintas em tenant ATS compartilhado
+  — 0 ocorrências no snapshot atual, A/B idêntico). Mirror = `normalize_title`
+  idêntica OU par de marcadores de tipo DE (`pflichtpraktikum|praktikum|praktikant\w*|
+  werkstudent\w*`) + EN (`internship|working student|intern`); guardrails mult-campo:
+  `country` e `employment_type` iguais quando ambos presentes (divergência rejeita).
+  **Por que req_id sozinho não basta**: os 3 FPs da Fase B (hellofresh JR106538,
+  celonis R15251/R14655) são vagas distintas compartilhando req_id. **Por que req_id +
+  título normalizado**: req_id gera o candidato (universo fechado/auditável); o título
+  fornece o guardrail linguístico — 4/4 mirrors reais são pares DE+EN por marcador
+  (os 3 Bosch são TRADUÇÕES COMPLETAS que a `normalize_title` sozinha não colapsa;
+  só o par ABOUT YOU unifica por bag-of-words); 3/3 FPs não têm o par DE+EN.
+  **Canonical**: lado EN (representação útil p/ candidatura; score Business ≥ DE nos
+  4 pares reais); fallback determinístico p/ pares só-por-título (description >
+  employment_type > menor posted_at > ordem de entrada). **Validação A/B (snapshot
+  produção 27/09, 412 eligible; A = main a2e5d8b com venv própria, B = branch)**:
+  412 → 408; exatamente os 4 lados DE removidos (Bosch ×3, ABOUT YOU ×1);
+  **4 TP / 0 FP** (os 3 FPs preservados); 0 scores alterados nas 408 mantidas;
+  sequência = A-filtrada (reflow puro); Top 30 Materials INTOCADO; Top 30 Business
+  perde apenas o próprio mirror M1-DE (#22); empresas 65→65 (BoschGroup 41→38,
+  aboutyougmbh 2→1). `--no-mirror-dedup` restaura o comportamento anterior
+  byte-a-byte (sha256). Histórico SQLite intocado por construção (persistência roda
+  na coleta, ANTES do estágio; validado em cenário sintético: first_seen/last_seen/
+  active do mirror preservados). **Sinais rejeitados pela evidência** (documentados):
+  posted_at próximo (FP celonis com Δ3s), location idêntica (mirror ABOUT YOU com
+  "Hamburg, HH" vs "Hamburg, Hamburg"), description semelhante (fuzzy), idioma
+  estrutural (`raw.language` None 412/412). Testes: `scripts/test_mirror_dedup.py`
+  NOVO (57 checks offline, 13/13 itens da spec; 38º no array do CI); `test_dedup.py`
+  regressão verde. Suíte independente do orquestrador: 38/38. Docs: README +
+  docs/architecture.md (REGISTRO PENDENTE consolidado pelo orquestrador).
+  [Fase C ✅ — o que NÃO é deduplicado: traduções sem req_id compartilhado, mirrors
+  cross-tenant, pares sem marcadores de tipo, req_id ausente; sem merge de campos]
+
+### Histórico anterior
 - `main` = `19b0972` (26/09 — **FASE 3 ENRICHMENT — integração aos produtos; PR #83 squash;
   CI do PR verde ×2 (membership `test_enrichment_present` conferida no log do run —
   array 34→35, "Todas as suites terminaram OK") + CI main pós-merge verde; branch
@@ -369,6 +414,7 @@ mercado diferente, ver §1.)
 - Itens P1+ exigem critério de "pronto" verificável antes de delegar.
 
 ## 5. Log de mudanças
+- **2026-09-28 (FASE C — DEDUPLICAÇÃO DE MIRRORS DE/EN COM REQUISITION_ID + TÍTULO NORMALIZADO; PR #86, squash `fd9862d`; CI do PR verde ×2 no SHA `8d34505` (membership `test_mirror_dedup` conferida nos logs de AMBOS os runs — array 37→38) + CI main pós-merge verde; 0 PRs, branch remota deletada; produção `data/` intocada — mtime/size idênticos)**: implementação da spec da Fase C. **Regra final**: candidato = mesma empresa + tenant + `requisition_id` duplicado; mirror = `normalize_title` idêntica OU par de marcadores de tipo DE+EN nos títulos + guardrails `country`/`employment_type` iguais quando presentes; canonical = lado EN (score Business ≥ DE nos 4 pares; fallback determinístico p/ pares sem marcadores). Estágio `deduplicate_mirrors_de_en` ENTRE `deduplicate` e `hydrate_descriptions` (`mirror_dedup.py` novo, 299 linhas; `--mirror-dedup` default ON; `--no-mirror-dedup` restaura byte-a-byte — sha256; stats somam em `dedup_removed`; `print_dedup_report` estendido com label `mirrors_de_en`). **Fix do orquestrador pós-revisão independente (commit `8d34505`)**: escopo de candidato `(company, source, requisition_id)` em vez de `(source, requisition_id)` — em tenants ATS compartilhados (P1.1: `successfactors:jobs` cobre SAP/ZF/Kaufland), empresas diferentes numeram req_ids de forma independente; req_id igual entre elas = vagas DIFERENTES (restrição 11 da spec). 0 ocorrências no snapshot atual (medido), A/B idêntico pré/pós-fix; 9 probes adversariais novos do orquestrador (incl. o caso cross-company) todos pass pós-fix. **A/B (snapshot produção 27/09 09:10 UTC, 412 eligible)**: 412→408, exatamente os 4 lados DE removidos (Bosch REF296784K/REF260760E/REF260765G + ABOUT YOU ID2609-00494A), 4 TP / 0 FP (hellofresh JR106538, celonis R15251/R14655 preservados — a regra os rejeita por design), 0 score diffs nas 408 mantidas, sequência = A-filtrada (reflow puro), Top 30 Materials intocado, Top 30 Business perde apenas o mirror M1-DE (Pflichtpraktikum … Logistikdienstleistungen, #22 → contraparte EN permanece), empresas 65→65. **Histórico SQLite intocado por construção** (persistência roda na coleta, antes do estágio — cenário sintético validado: linha do mirror nunca apagada, first_seen imutável). **Por que req_id sozinho não basta / por que req_id+título**: §FASE B — os 3 FPs comprovam req_id insuficiente; os 4 mirrors reais são pares DE+EN por marcador de tipo (3 Bosch = traduções completas que a bag-of-words não colapsa — por isso o guardrail é o PAR DE MARCADORES, não similaridade). **Sinais rejeitados pela evidência**: posted_at próximo (FP Δ3s), location idêntica (mirror com HH vs Hamburg), description semelhante (fuzzy — proibido), raw.language (sempre None). **Limitações** (o que NÃO é deduplicado): traduções sem req_id compartilhado, mirrors cross-tenant, pares sem marcadores de tipo, req_id ausente (~303 vagas); sem merge de campos (info exclusiva do lado removido = estratégia futura se surgir caso). **Testes**: `test_mirror_dedup.py` (57 checks, 13/13 da spec, fixtures ipsis literis dos 7 grupos reais; 38º no CI); `test_dedup.py` regressão verde; suíte 38/38 conferida INDEPENDENTEMENTE pelo orquestrador no clone e no CI. Relatório integral: `~/.hermes/handoff/fasec-dedup/relatorio_fase_c.md`. [Fase C ✅ — determinística, auditável, reversível]
 
 - **2026-09-27 (FASE B — CONSUMO DOS CAMPOS ESTRUTURADOS DO `raw`; PR #85, squash `3cd7424`; CI do PR verde ×2 no SHA `0db1899` (membership `test_structured_fields` conferida nos logs de AMBOS os runs — array 36→37) + CI main pós-merge verde; 0 PRs, branch remota deletada; PR diff = exatamente 7 arquivos permitidos, zero fora da lista; produção `data/` intocada (mtime/size idênticos, verificado))**: consumo dos campos estruturados que o adapter JÁ preserva no `raw` (investigação 26/09: a perda era de CONSUMO, não de coleta) — **sem tocar ranking/elegibilidade/dedup/score/pesos**. Novo `src/internship_finder/structured_fields.py` (258 linhas; acessores puros read-only sobre `job["raw"]`, padrão `opportunity_intel`; vazios→None pela regra `_strip`; toleram `raw=None` — caminho SQLite) + métricas de conflito `employment_type_relation` (título + enum + classificação atual via `filters.is_student_role`) e `remote_relation` (flag × sinal textual do `work_mode`). **Consumido**: `apply_url` → botão "candidatar-se ↗" quando ≠ `job.url` e `_safe_url`-válido (`job.url` PERMANECE no título/"abrir" — nunca substituído); `department` → linha "área: X" escapada nos detalhes; `employment_type` enum → linha "classificação ATS" SÓ quando difere do label exibido. **Descobertas com desvio documentado**: `commitment` é a ORIGEM do label canônico (cadeia de fallback do adapter; 57/61 idênticos no snapshot novo) — exibi-lo seria duplicação, permanece evidência no `raw`; 0 linhas "classificação ATS" no dataset (enum nunca difere do canônico quando ambos existem). **Cobertura (411 eligible, snapshot 26/09)**: department 260 (63,3% — SR/recruitee/eightfold/GH/personio/ashby 100%, SF 53,8%, WD/cornerstone/softgarden 0%) · employment_type 72 (INTERN 9, FULL_TIME 49, CONTRACT 6, PART_TIME 8) · is_remote 71 (70 False/1 True) · commitment 60 · apply_url 22 (16 úteis ≠ job.url) · requisition_id 119 · global_id 411. **Conflitos (o resultado central da fase)**: employment_type **17 match / 55 conflict / 339 missing** — os 55 conflitos são Praktikum/Werkstudent marcados FULL_TIME(49)/CONTRACT(6): o enum descreve o REGIME do contrato, não a natureza da vaga; 9/9 INTERN = match. Remote: 70 match / 1 conflict (ashby Statista `False` × texto "hybrid"). **Análise requisition_id (p/ futura Fase C/D, decisão do dono)**: 119 com valor, 112 únicos, 7 dups/tenant (14 jobs): 4 mirrors DE/EN legítimos (Bosch REF296784K/REF260760E/REF260765G, ABOUT YOU ID2609-00494A — pares que a bag-of-words atual NÃO colapsa) + 3 falsos positivos (celonis R15251/R14655, hellofresh JR106538 — vagas distintas compartilhando req_id) → req_id sozinho NÃO é chave de dedup suficiente; combinado com título normalizado, pegaria os mirrors reais sem os 3 FPs. 29/119 req_ids já são origem do `external_id` (cadeia do adapter). 0 colisões cross-tenant. `global_id`: 411/411, único/estável, ZERO colisão com o id atual — identidade P1.1 mantida (spec §8). **A/B (independente, orquestrador)**: score recomputado 0/411 diffs; reordenação pela chave oficial = sequência do snapshot; Top 30 idêntico nos 2 perfis; HTML A/B 822 rows com data-rank/job-id/score IDÊNTICOS, apenas fragmentos aditivos novos. **Produção real (run cron 09:00 UTC 27/09 já com a Fase B)**: página publicada com **32 botões candidatar-se** (16 vagas × 2 perfis) e **382 linhas "área"** — consumo real confirmado no Pages. Testes: `scripts/test_structured_fields.py` NOVO (51 checks, 12/12 casos da spec; 37º no array do CI). `scripts/structured_fields_coverage.py` NOVO (manual, fora do CI — precedência enrichment_coverage). Suíte VPS 37/37 (2 falhas observadas durante o run eram: race com o cron reescrevendo `data/` mid-suíte — `test_countries` passa re-executado com dados estáveis — e o drift pré-existente do `test_visa_policy`, reproduzido em main limpo, passa no CI sem data/). Docs: README + docs/architecture.md (campos consumidos vs. evidência-only + por que o enum não substitui o filtro). **Recomendação baseada nos dados (para decisão do dono)**: (a) enum employment_type NUNCA vira filtro — 76% de conflito quando presente; (b) Fase C dedup DE/EN: `requisition_id` + título normalizado (pega os 4 mirrors que a dedup atual deixa passar; os 3 FPs provam que req_id sozinho não basta); (c) department tem massa (63%) para filtro client-side futuro se houver demanda. [Fase B ✅ — dados medidos; LLM/JSON-LD/official-page/dedup cross-ATS explicitamente fora do escopo e pendentes de decisão]
 

@@ -6,6 +6,7 @@ global do ats-scrapers pode travar):
 ```
 Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeout)
         → AtsJobAdapter → Job (pydantic) → filters → dedup
+        → mirror-dedup (mirrors DE/EN por requisition_id — Fase C, best-effort)
         → hydration (description ausente, detail por vaga — best-effort)
         → ranking → print/save (JSON/CSV)
 ```
@@ -23,6 +24,7 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
 | `filters.py` | `is_student_role(title, description)` — heuristica EN/PT/DE (intern, internship, student, Werkstudent, Praktikum, iXp...) com exclusao de senior/manager/etc. |
 | `countries.py` | país/localização — `COUNTRY_CODES`, `EUROPE_COUNTRIES`, `COUNTRY_NAMES`, `infer_country_iso`, `parse_country_spec` (extraído de `filters.py` no P2 #12; `filters.py` re-exporta os símbolos) |
 | `dedup.py` | deduplicacao deterministica por chave de confiabilidade (`external_id`/`id`, URL normalizada, `company+title+location`) |
+| `mirror_dedup.py` | Mirrors DE/EN (Fase C): sub-estagio pos-dedup que remove a versao alema de pares DE/EN com mesmo `requisition_id` (candidato escopado por empresa+tenant, P1.1) + marcadores de tipo DE/EN ou `normalize_title` identica; guardrails `country`/`employment_type`; canonical = lado EN; reversivel via `--no-mirror-dedup` |
 | `hydration.py` | hidratacao seletiva de descriptions (Fase A): preenche description AUSENTE das vagas ELEGIVEIS pos-dedup via `ats-scrapers` `get_description` (detail por vaga, best-effort — SR/WD/EF/PS; softgarden via feed na coleta; phenom pendente); stats no JSONL (`type: hydration`), orcamento total defensivo |
 | `ranking.py` | ranking do perfil principal: `score_job` (score + breakdown) e `rank_jobs`, ordem deterministica |
 | `materials_ranking.py` | ranking do perfil secundário (Fase 4): `materials_score_job` + `rank_materials_jobs` — MESMAS vagas elegíveis, score/breakdown próprios, independentes do principal |
@@ -127,7 +129,7 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
   duplicação; permanece no `raw` como evidência. `is_remote` segue o
   consumo da Fase 7 (`work_mode` já lê `raw.is_remote=True`); a
   contribuição da Fase B é a MÉTRICA de conflito estruturado × textual.
-  `requisition_id` NÃO participa de dedup nesta fase: a análise
+  `requisition_id` NÃO participava de dedup na Fase B: a análise
   (`scripts/structured_fields_coverage.py`, manual) mostra 7 valores
   duplicados por tenant no snapshot 26/09 — 4 mirrors DE/EN legítimos
   (Bosch ×3, ABOUT YOU ×1) e 3 falsos positivos (títulos distintos
