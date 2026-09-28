@@ -47,7 +47,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from internship_finder.collectors.ats_scraper import collect_company
 from internship_finder.dedup import deduplicate
@@ -56,6 +56,11 @@ from internship_finder.filters import parse_country_spec, select_eligible
 from internship_finder.health import build_health_report
 from internship_finder.hydration import hydrate_descriptions, print_hydration_report
 from internship_finder.metrics import read_metrics, utcnow_iso, write_metrics
+from internship_finder.official_page import (
+    OFFICIAL_PAGE_LIMIT,
+    enrich_official_pages,
+    print_official_page_report,
+)
 from internship_finder.models.job import Job, normalize_job_dict
 from internship_finder.ranking import rank_jobs
 from internship_finder.registry import (
@@ -248,6 +253,9 @@ def run_filter_pipeline(
     rank: bool = True,
     hydrate: bool = True,
     mirror_dedup: bool = True,
+    official_page: bool = True,
+    official_page_limit: int | None = None,
+    official_page_transport: Any | None = None,
     metrics: Path | None = None,
     run_id: str | None = None,
 ) -> int:
@@ -266,13 +274,23 @@ def run_filter_pipeline(
     congela ANTES (a cascata le description); o ranking e os enriquecimentos
     downstream (app_intel sobre eligible_jobs.json) passam a ver o texto.
 
+    Official-page enrichment (Fase D, ``official_page=True`` default): apos a
+    hidratacao e ANTES do ranking, vagas candidatas (description ausente/
+    teaser OU sem deadline OU sem salary) ganham evidencia estruturada da
+    pagina oficial (JSON-LD JobPosting) em ``job["official_page"]`` — UM GET
+    por vaga, best-effort, sem LLM/browser; ``--no-official-page`` desliga;
+    ``--official-page-limit N`` controla o tamanho do lote (default 150,
+    cortado por prioridade). Falha por vaga nunca derruba o run nem muda
+    exit codes.
+
     Se ``metrics`` for fornecido, grava um registro de resumo do run
     (``type: run``) em JSONL com ``total_collected``/``filtered``/
     ``dedup_removed``/``eligible`` (o total coletado e o ``len(jobs)`` de
     entrada; ``filtered`` e o final da cascata; ``dedup_removed`` so conta
     quando ``dedup=True``) e, quando a hidratacao roda, um registro
     ``type: hydration`` com as estatisticas da fase (cobertura antes/depois,
-    sucesso/falha/skip por ATS, duracao).
+    sucesso/falha/skip por ATS, duracao) e, quando o official-page roda, um
+    registro ``type: official_page`` com as estatisticas da fase.
     """
     # Normaliza as strings de entrada (mesma regra dos validators do Job)
     # antes da cascata. O caminho filtro opera sobre dicts, sem reconstruir
@@ -324,6 +342,24 @@ def run_filter_pipeline(
             hydration_stats = None
     else:
         hydration_stats = None
+    if official_page:
+        # Fase D: enriquecimento deterministico pela pagina oficial (JSON-LD
+        # JobPosting) — APOS a hidratacao (teasers phenom seguem candidatos)
+        # e ANTES do ranking (description melhorada e vista pelo score).
+        # Mesma disciplina best-effort da Fase A: falha por vaga e contada,
+        # try externo cobre falha estrutural, exit codes inalterados.
+        try:
+            selected, official_page_stats = enrich_official_pages(
+                selected,
+                limit=official_page_limit,
+                transport=official_page_transport,
+            )
+            print_official_page_report(official_page_stats)
+        except Exception as exc:  # noqa: BLE001 - enrichment nunca e fatal
+            log.warning("official-page enrichment falhou (%s); pipeline segue", exc)
+            official_page_stats = None
+    else:
+        official_page_stats = None
     if rank:
         selected = rank_jobs(selected)
     print(f"\n=== {len(selected)} vagas eligible{', ranqueadas por perfil' if rank else ''} ===")
@@ -352,6 +388,15 @@ def run_filter_pipeline(
                     "run_id": run_id or utcnow_iso(),
                     "timestamp": utcnow_iso(),
                     **hydration_stats,
+                }
+            )
+        if official_page_stats is not None:
+            records.append(
+                {
+                    "type": "official_page",
+                    "run_id": run_id or utcnow_iso(),
+                    "timestamp": utcnow_iso(),
+                    **official_page_stats,
                 }
             )
         write_metrics(metrics, records)
@@ -502,6 +547,25 @@ def main(argv: list[str] | None = None) -> int:
         "ats-scrapers (pos-dedup, pre-ranking, best-effort; default: ligado; "
         "--no-hydrate-descriptions desliga). Diferente de --include-descriptions, "
         "que busca descricao por vaga durante a COLETA inteira (bulk, mais lento).",
+    )
+    parser.add_argument(
+        "--official-page",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enriquecimento pela pagina oficial (Fase D): UM GET por vaga "
+        "candidata (description ausente/teaser OU sem deadline OU sem salary), "
+        "extrai JSON-LD JobPosting como evidencia estruturada em "
+        "job['official_page'] (pos-hidratacao, pre-ranking, best-effort; "
+        "default: ligado; --no-official-page desliga). Sem LLM/browser.",
+    )
+    parser.add_argument(
+        "--official-page-limit",
+        type=int,
+        default=None,
+        help="Limite de vagas por execucao do official-page enrichment "
+        "(default: 150, cortado por prioridade: sem description > teaser > "
+        "sem deadline > sem salary; 0 = sem limite). Primeiro run controlado "
+        "da fase (spec): custo medido ~1.4s/GET.",
     )
     parser.add_argument(
         "--student",
@@ -778,6 +842,12 @@ def main(argv: list[str] | None = None) -> int:
             mirror_dedup=args.mirror_dedup,
             rank=args.rank,
             hydrate=args.hydrate_descriptions,
+            official_page=args.official_page,
+            official_page_limit=(
+                args.official_page_limit
+                if args.official_page_limit is not None
+                else OFFICIAL_PAGE_LIMIT
+            ),
             metrics=metrics_path,
             run_id=run_id,
         )
@@ -804,6 +874,12 @@ def main(argv: list[str] | None = None) -> int:
         mirror_dedup=args.mirror_dedup,
         rank=args.rank,
         hydrate=args.hydrate_descriptions,
+        official_page=args.official_page,
+        official_page_limit=(
+            args.official_page_limit
+            if args.official_page_limit is not None
+            else OFFICIAL_PAGE_LIMIT
+        ),
     )
 
 
