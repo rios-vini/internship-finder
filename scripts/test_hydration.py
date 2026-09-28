@@ -355,7 +355,9 @@ def test_indisponivel() -> None:
           stats["hydration_success"] == 0 and stats["hydration_failed"] == 3)
 
     # E no run_filter_pipeline: exception estrutural da hidratacao inteira e
-    # capturada (try externo), o pipeline grava a saida normalmente.
+    # capturada (try externo), o pipeline grava a saida normalmente. O
+    # estagio Fase D (official_page) e desligado explicitamente — este bloco
+    # testa a HIDRATACAO quebrada; GETs reais no CI sao proibidos (PR #78).
     import tempfile
     from internship_finder.cli import run_filter_pipeline
     from unittest.mock import patch
@@ -370,6 +372,7 @@ def test_indisponivel() -> None:
                           raw={"ats_id": "g"})],
                 student=True, area=False, country="all",
                 output=out, dedup=True, rank=True,
+                official_page=False,
             )
         check("10. run_filter_pipeline sobrevive a hidratacao totalmente quebrada",
               rc == 0 and out.exists())
