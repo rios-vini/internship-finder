@@ -51,6 +51,7 @@ from typing import TextIO
 
 from internship_finder.collectors.ats_scraper import collect_company
 from internship_finder.dedup import deduplicate
+from internship_finder.mirror_dedup import KEY_MIRRORS_DE_EN, deduplicate_mirrors_de_en
 from internship_finder.filters import parse_country_spec, select_eligible
 from internship_finder.health import build_health_report
 from internship_finder.hydration import hydrate_descriptions, print_hydration_report
@@ -204,7 +205,11 @@ def print_examples(jobs: list[dict] | list[Job], limit: int = 15) -> None:
 
 
 def print_dedup_report(dedup_stats: dict[str, int]) -> None:
-    """Linha do relatorio de dedup: quantas removidas e por qual chave."""
+    """Linha do relatorio de dedup: quantas removidas e por qual chave.
+
+    Inclui o sub-estagio de mirrors DE/EN (Fase C) — as remocoes dele
+    somam no total junto com as chaves classicas.
+    """
     total = sum(dedup_stats.values())
     if not total:
         return
@@ -212,7 +217,8 @@ def print_dedup_report(dedup_stats: dict[str, int]) -> None:
         f"dedup: removidas {total} "
         f"({dedup_stats.get('external_id', 0)} por external_id, "
         f"{dedup_stats.get('url', 0)} por URL, "
-        f"{dedup_stats.get('company+title+location', 0)} por company+title+location)"
+        f"{dedup_stats.get('company+title+location', 0)} por company+title+location, "
+        f"{dedup_stats.get(KEY_MIRRORS_DE_EN, 0)} por mirrors DE/EN (requisition_id))"
     )
 
 
@@ -241,6 +247,7 @@ def run_filter_pipeline(
     dedup: bool = True,
     rank: bool = True,
     hydrate: bool = True,
+    mirror_dedup: bool = True,
     metrics: Path | None = None,
     run_id: str | None = None,
 ) -> int:
@@ -284,6 +291,24 @@ def run_filter_pipeline(
     dedup_stats: dict[str, int] = {}
     if dedup:
         selected, dedup_stats, _ = deduplicate(selected)
+    if dedup and mirror_dedup:
+        # Fase C: sub-estagio de mirrors DE/EN (requisition_id + titulo
+        # normalizado como guardrail linguistico). Roda DENTRO do estagio
+        # de dedup, imediatamente apos a cascata classica e ANTES da
+        # hidratacao — os mirrors saem do conjunto elegivel antes do
+        # detail-fetch (economiza fetch de vagas que seriam removidas).
+        # Como SUB-estagio, herda o gate do estagio pai: ``--no-dedup``
+        # desliga TODA remocao (semantica preservada); ``--no-mirror-dedup``
+        # desliga apenas este sub-estagio (reversibilidade da Fase C).
+        # As remocoes somam em ``dedup_stats`` (total do relatorio e do
+        # JSONL ``type: run`` em ``dedup_removed``) — o relatorio imprime
+        # UMA vez, apos ambos os sub-estagios.
+        selected, mirror_stats, _ = deduplicate_mirrors_de_en(selected)
+        if mirror_stats:
+            dedup_stats[KEY_MIRRORS_DE_EN] = (
+                dedup_stats.get(KEY_MIRRORS_DE_EN, 0) + mirror_stats[KEY_MIRRORS_DE_EN]
+            )
+    if dedup:
         print_dedup_report(dedup_stats)
     if hydrate:
         # Fase A: hidratacao seletiva das descriptions AUSENTES, pos-dedup e
@@ -509,6 +534,17 @@ def main(argv: list[str] | None = None) -> int:
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Remove duplicatas da saida (default: ligado; --no-dedup desliga)",
+    )
+    parser.add_argument(
+        "--mirror-dedup",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Sub-estagio de dedup (Fase C): remove mirrors DE/EN — mesma vaga "
+        "publicada nos dois idiomas no mesmo tenant com o mesmo "
+        "requisition_id (chave: req_id + marcador de tipo DE/EN do titulo + "
+        "guardrails de country/employment_type). Default: ligado; "
+        "--no-mirror-dedup desliga (reversivel). Sub-estagio do --dedup: "
+        "--no-dedup desliga toda remocao.",
     )
     parser.add_argument(
         "--rank",
@@ -739,6 +775,7 @@ def main(argv: list[str] | None = None) -> int:
             country=args.country,
             output=Path(args.filter_output),
             dedup=args.dedup,
+            mirror_dedup=args.mirror_dedup,
             rank=args.rank,
             hydrate=args.hydrate_descriptions,
             metrics=metrics_path,
@@ -764,6 +801,7 @@ def main(argv: list[str] | None = None) -> int:
         country=args.country,
         output=output,
         dedup=args.dedup,
+        mirror_dedup=args.mirror_dedup,
         rank=args.rank,
         hydrate=args.hydrate_descriptions,
     )
