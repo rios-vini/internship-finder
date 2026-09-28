@@ -43,7 +43,7 @@ REGRA COMPLETA (deterministica e idempotente):
    (c) ``country`` igual quando ambos presentes;
    (d) ``employment_type`` igual quando ambos presentes.
    Par sem (a) nem (b), ou reprovado em (c)/(d): rejeitado — nada removido.
-3. CANONICAL: quando os marcadores linguistikos distinguem DE/EN (regra
+3. CANONICAL: quando os marcadores linguisticos distinguem DE/EN (regra
    (b), sozinha ou somada a (a)), canonical e o lado EN — a representacao
    util para o candidato do produto (le e aplica em ingles; nos 4 pares
    reais o lado EN tem score Business igual ou maior). Para pares unidos
