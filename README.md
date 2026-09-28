@@ -725,6 +725,14 @@ entram nele):
   "sinais de candidatura e possiveis problemas" (fit, work auth, deadline,
   problemas objetivos, quality flags, readiness, freshness first/last seen via
   `--db-join` do SQLite).
+- **Evidência da página oficial (Fase D2, 28/09)**: por vaga, quando
+  verificada pelo estágio Fase D, os fatos aparecem nos detalhes da vaga:
+  "página oficial verificada em <data>", "validThrough do JobPosting
+  (página oficial): <data>" (validade da PÁGINA — nunca confundida com o
+  prazo de candidatura do empregador) e "local confirmado pela página
+  oficial". Vagas cuja página retornou 404 na verificação ganham o chip
+  "🔗 página não encontrada na verificação". Nada disso entra em score,
+  urgência, filtro ou elegibilidade.
 - **"Como este ranking funciona"**: secao acima da lista com os PESOS REAIS
   lidos das constantes de `ranking.py`/`materials_ranking.py` (nada
   duplicado) e as regras (idioma, deadline SF, work auth, gates do perfil).
