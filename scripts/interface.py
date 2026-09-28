@@ -86,6 +86,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from internship_finder import app_intel  # noqa: E402  (Fase 6: Candidate Fit + Application Intelligence)
 from internship_finder import opportunity_intel  # noqa: E402  (Fase 7: Company & Location Intelligence)
+from internship_finder import present_official  # noqa: E402  (Fase D2: evidência da página oficial — APENAS view read-only)
 from internship_finder import structured_fields  # noqa: E402  (Fase B: campos estruturados do raw)
 from internship_finder.countries import matches_country, parse_country_spec  # noqa: E402
 from internship_finder.enrichment import present as enr_present  # noqa: E402  (Fase 3 enrichment: APENAS view read-only)
@@ -381,6 +382,13 @@ def _details_html(
                       or job.get("collected_at"))
     if added != "—":
         parts.append(f"desde {added}")
+    # Fase D2 — evidência da página oficial (view read-only do
+    # present_official; NADA aqui altera score/eligibilidade/ordem — os
+    # dados já estavam no job dict desde a Fase D). Ordem da spec §2:
+    # status da página -> validThrough -> location confirmed. Linhas só
+    # quando existem (vagas sem evidência ficam com o HTML de sempre).
+    for s in present_official.lines(present_official.official_view(job)):
+        parts.append(s["detail"])
     extras = ""
     if parts:
         extras = '<p class="mut facts">' + " · ".join(parts) + "</p>"
@@ -1318,7 +1326,13 @@ def _row_html(
     # Fase 3 (enrichment) — chip discreto QUANDO a vaga tem view utilizavel
     # (sem valor alem do sinal de que ha analise; PIP=false nao ganha chip).
     enr_chip = ' <span class="chip c-enr">🔎 LLM</span>' if enr_view else ""
-    chips = _chips_html(intel) + enr_chip
+    # Fase D2 — chip de verificação de página oficial: SOMENTE o fato
+    # acionável (not_found), avisando ANTES do clique. Página ok não ganha
+    # chip (seria o mesmo texto em 101/150 vagas — ruído).
+    op_view = present_official.official_view(job)
+    op_chip_txt = present_official.chip(op_view)
+    op_chip = f' <span class="chip c-warn">{html.escape(op_chip_txt)}</span>' if op_chip_txt else ""
+    chips = _chips_html(intel) + enr_chip + op_chip
     intel_details = _intel_html(job, intel, enr_view)
     # Fase 3 — bloco recolhivel da analise da pagina oficial (depois dos
     # sinais de candidatura; ausente quando nao ha view -> pagina igual a

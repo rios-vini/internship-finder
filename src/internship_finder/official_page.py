@@ -95,6 +95,7 @@ from internship_finder.hydration import TEASER_MAX_CHARS
 from internship_finder.opportunity_intel import (
     _norm_period,
     _to_float_or_none,
+    city_and_region,
     resolve_city_key,
 )
 
@@ -455,17 +456,21 @@ def _location_relation(loc: dict[str, Any] | None, job: dict[str, Any]) -> str |
     """Relacao cidade JSON-LD x cidade atual: confirmed | conflict | None.
 
     Comparacao via ``resolve_city_key`` (aliases munich->munchen etc.) sobre
-    a cidade do JSON-LD e a primeira parte da ``job.location`` (formato
-    "Cidade, Regiao" do dataset). Sem cidade em um dos lados -> None (nao
+    a cidade do JSON-LD e a cidade parseada da ``job.location`` pelo MESMO
+    parser conservador da Fase 7 (``city_and_region``). D2 (28/09): o parser
+    corrige falsos conflitos medidos no A/B real — locations no formato
+    "Rua X 2, 52134 Herzogenrath, NRW, DE" (AIXTRON) tinham a RUA lida como
+    cidade pelo ``split(",")[0]`` anterior e produziam ``conflict`` contra a
+    cidade correta do JSON-LD. Sem cidade em um dos lados -> None (nao
     sabe, nao afirma). A localizacao canonica NUNCA muda nesta fase.
     """
     if not loc or not loc.get("city"):
         return None
-    job_loc = str(job.get("location") or "").split(",")[0].strip()
-    if not job_loc:
+    job_city = (city_and_region(job) or {}).get("city")
+    if not job_city:
         return None
     a = resolve_city_key(loc["city"])
-    b = resolve_city_key(job_loc)
+    b = resolve_city_key(job_city)
     if not a or not b:
         return None
     return "confirmed" if a == b else "conflict"
