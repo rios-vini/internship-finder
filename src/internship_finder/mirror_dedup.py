@@ -217,6 +217,9 @@ def deduplicate_mirrors_de_en(
     - ``removidos``: lista de ``(canonical, mirror, motivo)`` para auditoria
       (a spec exige rastreabilidade de quem saiu, por que, e quem ficou).
 
+    Candidato = mesma EMPRESA + mesmo tenant (``source``) + mesmo
+    ``requisition_id`` (escopo por empresa da dedup classica, P1.1).
+
     Grupos de N>2: pares sao avaliados em ordem de entrada; um job ja
     removido nao volta a parear; um canonical pode absorver varios mirrors
     (ex.: 1 EN + 2 DE no mesmo req_id). Grupo inteiro sem par valido ->
@@ -230,18 +233,26 @@ def deduplicate_mirrors_de_en(
         item.to_dict() if hasattr(item, "to_dict") else item for item in jobs
     ]
 
-    # ---- 1. Candidatos: mesmo tenant (source) + mesmo requisition_id ----
-    by_candidate: dict[tuple[str, str], list[int]] = defaultdict(list)
+    # ---- 1. Candidatos: mesma empresa + mesmo tenant (source) + mesmo
+    # requisition_id. Escopo por empresa identico ao da dedup classica
+    # (P1.1): em tenants ATS compartilhados (ex.: successfactors:jobs cobre
+    # SAP/ZF/Kaufland/...), empresas diferentes numeram seus req_ids de
+    # forma independente — um req_id igual entre elas representa vagas
+    # DIFERENTES e NAO pode gerar candidato (restricao 11 da spec: sem dedup
+    # global indiscriminado). ----
+    by_candidate: dict[tuple[str, str, str], list[int]] = defaultdict(list)
     for idx, job in enumerate(normalized_jobs):
         rid = requisition_id(job)
         if rid is None:
             continue  # requisition_id=None / raw=None -> nunca candidato
-        by_candidate[(str(job.get("source") or ""), rid)].append(idx)
+        by_candidate[
+            (str(job.get("company") or "").strip(), str(job.get("source") or ""), rid)
+        ].append(idx)
 
     removed_idx: set[int] = set()
     removed_audit: list[tuple[dict[str, Any], dict[str, Any], str]] = []
 
-    for (_source, _rid), indices in sorted(by_candidate.items()):
+    for (_company, _source, _rid), indices in sorted(by_candidate.items()):
         if len(indices) < 2:
             continue
         group_removed: set[int] = set()
