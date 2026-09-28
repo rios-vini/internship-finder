@@ -871,6 +871,18 @@ enrichment (vagas sem análise simplesmente não mostram o bloco) e nenhum
 dado privado do tracker é exposto. Documento autoritativo:
 `docs/enrichment.md`.
 
+### Fase E — LLM Enrichment Spike (ISOLADA, sem integração)
+
+Spike controlada que mede quanto conhecimento novo um LLM extrai de
+texto JÁ COLETADO quando os detectores determinísticos não resolvem
+(WA-gap, teasers, condicionais). Pacote isolado `spike_e/` + CLI
+`scripts/spike_e_run.py` (`--plan`/`--run`/`--analyze`) + testes offline
+`scripts/test_spike_e.py`; artefatos FORA do repo (dados de vagas).
+NENHUMA integração: nada entra no ranking/eligibility/dedup, nenhum
+campo canônico muda — o resultado é evidência-candidata comparada ao
+determinístico (relations agree/llm_adds_information/conflict), com
+revisão manual. Documento autoritativo: `docs/spike_e.md`.
+
 ## Runbook
 
 ### Como adicionar empresas
