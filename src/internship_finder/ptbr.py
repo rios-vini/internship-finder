@@ -515,6 +515,19 @@ FIT_LABELS: dict[str, str] = {
     "description_known": "Descrição disponível",
     "german": "Alemão",
     "work_auth": "Autorização de trabalho",
+    "student_subtype": "Tipo de vaga estudantil",
+}
+
+# Subtipos de vaga estudantil (app_intel.student_type; Fase F P1). Rótulos
+# curtos para o candidate fit (spec §13: "Working Student" / "Mandatory
+# Internship" como informação da oportunidade, sem duplicar o sinal
+# student_type existente).
+STUDENT_SUBTYPE_LABELS: dict[str, str] = {
+    "working_student": "Working Student (Werkstudent)",
+    "mandatory_internship": "Praktikum obrigatório (Pflichtpraktikum)",
+    "voluntary_internship": "Praktikum voluntário",
+    "internship": "Estágio/Praktikum",
+    "unclear": "Subtipo não especificado no anúncio",
 }
 
 # Problemas possiveis (app_intel.possible_problems): template por key.
@@ -597,6 +610,7 @@ SOURCE_QUALITY_LABELS: dict[str, str] = {
 SALARY_PERIOD_LABELS: dict[str, str] = {
     "month": "mês",
     "year": "ano",
+    "hour": "hora",
 }
 
 # Rotulos dos fatores de comparacao (funcionalidade Compare opportunities).

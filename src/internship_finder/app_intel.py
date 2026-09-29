@@ -64,7 +64,11 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
-from internship_finder.filters import SENIORITY_PATTERNS, STUDENT_TYPE_PATTERNS
+from internship_finder.filters import (
+    SENIORITY_PATTERNS,
+    STUDENT_TYPE_PATTERNS,
+    is_student_role,
+)
 
 # ---------------------------------------------------------------------------
 # Normalização de texto para os DETECTORES (item 5, auditoria pós-Fases 1–8)
@@ -339,10 +343,13 @@ _WA_SUPPORT = [
     # Tema ... depois verbo de suporte ("We support you with the visa
     # process" -> "visa process"; "Assistance with visa application
     # provided" -> assist antes, tema depois).
+    # Suporte ao PROCESSO (suporte material com TEMA na janela): verbo DEPOIS
+    # do tema (~25) ou ANTES (~30) — janela 30->32 (Fase F): "Wir unterstützen
+    # Sie bei der Beantragung einer Arbeitserlaubnis" (adversarial spec §6-F)
+    # tem 31 chars entre verbo e tema; medido no production 404: 0 novos
+    # matches na janela 32 (evidence: probe fasef, 0 flips).
     rf"{_WA_THEME}[\w\s,()/-]{{0,25}}{_WA_VERB}",
-    # Verbo ... depois tema ("Wir unterstützen bei der Beantragung eines
-    # Visums"; "Support with residence permit application").
-    rf"{_WA_VERB}[\w\s,()/-]{{0,30}}{_WA_THEME}",
+    rf"{_WA_VERB}[\w\s,()/-]{{0,32}}{_WA_THEME}",
     # Custeio explícito (suporte material): "Übernahme der Visakosten",
     # "visa costs covered/paid by us", "Visakosten übernehmen wir".
     r"(?:übernahme|uebernahme|coverage|covering)\s+(?:der\s+)?visa\w*(?:gebühren|kosten|gebuehren|costs?|fees?)",
@@ -410,6 +417,75 @@ _WA_SUPPORT_RE = [re.compile(p, re.IGNORECASE) for p in _WA_SUPPORT]
 _WA_NO_SUPPORT_RE = [re.compile(p, re.IGNORECASE) for p in _WA_NO_SUPPORT]
 _WA_EXISTING_RE = [re.compile(p, re.IGNORECASE) for p in _WA_EXISTING]
 
+# ---------------------------------------------------------------------------
+# Condicionais que SUPRIMEM existing_required (Fase F, P0).
+#
+# Evidencia Fase E (spike, PR #89): 6/6 llm_missing eram o detector
+# classificando como exigencia absoluta uma autorizacao citada de forma
+# CONDICIONAL no checklist de documentos:
+#   - 5x Bosch: "sowie ggf. eine gueltige Arbeits- und Aufenthaltserlaubnis"
+#   - 1x STIHL: "sowie wenn vorliegend Arbeitszeugnisse und deine gueltige
+#     Arbeits- und Aufenthaltserlaubnis"
+# "ggf."/"gegebenenfalls" = "se aplicavel" -- o anuncio pede o documento SE
+# houver, nao exige autorizacao PRE-EXISTENTE. A regra e CONSERVADORA e
+# orientada por CONTEXTO (spec Fase F §3/§4): o qualificador condicional so
+# suprime o caminho ``existing`` quando aparece ENTRE o inicio da SENTENCA e
+# a evidencia -- verbo/tema/objeto na mesma unidade semantica. Nao e a regra
+# simplista "ggf. => unclear" (explicitamente proibida): a precedencia
+# (no_sponsorship > support > existing > unclear) e o resto do detector
+# seguem INTACTOS; apenas a EVIDENCIA que alimenta ``existing_required``
+# ganha a checagem contextual.
+_WA_CONDITIONAL = [
+    # "ggf." (gegebenenfalls) — "se aplicavel", DE.
+    r"\bggf\.?\b",
+    r"\bgegebenenfalls\b",
+    # "wenn vorliegend/vorhanden" — "se houver/existindo", DE.
+    r"\b(?:wenn|falls|sofern|soweit)\s+(?:vorliegend|vorhanden)\b",
+    # Equivalentes EN: "if applicable/available/present", "where
+    # applicable", "if you have/hold/possess <documento>".
+    r"\bif\s+(?:applicable|available|present)\b",
+    r"\bwhere\s+applicable\b",
+    r"\bif\s+you\s+(?:have|hold|possess)\b",
+]
+_WA_CONDITIONAL_RE = [
+    re.compile(p, re.IGNORECASE) for p in _WA_CONDITIONAL
+]
+# Fim de sentenca: ponto/exclamacao/interrogacao/ponto-e-virgula seguido de
+# espaco/fim. A abreviacao "ggf." NAO e fim de sentenca: os pontos internos
+# sao MASCARADOS antes do calculo do inicio.
+_SENT_END_RE = re.compile(r"[.!?;](?:\s|$)")
+_WA_ABBREV_RE = re.compile(
+    r"\b(?:ggf|ggfs|u\.a|m\.E|z\.B|evtl|bzw|etc|inkl|bspw)\.", re.IGNORECASE
+)
+
+
+def _wa_existing_evidence(text: str) -> bool:
+    """Evidencia de autorizacao PRE-EXISTENTE exigida, SEM condicional.
+
+    Itera cada match de ``_WA_EXISTING_RE`` e suprime aquele cuja sentenca
+    traz qualificador condicional ANTES da evidencia (``ggf.``,
+    ``wenn vorliegend``, ``if applicable``...). Restam validos os casos
+    explicitos da spec Fase F §4: "must already have", "bereits vorhanden",
+    "vorhandene Arbeitserlaubnis", "gueltige Arbeitserlaubnis erforderlich"
+    -- nenhuma condicional na mesma sentenca. Se TODAS as evidencias
+    ``existing`` estao sob condicional, a vaga sai de ``existing_required``
+    (o anuncio nao exige autorizacao ja existente) e cai no fluxo padrao
+    (``unclear`` quando ha vocab sem outra classificacao).
+    """
+    masked = _WA_ABBREV_RE.sub(
+        lambda m: m.group(0).replace(".", "\u2024"), text
+    )
+    for rx in _WA_EXISTING_RE:
+        for m in rx.finditer(masked):
+            sent_start = 0
+            for end in _SENT_END_RE.finditer(masked, 0, m.start()):
+                if end.end() <= m.start():
+                    sent_start = end.end()
+            segment = masked[sent_start:m.start()]
+            if not any(rx2.search(segment) for rx2 in _WA_CONDITIONAL_RE):
+                return True
+    return False
+
 # Ordem de precedencia: negacao vence suporte ("no sponsorship" e aviso);
 # suporte vence "existing" quando ambos aparecem (empresa suporta, mas ja
 # pede autorizacao atual vale o aviso mais util ao candidato).
@@ -431,9 +507,213 @@ def work_authorization(text: str | None) -> dict[str, str]:
         return {"state": "no_sponsorship", "detected": "no_support"}
     if any(rx.search(text) for rx in _WA_SUPPORT_RE):
         return {"state": "support", "detected": "support"}
-    if any(rx.search(text) for rx in _WA_EXISTING_RE):
+    if _wa_existing_evidence(text):
         return {"state": "existing_required", "detected": "existing"}
     return {"state": "unclear", "detected": "vocab_unclassified"}
+
+
+# ---------------------------------------------------------------------------
+# Student subtype — Fase F P1 (ENRICHMENT puro; nunca filtro/peso/score).
+#
+# Evidencia Fase E (spike, PR #89): 21/25 vagas avaliadas tinham subtipo no
+# texto que a classificacao binaria internship=True nao discrimina (13
+# internship / 4 working_student / 4 mandatory_internship). Praktikum
+# obrigatorio, voluntario e Werkstudent NAO sao equivalentes para o
+# candidato -- mas a hierarquia permanece: o subtipo so e computado para
+# vagas que JA sao student-role pelo filtro atual (reuso integral de
+# STUDENT_TYPE_PATTERNS); nunca reclassifica, nunca alimenta eligibility,
+# ranking ou score (spec Fase F §7).
+#
+# Valores (spec §8) e evidencia explicita exigida para cada um:
+#   working_student     -- "Working Student"/"Werkstudent" (title/description)
+#   mandatory_internship -- "Pflichtpraktikum"/"mandatory internship"/"required
+#                           internship"/"we can only offer mandatory
+#                           internships" (title/description)
+#   voluntary_internship -- evidencia EXPLICITA de voluntario ("freiwilliges
+#                           Praktikum"/"voluntary internship"); NUNCA inferido
+#                           so pela ausencia de "mandatory" (spec §8).
+#   internship          -- Praktikum/Internship generico sem indicacao de
+#                          obrigatorio ou Werkstudent.
+#   unclear             -- student-role sem evidencia de subtipo (a vaga e
+#                          student-role, mas o texto nao especifica).
+#
+# Conflito title x description (spec §9): o subtipo e calculado
+# separadamente para title e description; quando divergem, o conflito e
+# REGISTRADO em "conflict" (padrao structured_fields.employment_type_relation:
+# registro, nunca correcao arbitraria) e o valor publicado e "unclear".
+STUDENT_SUBTYPES = (
+    "working_student", "mandatory_internship", "voluntary_internship",
+    "internship", "unclear",
+)
+# Marcadores de SUBTIPO por evidencia explicita (title e description em
+# separado). Werkstudent/Working Student e Pflichtpraktikum/mandatory sao
+# INEQUIVOCOS no vocabulario do projeto (STUDENT_TYPE_PATTERNS ja os cobre
+# como marcadores FORTES de student-role; aqui a funcao e DISTINGUIR o
+# subtipo, nao reclassificar o papel).
+_STUDENT_WORKING_RE = re.compile(
+    r"\b(?:werkstudent\w*|working student\w*|student worker\w*)", re.IGNORECASE
+)
+_STUDENT_MANDATORY_RE = re.compile(
+    r"\b(?:pflichtpraktikum\w*|pflichtpraktik\w*|mandatory internship\w*|"
+    r"mandatory intern\w*|required internship\w*|pflichtpraktikant\w*)",
+    re.IGNORECASE,
+)
+# Frase de escopo do programa (evidência real NXP, spike Fase E): a
+# unica oferta E de Praktikum obrigatorio.
+_STUDENT_ONLY_MANDATORY_RE = re.compile(
+    r"only\s+offer\s+mandatory\s+internships?\b|"
+    r"nur\s+(?:pflichtpraktik\w*|pflichtpraktikums?\b)",
+    re.IGNORECASE,
+)
+# Exclusividade explicita (evidência real Bosch, spike Fase E):
+# "ausschließlich Pflichtpraktikum gem. SPO möglich".
+_STUDENT_EXCLUSIVE_MANDATORY_RE = re.compile(
+    r"ausschließlich\s+pflichtpraktik\w*|"
+    r"exclusively\s+(?:for\s+)?(?:mandatory\s+internships?\w*|pflichtpraktik\w*)",
+    re.IGNORECASE,
+)
+# ENUMERACAO de opcoes ("Pflicht- oder freiwilliges Praktikum",
+# "Pflichtpraktikum oder freiwilliges Praktikum", "mandatory or voluntary
+# internship"): o anuncio aceita AMBOS -- nao e classificacao de subtipo.
+# Evidência real: Telekom "Ob Pflicht- oder freiwilliges Praktikum", trumpf
+# "Pflichtpraktikum oder freiwilliges Praktikum" (audit Fase F, 404 vagas).
+_STUDENT_ENUM_RE = re.compile(
+    r"pflicht\s*-?\s*(?:oder|/|und|and)\s*freiwillig\w*|"
+    r"pflichtpraktik\w*\s+(?:oder|/|und|and)\s+freiwillig\w*|"
+    r"freiwillig\w*\s+(?:oder|/|und|and)\s+pflichtpraktik\w*|"
+    r"pflichtpraktik\w*\s+(?:or|/|and)\s+voluntary|"
+    r"voluntary\s+(?:or|/|and)\s+(?:mandatory|pflichtpraktik\w*)|"
+    r"mandatory\s+(?:or|/|and)\s+voluntary",
+    re.IGNORECASE,
+)
+# CHECKLIST CONDICIONAL ("Bei einem Pflichtpraktikum zusätzlich eine
+# Bescheinigung der Hochschule", "falls ... Pflichtpraktikum"): requisito de
+# DOCUMENTO se o Praktikum do candidato for obrigatorio -- nao classifica a
+# POSICAO. Evidência real: Volkswagen AG (audit Fase F, 3 vagas).
+_STUDENT_MAND_CONDITIONAL_RE = re.compile(
+    r"\bbei\s+(?:einem?|einer)?\s*pflichtpraktik\w*|"
+    r"\bfalls?\s+[\w\s-]{0,30}pflichtpraktik\w*|"
+    r"\bim\s+fall(?:e)?\s+(?:eines|einem)\s+pflichtpraktik\w*|"
+    r"\bif\s+(?:a\s+|your\s+|it'?s\s+|the\s+)?(?:mandatory|pflichtpraktik\w*)",
+    re.IGNORECASE,
+)
+_STUDENT_VOLUNTARY_RE = re.compile(
+    r"\bfreiwilliges?\s+praktikum\w*|\bvoluntary\s+internship\w*",
+    re.IGNORECASE,
+)
+# VOLUNTARIO NEGADO ("purely voluntary internships cannot be offered",
+# "freiwillige Praktika können nicht angeboten werden", "no voluntary
+# internships"): exclui o voluntario -> no contexto alemao o Praktikum e
+# BINARIO (Pflicht oder freiwillig), logo a posicao e mandatory-only.
+# Evidencia real: MAHLE (audit Fase F, 2 vagas). AMBAS as ordens: negacao
+# antes ("no voluntary internships") ou depois ("voluntary internships
+# cannot be offered").
+_STUDENT_NEGATED_VOLUNTARY_RE = re.compile(
+    r"(?:(?:keine|not|cannot|can'?t|no)\s+[\w\s,-]{0,30}"
+    r"(?:freiwillig\w*|voluntary))|"
+    r"(?:(?:freiwillig\w*|voluntary)\w*\s+[\w\s,-]{0,30}"
+    r"(?:cannot|can'?t|not\s+(?:be\s+)?(?:offered|angeboten)|"
+    r"keine|nicht))",
+    re.IGNORECASE,
+)
+# Praktikum/Internship generico (marcador da vaga como student-role; sem
+# indicacao de subtipo).
+_STUDENT_GENERIC_RE = re.compile(
+    r"\b(?:interns?\b|internships?\b|praktikum\w*|praktikant\w*)",
+    re.IGNORECASE,
+)
+
+
+def _student_subtype_of(text: str | None) -> str | None:
+    """Subtipo por evidencia explicita em UM campo; None sem evidencia.
+
+    Precedencia por evidencia (spec §8), com guardas da AUDIT Fase F
+    (404 vagas de producao; cada FP corrigido tem caso real citado):
+
+    1. Exclusividade explicita ("nur Pflichtpraktika", "only offer
+       mandatory internships", "ausschließlich Pflichtpraktikum") e
+       marcador de titulo ("Pflichtpraktikum X") -> mandatory_internship.
+    2. ENUMERACAO de opcoes ("Pflicht- oder freiwilliges Praktikum") e
+       CHECKLIST condicional ("bei einem Pflichtpraktikum zusätzlich...")
+       SUPRIMEM a classificacao por marcador isolado -- o anuncio aceita
+       ambos ou pede documento condicional; nao afirma subtipo.
+    3. Voluntario somente com evidencia EXPLICITA fora de enumeracao.
+    4. working_student (Werkstudent e inequivoco) > internship generico.
+    """
+    if not text:
+        return None
+    text = normalize_text(text)
+    if not text:
+        return None
+    # 1. Escopo/exclusividade: a POSICAO e restrita a Praktikum obrigatorio.
+    if (
+        _STUDENT_ONLY_MANDATORY_RE.search(text)
+        or _STUDENT_EXCLUSIVE_MANDATORY_RE.search(text)
+        # Voluntario NEGADO: binario Pflicht/freiwillig -> mandatory-only
+        # (evidencia MAHLE: "purely voluntary internships cannot be offered").
+        or _STUDENT_NEGATED_VOLUNTARY_RE.search(text)
+    ):
+        return "mandatory_internship"
+    # 2. Guardas: enumeracao de opcoes / checklist condicional nao
+    #    classificam -- caem para working/generic abaixo (ou None).
+    guarded = bool(
+        _STUDENT_ENUM_RE.search(text)
+        or _STUDENT_MAND_CONDITIONAL_RE.search(text)
+    )
+    if not guarded:
+        if _STUDENT_MANDATORY_RE.search(text):
+            return "mandatory_internship"
+        if _STUDENT_VOLUNTARY_RE.search(text):
+            return "voluntary_internship"
+    if _STUDENT_WORKING_RE.search(text):
+        return "working_student"
+    if _STUDENT_GENERIC_RE.search(text):
+        return "internship"
+    return None
+
+
+def student_type(job: dict[str, Any] | Any) -> dict[str, Any] | None:
+    """Subtipo de vaga estudantil (enrichment); None se NAO e student-role.
+
+    O modulo reusa o CRITERIO do filtro atual (``filters.is_student_role``
+    com os MESMOS inputs do filtro de eligible) como GATE: so vagas ja
+    classificadas student-role recebem subtipo -- o subtipo nunca
+    reclassifica, nunca vira filtro, nunca entra no score (spec §7). Para
+    vagas student-role, retorna
+    ``{"type": <subtipo>, "conflict": bool}`` onde ``conflict=True``
+    registra title x description divergentes (o valor publicado e
+    ``unclear``; registro, nunca arbitracao -- spec §9).
+    """
+    d = job.to_dict() if hasattr(job, "to_dict") else job
+    title = str(d.get("title") or "")
+    description = str(d.get("description") or "")
+    if not is_student_role(title, description, d.get("employment_type")):
+        return None
+    by_title = _student_subtype_of(title)
+    by_desc = _student_subtype_of(description)
+    # Sem evidencia de subtipo em nenhum campo -> unclear (a vaga e
+    # student-role, mas o texto nao especifica qual).
+    if by_title is None and by_desc is None:
+        return {"type": "unclear", "conflict": False}
+    # Conflito REAL (spec §9): dois subtipos ESPECIFICOS divergentes -- o
+    # generico "internship" REFINA (Praktikum no title + Pflichtpraktikum na
+    # description e especializacao, nao contradicao). Registro, nunca
+    # arbitracao; valor publicado unclear.
+    _SPECIFIC = ("working_student", "mandatory_internship",
+                 "voluntary_internship")
+    if (
+        by_title in _SPECIFIC
+        and by_desc in _SPECIFIC
+        and by_title != by_desc
+    ):
+        return {"type": "unclear", "conflict": True}
+    # Subtipo especifico vence o generico/ausente (descricao refina o title;
+    # title especifico vale quando a descricao e generica/ausente).
+    chosen = next(
+        (t for t in (by_desc, by_title) if t in _SPECIFIC),
+        by_title or by_desc,
+    )
+    return {"type": chosen, "conflict": False}
 
 
 # ---------------------------------------------------------------------------
@@ -643,7 +923,7 @@ def candidate_fit(job: dict[str, Any] | Any) -> list[dict]:
     text = f"{title} {d.get('description') or ''}"
     employment_type = str(d.get("employment_type") or "").strip()
 
-    student_type = bool(
+    has_student_type = bool(
         re.search(r"|".join(STUDENT_TYPE_PATTERNS), title, re.IGNORECASE)
     ) or bool(re.search(r"werkstudent|working student|student(ische|er)?",
                         title, re.IGNORECASE))
@@ -654,7 +934,7 @@ def candidate_fit(job: dict[str, Any] | Any) -> list[dict]:
         },
         {
             "key": "student_type",
-            "kind": "ok" if student_type else "info",
+            "kind": "ok" if has_student_type else "info",
             "detail": employment_type or None,
         },
         {
@@ -684,6 +964,16 @@ def candidate_fit(job: dict[str, Any] | Any) -> list[dict]:
         sign.append({"key": "work_auth", "kind": "ok", "detail": wa})
     else:
         sign.append({"key": "work_auth", "kind": "info", "detail": wa})
+    # Fase F P1: subtipo de vaga estudantil (ENRICHMENT puro — sinal ok/info,
+    # nunca warn/filtro; None para não-student-role segue ausente, e o
+    # genérico "internship" NÃO duplica o sinal student_type existente).
+    subtype = student_type(job)
+    if subtype is not None and subtype["type"] != "internship":
+        sign.append({
+            "key": "student_subtype",
+            "kind": "info",
+            "detail": subtype["type"],
+        })
     return sign
 
 
