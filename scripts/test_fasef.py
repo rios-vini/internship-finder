@@ -384,19 +384,18 @@ def test_salary_regression() -> None:
 
 
 def test_salary_hourly_guard() -> None:
-    print("== P2.3: guard de fragmento decimal (17,80 €/Stunde) ==")
-    # Bug pré-existente do _MONEY_CLAUSE: decimal alemão "17,80" vira dois
-    # matches ("17" e "80"). O guard impede que o FRAGMENTO seja rotulado
-    # hourly (o valor seguiria errado); o comportamento pré-Fase F é
-    # preservado (documentado como backlog, não alterado nesta fase).
+    print("== P2.3: decimal alemão + /Stunde (evoluído pela Fase G) ==")
+    # Fase G (salary decimal parsing): o _MONEY_CLAUSE agora captura "17,80"
+    # INTEIRO — o fragmento pós-vírgula ("80" como match separado) não existe
+    # mais. Este caso era o bug documentado como backlog na Fase F (o guard
+    # impedia o rótulo hourly, mas o valor seguia errado: 80 €/month);
+    # agora o valor E o período estão ambos corretos (ver test_faseg A9).
     out = _sal("Working Student Data Analytics",
                "Vergütung: 17,80 €/Stunde")
-    if out is not None:
-        check("fragmento decimal NÃO é rotulado hourly (preserva "
-              "comportamento pré-Fase F)", out["period"] != "hour")
-    else:
-        check("fragmento decimal: ausência também aceitável (nenhum "
-              "retorno novo)", True)
+    check("decimal alemão capturado inteiro: 17,80 €/Stunde -> 17.80/hour "
+          "(Fase G corrige o backlog da Fase F)",
+          bool(out) and out["min"] == 17.8 and out["max"] == 17.8
+          and out["period"] == "hour")
 
 
 def main() -> int:
