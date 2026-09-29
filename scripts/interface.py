@@ -538,6 +538,10 @@ def _fit_lines_html(job: dict, enr_view: dict | None = None) -> str:
             label += f': {ptbr.GERMAN_LEVEL_LABELS.get(s["detail"], s["detail"])}'
         if s["key"] == "work_auth" and s.get("detail"):
             label += f': {ptbr.WORK_AUTH_LABELS.get(s["detail"], s["detail"])}'
+        # Fase F P1: subtipo de vaga estudantil (enrichment — rótulo do
+        # subtipo, não duplica o sinal student_type).
+        if s["key"] == "student_subtype" and s.get("detail"):
+            label += f': {ptbr.STUDENT_SUBTYPE_LABELS.get(s["detail"], s["detail"])}'
         icon = {"ok": "✓", "warn": "⚠", "info": "·"}.get(s["kind"], "·")
         lines.append(
             f'<div class="fit-line fit-{s["kind"]}">'

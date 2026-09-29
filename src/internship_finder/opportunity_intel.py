@@ -211,6 +211,59 @@ def _norm_period(value: Any) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Salário POR HORA — Fase F P2 (extensão pequena e segura do parser).
+#
+# Evidência Fase E (spike, PR #89): Covestro "Stundenlohn von 21 Euro" —
+# valor horário real que o _MONEY_CLAUSE atual NÃO captura (o padrão só
+# conhece monat/month/jahr/year como período). Extensão MÍNIMA (spec §10):
+# reconhecer o período horário nas formas comprovadas no dataset:
+#   "21 €/Stunde", "21 Euro/Stunde", "Stundenlohn von 21 Euro",
+#   "€21 per hour", "Stundenlohn: 21 €"
+# NÃO é parser universal; salários já detectados NUNCA mudam (o caminho
+# estruturado tem precedência e o fluxo mensal/anual segue idêntico).
+# ---------------------------------------------------------------------------
+
+# Marcador horário ANTES do valor ("Stundenlohn von 21 Euro"): rótulo
+# explícito de que o valor é por hora. O rótulo "Stundenlohn" também passa
+# a contar como _SALARY_LABEL (é o "Gehalt" do trabalho por hora).
+_HOURLY_LABEL_RE = re.compile(
+    r"\bstundenlohn\b|\bstundenvergütung\b|\bhourly\s+(?:rate|wage|salary|pay)\b",
+    re.IGNORECASE,
+)
+# Marcador horário DEPOIS do valor ("21 €/Stunde", "€21 per hour").
+_HOURLY_AFTER_RE = re.compile(
+    r"^\s*(?:/|per\s+|pro\s+)?\s*(?:stunde|hour)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_hourly_clause(text: str, start: int, end: int) -> bool:
+    """Cláusula monetária é POR HORA? Rótulo antes OU marcador depois.
+
+    Janela antes: 60 chars (mesma ordem de grandeza do _SALARY_LABEL_WINDOW
+    usado para "Gehalt:"); depois: início imediato do restante do texto (o
+    marcador "/Stunde"/"per hour" vem colado ao valor ou com uma barra).
+
+    Guard de FRAGMENTO DECIMAL (conservador, spec §10): valor colado a um
+    número maior por vírgula/ponto ("17,80 €/Stunde" -> o matcher separa
+    "17" e "80") NÃO é tratado como hourly — o fragmento deixaria de ser
+    period=month pré-existente e viraria um hourly com VALOR errado (80
+    em vez de 17,80). O bug de decimal alemão do ``_MONEY_CLAUSE`` é
+    pré-existente e fica documentado como backlog (corrigi-lo exigiria
+    tocar o core do parser e reavaliar todos os salários textuais).
+    """
+    if start > 0:
+        prev = text[start - 1]
+        if prev in ",." and start >= 2 and text[start - 2].isdigit():
+            return False  # fragmento de decimal ("17,80" -> "80")
+        if prev.isdigit():
+            return False  # sufixo de número maior ("1780" -> "80")
+    before = text[max(0, start - 60):start]
+    after = text[end:end + 20]
+    return bool(_HOURLY_LABEL_RE.search(before) or _HOURLY_AFTER_RE.match(after))
+
+
 def job_salary(job: dict) -> dict | None:
     """Salário citado NO ANUNCIO; None sem evidencia (nunca inventa).
 
@@ -261,7 +314,8 @@ def job_salary(job: dict) -> dict | None:
         start, end = m.start(), m.end()
         window = text[max(0, start - _SALARY_LABEL_WINDOW): end + 60]
         has_currency = any(m.group(k) for k in ("pre", "post", "pre2", "post2"))
-        has_label = _SALARY_LABEL.search(window) is not None
+        has_label = _SALARY_LABEL.search(window) is not None \
+            or _HOURLY_LABEL_RE.search(window) is not None  # Fase F P2
         has_period = m.group("period") is not None
         if not (has_currency and (has_label or has_period)) \
                 and not (has_label and has_period):
@@ -279,7 +333,15 @@ def job_salary(job: dict) -> dict | None:
         if lo > hi:
             lo, hi = hi, lo
         period_m = m.group("period")
-        period = "year" if period_m and period_m.strip().casefold() in ("jahr", "year") else "month"
+        # Fase F P2: cláusula com marcador horário ("Stundenlohn von X
+        # Euro", "X €/Stunde", "€X per hour") -> period="hour"; caso
+        # contrário o mapeamento mensal/anual segue IDÊNTICO ao anterior.
+        if _is_hourly_clause(text, start, end):
+            period = "hour"
+        elif period_m and period_m.strip().casefold() in ("jahr", "year"):
+            period = "year"
+        else:
+            period = "month"
         clause = {"min": lo, "max": hi, "period": period, "text": m.group(0).strip()}
         # Preferencia: clausula com periodo explicito vence a sem periodo
         # (mesmo anuncio pode citar "Gehalt: X €" e depois "pro Jahr").
