@@ -145,12 +145,30 @@ def company_intel_for(job: dict, intel_map: dict[str, dict]) -> dict | None:
 # Uma clausula monetaria generica: "2.117 €/Monat", "EUR 2,000 per month",
 # "€3,000 – €3,500 / month", "1.500 € - 1.800 €". Currencies opcionais de
 # cada lado do(s) numero(s) e periodo opcional logo apos.
+#
+# Fase G — separadores decimais: cada lado do range agora reconhece o
+# decimal alemão/internacional em DUAS alternativas ORDENADAS:
+#   1. "\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?" — número COM grupo(s) de
+#      milhar + decimal final opcional: "2.117", "2,000", "1.400,50",
+#      "1,400.50", "2.410,00", "50,000.00". Exigir PELO MENOS UM grupo de
+#      milhar ("+" em vez de "*") é o que impede "2117" de casar "211" na
+#      primeira alternativa (o engine não tentaria a segunda) — números
+#      sem milhar caem inteiros na alternativa 2.
+#   2. "\d+(?:[.,]\d{1,2})?" — número simples com decimal de 1-2 dígitos:
+#      "17,50", "18,06", "17.50", "3,5", "17", "2117". ANTES da Fase G esta
+#      alternativa era "\d+(?:[.,]\d+)?" mas nunca casava decimais reais:
+#      a 1ª alternativa ("\d{1,3}(?:[.,]\d{3})*") casava "17" de "17,50" e
+#      o ",50" virava um SEGUNDO match fragmento que, com moeda na janela,
+#      produzia salários-lixo ("17,50 Euro" -> 50 €/mês) ou truncados
+#      ("€17,50" -> 17 €/mês). Decimal limitado a 2 dígitos: valores como
+#      "3,500" (vírgula + 3 dígitos) continuam lidos como MILHAR pela
+#      alternativa 1 — regra conservadora existente, nunca alterada aqui.
 _MONEY_CLAUSE = re.compile(
     r"(?P<pre>(?:€|eur|euro)\s*)?"
-    r"(?P<a>\d{1,3}(?:[.,]\d{3})*|\d+(?:[.,]\d+)?)"
+    r"(?P<a>\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
     r"(?P<post>\s*(?:€|eur|euro))?"
     r"(?:\s*[–\-–]\s*(?P<pre2>(?:€|eur|euro)\s*)?"
-    r"(?P<b>\d{1,3}(?:[.,]\d{3})*|\d+(?:[.,]\d+)?)"
+    r"(?P<b>\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
     r"(?P<post2>\s*(?:€|eur|euro))?)?"
     r"(?P<period>\s*(?:per\s+)?(?:monat|month|jahr|year))?",
     re.IGNORECASE,
@@ -163,21 +181,39 @@ _SALARY_LABEL_WINDOW = 40
 
 
 def _to_number(text: str) -> float | None:
-    """'2.117'/'2,000'/'1,5' -> numero real (sem ambiguidade).
+    """'2.117'/'2,000'/'17,50'/'1.400,50' -> numero real (sem ambiguidade).
 
-    Padrao DE/EN de milhar (1-3 digitos + separadores de 3 em 3) vira
-    inteiro; senao a virgula e decimal (ex.: 1,5). Nunca divide nem
-    arredonda valores reais.
+    Fase G — regras de separador, da mais para a menos específica:
+
+    1. Milhar + decimal final (ambas as convenções, o ÚLTIMO separador é o
+       decimal quando há dois): '1.400,50' -> 1400.5, '1,400.50' -> 1400.5,
+       '50,000.00' -> 50000.0, '2.410,00' -> 2410.0.
+    2. Milhar puro (padrão DE/EN de 1-3 dígitos + grupos de 3): '2.117'
+       -> 2117, '2,000' -> 2000, '1,400' -> 1400, '50,000' -> 50000.
+       Comportamento IDÊNTICO ao pré-Fase G.
+    3. Decimal simples (sem grupo de milhar): o separador é decimal —
+       '17,50' -> 17.5, '17.50' -> 17.5, '1,5' -> 1.5, '2117' -> 2117,
+       '17' -> 17. ANTES da Fase G '17.50' virava 1750 (pontos removidos
+       como se fossem milhar) — bug irmão do truncamento da vírgula.
+
+    Nunca divide nem arredonda valores reais.
     """
     s = text.strip().replace(" ", "")
-    if re.fullmatch(r"\d{1,3}(?:[,.]\d{3})+", s):
-        return float(s.replace(",", "").replace(".", ""))
-    cleaned = s.replace(".", "").replace(",", ".")
-    try:
-        value = float(cleaned)
-    except ValueError:
-        return None
-    return value if value > 0 else None
+    m = re.fullmatch(r"(\d{1,3}(?:[.,]\d{3})+)(?:([.,])(\d{1,2}))?", s)
+    if m:
+        whole = m.group(1).replace(",", "").replace(".", "")
+        value = float(f"{whole}.{m.group(3)}") if m.group(3) is not None \
+            else float(whole)
+        return value if value > 0 else None
+    m = re.fullmatch(r"(\d+)(?:[.,](\d{1,2}))?", s)
+    if m:
+        value = float(f"{m.group(1)}.{m.group(2)}") if m.group(2) is not None \
+            else float(m.group(1))
+        return value if value > 0 else None
+    # Token não reconhecido (ex.: fragmento de data '15.09' com 2 grupos)
+    # — conservador: descarta em vez de adivinhar (o gate moeda+rotulo
+    # do _MONEY_CLAUSE já filtra a maioria; este caminho é defesa extra).
+    return None
 
 
 def _to_float_or_none(value: Any) -> float | None:
@@ -249,9 +285,11 @@ def _is_hourly_clause(text: str, start: int, end: int) -> bool:
     número maior por vírgula/ponto ("17,80 €/Stunde" -> o matcher separa
     "17" e "80") NÃO é tratado como hourly — o fragmento deixaria de ser
     period=month pré-existente e viraria um hourly com VALOR errado (80
-    em vez de 17,80). O bug de decimal alemão do ``_MONEY_CLAUSE`` é
-    pré-existente e fica documentado como backlog (corrigi-lo exigiria
-    tocar o core do parser e reavaliar todos os salários textuais).
+    em vez de 17,80). A Fase G corrige a CAUSA (o _MONEY_CLAUSE agora
+    captura "17,80" inteiro, então decimais reais não geram mais
+    fragmentos); o guard permanece como defesa para tokens residuais
+    (ex.: sufixo numérico "1780" -> "80") e NÃO altera o comportamento
+    de cláusulas válidas.
     """
     if start > 0:
         prev = text[start - 1]
