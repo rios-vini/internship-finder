@@ -170,11 +170,23 @@ _MONEY_CLAUSE = re.compile(
     r"(?:\s*[–\-–]\s*(?P<pre2>(?:€|eur|euro)\s*)?"
     r"(?P<b>\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
     r"(?P<post2>\s*(?:€|eur|euro))?)?"
-    r"(?P<period>\s*(?:per\s+)?(?:monat|month|jahr|year))?",
+# Fase J (J2.1): ``\b`` nas DUAS pontas do grupo de período. ANTES o grupo
+# casava o PREFIXO ``Monat`` de ``Monate`` ("12 Monate befristet" virava
+# cláusula "12 Monat" com has_period=True — FP real Fraunhofer). Com ``\b``
+# durações ("6 Monate", "12 Monate", "150 Jahren") não têm período; o
+# comportamento das formas legítimas é preservado: "per month"/"per Monat"
+# casam, "monatlich" NÃO casa (prefixo de "lich" — sem efeito: default já é
+# month), "€/Monat" NÃO casa (a barra quebra o ``\b`` — igual a antes).
+    r"(?P<period>\s*(?:per\s+)?\b(?:monat|month|jahr|year)\b)?",
     re.IGNORECASE,
 )
+# Fase J (J4.1): ``gehalt`` casa COMPOSTOS via ``\w*gehalt\b`` — mantém
+# "Gehalt" puro e captura "Monatsgehalt"/"Jahresgehalt"/"Bruttojahresgehalt"
+# (BASF DE, caso real: "Bruttojahresgehalt (Vollzeit): 35.000 - 39.000 €").
+# O ``\b`` final continua impedindo sufixos: "Gehaltsvorstellung" e
+# "Gehaltsangabe" NÃO são rótulo; "Gehälter" (ä) não casa — documentado.
 _SALARY_LABEL = re.compile(
-    r"\b(?:gehalt|vergütung|verguetung|bezahlung|salary|compensation|pay)\b",
+    r"\b(?:\w*gehalt\b|vergütung|verguetung|bezahlung|salary|compensation|pay)\b",
     re.IGNORECASE,
 )
 _SALARY_LABEL_WINDOW = 40
@@ -263,13 +275,49 @@ def _norm_period(value: Any) -> str | None:
 # Marcador horário ANTES do valor ("Stundenlohn von 21 Euro"): rótulo
 # explícito de que o valor é por hora. O rótulo "Stundenlohn" também passa
 # a contar como _SALARY_LABEL (é o "Gehalt" do trabalho por hora).
+# Fase J (J4.2): ``\w*`` captura COMPOSTOS reais do dataset — VW
+# "Bruttostundenlohn" (hoje `\bstundenlohn\b` não casa palavra composta);
+# formas EN ("hourly rate|wage|salary|pay") inalteradas.
 _HOURLY_LABEL_RE = re.compile(
-    r"\bstundenlohn\b|\bstundenvergütung\b|\bhourly\s+(?:rate|wage|salary|pay)\b",
+    r"\w*stundenlohn\b|\w*stundenvergütung\b|\bhourly\s+(?:rate|wage|salary|pay)\b",
     re.IGNORECASE,
 )
 # Marcador horário DEPOIS do valor ("21 €/Stunde", "€21 per hour").
+# Fase J (J1): SEGUNDA alternativa para o "h" curto com PREFIXO
+# OBRIGATÓRIO ("/h", "per h", "pro h") — casos reais do dataset: VW
+# "18,33 €/h", philips "15 €/h oder 17 €/h", VDI "(16€/h)". O "h" solto
+# NÃO casa (sem prefixo a 2ª alternativa falha e a 1ª exige stunde|hour).
+# A primeira alternativa preserva 100% o comportamento pré-J.
 _HOURLY_AFTER_RE = re.compile(
-    r"^\s*(?:/|per\s+|pro\s+)?\s*(?:stunde|hour)\b",
+    r"^\s*(?:/|per\s+|pro\s+)?\s*(?:stunde|hour)\b"
+    r"|^\s*(?:/|per\s+|pro\s+)\s*h\b",
+    re.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------
+# Salário POR ANO — Fase J J4 (P4: salário anual lido como mensal).
+#
+# Evidência (dataset 409, auditado na Fase H): o grupo period do
+# _MONEY_CLAUSE só captura o período como SUFIXO ("per year"); formas com
+# LABEL ANTES do valor eram invisíveis — BASF EN "Gross annual salary
+# (full-time): 40.000 - 46.000 €" saía 40.000 €/MÊS, BASF DE
+# "Bruttojahresgehalt (Vollzeit): 35.000 - 39.000 €" saía None (`\bgehalt\b`
+# não casa composto). Espelho EXATO da estrutura horária da Fase F.
+# ---------------------------------------------------------------------------
+
+# Marcador anual ANTES do valor ("Bruttojahresgehalt:", "annual salary:").
+# Compostos alemães via `\w*jahresgehalt\b`; família EN com o mesmo escopo
+# de substantivos do _SALARY_LABEL (salary|compensation|pay|wage).
+_YEARLY_LABEL_RE = re.compile(
+    r"\w*jahresgehalt\b|\w*jahresvergütung\b"
+    r"|\b(?:annual|yearly)\s+(?:salary|compensation|pay|wage)\b",
+    re.IGNORECASE,
+)
+# Marcador anual DEPOIS do valor ("/year", "per year", "pro Jahr",
+# "jährlich") — fecha a limitação "€50,000/year" documentada na Fase G
+# (zero ocorrências no dataset 409; coberto por testes).
+_YEARLY_AFTER_RE = re.compile(
+    r"^\s*(?:/|per\s+|pro\s+)?\s*(?:jahr|year|jährlich|jaehrlich)\b",
     re.IGNORECASE,
 )
 
@@ -291,15 +339,43 @@ def _is_hourly_clause(text: str, start: int, end: int) -> bool:
     (ex.: sufixo numérico "1780" -> "80") e NÃO altera o comportamento
     de cláusulas válidas.
     """
-    if start > 0:
-        prev = text[start - 1]
-        if prev in ",." and start >= 2 and text[start - 2].isdigit():
-            return False  # fragmento de decimal ("17,80" -> "80")
-        if prev.isdigit():
-            return False  # sufixo de número maior ("1780" -> "80")
+    if _clause_is_number_fragment(text, start):
+        return False
     before = text[max(0, start - 60):start]
     after = text[end:end + 20]
     return bool(_HOURLY_LABEL_RE.search(before) or _HOURLY_AFTER_RE.match(after))
+
+
+def _clause_is_number_fragment(text: str, start: int) -> bool:
+    """Guard compartilhado (Fase J): valor é fragmento de número maior?
+
+    "17,80" -> "80" (decimal) e "1780" -> "80" (sufixo) não são cláusulas
+    independentes. Extraído de _is_hourly_clause para ser reusado pelo
+    _is_yearly_clause (Fase J J4.5) SEM mudar o comportamento existente.
+    """
+    if start > 0:
+        prev = text[start - 1]
+        if prev in ",." and start >= 2 and text[start - 2].isdigit():
+            return True  # fragmento de decimal ("17,80" -> "80")
+        if prev.isdigit():
+            return True  # sufixo de número maior ("1780" -> "80")
+    return False
+
+
+def _is_yearly_clause(text: str, start: int, end: int) -> bool:
+    """Cláusula monetária é POR ANO? (Fase J J4.5 — espelho do _is_hourly_clause).
+
+    Mesma estrutura do marcador horário: rótulo anual ANTES (janela 60 —
+    "Bruttojahresgehalt (Vollzeit): 35.000 €") ou marcador DEPOIS (janela
+    20 — "€50,000/year", "pro Jahr"). O mesmo guard de fragmento
+    decimal/sufixo numérico se aplica (defesa da Fase G; ver
+    _is_hourly_clause).
+    """
+    if _clause_is_number_fragment(text, start):
+        return False
+    before = text[max(0, start - 60):start]
+    after = text[end:end + 20]
+    return bool(_YEARLY_LABEL_RE.search(before) or _YEARLY_AFTER_RE.match(after))
 
 
 def job_salary(job: dict) -> dict | None:
@@ -347,15 +423,39 @@ def job_salary(job: dict) -> dict | None:
     )
     if not text:
         return None
+    # Fase J (J2.2): fim de sentença para o recorte do label FORWARD. O
+    # label citado APÓS o fim da cláusula só conta se estiver NA MESMA
+    # sentença — sem terminador [.!?;](\s|$) entre o fim da cláusula e o
+    # label. Kills the Fraunhofer FP ("auf 12 Monate befristet. Die
+    # Vergütung richtet sich…" — o "Vergütung" pertence à frase SEGUINTE).
+    # Mesmo padrão do _SENT_END_RE do app_intel (copiado localmente — os
+    # módulos não devem se importar além do que já fazem). O BACKWARD (40
+    # chars) permanece cruzando sentenças: assimetria DELIBERADA — o FP
+    # evidenciado é forward; backward cross-sentence não tem evidência de
+    # problema e mexer nele amplia a superfície de regressão.
+    _SENT_END_LOCAL_RE = re.compile(r"[.!?;](?:\s|$)")
     best: dict | None = None
     for m in _MONEY_CLAUSE.finditer(text):
         start, end = m.start(), m.end()
-        window = text[max(0, start - _SALARY_LABEL_WINDOW): end + 60]
+        forward_text = text[end:end + 60]
+        sent_cut = _SENT_END_LOCAL_RE.search(forward_text)
+        forward_window = forward_text[:sent_cut.start()] if sent_cut \
+            else forward_text
+        window = text[max(0, start - _SALARY_LABEL_WINDOW):end] + forward_window
         has_currency = any(m.group(k) for k in ("pre", "post", "pre2", "post2"))
+        # Fase J (J4.6): _YEARLY_LABEL_RE entra na família de rótulos.
         has_label = _SALARY_LABEL.search(window) is not None \
-            or _HOURLY_LABEL_RE.search(window) is not None  # Fase F P2
+            or _HOURLY_LABEL_RE.search(window) is not None \
+            or _YEARLY_LABEL_RE.search(window) is not None  # Fase J J4.6
         has_period = m.group("period") is not None
-        if not (has_currency and (has_label or has_period)) \
+        # Fase J (J4.6): marcador horário/anual é EVIDÊNCIA de salário por
+        # si quando há moeda (VW "Der Bruttostundenlohn … 18,33 €" — label a
+        # 53 chars fica fora da janela 40, mas dentro da 60 do
+        # _is_hourly_clause). A 2ª disjuntante (label+period sem moeda)
+        # permanece — cobre "Salary 3,000 per month" sem símbolo.
+        is_hourly = _is_hourly_clause(text, start, end)
+        is_yearly = _is_yearly_clause(text, start, end)
+        if not (has_currency and (has_label or has_period or is_hourly or is_yearly)) \
                 and not (has_label and has_period):
             continue  # valor numerico sem moeda/rotulo/periodo NAO e salario
         lo_raw = m.group("a")
@@ -371,11 +471,13 @@ def job_salary(job: dict) -> dict | None:
         if lo > hi:
             lo, hi = hi, lo
         period_m = m.group("period")
-        # Fase F P2: cláusula com marcador horário ("Stundenlohn von X
-        # Euro", "X €/Stunde", "€X per hour") -> period="hour"; caso
-        # contrário o mapeamento mensal/anual segue IDÊNTICO ao anterior.
-        if _is_hourly_clause(text, start, end):
+        # Fase J (J4.7): resolução de período — hourly vence yearly (não há
+        # conflito real no dataset); depois sufixo explícito jahr/year; senão
+        # default month (regra Fase 7, nunca convertida).
+        if is_hourly:
             period = "hour"
+        elif is_yearly:
+            period = "year"
         elif period_m and period_m.strip().casefold() in ("jahr", "year"):
             period = "year"
         else:

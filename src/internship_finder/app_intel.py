@@ -446,6 +446,15 @@ _WA_CONDITIONAL = [
     r"\bif\s+(?:applicable|available|present)\b",
     r"\bwhere\s+applicable\b",
     r"\bif\s+you\s+(?:have|hold|possess)\b",
+    # Fase J (J3): os DOIS condicionais evidenciados na auditoria H e
+    # ausentes da Fase F — Bosch "…and if indicated a valid work and
+    # residence permit." (×5) e continental "Falls erforderlich,
+    # zusätzlich: Gültiger Aufenthaltstitel" (×2). Scan do dataset 409:
+    # equivalentes próximos ("if required", "if needed", "where
+    # required", "falls nötig", "sofern erforderlich", "bei Bedarf") têm
+    # ZERO ocorrências — NÃO generalizar além dos evidenciados.
+    r"\bif\s+indicated\b",
+    r"\bfalls\s+erforderlich\b",
 ]
 _WA_CONDITIONAL_RE = [
     re.compile(p, re.IGNORECASE) for p in _WA_CONDITIONAL
