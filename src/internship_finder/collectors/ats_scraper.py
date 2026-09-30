@@ -35,6 +35,49 @@ log = logging.getLogger(__name__)
 # base, ex.: "jobs" p/ SAP/ZF no successfactors, nao e usavel sozinho).
 URL_SLUG_ATS = {"successfactors", "workday", "taleo", "icims", "phenom"}
 
+# Override da URL de careers por EMPRESA (Fase I — SAP source recovery).
+#
+# Contexto: o site publico de carreiras da SAP foi reconstruido (Next.js) e
+# o host historico ``jobs.sap.com`` deixou de expor o feed RSS legacy em
+# ``/sitemal.xml`` (404 desde 22/09/2026 -> FETCH_ERROR diário no cron). O
+# portal RMK legacy continua VIVO em ``careers.sap.com`` com o MESMO feed
+# (mesmo schema g:*, mesmo formato de id, descriptions completas; 913 itens
+# em 29/09). A URL stale vem do inventario de companies hospedado upstream
+# (ats-companies/successfactors.csv), nao do scraper: o SuccessFactors 0.3.0
+# coleta o feed novo sem nenhuma alteracao.
+#
+# Este mapa e a MENOR mudanca arquiteturalmente correta: corrige o HOST do
+# feed no ponto exato onde a URL entra no fluxo (``scraper_slug``), por
+# empresa — nunca por tenant (``successfactors:jobs`` e compartilhado por 16
+# empresas no registry; um override de tenant redirecionaria ZF/Kaufland/
+# Schaeffler/... para o site da SAP). Chave: (ats, slug) + nome EXATO da
+# empresa resolvida (``Company.name`` da base), o mesmo criterio de
+# identidade da coleta. ``Company.source`` (ats:slug), ``Job.id``
+# (<company>|<source>:<external_id>) e todo o restante do pipeline seguem
+# IDENTICOS — so o host do feed muda.
+#
+# Remocao: quando o upstream atualizar a URL no manifest/CSV de companies,
+# remover a entrada (e o teste correspondente) — o mapa e auto-contido e a
+# ausencia de override restaura o comportamento puro do inventario.
+TENANT_URL_OVERRIDES: dict[tuple[str, str, str], str] = {
+    # SAP: jobs.sap.com (board Next.js novo, sem feed) -> careers.sap.com
+    # (RMK legacy, feed sitemal.xml vivo e completo). Verificada em
+    # 29/09/2026: 913 itens, identidade/overlap historico 825/913.
+    ("successfactors", "jobs", "SAP"): "https://careers.sap.com",
+}
+
+
+def scraper_slug(company: Company) -> str:
+    """Slug efetivo a passar ao construtor do scraper."""
+    override = TENANT_URL_OVERRIDES.get(
+        (company.ats, company.slug, (company.name or "").strip())
+    )
+    if override:
+        return override
+    if company.ats in URL_SLUG_ATS and company.url:
+        return company.url
+    return company.slug
+
 # Margem (segundos) somada ao ``timeout`` do scraper antes de declarar o
 # subprocesso travado (ACH-07). Parametrizavel via ``fetch_with_timeout(...,
 # margin=...)`` — os testes usam uma margem pequena para timeout rapido sem
@@ -46,13 +89,6 @@ TIMEOUT_MARGIN = 25.0
 # processo ignorar/sobreviver, ``kill()`` (SIGKILL) e o fallback final.
 TERMINATE_GRACE = 5.0
 KILL_GRACE = 2.0
-
-
-def scraper_slug(company: Company) -> str:
-    """Slug efetivo a passar ao construtor do scraper."""
-    if company.ats in URL_SLUG_ATS and company.url:
-        return company.url
-    return company.slug
 
 
 def fetch_worker(
