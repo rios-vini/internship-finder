@@ -133,7 +133,7 @@ Feed único `en_US` com pares DE/EN internos (~60 grupos de título normalizado 
 
 ## 13. Limitações
 
-- O override vive até o upstream corrigir o CSV/manifest (rastreado pela issue upstream); remoção = deletar 1 entrada + teste.
+- **Override**: vive até o upstream corrigir o CSV/manifest (rastreado pela issue upstream PREPARADA — texto no §14; postagem pendente do dono); remoção = deletar 1 entrada + teste.
 - O board novo (`jobs.sap.com`) NÃO é coberto — é rollout parcial (17 vagas EN) e sem feed público; se um dia substituir 100% o RMK, será uma nova fase (scraper dedicado, fora do escopo).
 - `g:job_function` do feed mapeia `department` (Information Technology, Marketing...) — comportamento histórico, sem mudança.
 - Feed sem `pubDate` (posted_at=None) — idêntico ao histórico; deadlines continuam `platform_sf` (`g:expiration_date`).
@@ -141,7 +141,9 @@ Feed único `en_US` com pares DE/EN internos (~60 grupos de título normalizado 
 ## 14. Próximos passos
 
 1. Merge → CI main → docs (este arquivo + MASTER_PLAN Log + PROJECT_STATUS).
-2. Issue upstream `kalil0321/ats-scrapers`: atualizar `ats-companies/successfactors.csv` (SAP: jobs.sap.com → careers.sap.com).
+2. Issue upstream `kalil0321/ats-scrapers` (texto PRONTO abaixo — postagem pendente do dono):
+   - **Título**: `SAP careers URL is stale in ats-companies/successfactors.csv — jobs.sap.com no longer serves /sitemal.xml (RMK moved to careers.sap.com)`
+   - **Corpo**: Since ~22 Sep 2026, `jobs.sap.com` serves a new Next.js board and the legacy Recruiting Marketing RSS feed at `https://jobs.sap.com/sitemal.xml` returns 404 (HTML error page). The full RMK feed is alive at `https://careers.sap.com/sitemal.xml` — same schema (RSS 2.0 + Google Merchant `g:id`/`g:location`/`g:employer`/`g:expiration_date`/`g:job_function`, 913 items, full CDATA descriptions). `SuccessFactorsScraper` 0.3.0 collects the new feed unmodified; only the company directory row is stale: `ats-companies/successfactors.csv` line `SAP,jobs,https://jobs.sap.com` should become `SAP,jobs,https://careers.sap.com`. Evidence: `GET https://jobs.sap.com/sitemal.xml` → 404 HTML; `GET https://careers.sap.com/sitemal.xml` → 200 RSS, 913 `<item>`. Suggest also re-checking other `jobs.*` rows whose hosts were rebuilt recently.
 3. Observar o cron 09:00 UTC 30/09: tenant SAP `ok` (~900+), +61 vagas no ranking, health sem FETCH_ERROR SAP.
 4. Backlog Fase H segue pendente do dono: vocab `/h`, "if indicated", FP "N Monate", markers em description, cap enrichment.
 
