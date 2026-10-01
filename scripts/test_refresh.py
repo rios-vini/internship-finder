@@ -886,6 +886,9 @@ def test_enrichment_gate_e_exitcode() -> None:
         rd.repo_root = lambda: root
         saved_key = os.environ.get("NVIDIA_API_KEY")
         os.environ["NVIDIA_API_KEY"] = "fake-key-refresh-test"
+        # F1: gate de configuracao — SEM INTERNSHIP_FINDER_ENRICHMENT o
+        # subprocesso NAO roda (default OFF; cron nao define a env var).
+        saved_flag = os.environ.pop("INTERNSHIP_FINDER_ENRICHMENT", None)
         try:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log",
@@ -894,6 +897,30 @@ def test_enrichment_gate_e_exitcode() -> None:
                 rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
         finally:
             rd.repo_root = original_root
+            if saved_key is None:
+                os.environ.pop("NVIDIA_API_KEY", None)
+            else:
+                os.environ["NVIDIA_API_KEY"] = saved_key
+            if saved_flag is not None:
+                os.environ["INTERNSHIP_FINDER_ENRICHMENT"] = saved_flag
+
+        check("F1: --enrichment SEM INTERNSHIP_FINDER_ENRICHMENT=1 -> pulado",
+              rc == 0 and calls["subproc"] == [])
+        # F1: COM a env flag o gate abre e o subprocesso roda normalmente.
+        calls["subproc"].clear()
+        os.environ["INTERNSHIP_FINDER_ENRICHMENT"] = "1"
+        saved_key = os.environ.get("NVIDIA_API_KEY")
+        os.environ["NVIDIA_API_KEY"] = "fake-key-refresh-test"
+        rd.repo_root = lambda: root
+        try:
+            with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "notify_or_log",
+                                   side_effect=_fake_notify_ok), \
+                 mock.patch.object(rd.subprocess, "run", side_effect=fake_subproc_run):
+                rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
+        finally:
+            rd.repo_root = original_root
+            os.environ.pop("INTERNSHIP_FINDER_ENRICHMENT", None)
             if saved_key is None:
                 os.environ.pop("NVIDIA_API_KEY", None)
             else:
@@ -969,6 +996,8 @@ def test_enrichment_gate_e_exitcode() -> None:
         rd.repo_root = lambda: root
         saved_key = os.environ.get("NVIDIA_API_KEY")
         os.environ["NVIDIA_API_KEY"] = "fake-key-refresh-test"
+        saved_flag = os.environ.pop("INTERNSHIP_FINDER_ENRICHMENT", None)
+        os.environ["INTERNSHIP_FINDER_ENRICHMENT"] = "1"  # F1: gate aberto
         try:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log",
@@ -978,6 +1007,9 @@ def test_enrichment_gate_e_exitcode() -> None:
                               "--enrichment", "--enrichment-limit", "7"])
         finally:
             rd.repo_root = original_root
+            os.environ.pop("INTERNSHIP_FINDER_ENRICHMENT", None)
+            if saved_flag is not None:
+                os.environ["INTERNSHIP_FINDER_ENRICHMENT"] = saved_flag
             if saved_key is None:
                 os.environ.pop("NVIDIA_API_KEY", None)
             else:
@@ -993,8 +1025,6 @@ def test_enrichment_gate_e_exitcode() -> None:
         data_dir = root / "data"
         data_dir.mkdir()
         (data_dir / "collection_metrics.jsonl").write_text("", encoding="utf-8")
-        (root / ".env").write_text(
-            "NVIDIA_API_KEY=fake-key-from-dotenv\n", encoding="utf-8")
 
         calls: dict = {"subproc": []}
         original_root = rd.repo_root
@@ -1009,6 +1039,11 @@ def test_enrichment_gate_e_exitcode() -> None:
 
         rd.repo_root = lambda: root
         saved_key = os.environ.pop("NVIDIA_API_KEY", None)
+        saved_flag = os.environ.pop("INTERNSHIP_FINDER_ENRICHMENT", None)
+        # F1: gate via .env — o mesmo caminho de injecao da NVIDIA_API_KEY.
+        (root / ".env").write_text(
+            "NVIDIA_API_KEY=fake-key-from-dotenv\n"
+            "INTERNSHIP_FINDER_ENRICHMENT=1\n", encoding="utf-8")
         try:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log",
@@ -1017,6 +1052,8 @@ def test_enrichment_gate_e_exitcode() -> None:
                 rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
         finally:
             rd.repo_root = original_root
+            if saved_flag is not None:
+                os.environ["INTERNSHIP_FINDER_ENRICHMENT"] = saved_flag
             if saved_key is not None:
                 os.environ["NVIDIA_API_KEY"] = saved_key
 

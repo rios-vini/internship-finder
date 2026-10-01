@@ -19,9 +19,13 @@
 #
 # EXCLUSAO (limpeza 05/09): test_fetch.py, test_find_company.py e test_resolver.py
 # foram REMOVIDOS do repo e do array — eram smokes de rede SEM assertions (prints +
-# fetch ao vivo), nao testes; entraram no CI por engano no PR #21. Rede ao vivo e
+# fetch ao vivo), entraram no CI por engano no PR #21. Rede ao vivo e
 # nao-deterministico em runner limpo; a cobertura que eles tocavam e offline
 # (test_registry/test_errors) ou runbook (scripts/verify_companies.py).
+#
+# F1 (01/10): test_f1.py entra na suíte (46º script) — trava os 3 kill
+# switches default OFF (enrichment LLM, deadline hydration, official-page)
+# com os caminhos preservados sob demanda + invariantes de ranking.
 #
 # DECISAO item 1 (ats-scrapers, P3 #19 desde 04/09): release PyPI 0.3.0
 # (02/09/2026) contem o expose de application_deadline (PR #268). A dependencia
@@ -99,7 +103,7 @@ jobs:
       - name: Run standalone test scripts
         run: |
           set +e
-          tests=(test_atomic_outputs test_filters test_collect_flags test_coverage test_hardening test_countries test_application_deadline test_app_intel test_opportunity_intel test_audit2_quality test_visa_policy test_hydration test_dedup test_mirror_dedup test_official_page test_official_evidence test_ranking test_geocoding test_sqlite test_db_backup test_validation test_errors test_health test_interface test_publish_pages test_lifecycle test_registry test_registry_consistency test_refresh test_digest test_zero_return test_identity test_ranking_benchmark test_materials_ranking test_ptbr test_personal_tracker test_audit_fixes test_enrichment test_enrichment_present test_structured_fields test_spike_e test_fasef test_faseg test_fasei test_fasej)
+          tests=(test_atomic_outputs test_filters test_collect_flags test_coverage test_hardening test_countries test_application_deadline test_app_intel test_opportunity_intel test_audit2_quality test_visa_policy test_hydration test_dedup test_mirror_dedup test_official_page test_official_evidence test_ranking test_geocoding test_sqlite test_db_backup test_validation test_errors test_health test_interface test_publish_pages test_lifecycle test_registry test_registry_consistency test_refresh test_digest test_zero_return test_identity test_ranking_benchmark test_materials_ranking test_ptbr test_personal_tracker test_audit_fixes test_enrichment test_enrichment_present test_structured_fields test_spike_e test_fasef test_faseg test_fasei test_fasej test_f1)
           status=0
           for t in "${tests[@]}"; do
             echo "==================== $t ===================="

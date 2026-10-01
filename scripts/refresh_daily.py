@@ -163,6 +163,26 @@ DEFAULT_ENRICHMENT_LIMIT = 24
 # espelha o top 30 do spike; vagas fora do corte nunca entram por serem
 # novas e sao cobertas ao reentrar no corte).
 DEFAULT_ENRICHMENT_TOP_N = 30
+# F1 (01/10): teto TOTAL de duracao do subprocesso de enrichment em
+# segundos. Historico motivador (enrichment_status.json 29-30/09): janela
+# NVIDIA degradada com retries ReadTimeout de ~264s/chamada levou o run a
+# 17.615s (~4h53) e 5h38 — o cron do dia inteiro perdido segurando o flock.
+# O teto e a defesa estrutural do flock: estourado, o subprocesso e morto
+# (SIGKILL; o store e atomico por record e o lock interno e flock do SO —
+# morte de processo nunca corrompe nem deixa lock preso) e o refresh segue
+# com o exit code da coleta. 1800s cobre o run saudavel medido (sweep
+# ~40 fetches + 24 extracoes x ~290s pior caso).
+DEFAULT_ENRICHMENT_MAX_SECS = 1800
+
+# F1 (01/10): gate de configuracao do enrichment LLM. A flag CLI
+# ``--enrichment`` EXISTE e continua funcionando (codigo preservado para
+# uso manual sob demanda), mas so surte efeito quando a env var
+# ``INTERNSHIP_FINDER_ENRICHMENT=1`` esta presente — o cron de producao
+# roda com o default (ausente) e o enrichment fica OFF. Motivo (auditoria
+# Fase H + producao 29-30/09): custo alto (5h38/run na janela degradada,
+# flock preso ate 14:54, 0/21 extracoes) com retorno zero. Padrao do
+# projeto: mesma mecanica da flag INTERNSHIP_FINDER_GEOCODING (geocoding.py).
+ENRICHMENT_ENV_FLAG = "INTERNSHIP_FINDER_ENRICHMENT"
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
@@ -907,12 +927,20 @@ def _sync_personal_ranking(root: Path, data_dir: Path) -> None:
 
 
 def run_enrichment(root: Path, exit_code: int, eligible: int, limit: int,
-                   top_n: int, config: dict | None) -> None:
+                   top_n: int, config: dict | None,
+                   max_secs: float = DEFAULT_ENRICHMENT_MAX_SECS) -> None:
     """Fase 2 — enrichment incremental LLM apos o fluxo principal.
 
     Subprocesso standalone ``scripts/enrichment_run.py`` (mesmo padrao da
     coleta). Gates de entrada:
 
+    - **F1 (01/10) gate de configuracao** ``INTERNSHIP_FINDER_ENRICHMENT=1``
+      (env herdada OU injecao a partir do ``.env``): ausente -> pulado com
+      log. O cron de producao roda sem a env var e o enrichment fica OFF
+      (retorno zero comprovado: 0/21 em 5h38 na janela degradada 29/09;
+      17.615s e 6/22 no 30/09). A flag ``--enrichment`` so e efetiva COM a
+      env var — reativa manual sob demanda:
+      ``INTERNSHIP_FINDER_ENRICHMENT=1 ... --enrichment``.
     - **gate UNICO** ``publish_pages.publication_allowed(exit_code,
       eligible)`` — a MESMA decisao da publicacao/digest (auditoria 23/09):
       refresh invalido (exit 1/124 ou eligible 0) -> enrichment pulado com
@@ -926,6 +954,14 @@ def run_enrichment(root: Path, exit_code: int, eligible: int, limit: int,
     por serem novas; seus records ficam preservados no store e a cobertura
     acontece no dia em que a vaga reentrar no corte.
 
+    F1 (01/10) teto de tempo ``max_secs``: o subprocesso roda com
+    ``timeout``; estourado, e morto e reportado como linha de log (o run de
+    5h38 da janela degradada motivou o teto — ver constante). O store do
+    enrichment e atomico por record (upsert + ``os.replace``) e o lock
+    interno e flock do SO: morte de processo nunca corrompe dados nem
+    deixa lock preso. O exit code do refresh NUNCA muda por causa do
+    enrichment (spec secao 5).
+
     Qualquer exit do subprocesso vira UMA linha de log (``enrichment: exit
     3 (concorrencia)``) e qualquer excecao vira ``enrichment FALHOU: ...``.
     O exit code do refresh NUNCA muda por causa do enrichment (spec secao
@@ -936,6 +972,15 @@ def run_enrichment(root: Path, exit_code: int, eligible: int, limit: int,
     if not publish_pages.publication_allowed(exit_code, eligible):
         log.info("enrichment pulado (refresh inválido: exit %d, eligible %s)",
                  exit_code, eligible)
+        return
+    if os.environ.get(ENRICHMENT_ENV_FLAG) != "1" and (
+            config or {}).get(ENRICHMENT_ENV_FLAG) != "1":
+        log.info(
+            "enrichment desligado por configuração (default OFF; reative com "
+            "%s=1 no .env + --enrichment) — retorno zero comprovado na janela "
+            "NVIDIA degradada (0/21 em 5h38, 29/09)",
+            ENRICHMENT_ENV_FLAG,
+        )
         return
     env = {**os.environ}
     key = env.get("NVIDIA_API_KEY") or (config or {}).get("NVIDIA_API_KEY")
@@ -950,9 +995,18 @@ def run_enrichment(root: Path, exit_code: int, eligible: int, limit: int,
         "--input", "data/eligible_jobs.json",
         "--output", "data/enrichment/enrichment_results.jsonl",
     ]
-    log.info("enrichment: subprocesso %s (cwd=%s)", " ".join(command), root)
+    log.info("enrichment: subprocesso %s (cwd=%s, teto %.0fs)",
+             " ".join(command), root, max_secs)
     try:
-        proc = subprocess.run(command, cwd=root, env=env, check=False)
+        proc = subprocess.run(command, cwd=root, env=env, check=False,
+                               timeout=max_secs)
+    except subprocess.TimeoutExpired:
+        # F1: teto estourado — subprocesso morto pelo timeout. O store e
+        # atomico por record e o lock interno e flock do SO: nada corrompe,
+        # nada fica preso. O refresh segue com o exit da coleta.
+        log.error("enrichment estourou o teto de %.0fs e foi morto "
+                  "(defesa do flock; o refresh segue)", max_secs)
+        return
     except Exception as exc:  # noqa: BLE001 — enrichment nunca derruba o refresh
         log.error("enrichment FALHOU: %s: %s", type(exc).__name__, exc)
         return
@@ -998,10 +1052,12 @@ def main(argv: list[str] | None = None) -> int:
                         "publicacao desligada.")
     parser.add_argument("--enrichment", action="store_true",
                         help="roda o enrichment incremental LLM (scripts/"
-                        "enrichment_run.py) apos o fluxo principal. MESMO gate "
-                        "da publicacao (publication_allowed: exit 0/2 com "
-                        "eligible > 0); falha do enrichment NUNCA muda o exit "
-                        "code do refresh. Default: desligado.")
+                        "enrichment_run.py) apos o fluxo principal. Requer "
+                        "TAMBEM a env INTERNSHIP_FINDER_ENRICHMENT=1 (F1: "
+                        "default OFF no cron; reativacao manual sob demanda). "
+                        "MESMO gate da publicacao (publication_allowed: exit "
+                        "0/2 com eligible > 0); falha do enrichment NUNCA "
+                        "muda o exit code do refresh. Default: desligado.")
     parser.add_argument("--enrichment-limit", type=_non_negative_int,
                         default=DEFAULT_ENRICHMENT_LIMIT, metavar="N",
                         help="cap de extracoes LLM por run do enrichment "
@@ -1014,6 +1070,15 @@ def main(argv: list[str] | None = None) -> int:
                         f"(default {DEFAULT_ENRICHMENT_TOP_N}; passa --top-n "
                         "ao enrichment_run.py); vagas fora do corte ficam "
                         "com records preservados e sao cobertas ao reentrar")
+    parser.add_argument("--enrichment-max-secs", type=float,
+                        default=DEFAULT_ENRICHMENT_MAX_SECS, metavar="N",
+                        help="F1: teto total de duracao do subprocesso de "
+                        f"enrichment em segundos (default "
+                        f"{DEFAULT_ENRICHMENT_MAX_SECS:.0f}); estourado, o "
+                        "subprocesso e morto (store atomico, lock flock do "
+                        "SO — nada corrompe, nada fica preso) e o refresh "
+                        "segue com o exit da coleta. Defesa do flock contra "
+                        "janelas degradadas do provider LLM")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -1173,15 +1238,17 @@ def main(argv: list[str] | None = None) -> int:
 
     # Fase 2 — enrichment incremental (apos TODOS os dados principais e a
     # mensagem: refresh -> eligibility -> ranking -> outputs -> enrichment).
-    # Gates: --enrichment (default OFF) + gate UNICO publication_allowed +
-    # NVIDIA_API_KEY (env herdado OU .env). Best-effort TOTAL: qualquer
-    # exit/exception vira log de UMA linha e o exit code do refresh NUNCA
-    # muda por causa do enrichment (spec secao 5).
+    # Gates: --enrichment (default OFF) + INTERNSHIP_FINDER_ENRICHMENT=1 (F1,
+    # default OFF — o cron de producao roda sem a env var) + gate UNICO
+    # publication_allowed + NVIDIA_API_KEY (env herdado OU .env). Best-effort
+    # TOTAL: qualquer exit/exception/timeout vira log de UMA linha e o exit
+    # code do refresh NUNCA muda por causa do enrichment (spec secao 5).
     if args.enrichment:
         try:
             run_enrichment(root, exit_code, summary.get("eligible") or 0,
                            args.enrichment_limit, args.enrichment_top_n,
-                           load_env_config(config_path))
+                           load_env_config(config_path),
+                           max_secs=args.enrichment_max_secs)
         except Exception as exc:  # noqa: BLE001 — enrichment nunca derruba o refresh
             log.error("enrichment FALHOU: %s: %s", type(exc).__name__, exc)
     else:

@@ -22,6 +22,13 @@ normalizacao no adapter:
   parseia ``g:expiration_date``; este adapter apenas mapeia/parseia. Nenhuma
   camada soma +30 dias. Remover por heuristica violaria este contrato (um
   prazo real que coincida com +30 dias seria apagado).
+- (F1, 01/10) A HIDRATACAO do campo pelo adapter e OFF por default
+  (``INTERNSHIP_FINDER_DEADLINE_HYDRATION``): o valor SF e a validade do
+  feed, nao prazo real, e o ranking nao o consome. O CAMPO e o caminho de
+  parse PERMANECEM preservados (uso sob demanda com a env var =1); os
+  testes abaixo do caminho do adapter rodam COM a flag ligada para
+  continuar exercitando o contrato preservado, e o bloco F1 verifica o
+  default OFF + a reativacao.
 
 Uso:
     .venv/bin/python scripts/test_application_deadline.py
@@ -29,13 +36,17 @@ Uso:
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from internship_finder.adapters.ats import AtsJobAdapter  # noqa: E402
+from internship_finder.adapters.ats import (  # noqa: E402
+    AtsJobAdapter,
+    set_deadline_hydration_enabled,
+)
 from internship_finder.dedup import deduplicate  # noqa: E402
 from internship_finder.models.company import Company  # noqa: E402
 from internship_finder.models.job import Job  # noqa: E402
@@ -194,6 +205,20 @@ def test_dedup_ignores_deadline() -> None:
 
 
 def main() -> int:
+    # F1: o caminho do adapter roda com a flag ligada (contrato preservado
+    # sob demanda); o bloco novo verifica o default OFF + reativacao.
+    saved = os.environ.pop("INTERNSHIP_FINDER_DEADLINE_HYDRATION", None)
+    set_deadline_hydration_enabled(True)
+    try:
+        return _main_body()
+    finally:
+        if saved is None:
+            os.environ.pop("INTERNSHIP_FINDER_DEADLINE_HYDRATION", None)
+        else:
+            os.environ["INTERNSHIP_FINDER_DEADLINE_HYDRATION"] = saved
+
+
+def _main_body() -> int:
     test_model_default()
     test_absent_is_none()
     test_explicit_valid()
@@ -206,12 +231,38 @@ def main() -> int:
     test_caso3_no_infer_plus30()
     test_caso4_preserve_deadline_equal_plus30()
     test_dedup_ignores_deadline()
+    test_f1_default_off_e_reativacao()
     print()
     if FAILURES:
         print(f"FALHAS: {len(FAILURES)} -> {FAILURES}")
         return 1
     print("TUDO OK")
     return 0
+
+
+def test_f1_default_off_e_reativacao() -> None:
+    print("== F1: hidratacao de deadline default OFF + reativacao sob flag ==")
+    # Default OFF: mesmo com deadline na fonte, o adapter NAO hidrata — o
+    # valor SF e validade de feed (collected+30d), nao prazo real (auditoria
+    # 231/231); ranking nao consome o campo.
+    set_deadline_hydration_enabled(False)
+    job = AtsJobAdapter().to_job(
+        base_item(application_deadline="2026-10-15"), make_company())
+    check("F1a. default OFF: deadline da fonte NAO hidratado (None)",
+          job.application_deadline is None)
+    check("F1b. default OFF: posted_at NUNCA vira deadline",
+          job.posted_at is None or job.application_deadline is None)
+    # Reativacao sob demanda: env var =1 restaura o caminho completo
+    # (parse, aware UTC, preservacao do valor da fonte).
+    set_deadline_hydration_enabled(True)
+    job_on = AtsJobAdapter().to_job(
+        base_item(application_deadline="2026-10-15"), make_company())
+    check("F1c. flag ON: deadline da fonte hidratado novamente",
+          job_on.application_deadline == datetime(2026, 10, 15))
+    check("F1d. flag ON: invalido continua None (contrato intacto)",
+          AtsJobAdapter().to_job(
+              base_item(application_deadline="not-a-date"),
+              make_company()).application_deadline is None)
 
 
 if __name__ == "__main__":
