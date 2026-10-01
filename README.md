@@ -251,8 +251,15 @@ ranking no GitHub Pages (`--pages-dir`; ver secao abaixo):
 # 06:00 America/Sao_Paulo = 09:00 UTC (cron Vixie local sem suporte a CRON_TZ)
 # --pages-dir: publica o ranking no GitHub Pages (Fase 1).
 # --always-notify: envia o digest do Telegram todo dia, mesmo sem anomalia (Fase 2).
-0 9 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/python /home/ubuntu/internship-finder/scripts/refresh_daily.py --pages-dir /home/ubuntu/internship-finder-ghpages --always-notify >> /tmp/refresh_daily.log 2>&1
+0 9 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/python /home/ubuntu/internship-finder/scripts/refresh_daily.py --enrichment --pages-dir /home/ubuntu/internship-finder-ghpages --always-notify >> /tmp/refresh_daily.log 2>&1
 ```
+
+> **F1 (01/10)**: a linha acima mantem `--enrichment`, mas o enrichment LLM
+> fica OFF por default — so roda com `INTERNSHIP_FINDER_ENRICHMENT=1`
+> (env/`.env`), que o cron NAO define. Sem a env var o refresh pula o
+> subprocesso com log de UMA linha e o flock nunca mais fica preso por ele
+> (o run de 5h38 da janela NVIDIA degradada motivou o gate + o teto
+> `--enrichment-max-secs`; ver `docs/fase_f1_dead_components.md`).
 
 > **Corrigido 05/09 (noite)**: a 1a versao usava `flock ... cd /repo && python ...`
 > (padrao da tarefa), mas **flock executa o comando via `execvp`** — `cd` e
@@ -488,7 +495,7 @@ Flags do CLI:
 | `--limit N` | maximo de vagas por tenant, aplicado APOS a coleta (0 = sem limite); valor negativo -> erro claro, exit 2 (P3 #20) |
 | `--include-descriptions` | busca a descricao por vaga (mais lento em ATS que exigem chamada por vaga, ex. SmartRecruiters) |
 | `--hydrate-descriptions` / `--no-hydrate-descriptions` | **Hidratacao seletiva (Fase A)**: preenche a description AUSENTE das vagas ELEGIVEIS via detail-fetch do `ats-scrapers`, entre dedup e ranking (default: ligado; best-effort — falha por vaga nao derruba o run nem muda exit codes). Diferente de `--include-descriptions`, que busca descricao por vaga durante a COLETA inteira (bulk, mais lento) |
-| `--official-page` / `--no-official-page` | **Official page enrichment (Fase D)**: UM GET por vaga candidata (description ausente/teaser OU sem deadline OU sem salary) busca JSON-LD `JobPosting` na pagina oficial e registra evidencia estruturada em `job.official_page` (validThrough/baseSalary/employmentType/jobLocation/description), pos-hidratacao e pre-ranking (default: ligado; best-effort; sem LLM/browser). Description teaser pode ser substituida pela do JobPosting (`description_source=official_page_jsonld`); salario so preenche quando o ATS nao tem nenhum; validThrough/identifier sao evidencia, nunca deadline/external_id canonico |
+| `--official-page` / `--no-official-page` | **Official page enrichment (Fase D)**: UM GET por vaga candidata (description ausente/teaser OU sem deadline OU sem salary) busca JSON-LD `JobPosting` na pagina oficial e registra evidencia estruturada em `job.official_page` (validThrough/baseSalary/employmentType/jobLocation/description), pos-hidratacao e pre-ranking (**default: DESLIGADO desde F1 01/10** — cookie-wall/JS-render tornaram o estagio sem retorno, ver `docs/fase_f1_dead_components.md`; best-effort; sem LLM/browser). `--official-page` liga sob demanda. Description teaser pode ser substituida pela do JobPosting (`description_source=official_page_jsonld`); salario so preenche quando o ATS nao tem nenhum; validThrough/identifier sao evidencia, nunca deadline/external_id canonico |
 | `--official-page-limit N` | Limite de vagas por execucao do official-page enrichment (default: 150, cortadas por prioridade: sem description > teaser > sem deadline > sem salary; `0` = sem limite) |
 | `--metrics PATH` | JSONL de metricas da execucao (modo coleta; default: `data/collection_metrics.jsonl`) |
 | `--sqlite PATH` | modo coleta: persiste o historico de cada vaga (`first_seen`/`last_seen`/`active`/`archived`) em banco `sqlite3` na PATH (default: desligado). **P1.2**: o lifecycle (archive de nao-vistos) e atualizado POR UNIDADE de coleta confiavel `(company, source)` — empresas/tenants com timeout/erro/not_found nao tem vagas arquivadas (ausencia observada != ausencia por falha de coleta) |
@@ -500,6 +507,8 @@ Ambiente:
 | Variavel | Descricao |
 | --- | --- |
 | `INTERNSHIP_FINDER_GEOCODING` | OFF por default. Com `=1`, liga o geocoder de rede (OSM Nominatim) + cache no fallback de pais (`geocoding.py`). Com OFF, o fallback se limita a lista local de cidades + cache ja populado — nenhuma chamada de rede. Medicao historica (snapshot 31/08): levava o eligible DE de 236 (pipeline 232) para **245** (+9 Workday). |
+| `INTERNSHIP_FINDER_ENRICHMENT` | **F1 (01/10): OFF por default.** Com `=1` (env ou `.env`), a flag `--enrichment` do `refresh_daily.py` volta a rodar o enrichment LLM incremental (`scripts/enrichment_run.py`). Motivo do OFF: janela NVIDIA degradada com retries ReadTimeout ~264s — run de 5h38 segurando o flock (29/09, 0/21 extracoes) e 17.615s (30/09, 6/22); retorno zero. Reativacao manual: `INTERNSHIP_FINDER_ENRICHMENT=1 .venv/bin/python scripts/refresh_daily.py --enrichment ...`. Teto de seguranca `--enrichment-max-secs` (default 1800s) mata o subprocesso estourado — o flock nunca mais fica preso por ele. |
+| `INTERNSHIP_FINDER_DEADLINE_HYDRATION` | **F1 (01/10): OFF por default.** Com `=1`, o `AtsJobAdapter` volta a popular `Job.application_deadline` a partir do campo da fonte. Motivo do OFF: em tenants SuccessFactors o valor e a validade do FEED (`g:expiration_date` = coleta + 30 dias, auditado 231/231 — PROJECT_STATUS P1.4), nao o prazo real de fechamento; o ranking nunca leu o campo (score/eligibilidade/dedup intactos — `test_f1.py` grupo C). A UI ja rotula platform_sf como "validade do anuncio", nao prazo. |
 
 ### Deduplicacao
 

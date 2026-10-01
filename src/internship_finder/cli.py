@@ -253,7 +253,7 @@ def run_filter_pipeline(
     rank: bool = True,
     hydrate: bool = True,
     mirror_dedup: bool = True,
-    official_page: bool = True,
+    official_page: bool = False,
     official_page_limit: int | None = None,
     official_page_transport: Any | None = None,
     metrics: Path | None = None,
@@ -274,14 +274,17 @@ def run_filter_pipeline(
     congela ANTES (a cascata le description); o ranking e os enriquecimentos
     downstream (app_intel sobre eligible_jobs.json) passam a ver o texto.
 
-    Official-page enrichment (Fase D, ``official_page=True`` default): apos a
-    hidratacao e ANTES do ranking, vagas candidatas (description ausente/
-    teaser OU sem deadline OU sem salary) ganham evidencia estruturada da
-    pagina oficial (JSON-LD JobPosting) em ``job["official_page"]`` — UM GET
-    por vaga, best-effort, sem LLM/browser; ``--no-official-page`` desliga;
+    Official-page enrichment (Fase D, ``official_page=False`` default desde
+    F1 01/10): quando ligado (``--official-page``), apos a hidratacao e
+    ANTES do ranking, vagas candidatas (description ausente/teaser OU sem
+    deadline OU sem salary) ganham evidencia estruturada da pagina oficial
+    (JSON-LD JobPosting) em ``job["official_page"]`` — UM GET por vaga,
+    best-effort, sem LLM/browser; ``--no-official-page`` desliga;
     ``--official-page-limit N`` controla o tamanho do lote (default 150,
-    cortado por prioridade). Falha por vaga nunca derruba o run nem muda
-    exit codes.
+    cortado por prioridade). Motivo do OFF (auditoria F1): cookie-wall e
+    paginas JS-rendered tornam o estagio sem retorno — o codigo permanece
+    preservado para uso sob demanda. Falha por vaga nunca derruba o run nem
+    muda exit codes.
 
     Se ``metrics`` for fornecido, grava um registro de resumo do run
     (``type: run``) em JSONL com ``total_collected``/``filtered``/
@@ -551,12 +554,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--official-page",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=False,
         help="Enriquecimento pela pagina oficial (Fase D): UM GET por vaga "
         "candidata (description ausente/teaser OU sem deadline OU sem salary), "
         "extrai JSON-LD JobPosting como evidencia estruturada em "
         "job['official_page'] (pos-hidratacao, pre-ranking, best-effort; "
-        "default: ligado; --no-official-page desliga). Sem LLM/browser.",
+        "default: DESLIGADO desde F1 01/10 — cookie-wall/JS-render torna o "
+        "estagio sem retorno; --official-page liga sob demanda). Sem LLM/browser.",
     )
     parser.add_argument(
         "--official-page-limit",

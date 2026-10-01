@@ -56,7 +56,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from internship_finder.adapters.ats import AtsJobAdapter  # noqa: E402
+from internship_finder.adapters.ats import (  # noqa: E402
+    AtsJobAdapter,
+    set_deadline_hydration_enabled,
+)
 from internship_finder.collectors.ats_scraper import (  # noqa: E402
     TENANT_URL_OVERRIDES,
     scraper_slug,
@@ -184,6 +187,18 @@ def _parse_sf_feed(xml_text: str):
 
 
 def main() -> int:
+    import os as _os
+    _saved_flag = _os.environ.pop("INTERNSHIP_FINDER_DEADLINE_HYDRATION", None)
+    try:
+        return _main_body()
+    finally:
+        if _saved_flag is None:
+            _os.environ.pop("INTERNSHIP_FINDER_DEADLINE_HYDRATION", None)
+        else:
+            _os.environ["INTERNSHIP_FINDER_DEADLINE_HYDRATION"] = _saved_flag
+
+
+def _main_body() -> int:
     print("== A: scraper_slug com override (SAP) e não-interferência (ZF etc.) ==")
     sap = _company("SAP", "successfactors", "jobs", "https://jobs.sap.com")
     check("A1 SAP resolve para careers.sap.com (override)",
@@ -242,6 +257,10 @@ def main() -> int:
           "careers.sap.com" in str(j0.url))
 
     print("== D: identidade via AtsJobAdapter (formato histórico) ==")
+    # F1: a hidratacao de application_deadline e OFF por default — os
+    # asserts D5/I3 exercitam o CAMINHO PRESERVADO (feed -> adapter ->
+    # Job), logo rodam COM a flag ligada; restaurada no finally de main().
+    set_deadline_hydration_enabled(True)
     adapter = AtsJobAdapter()
     company = _company("SAP", "successfactors", "jobs", "https://jobs.sap.com")
     adapted = [adapter.to_job(j, company).to_dict() for j in jobs]

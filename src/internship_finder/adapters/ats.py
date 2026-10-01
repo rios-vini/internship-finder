@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -42,6 +43,33 @@ from internship_finder.models.company import Company
 from internship_finder.models.job import Job
 
 log = logging.getLogger(__name__)
+
+# F1 (01/10): gate de configuracao da hidratacao de application_deadline.
+# Auditoria 231/231 (PROJECT_STATUS P1.4): o campo em tenants SuccessFactors
+# e a validade do FEED (g:expiration_date = coleta + 30 dias), nao o prazo
+# real de fechamento — consumo zero no ranking (score/filters/dedup nao leem
+# o campo; urgencia/legenda ja tratam platform_sf como "validade", nao
+# prazo). Default OFF: o adapter NAO popula o campo a menos que a env var
+# esteja explicitamente em "1". Reativacao sob demanda:
+# INTERNSHIP_FINDER_DEADLINE_HYDRATION=1 (mesma mecanica da flag
+# INTERNSHIP_FINDER_GEOCODING em geocoding.py).
+DEADLINE_HYDRATION_ENV = "INTERNSHIP_FINDER_DEADLINE_HYDRATION"
+
+
+def deadline_hydration_enabled() -> bool:
+    """True quando a hidratacao de application_deadline esta ligada (F1).
+
+    Default OFF: exige ``INTERNSHIP_FINDER_DEADLINE_HYDRATION=1`` no
+    ambiente. Testes que exercitam o caminho do deadline usam
+    ``set_deadline_hydration_enabled(True)`` (ou a env var) e restauram o
+    estado no finally.
+    """
+    return os.environ.get(DEADLINE_HYDRATION_ENV) == "1"
+
+
+def set_deadline_hydration_enabled(enabled: bool) -> None:
+    """Alterna programaticamente a flag (testes/uso controlado)."""
+    os.environ[DEADLINE_HYDRATION_ENV] = "1" if enabled else "0"
 
 # Cadeias de fallback por campo do Job.
 _FIELDS: dict[str, tuple[str, ...]] = {
@@ -134,9 +162,16 @@ class AtsJobAdapter:
         posted_at = self._parse_dt(self._first_str(data, _FIELDS["posted_at"]))
         # Prazo explicito de candidatura: apenas quando o ATS o expoe. Nunca
         # inferido de posted_at/fetched_at; ausente ou invalido -> None.
-        application_deadline = self._parse_dt(
-            self._first_str(data, _FIELDS["application_deadline"])
-        )
+        # F1 (01/10): hidratacao OFF por default — o campo em SuccessFactors
+        # e a validade do feed (collected+30d; auditoria 231/231), nao prazo
+        # real; ranking nao o consome. Popula SOMENTE com
+        # INTERNSHIP_FINDER_DEADLINE_HYDRATION=1 (uso sob demanda).
+        if deadline_hydration_enabled():
+            application_deadline = self._parse_dt(
+                self._first_str(data, _FIELDS["application_deadline"])
+            )
+        else:
+            application_deadline = None
 
         raw = {k: v for k, v in data.items() if k not in ("description", "raw")}
         if not raw:

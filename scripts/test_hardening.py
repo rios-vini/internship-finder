@@ -14,7 +14,9 @@ offline e deterministico (mocks para os estados de coleta, sem rede):
 9. falha parcial de coleta -> exit code degradado (ACH-02).
 10. coverage.py roda sobre o output atual (sem ranked_jobs.json) (ACH-05/06).
 11. metricas JSONL persistidas e legiveis (ACH-03).
-12. P0: application_deadline segue presente/None.
+12. P0: application_deadline segue presente/None (com a flag
+    ``INTERNSHIP_FINDER_DEADLINE_HYDRATION=1`` — F1: hidratacao OFF por
+    default; o caminho permanece preservado sob demanda).
 13. cascata de filtros mantem o funil quando nao ha erro (sem regressao).
 14. ranking determinístico (mesma entrada -> mesma ordem/score).
 
@@ -325,15 +327,36 @@ def test_metrics_not_found_and_duration() -> None:
 def test_p0_deadline() -> None:
     print("== P0: application_deadline ==")
     from datetime import datetime
+    import os as _os
+    from internship_finder.adapters.ats import set_deadline_hydration_enabled
     c = make_company()
     adapter = AtsJobAdapter()
-    with_d = adapter.to_job({"title": "Intern", "url": "https://a/1",
-                             "external_id": "R1", "application_deadline": "2026-09-30"}, c)
-    without_d = adapter.to_job({"title": "Intern", "url": "https://a/2",
-                                "external_id": "R2"}, c)
-    check("12a. deadline explicito presente",
-          with_d.application_deadline == datetime(2026, 9, 30))
-    check("12b. ausente -> None", without_d.application_deadline is None)
+    # F1: caminho preservado sob demanda — roda COM a flag ligada e
+    # restaura o estado (default OFF) no finally.
+    saved = _os.environ.pop("INTERNSHIP_FINDER_DEADLINE_HYDRATION", None)
+    set_deadline_hydration_enabled(True)
+    try:
+        with_d = adapter.to_job({"title": "Intern", "url": "https://a/1",
+                                 "external_id": "R1",
+                                 "application_deadline": "2026-09-30"}, c)
+        without_d = adapter.to_job({"title": "Intern", "url": "https://a/2",
+                                    "external_id": "R2"}, c)
+        check("12a. deadline explicito presente (flag ON)",
+              with_d.application_deadline == datetime(2026, 9, 30))
+        check("12b. ausente -> None", without_d.application_deadline is None)
+        # F1: default OFF — sem a env var o adapter NAO hidrata (auditoria
+        # 231/231: valor SF = validade do feed, nao prazo real).
+        set_deadline_hydration_enabled(False)
+        off_d = adapter.to_job({"title": "Intern", "url": "https://a/3",
+                                "external_id": "R3",
+                                "application_deadline": "2026-09-30"}, c)
+        check("12c. F1 default OFF: campo da fonte NAO hidratado",
+              off_d.application_deadline is None)
+    finally:
+        if saved is None:
+            _os.environ.pop("INTERNSHIP_FINDER_DEADLINE_HYDRATION", None)
+        else:
+            _os.environ["INTERNSHIP_FINDER_DEADLINE_HYDRATION"] = saved
 
 
 def test_filter_rank_no_regression() -> None:
