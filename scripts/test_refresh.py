@@ -262,8 +262,8 @@ def test_comando_subprocesso() -> None:
     print("== comando do subprocesso de coleta ==")
     cmd = rd.collection_command(60)
     check("usa -m internship_finder.cli", cmd[:3] == [sys.executable, "-m", "internship_finder.cli"])
-    check("--registry + --dataset (F3) + --timeout + --sqlite no fim",
-          cmd[3:] == ["--registry", "--dataset", "--timeout", "60",
+    check("--registry + --dataset (F3) + --direct-fetch (F4) + --timeout + --sqlite no fim",
+          cmd[3:] == ["--registry", "--dataset", "--direct-fetch", "--timeout", "60",
                       "--sqlite", "data/jobs.db"]
           and "--sqlite" in cmd and "data/jobs.db" in cmd)
     cmd2 = rd.collection_command(120)

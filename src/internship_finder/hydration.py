@@ -80,14 +80,25 @@ def _effective_ats(source: str) -> str:
 
     Producao: ``ats:slug`` -> ``ats`` (prefixo). Dataset (F3):
     ``sf_dataset:<ats>`` -> ``<ats>`` (o SUFIXO e o ATS puro; o prefixo
-    ``sf_dataset`` e o marcador da fonte, nao um ATS). O resto do source
-    (sem ``:``) e devolvido como esta.
+    ``sf_dataset`` e o marcador da fonte, nao um ATS). Direct fetch (F4):
+    ``direct:<ats>`` -> ``<ats>`` (mesma regra — prefixo e marcador da
+    fonte). O resto do source (sem ``:``) e devolvido como esta.
     """
     if not source:
         return ""
-    if source.startswith("sf_dataset:"):
+    if source.startswith("sf_dataset:") or source.startswith("direct:"):
         return source.split(":", 1)[1].strip()
     return source.split(":", 1)[0]
+
+
+# Scrapers single-source (F4): o ``company_slug`` e informational e ignorado
+# pelo construtor (Bundesagentur/EURES varrem o catalogo inteiro, nao um
+# tenant). Para esses, o "slug" de hidratacao e um stub fixo — nunca derivado
+# de URL (nao ha tenant na URL da vaga) e nunca inventado por tenant.
+_SINGLE_SOURCE_ATS = {
+    "bundesagentur": "bundesagentur",
+    "eures": "eures",
+}
 
 
 def _slug_for(ats: str, job: dict[str, Any]) -> str | None:
@@ -107,7 +118,10 @@ def _slug_for(ats: str, job: dict[str, Any]) -> str | None:
       mesmo contrato; nunca scraper com slug inventado).
     """
     source = job.get("source") or ""
-    if source.startswith("sf_dataset:"):
+    if source.startswith("sf_dataset:") or source.startswith("direct:"):
+        ats_effective = _effective_ats(source)
+        if ats_effective in _SINGLE_SOURCE_ATS:
+            return _SINGLE_SOURCE_ATS[ats_effective]
         return _slug_from_url(ats, str(job.get("url") or ""))
     if ats in ("smartrecruiters", "eightfold", "personio"):
         return source.split(":", 1)[1].strip() if ":" in source else None

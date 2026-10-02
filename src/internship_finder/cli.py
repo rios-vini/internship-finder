@@ -54,6 +54,10 @@ from internship_finder.dataset_source import (
     DATASET_BUDGET_SECONDS,
     collect_dataset_jobs,
 )
+from internship_finder.direct_fetch import (
+    DIRECT_FETCH_BUDGET_SECONDS,
+    collect_direct_fetch,
+)
 from internship_finder.dedup import deduplicate
 from internship_finder.mirror_dedup import KEY_MIRRORS_DE_EN, deduplicate_mirrors_de_en
 from internship_finder.filters import parse_country_spec, select_eligible
@@ -554,6 +558,70 @@ def _run_dataset_stage(run_id: str, budget_secs: float) -> tuple[list[Job], dict
     return jobs, record
 
 
+def _direct_fetch_record(run_id: str, summary: dict) -> dict:
+    """Registro de metricas do estagio direct_fetch (linha ``type: direct_fetch``).
+
+    Um registro por run com o status GERAL (ok/partial/failed — cada fonte
+    tem seu proprio sub-status em ``ba``/``eures``) e as contagens por fonte
+    (rows vistas, jobs criados, paginas, details ok/falha, cap truncado).
+    Gravado MESMO em falha (degradacao graciosa e DADO: o run segue; exit
+    code NAO muda — mesma regra do estagio dataset da F3).
+    """
+    return {
+        "type": "direct_fetch",
+        "run_id": run_id,
+        "timestamp": utcnow_iso(),
+        "source": summary.get("source", "direct_fetch"),
+        "status": summary.get("status"),
+        "jobs": summary.get("jobs", 0),
+        "ba": summary.get("ba", {}),
+        "eures": summary.get("eures", {}),
+        "duration": summary.get("duration"),
+        "skipped_budget": summary.get("skipped_budget", False),
+    }
+
+
+def _run_direct_fetch_stage(
+    run_id: str,
+    budget_secs: float,
+    max_jobs: int | None,
+) -> tuple[list[Job], dict | None]:
+    """Estagio direct_fetch (F4): best-effort TOTAL — nunca levanta o run.
+
+    Falha de UMA fonte = ``status: partial`` (a outra segue); falha de
+    AMBAS = ``status: failed`` — em qualquer caso o run continua com os
+    jobs do registry + dataset e o exit code NAO muda.
+    """
+    try:
+        jobs, summary = collect_direct_fetch(
+            budget_seconds=budget_secs, max_jobs=max_jobs
+        )
+    except Exception as exc:  # noqa: BLE001 - direct_fetch nunca derruba o run
+        log.error("estagio direct_fetch falhou (%s); run segue sem fetch direto", exc)
+        return [], _direct_fetch_record(run_id, {
+            "source": "direct_fetch", "status": "failed", "jobs": 0,
+            "ba": {"source": "direct:bundesagentur", "status": "failed",
+                   "jobs": 0, "rows_seen": 0, "pages": 0,
+                   "error": f"{type(exc).__name__}: {exc}"},
+            "eures": {"source": "direct:eures", "status": "failed",
+                      "jobs": 0, "rows_seen": 0, "pages": 0},
+            "duration": 0.0, "skipped_budget": False,
+        })
+    record = _direct_fetch_record(run_id, summary)
+    status = summary.get("status")
+    if status in ("failed", "partial"):
+        log.warning("estagio direct_fetch terminou %s (ver registro direct_fetch no JSONL)", status)
+    else:
+        log.info(
+            "estagio direct_fetch: %d jobs (ba %d, eures %d; %.1fs)",
+            summary.get("jobs", 0),
+            (summary.get("ba") or {}).get("jobs", 0),
+            (summary.get("eures") or {}).get("jobs", 0),
+            summary.get("duration") or 0.0,
+        )
+    return jobs, record
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Coleta vagas por empresa e/ou filtra vagas candidataveis "
@@ -656,6 +724,29 @@ def main(argv: list[str] | None = None) -> int:
         help=f"Teto total do estagio dataset em segundos, checado ENTRE "
         f"fatias (default {DATASET_BUDGET_SECONDS:.0f}); estourado, as "
         f"fatias restantes viram skipped_budget e o run segue.",
+    )
+    parser.add_argument(
+        "--direct-fetch",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="F4: coleta TAMBEM uma amostra diaria DIRETA das APIs publicas "
+        "BA (angebotsart=34 PRAKTIKUM_TRAINEE) e EURES (keywords "
+        "Praktikum, EVERYWHERE) com filtro de estagio nativo, cap de "
+        "jobs por fonte e paginacao sequencial (rate limit "
+        "conservador). Default: LIGADO no modo --registry, DESLIGADO "
+        "no --companies explicito; --no-direct-fetch desliga. Falha de "
+        "fonte NUNCA derruba o run (degradacao graciosa: registro "
+        "type: direct_fetch com status failed/partial).",
+    )
+    parser.add_argument(
+        "--direct-fetch-max-jobs",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Limite de jobs POR FONTE (BA, EURES) por run do estagio "
+        "direct_fetch (default 200). O cap e a medida principal de rate "
+        "limit: 1 fetch/dia por fonte, paginacao sequencial, timeout "
+        "curto por request.",
     )
     parser.add_argument(
         "--student",
@@ -824,6 +915,14 @@ def main(argv: list[str] | None = None) -> int:
         # tenant records, antes do run record) — None quando desligado.
         dataset_record: dict | None = None
         dataset_jobs: list[Job] = []
+        # F4: mesmo default do dataset — LIGADO no --registry (amostra
+        # fresca diaria das 2 maiores fontes de estagio da Europa, com
+        # filtro nativo), DESLIGADO no --companies explícito.
+        direct_fetch_enabled = (
+            args.direct_fetch if args.direct_fetch is not None else bool(args.registry)
+        )
+        direct_fetch_record: dict | None = None
+        direct_fetch_jobs: list[Job] = []
         # Unidades de coleta confiavel (P1.2): (company, source, jobs) de
         # tenants que terminaram em OK/EMPTY. Tenants que falharam
         # (timeout/error/not_found/skipped) NAO entram — a ausencia deles no
@@ -884,6 +983,26 @@ def main(argv: list[str] | None = None) -> int:
                     f"prefilteradas, {rec.get('bytes_downloaded')} "
                     f"bytes, {rec.get('duration')}s) ==="
                 )
+        # F4: estagio direct_fetch APOS o dataset (mesma concatenacao).
+        # Best-effort: falha de fonte nunca derruba o run nem muda exit
+        # codes — vira registro ``type: direct_fetch`` com status
+        # failed/partial e o run segue com o que houver.
+        if direct_fetch_enabled:
+            direct_fetch_jobs, direct_fetch_record = _run_direct_fetch_stage(
+                run_id,
+                DIRECT_FETCH_BUDGET_SECONDS,
+                args.direct_fetch_max_jobs,
+            )
+            all_jobs = all_jobs + direct_fetch_jobs
+            total = len(all_jobs)
+            if direct_fetch_jobs:
+                rec = direct_fetch_record or {}
+                print(
+                    f"\n=== DIRECT FETCH F4: +{len(direct_fetch_jobs)} jobs "
+                    f"(ba {rec.get('ba', {}).get('jobs', 0)}, "
+                    f"eures {rec.get('eures', {}).get('jobs', 0)}, "
+                    f"{rec.get('duration')}s) ==="
+                )
         print(f"\n=== TOTAL: {total} vagas ===")
         # Falhas reais de coleta (timeout/erro/nao encontrada) tornam a coleta
         # parcialmente degradada; EMPTY (tenant respondeu com 0 vagas) e
@@ -921,6 +1040,8 @@ def main(argv: list[str] | None = None) -> int:
             records = list(tenant_records)
             if dataset_record is not None:
                 records.append(dataset_record)
+            if direct_fetch_record is not None:
+                records.append(direct_fetch_record)
             write_metrics(metrics_path, records)
             log.error("nenhuma vaga coletada; verifique as empresas e o pacote ats-scrapers")
             return 1
@@ -958,6 +1079,8 @@ def main(argv: list[str] | None = None) -> int:
         records = list(tenant_records)
         if dataset_record is not None:
             records.append(dataset_record)
+        if direct_fetch_record is not None:
+            records.append(direct_fetch_record)
         write_metrics(metrics_path, records)
         pipeline_rc = run_filter_pipeline(
             all_jobs,
