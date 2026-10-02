@@ -262,8 +262,9 @@ def test_comando_subprocesso() -> None:
     print("== comando do subprocesso de coleta ==")
     cmd = rd.collection_command(60)
     check("usa -m internship_finder.cli", cmd[:3] == [sys.executable, "-m", "internship_finder.cli"])
-    check("--registry + --timeout + --sqlite no fim",
-          cmd[3:] == ["--registry", "--timeout", "60", "--sqlite", "data/jobs.db"]
+    check("--registry + --dataset (F3) + --timeout + --sqlite no fim",
+          cmd[3:] == ["--registry", "--dataset", "--timeout", "60",
+                      "--sqlite", "data/jobs.db"]
           and "--sqlite" in cmd and "data/jobs.db" in cmd)
     cmd2 = rd.collection_command(120)
     check("timeout propagado com sqlite",
@@ -401,6 +402,8 @@ def test_backup_integrado() -> None:
         rd.repo_root = lambda: root
         try:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "disk_usage_pct",
+                                  return_value=50), \
                  mock.patch.object(rd, "notify_or_log", side_effect=fake_notify):
                 rc = rd.main(["--config", str(root / ".env")])
         finally:
@@ -446,7 +449,8 @@ def test_backup_falha_reportada() -> None:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log", side_effect=fake_notify), \
                  mock.patch.object(rd, "backup_jobs_db",
-                                   side_effect=OSError("disco cheio")):
+                                   side_effect=OSError("disco cheio")), \
+                 mock.patch.object(rd, "disk_usage_pct", return_value=50):
                 rc = rd.main(["--config", str(root / ".env")])
         finally:
             rd.repo_root = original_root
@@ -530,6 +534,7 @@ def test_pages_dir_integrado() -> None:
         try:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log", side_effect=fake_notify), \
+                 mock.patch.object(rd, "disk_usage_pct", return_value=50), \
                  mock.patch.object(rd.publish_pages, "publish_ranking",
                                    side_effect=fake_publish):
                 rc = rd.main(["--config", str(root / ".env"),
@@ -569,6 +574,7 @@ def test_pages_falha_reportada() -> None:
         try:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log", side_effect=fake_notify), \
+                 mock.patch.object(rd, "disk_usage_pct", return_value=50), \
                  mock.patch.object(rd.publish_pages, "publish_ranking",
                                    side_effect=RuntimeError("push rejeitado")):
                 rc = rd.main(["--config", str(root / ".env"),
@@ -643,6 +649,7 @@ def test_exit_code_propagado() -> None:
             try:
                 with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                      mock.patch.object(rd, "notify_or_log", side_effect=fake_notify), \
+                     mock.patch.object(rd, "disk_usage_pct", return_value=50), \
                      mock.patch.object(rd, "build_health_report", side_effect=report_wrapper):
                     rc = rd.main(["--config", str(root / ".env")])
             finally:
@@ -774,6 +781,8 @@ def test_digest_integrado_fluxo() -> None:
             rd.repo_root = lambda: root
             try:
                 with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
+                 mock.patch.object(rd, "disk_usage_pct",
+                                  return_value=50), \
                      mock.patch.object(rd, "notify_or_log", side_effect=fake_notify):
                     rc = rd.main(["--config", str(root / ".env"),
                                   "--always-notify"])
@@ -849,6 +858,7 @@ def test_enrichment_gate_e_exitcode() -> None:
         try:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log", side_effect=fake_notify), \
+                 mock.patch.object(rd, "disk_usage_pct", return_value=50), \
                  mock.patch.object(rd.subprocess, "run",
                                    side_effect=_make_enrichment_subproc_spy(calls, 1)):
                 # sem --enrichment: nada roda (default OFF, comportamento atual)
@@ -893,6 +903,8 @@ def test_enrichment_gate_e_exitcode() -> None:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log",
                                    side_effect=_fake_notify_ok), \
+                 mock.patch.object(rd, "disk_usage_pct",
+                                  return_value=50), \
                  mock.patch.object(rd.subprocess, "run", side_effect=fake_subproc_run):
                 rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
         finally:
@@ -916,6 +928,8 @@ def test_enrichment_gate_e_exitcode() -> None:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log",
                                    side_effect=_fake_notify_ok), \
+                 mock.patch.object(rd, "disk_usage_pct",
+                                  return_value=50), \
                  mock.patch.object(rd.subprocess, "run", side_effect=fake_subproc_run):
                 rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
         finally:
@@ -963,6 +977,8 @@ def test_enrichment_gate_e_exitcode() -> None:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log",
                                    side_effect=_fake_notify_ok), \
+                 mock.patch.object(rd, "disk_usage_pct",
+                                  return_value=50), \
                  mock.patch.object(rd.subprocess, "run", side_effect=fake_subproc_run):
                 rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
         finally:
@@ -1002,6 +1018,8 @@ def test_enrichment_gate_e_exitcode() -> None:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log",
                                    side_effect=_fake_notify_ok), \
+                 mock.patch.object(rd, "disk_usage_pct",
+                                  return_value=50), \
                  mock.patch.object(rd.subprocess, "run", side_effect=fake_subproc_run):
                 rc = rd.main(["--config", str(root / ".env"),
                               "--enrichment", "--enrichment-limit", "7"])
@@ -1048,6 +1066,8 @@ def test_enrichment_gate_e_exitcode() -> None:
             with mock.patch.object(rd, "run_collection", side_effect=fake_run), \
                  mock.patch.object(rd, "notify_or_log",
                                    side_effect=_fake_notify_ok), \
+                 mock.patch.object(rd, "disk_usage_pct",
+                                  return_value=50), \
                  mock.patch.object(rd.subprocess, "run", side_effect=fake_subproc_run):
                 rc = rd.main(["--config", str(root / ".env"), "--enrichment"])
         finally:

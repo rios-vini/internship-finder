@@ -75,6 +75,21 @@ TEASER_MAX_CHARS = 400
 _WORKDAY_URL_RE = re.compile(r"^(https://[^/]+\.myworkdayjobs\.com/[^/?#]+)")
 
 
+def _effective_ats(source: str) -> str:
+    """ATS efetivo da vaga pelo ``source``.
+
+    Producao: ``ats:slug`` -> ``ats`` (prefixo). Dataset (F3):
+    ``sf_dataset:<ats>`` -> ``<ats>`` (o SUFIXO e o ATS puro; o prefixo
+    ``sf_dataset`` e o marcador da fonte, nao um ATS). O resto do source
+    (sem ``:``) e devolvido como esta.
+    """
+    if not source:
+        return ""
+    if source.startswith("sf_dataset:"):
+        return source.split(":", 1)[1].strip()
+    return source.split(":", 1)[0]
+
+
 def _slug_for(ats: str, job: dict[str, Any]) -> str | None:
     """Slug que o construtor do scraper espera para ``ats`` nesta vaga.
 
@@ -83,15 +98,82 @@ def _slug_for(ats: str, job: dict[str, Any]) -> str | None:
       (``https://{co}.{wdN}.myworkdayjobs.com/{site}``) — o scraper exige a
       URL completa (mesma regra de ``URL_SLUG_ATS`` da coleta) e extrai o
       externalPath do proprio ``job.url`` quando ``raw.externalPath`` falta.
+    - F3 (``sf_dataset:<ats>``): o source NAO carrega slug (e o ATS puro).
+      O slug de hidratacao e derivado da URL da vaga: workday pela regex
+      existente; smartrecruiters pelo segmento do path
+      (``jobs.smartrecruiters.com/<slug>/...``); personio/eightfold pelo
+      HOSTNAME (``<slug>.personio.de`` / ``<slug>.eightfold.ai``). Nao
+      derivavel -> ``None`` (vaga preservada, ``unsupported_no_detail`` —
+      mesmo contrato; nunca scraper com slug inventado).
     """
+    source = job.get("source") or ""
+    if source.startswith("sf_dataset:"):
+        return _slug_from_url(ats, str(job.get("url") or ""))
     if ats in ("smartrecruiters", "eightfold", "personio"):
-        source = job.get("source") or ""
         return source.split(":", 1)[1].strip() if ":" in source else None
     if ats == "workday":
         url = str(job.get("url") or "")
         match = _WORKDAY_URL_RE.match(url)
         return match.group(1) if match else None
     return None
+
+
+# Hosts de detalhe por ATS (F3): o slug vive na URL da vaga do dataset.
+_SLUG_URL_HOSTS = {
+    # jobs.smartrecruiters.com/<slug>/job/<id> -> primeiro segmento do path
+    "smartrecruiters": "smartrecruiters.com",
+    # <slug>.jobs.personio.<tld> (require_host_label: sem pontos)
+    "personio": "personio.",
+    # <slug>.eightfold.ai (require_host_label: sem pontos)
+    "eightfold": "eightfold.ai",
+}
+
+
+def _slug_from_url(ats: str, url: str) -> str | None:
+    """Slug de hidratacao derivado da URL da vaga (fonte sf_dataset, F3)."""
+    if not url:
+        return None
+    if ats == "workday":
+        match = _WORKDAY_URL_RE.match(url)
+        return match.group(1) if match else None
+    host = _SLUG_URL_HOSTS.get(ats)
+    if host is None:
+        return None
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    netloc = (parsed.hostname or "").lower()
+    if not netloc:
+        return None
+    if ats == "smartrecruiters":
+        # jobs.smartrecruiters.com/<slug>/... — slug e o primeiro segmento
+        # do path; o host e compartilhado (nao carrega o tenant).
+        if not netloc.endswith(host):
+            return None
+        segments = [p for p in (parsed.path or "").split("/") if p]
+        return segments[0] if segments else None
+    if ats == "personio":
+        # Padroes medidos no dataset: <tenant>.jobs.personio.<tld>... O
+        # construtor do PersonioScraper exige um HOST LABEL sem pontos
+        # (exige "acme"), entao o tenant derivado e o label ANTES do
+        # sufixo, com o subdominio "jobs" removido quando presente
+        # ("sungrow-emea.jobs" de sungrow-emea.jobs.personio.de ->
+        # "sungrow-emea"). "jobs.personio.de" (sem tenant) -> None.
+        idx = netloc.find(host)
+        if idx <= 0:
+            return None
+        tenant = netloc[:idx].rstrip(".")
+        if tenant.endswith(".jobs") or tenant == "jobs":
+            tenant = tenant[: -len(".jobs")] if ".jobs" in tenant else ""
+        return tenant or None
+    # eightfold: <slug>.eightfold.ai (hostname SEM pontos = host label)
+    if not netloc.endswith("." + host):
+        return None
+    slug = netloc[: -(len(host) + 1)]
+    return slug or None
 
 
 def _to_upstream(job: dict[str, Any]) -> UpstreamJob | None:
@@ -111,7 +193,7 @@ def _to_upstream(job: dict[str, Any]) -> UpstreamJob | None:
             url=job.get("url") or "",  # type: ignore[arg-type]
             title=str(job.get("title") or ""),
             company=str(job.get("company") or ""),
-            ats_type=(job.get("source") or "").split(":", 1)[0],  # type: ignore[arg-type]
+            ats_type=_effective_ats(job.get("source") or ""),  # type: ignore[arg-type]
             ats_id=job.get("external_id") or (raw or {}).get("ats_id"),
             raw=raw,
         )
@@ -179,14 +261,14 @@ def hydrate_descriptions(
         description = str(job.get("description") or "").strip()
         if description:
             stats["already_has_description"] += 1
-            ats = (job.get("source") or "").split(":", 1)[0]
+            ats = _effective_ats(job.get("source") or "")
             ats_stats(ats)["already"] += 1
             if ats == "phenom" and len(description) < TEASER_MAX_CHARS:
                 stats["phenom_teaser_count"] += 1
             continue
 
         stats["hydration_candidates"] += 1
-        ats = (job.get("source") or "").split(":", 1)[0]
+        ats = _effective_ats(job.get("source") or "")
         entry = ats_stats(ats)
         entry["candidates"] += 1
 

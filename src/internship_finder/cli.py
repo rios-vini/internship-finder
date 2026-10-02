@@ -50,6 +50,10 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from internship_finder.collectors.ats_scraper import collect_company
+from internship_finder.dataset_source import (
+    DATASET_BUDGET_SECONDS,
+    collect_dataset_jobs,
+)
 from internship_finder.dedup import deduplicate
 from internship_finder.mirror_dedup import KEY_MIRRORS_DE_EN, deduplicate_mirrors_de_en
 from internship_finder.filters import parse_country_spec, select_eligible
@@ -490,6 +494,66 @@ def _tenant_record(
     }
 
 
+def _dataset_record(run_id: str, summary: dict) -> dict:
+    """Registro de metricas do estagio dataset (linha ``type: dataset``).
+
+    Campos (spec F3 §4.1 item 5): run_id/timestamp/type=dataset/
+    source=sf_dataset/status/rows por fatia (``per_ats`` com rows+kept)/
+    total_prefiltered/bytes/duration — mais as contagens de
+    invalid_rows/skipped_budget/failed_slices e jobs criados. O registro e
+    gravado mesmo quando o estagio falha (``status: failed``): a falha do
+    dataset e DADO (o run segue com so os jobs do registry; o exit code nao
+    muda — invariante F3 §4.1 item 6).
+    """
+    return {
+        "type": "dataset",
+        "run_id": run_id,
+        "timestamp": utcnow_iso(),
+        "source": "sf_dataset",
+        "status": summary.get("status"),
+        "rows_total": summary.get("rows_total", 0),
+        "total_prefiltered": summary.get("rows_prefiltered", 0),
+        "invalid_rows": summary.get("invalid_rows", 0),
+        "jobs": summary.get("jobs", 0),
+        "per_ats": summary.get("per_ats", {}),
+        "skipped_budget": summary.get("skipped_budget", 0),
+        "failed_slices": summary.get("failed_slices", 0),
+        "bytes_downloaded": summary.get("bytes_downloaded", 0),
+        "duration": summary.get("duration"),
+        "error": summary.get("error"),
+    }
+
+
+def _run_dataset_stage(run_id: str, budget_secs: float) -> tuple[list[Job], dict | None]:
+    """Estagio dataset (F3): best-effort TOTAL — nunca levanta para o run.
+
+    Devolve ``(jobs, registro)``; em falha estrutural (manifest/rede), os
+    jobs sao vazios e o registro carrega ``status: failed`` para o JSONL —
+    o CLI loga e segue so com os jobs do registry (exit code inalterado).
+    """
+    try:
+        jobs, summary = collect_dataset_jobs(budget_seconds=budget_secs)
+    except Exception as exc:  # noqa: BLE001 - dataset nunca derruba o run
+        log.error("estagio dataset falhou (%s); run segue com registry only", exc)
+        return [], _dataset_record(run_id, {
+            "status": "failed", "error": f"{type(exc).__name__}: {exc}",
+            "rows_total": 0, "rows_prefiltered": 0, "invalid_rows": 0,
+            "jobs": 0, "per_ats": {}, "skipped_budget": 0,
+            "failed_slices": 0, "bytes_downloaded": 0, "duration": 0.0,
+        })
+    record = _dataset_record(run_id, summary)
+    if summary.get("status") == "failed":
+        log.error("estagio dataset terminou failed (ver registro dataset no JSONL)")
+    else:
+        log.info(
+            "estagio dataset: %d jobs (%d rows prefilteradas de %d; %d bytes; "
+            "%.1fs)", summary.get("jobs", 0), summary.get("rows_prefiltered", 0),
+            summary.get("rows_total", 0), summary.get("bytes_downloaded", 0),
+            summary.get("duration") or 0.0,
+        )
+    return jobs, record
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Coleta vagas por empresa e/ou filtra vagas candidataveis "
@@ -570,6 +634,28 @@ def main(argv: list[str] | None = None) -> int:
         "(default: 150, cortado por prioridade: sem description > teaser > "
         "sem deadline > sem salary; 0 = sem limite). Primeiro run controlado "
         "da fase (spec): custo medido ~1.4s/GET.",
+    )
+    parser.add_argument(
+        "--dataset",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="F3: coleta TAMBEM do dataset hospedado do ats-scrapers "
+        "(manifest publico, prefilter DE+estagio em streaming; ~21,6k rows "
+        "de 63 fatias) e concatena com os jobs do registry no MESMO funil "
+        "filtros->dedup->ranking. Default: LIGADO no modo --registry "
+        "(inversao arquitetural: dataset e fonte primaria, registry e lista "
+        "de interesse no ranking), DESLIGADO no --companies explícito; "
+        "--no-dataset reverte ao comportamento anterior. Falha do dataset "
+        "NUNCA derruba o run (best-effort: log + registro dataset com "
+        "status failed; exit code segue o da coleta do registry).",
+    )
+    parser.add_argument(
+        "--dataset-budget-secs",
+        type=float,
+        default=DATASET_BUDGET_SECONDS,
+        help=f"Teto total do estagio dataset em segundos, checado ENTRE "
+        f"fatias (default {DATASET_BUDGET_SECONDS:.0f}); estourado, as "
+        f"fatias restantes viram skipped_budget e o run segue.",
     )
     parser.add_argument(
         "--student",
@@ -727,6 +813,17 @@ def main(argv: list[str] | None = None) -> int:
         metrics_path = Path(args.metrics or "data/collection_metrics.jsonl")
         all_jobs: list[Job] = []
         summaries: list[tuple[str, dict]] = []
+        # F3: default do estagio dataset — LIGADO no modo --registry (a
+        # inversao arquitetural e o pedido; o refresh de producao roda
+        # --registry), DESLIGADO no --companies explícito (uso pontual
+        # continua com o comportamento anterior). --no-dataset reverte.
+        dataset_enabled = (
+            args.dataset if args.dataset is not None else bool(args.registry)
+        )
+        # Registro do estagio dataset (gravado no JSONL junto com os
+        # tenant records, antes do run record) — None quando desligado.
+        dataset_record: dict | None = None
+        dataset_jobs: list[Job] = []
         # Unidades de coleta confiavel (P1.2): (company, source, jobs) de
         # tenants que terminaram em OK/EMPTY. Tenants que falharam
         # (timeout/error/not_found/skipped) NAO entram — a ausencia deles no
@@ -769,6 +866,24 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  ... +{len(jobs) - 15} vagas (lista completa no JSON/CSV)")
 
         total = len(all_jobs)
+        # F3: estagio dataset APOS a coleta do registry (mesma ordem da
+        # concatenacao). Best-effort: falha nao derruba o run nem muda exit
+        # codes — vira registro ``type: dataset`` com status failed e o run
+        # segue so com os jobs do registry.
+        if dataset_enabled:
+            dataset_jobs, dataset_record = _run_dataset_stage(
+                run_id, args.dataset_budget_secs
+            )
+            all_jobs = all_jobs + dataset_jobs
+            total = len(all_jobs)
+            rec = dataset_record or {}
+            if dataset_jobs:
+                print(
+                    f"\n=== DATASET sf_dataset: +{len(dataset_jobs)} jobs "
+                    f"({rec.get('total_prefiltered')} rows "
+                    f"prefilteradas, {rec.get('bytes_downloaded')} "
+                    f"bytes, {rec.get('duration')}s) ==="
+                )
         print(f"\n=== TOTAL: {total} vagas ===")
         # Falhas reais de coleta (timeout/erro/nao encontrada) tornam a coleta
         # parcialmente degradada; EMPTY (tenant respondeu com 0 vagas) e
@@ -803,7 +918,10 @@ def main(argv: list[str] | None = None) -> int:
                 tenant_records.append(_tenant_record(run_id, name, "", "not_found", 0, None, "sem match exato"))
 
         if not total:
-            write_metrics(metrics_path, tenant_records)
+            records = list(tenant_records)
+            if dataset_record is not None:
+                records.append(dataset_record)
+            write_metrics(metrics_path, records)
             log.error("nenhuma vaga coletada; verifique as empresas e o pacote ats-scrapers")
             return 1
         # Salva e processa SEMPRE (nao descarta o que foi coletado), mas uma
@@ -834,8 +952,13 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:  # noqa: BLE001 - a coleta nunca cai por sqlite
                 log.error("sqlite falhou e foi ignorado (%s): %s", sqlite_path, exc)
         # Tenant records primeiro; o run record (resumo) e escrito dentro do
-        # ``run_filter_pipeline``, ao final do processamento.
-        write_metrics(metrics_path, tenant_records)
+        # ``run_filter_pipeline``, ao final do processamento. O registro do
+        # estagio dataset (F3) e gravado AQUI (mesma posicao dos tenant
+        # records): a ordem no JSONL e tenant -> dataset -> run.
+        records = list(tenant_records)
+        if dataset_record is not None:
+            records.append(dataset_record)
+        write_metrics(metrics_path, records)
         pipeline_rc = run_filter_pipeline(
             all_jobs,
             student=args.student,
