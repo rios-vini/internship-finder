@@ -441,7 +441,7 @@ def test_cli_dataset_flow() -> None:
                  "per_ats": {"successfactors": {"rows": 1, "kept": 1}},
                  "skipped_budget": 0, "failed_slices": 0,
                  "bytes_downloaded": 100, "duration": 0.1})
-            rc = cli.main(["--registry", "--companies", "SAP",
+            rc = cli.main(["--registry", "--companies", "SAP", "--no-direct-fetch",
                            "--output", f"{tmp}/j1.json",
                            "--filter-output", f"{tmp}/e1.json",
                            "--metrics", metrics])
@@ -451,7 +451,7 @@ def test_cli_dataset_flow() -> None:
         # F2: --no-dataset desliga
         with patch.object(cli, "collect_company", side_effect=_collect), \
              patch.object(cli, "collect_dataset_jobs") as cds2:
-            rc = cli.main(["--registry", "--companies", "SAP", "--no-dataset",
+            rc = cli.main(["--registry", "--companies", "SAP", "--no-dataset", "--no-direct-fetch",
                            "--output", f"{tmp}/j2.json",
                            "--filter-output", f"{tmp}/e2.json",
                            "--metrics", metrics])
@@ -462,7 +462,7 @@ def test_cli_dataset_flow() -> None:
         with patch.object(cli, "collect_company", side_effect=_collect), \
              patch.object(cli, "collect_dataset_jobs") as cds3:
             cds3.side_effect = RuntimeError("manifest down")
-            rc = cli.main(["--registry", "--companies", "SAP",
+            rc = cli.main(["--registry", "--companies", "SAP", "--no-direct-fetch",
                            "--output", f"{tmp}/j3.json",
                            "--filter-output", f"{tmp}/e3.json",
                            "--metrics", metrics])
@@ -598,7 +598,7 @@ def test_jsonl_records() -> None:
                                                  "failed": False}},
                  "skipped_budget": 0, "failed_slices": 0,
                  "bytes_downloaded": 123, "duration": 0.2})
-            rc = cli.main(["--registry", "--companies", "SAP",
+            rc = cli.main(["--registry", "--companies", "SAP", "--no-direct-fetch",
                            "--output", f"{tmp}/j5.json",
                            "--filter-output", f"{tmp}/e5.json",
                            "--metrics", str(metrics)])

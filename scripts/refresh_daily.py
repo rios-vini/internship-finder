@@ -332,17 +332,23 @@ def collection_command(timeout: float) -> list[str]:
     apesar de ser o default do modo --registry — para o contrato do refresh
     ficar visivel na linha de comando do subprocesso (o cron nao passa
     flags de coleta; este comando e a unica porta de entrada).
+    ``--direct-fetch`` (F4): amostra diaria DIRETA das APIs publicas BA
+    (angebotsart=34) e EURES (keywords Praktikum) com filtro de estagio
+    nativo — mesmo espirito do --dataset: explicito no contrato, default
+    ON no --registry, cap conservador de jobs por fonte.
     ``--sqlite data/jobs.db``: persistencia first_seen/last_seen/active/
     archived (P1 #5); a flag e idempotente e falha de escrita nunca derruba
     a coleta. O ``jobs.db`` nao e rotacionado (historico acumulativo). Os
     jobs do dataset NAO entram no lifecycle (invariante F3 §7.8): sao fonte
     efemera re-derivada a cada run; so as unidades de coleta do registry
-    persistem.
+    persistem. Jobs do direct_fetch (F4) seguem a MESMA regra: fonte
+    efemera, re-derivada a cada run.
     """
     return [
         sys.executable, "-m", "internship_finder.cli",
         "--registry",
         "--dataset",
+        "--direct-fetch",
         "--timeout", str(timeout),
         "--sqlite", "data/jobs.db",
     ]

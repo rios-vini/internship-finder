@@ -499,6 +499,8 @@ Flags do CLI:
 | `--official-page-limit N` | Limite de vagas por execucao do official-page enrichment (default: 150, cortadas por prioridade: sem description > teaser > sem deadline > sem salary; `0` = sem limite) |
 | `--dataset` / `--no-dataset` | **Fonte sf_dataset (F3)**: coleta TAMBEM do dataset hospedado do ats-scrapers (manifest público, 63 fatias, prefilter DE+estágio em streaming ANTES de materializar — ~21,6k rows de 5,1M) e concatena com os jobs do registry no MESMO funil filtros→dedup→ranking. **Default: LIGADO no modo `--registry`** (inversão arquitetural: dataset é fonte primária, registry é lista de interesse no ranking), **DESLIGADO no `--companies` explícito**. Falha do dataset NUNCA derruba o run (best-effort: registro `type: dataset` com status; exit code segue o da coleta do registry). Jobs do dataset NÃO entram no lifecycle SQLite (fonte efêmera re-derivada a cada run). Ver `docs/f3_sf_dataset.md` |
 | `--dataset-budget-secs N` | Teto total do estágio dataset em segundos, checado ENTRE fatias (default 1800); estourado, as fatias restantes viram `skipped_budget` e o run segue |
+| `--direct-fetch` / `--no-direct-fetch` | **Fonte direct_fetch (F4)**: coleta TAMBÉM uma amostra diária DIRETA das APIs públicas **Bundesagentur** (facet `angebotsart=34` PRAKTIKUM_TRAINEE — a facet usa CÓDIGOS numéricos; o label `Praktikum` retorna 0) e **EURES** (body `keywords=[{"keyword": "Praktikum", "specificSearchCode": "EVERYWHERE"}]` — shape de OBJETOS; strings são rejeitadas com 400) com o filtro de estágio NATIVO de cada fonte, cap de 200 jobs/fonte/run, páginas sequenciais e timeout curto (rate limit conservador para serviços públicos). **Default: LIGADO no modo `--registry`**, DESLIGADO no `--companies` explícito. Falha de fonte NUNCA derruba o run (degradação graciosa: registro `type: direct_fetch` com status ok/partial/failed por fonte; exit code inalterado). A MESMA vaga no dataset e no direct colapsa no dedup pela URL. Jobs direct NÃO entram no lifecycle SQLite (fonte efêmera). Ver `docs/f4_ba_eures.md` |
+| `--direct-fetch-max-jobs N` | Limite de jobs POR FONTE (BA, EURES) por run do estágio direct_fetch (default 200 — o principal medidor de rate limit junto com 1 fetch/dia e páginas sequenciais) |
 | `--metrics PATH` | JSONL de metricas da execucao (modo coleta; default: `data/collection_metrics.jsonl`) |
 | `--sqlite PATH` | modo coleta: persiste o historico de cada vaga (`first_seen`/`last_seen`/`active`/`archived`) em banco `sqlite3` na PATH (default: desligado). **P1.2**: o lifecycle (archive de nao-vistos) e atualizado POR UNIDADE de coleta confiavel `(company, source)` — empresas/tenants com timeout/erro/not_found nao tem vagas arquivadas (ausencia observada != ausencia por falha de coleta) |
 | `--health [PATH]` | modo health (unico quando presente): relatorio JSON por tenant/ATS sobre o JSONL de metricas + alertas; arquivo inexistente -> erro no stderr e exit != 0 |
@@ -582,8 +584,11 @@ sao candidatos nesta fase — apenas o contador observacional
   careers URL, smartrecruiters pelo primeiro segmento do path
   (`jobs.smartrecruiters.com/<slug>/...`), personio pelo label do host
   (`<tenant>.jobs.personio.<tld>`), eightfold pelo hostname. Nao derivavel
-  -> `unsupported_no_detail` (vaga preservada, contada). Bundesagentur
-  (0% description no dataset) fica aqui — honesto e documentado.
+  -> `unsupported_no_detail` (vaga preservada, contada). **F4 (02/10)**:
+  `sf_dataset:bundesagentur` e `sf_dataset:eures` (e os `direct:*`) agora
+  HIDRATAM — scrapers single-source ignoram `company_slug`, o mapa usa um
+  stub fixo (`_SINGLE_SOURCE_ATS`); a BA via detail v4 (a fatia tem 0%
+  description; probe real 3/3 refnrs hidrataram com 2.248–6.740 chars).
 - **Softgarden** e a excecao resolvida na COLETA: o feed ja embute a
   description completa sem custo adicional de requests, entao
   `collect_company` forca `include_descriptions=True` SO para softgarden

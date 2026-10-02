@@ -173,11 +173,13 @@ def test_cli_bridge() -> None:
         return _collect(name, **kw)
 
     # (a) --registry restrita a subconjunto via --companies, na ordem informada
-    # (F3: --no-dataset nos cenarios de coleta do teste — o estagio dataset
-    # e rede/IO real (18 GB de fatias); o teste trava a coleta REGISTRY,
-    # o dataset tem suite propria (test_f3).)
+    # (F3/F4: --no-dataset/--no-direct-fetch nos cenarios de coleta do teste
+    # — o estagio dataset e rede/IO real (18 GB de fatias) e o direct_fetch
+    # e rede real (APIs publicas); o teste trava a coleta REGISTRY, as
+    # fontes novas tem suites proprias (test_f3/test_f4).)
     with patch.object(cli, "collect_company", side_effect=_collect_track):
         rc = cli.main(["--registry", "--companies", "SAP,Bosch", "--no-dataset",
+                       "--no-direct-fetch",
                        "--output", f"{tmp}/j1.json",
                        "--filter-output", f"{tmp}/e1.json",
                        "--metrics", metrics])
@@ -189,7 +191,7 @@ def test_cli_bridge() -> None:
     # (b) --registry sem --companies usa TODAS as ENABLED (101)
     called.clear()
     with patch.object(cli, "collect_company", side_effect=_collect_track):
-        rc = cli.main(["--registry", "--no-dataset",
+        rc = cli.main(["--registry", "--no-dataset", "--no-direct-fetch",
                        "--output", f"{tmp}/j2.json",
                        "--filter-output", f"{tmp}/e2.json",
                        "--metrics", f"{tmp}/m2.jsonl"])
