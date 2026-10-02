@@ -497,6 +497,8 @@ Flags do CLI:
 | `--hydrate-descriptions` / `--no-hydrate-descriptions` | **Hidratacao seletiva (Fase A)**: preenche a description AUSENTE das vagas ELEGIVEIS via detail-fetch do `ats-scrapers`, entre dedup e ranking (default: ligado; best-effort — falha por vaga nao derruba o run nem muda exit codes). Diferente de `--include-descriptions`, que busca descricao por vaga durante a COLETA inteira (bulk, mais lento) |
 | `--official-page` / `--no-official-page` | **Official page enrichment (Fase D)**: UM GET por vaga candidata (description ausente/teaser OU sem deadline OU sem salary) busca JSON-LD `JobPosting` na pagina oficial e registra evidencia estruturada em `job.official_page` (validThrough/baseSalary/employmentType/jobLocation/description), pos-hidratacao e pre-ranking (**default: DESLIGADO desde F1 01/10** — cookie-wall/JS-render tornaram o estagio sem retorno, ver `docs/fase_f1_dead_components.md`; best-effort; sem LLM/browser). `--official-page` liga sob demanda. Description teaser pode ser substituida pela do JobPosting (`description_source=official_page_jsonld`); salario so preenche quando o ATS nao tem nenhum; validThrough/identifier sao evidencia, nunca deadline/external_id canonico |
 | `--official-page-limit N` | Limite de vagas por execucao do official-page enrichment (default: 150, cortadas por prioridade: sem description > teaser > sem deadline > sem salary; `0` = sem limite) |
+| `--dataset` / `--no-dataset` | **Fonte sf_dataset (F3)**: coleta TAMBEM do dataset hospedado do ats-scrapers (manifest público, 63 fatias, prefilter DE+estágio em streaming ANTES de materializar — ~21,6k rows de 5,1M) e concatena com os jobs do registry no MESMO funil filtros→dedup→ranking. **Default: LIGADO no modo `--registry`** (inversão arquitetural: dataset é fonte primária, registry é lista de interesse no ranking), **DESLIGADO no `--companies` explícito**. Falha do dataset NUNCA derruba o run (best-effort: registro `type: dataset` com status; exit code segue o da coleta do registry). Jobs do dataset NÃO entram no lifecycle SQLite (fonte efêmera re-derivada a cada run). Ver `docs/f3_sf_dataset.md` |
+| `--dataset-budget-secs N` | Teto total do estágio dataset em segundos, checado ENTRE fatias (default 1800); estourado, as fatias restantes viram `skipped_budget` e o run segue |
 | `--metrics PATH` | JSONL de metricas da execucao (modo coleta; default: `data/collection_metrics.jsonl`) |
 | `--sqlite PATH` | modo coleta: persiste o historico de cada vaga (`first_seen`/`last_seen`/`active`/`archived`) em banco `sqlite3` na PATH (default: desligado). **P1.2**: o lifecycle (archive de nao-vistos) e atualizado POR UNIDADE de coleta confiavel `(company, source)` — empresas/tenants com timeout/erro/not_found nao tem vagas arquivadas (ausencia observada != ausencia por falha de coleta) |
 | `--health [PATH]` | modo health (unico quando presente): relatorio JSON por tenant/ATS sobre o JSONL de metricas + alertas; arquivo inexistente -> erro no stderr e exit != 0 |
@@ -574,6 +576,14 @@ sao candidatos nesta fase — apenas o contador observacional
   **smartrecruiters, workday, eightfold, personio**. O scraper e construido
   por vaga a partir do `source` (slug do tenant; Workday usa a careers URL
   derivada da `job.url`).
+- **F3 (jobs do dataset)**: jobs `sf_dataset:<ats>` carregam o ATS puro no
+  source (sem slug) — o ATS efetivo e o SUFIXO (`_effective_ats`) e o slug
+  de hidratacao e DERIVADO DA URL da vaga (`_slug_from_url`): workday pela
+  careers URL, smartrecruiters pelo primeiro segmento do path
+  (`jobs.smartrecruiters.com/<slug>/...`), personio pelo label do host
+  (`<tenant>.jobs.personio.<tld>`), eightfold pelo hostname. Nao derivavel
+  -> `unsupported_no_detail` (vaga preservada, contada). Bundesagentur
+  (0% description no dataset) fica aqui — honesto e documentado.
 - **Softgarden** e a excecao resolvida na COLETA: o feed ja embute a
   description completa sem custo adicional de requests, entao
   `collect_company` forca `include_descriptions=True` SO para softgarden
@@ -620,7 +630,14 @@ deduplicado). A pagina publica (`index.html`) tem um seletor de perfil
 diario do Telegram ganhou a secao "Perfil Materials Engineering" (Top 5 +
 novas no Top 30 Materials).
 
-Score = `area + skills + language + type + location + penalties`:
+Score = `area + skills + language + type + location + penalties + registry`:
+
+- **registry** (F3, lista de interesse): `+1.0`
+  (`WEIGHT_REGISTRY_INTEREST`) quando a empresa da vaga bate com um nome
+  canonico do CompanyRegistry (casefold exato OU substring — o dataset
+  hospedado traz nomes legais: "Robert Bosch GmbH" contem "bosch"). NAO e
+  filtro de elegibilidade: vaga de empresa FORA do registry entra no
+  eligible normalmente, so sem o desempate. Aditivo e deterministico.
 
 | Componente | Peso | Fonte |
 | --- | --- | --- |

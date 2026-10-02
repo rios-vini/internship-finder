@@ -326,13 +326,23 @@ def disk_usage_pct(path: Path) -> int | None:
 def collection_command(timeout: float) -> list[str]:
     """Linha de comando da coleta real (subprocesso, cwd = raiz do repo).
 
+    ``--registry``: coleta das empresas do registry (fonte de interesse).
+    ``--dataset`` (F3): coleta TAMBEM do dataset hospedado do ats-scrapers
+    (fonte primaria) e concatena no MESMO funil. Passado EXPLICITAMENTE —
+    apesar de ser o default do modo --registry — para o contrato do refresh
+    ficar visivel na linha de comando do subprocesso (o cron nao passa
+    flags de coleta; este comando e a unica porta de entrada).
     ``--sqlite data/jobs.db``: persistencia first_seen/last_seen/active/
     archived (P1 #5); a flag e idempotente e falha de escrita nunca derruba
-    a coleta. O ``jobs.db`` nao e rotacionado (historico acumulativo).
+    a coleta. O ``jobs.db`` nao e rotacionado (historico acumulativo). Os
+    jobs do dataset NAO entram no lifecycle (invariante F3 §7.8): sao fonte
+    efemera re-derivada a cada run; so as unidades de coleta do registry
+    persistem.
     """
     return [
         sys.executable, "-m", "internship_finder.cli",
         "--registry",
+        "--dataset",
         "--timeout", str(timeout),
         "--sqlite", "data/jobs.db",
     ]

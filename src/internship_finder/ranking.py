@@ -6,6 +6,13 @@ ingles essencial; Alemanha). Heuristica deterministica, sem ML.
 
 Componentes do score (``score_job`` -> ``Score.total`` + ``breakdown``):
 
+- **registry** — F3: o registry de 101 empresas vira LISTA DE INTERESSE:
+    ``+WEIGHT_REGISTRY_INTEREST`` quando a empresa da vaga bate com um nome
+    canonico do registry (casefold exato OU substring — "Robert Bosch GmbH"
+    contem "bosch"). NAO e filtro: vaga fora do registry entra no eligible
+    normalmente, so sem o desempate. Todos os demais componentes abaixo
+    seguem INALTERADOS para qualquer vaga (invariante F3 §7.1: o unico
+    delta permitido no ranking e este componente novo, aditivo).
 - **area** — reusa ``filters.area_score``, mas so a parte do TITULO
   (``AREA_TITLE_WEIGHT``). A area vinda da DESCRICAO e multiplicada por
   ``AREA_DESC_WEIGHT``, calibrado em **0.0** no conjunto real (13.482 brutas):
@@ -66,6 +73,7 @@ from internship_finder.filters import (
     area_score,
     infer_country_iso,
 )
+from internship_finder.registry import CompanyRegistry
 
 # ---------------------------------------------------------------------------
 # Pesos (constantes de modulo — ajuste facil)
@@ -75,9 +83,6 @@ WEIGHT_AREA_TITLE = 2.0  # area do TITULO (filters.area_score, so titulo)
 WEIGHT_AREA_DESC = 0.0  # area da DESCRICAO (calibrado: 0 — ruido dos templates)
 WEIGHT_SKILL = 0.75  # por competencia do perfil na descricao
 WEIGHT_LANG_EN = 1.5  # ingles essencial (qualquer evidencia no titulo/descricao)
-# Alemao (Fase 6): o SCORE agora penaliza a EXIGENCIA, em vez de bonificar a
-# mencao. Niveis classificados por app_intel.german_level (texto do anuncio,
-# nunca o idioma em que foi escrito): required / preferred / plus / none.
 PENALTY_LANG_DE_REQUIRED = -2.0  # "German required", "fließende Deutschkenntnisse"...
 PENALTY_LANG_DE_PREFERRED = -0.5  # "German preferred", "von Vorteil", par sem nivel
 WEIGHT_TYPE_TITLE = 1.0  # marcador forte de tipo no TITULO
@@ -86,6 +91,17 @@ WEIGHT_DE_CAPITAL = 0.5  # Berlin (capital alema)
 PENALTY_SENIOR = -3.0  # senior/director/head/principal (forte)
 PENALTY_MANAGER = -1.0  # "manager" suave (protegido por marcador forte de tipo)
 PENALTY_FULL_TIME = -0.5  # suave: Werkstudent/Praktikum marcados FULL_TIME
+
+# F3 — registry como LISTA DE INTERESSE (componente novo no Score.breakdown).
+# O registry deixa de ser filtro de existencia: vaga de empresa FORA do
+# registry entra no eligible normalmente e so perde o desempate. Match:
+# ``Job.company`` casefold == nome canonico do registry OU nome do registry
+# e SUBSTRING do company do job (casefold) - o dataset traz nomes legais
+# ("Robert Bosch GmbH" vs registry "Bosch", "MAHLE International GmbH" vs
+# "Mahle"). Substring casefold: FN barato > FP caro (um "Bosch" matcheia
+# "Robert Bosch GmbH"; FP tipo "Bosch" dentro de outro nome e raro e
+# benigno). NAO e filtro: todos os jobs entram, so com -1.0 relativo.
+WEIGHT_REGISTRY_INTEREST = 1.0
 
 # Frases de PRODUTO que contem termos de area ("Analytics" em "SAP Analytics
 # Cloud"). O termo e do NOME DO PRODUTO, nao da funcao da vaga: nao deve
@@ -143,6 +159,48 @@ class Score:
 
     total: float
     breakdown: dict[str, float]
+
+
+# -----------------------------------------------------------------------
+# Registry como lista de interesse (F3) — lazy singleton
+# -----------------------------------------------------------------------
+
+# Nomes canonicos do registry (casefold), computados UMA vez por processo
+# a partir de ``CompanyRegistry().entries`` (nomes canonicos de coleta —
+# a MESMA fonte de verdade da coleta; sem segunda lista).
+_registry_names_cache: list[str] | None = None
+
+
+def _registry_name_set() -> list[str]:
+    """Nomes canonicos do registry, casefold (lazy singleton)."""
+    global _registry_names_cache
+    if _registry_names_cache is None:
+        _registry_names_cache = [
+            e.name.strip().casefold()
+            for e in CompanyRegistry().entries
+            if e.name and e.name.strip()
+        ]
+    return _registry_names_cache
+
+
+def registry_interest(company: str | None) -> float:
+    """Componente ``registry`` do score: ``WEIGHT_REGISTRY_INTEREST`` quando a
+    empresa da vaga e do registry (lista de interesse), ``0.0`` caso contrario.
+
+    Match: company casefold == nome canonico OU nome canonico SUBSTRING do
+    company (casefold) — cobre os nomes legais do dataset ("Robert Bosch
+    GmbH" vs registry "Bosch"). FN barato > FP caro (decisao F3 §4.2). NAO e
+    filtro de elegibilidade — e um peso aditivo e deterministico.
+    """
+    if not company:
+        return 0.0
+    folded = str(company).strip().casefold()
+    if not folded:
+        return 0.0
+    for name in _registry_name_set():
+        if name and (name == folded or name in folded):
+            return WEIGHT_REGISTRY_INTEREST
+    return 0.0
 
 
 def _matches_any(patterns: list[str], text: str) -> bool:
@@ -260,6 +318,7 @@ def score_job(job: dict[str, Any] | Any) -> Score:
     )
     location = _location_score(d)
     penalties = _penalty_score(title.lower(), d.get("employment_type"))
+    registry = registry_interest(d.get("company"))
 
     breakdown = {
         "area": round(area, 2),
@@ -268,6 +327,7 @@ def score_job(job: dict[str, Any] | Any) -> Score:
         "type": round(type_bonus, 2),
         "location": round(location, 2),
         "penalties": round(penalties, 2),
+        "registry": round(registry, 2),
     }
     total = round(sum(breakdown.values()), 2)
     return Score(total=total, breakdown=breakdown)
