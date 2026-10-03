@@ -1345,6 +1345,20 @@ def _row_html(
     # Fase 7 — Opportunity Intelligence: bloco recolhivel por vaga + data-
     # attributes para o Compare opportunities (sempre dados, nunca vencedor).
     opp_details = _opportunity_html(job, opp) if opp else ""
+    # F5 — sinal visa_friendly da EMPRESA (curado): badge visual + filtro.
+    # Prioridade de fonte: o campo no job (derivado no pipeline pela F5,
+    # presente no eligible_jobs.json); fallback re-deriva do opp_map quando o
+    # job veio de JSON antigo sem o campo (retrocompat de snapshots).
+    if "visa_friendly" in job:
+        vf = bool(job.get("visa_friendly"))
+    else:
+        vf = opportunity_intel.visa_friendly((opp or {}).get("company")) if opp else False
+    vf_badge = (
+        '<span class="badge-vf" title="Empresa com política/programa de visto '
+        '(visa_policy: explicit_support ou unclear — arquivo curado company_intel)">'
+        "🛂 visa friendly</span>"
+    ) if vf else ""
+    d_vf = "1" if vf else ""
     # Atributos de dados para o JS client-side (escapados para atributo).
     d_title = _attr(job.get("title") or "")
     d_company = _attr(job.get("company") or "")
@@ -1405,6 +1419,7 @@ def _row_html(
         f' data-flags="{d_flags}"'
         f' data-ready="{d_ready}"'
         f' data-top="{d_top}"'
+        f' data-vf="{d_vf}"'
         f' data-salary="{d_salary}"'
         f' data-salary-period="{d_salary_period}"'
         f' data-mode="{d_mode}"'
@@ -1419,7 +1434,7 @@ def _row_html(
         f' data-url="{d_url}">'
         f'<td class="score" data-label="#">{rank}</td>'
         f'<td class="score" data-label="score">{_fmt_score(score)}</td>'
-        f"<td data-label=\"vaga\">{compare_box}{link}{badge}{chips}{intel_details}{enr_details}{opp_details}{_details_html(job, breakdown_key=breakdown_key, order=order)}</td>"
+        f"<td data-label=\"vaga\">{compare_box}{link}{badge}{vf_badge}{chips}{intel_details}{enr_details}{opp_details}{_details_html(job, breakdown_key=breakdown_key, order=order)}</td>"
         f'<td data-label="empresa">{company}</td>'
         f'<td class="loc" data-label="local">{location}</td>'
         f'<td data-label="tipo">{type_txt}</td>'
@@ -1494,6 +1509,7 @@ _CSS = """
   a { color:var(--acc); text-decoration:none; }
   a:hover { text-decoration:underline; }
   .badge-top { display:inline-block; font-size:.66rem; font-weight:700; background:#0b6bcb; color:#fff; border-radius:999px; padding:1px 8px; margin-left:6px; vertical-align:20%; letter-spacing:.03em; }
+  .badge-vf { display:inline-block; font-size:.66rem; font-weight:700; background:#16301f; color:#9fd8b4; border:1px solid #2c5c3e; border-radius:999px; padding:1px 8px; margin-left:6px; vertical-align:20%; letter-spacing:.03em; }
   /* Fase 5: camada PT-BR — titulo derivado + original rotulado */
   .t-pt { font-weight:600; line-height:1.35; }
   .t-og { margin-top:3px; font-size:.85rem; color:#3d4c5c; line-height:1.35; }
@@ -1696,6 +1712,10 @@ function if_match(row, st) {
   }
   if (st.top30 && row.top !== '1') return false;
   if (st.flags && !((parseFloat(row.flags) || 0) > 0)) return false;
+  /* F5: visa friendly (EMPRESA) — badge/flag derivado do visa_policy curado
+     (explicit_support/unclear), NAO do texto da vaga. Vagas sem o sinal
+     (data-vf vazio) nao casam o filtro — o mesmo comportamento do top30. */
+  if (st.vf && row.vf !== '1') return false;
   return true;
 }
 function if_sorter(key) {
@@ -1742,11 +1762,11 @@ function if_filter_sort(rows, st, sortKey) {
                type: d.type, country: d.country, score: d.score,
                rank: d.rank, date: d.date,
                deadline: d.deadline, wa: d.wa, lang: d.lang, en: d.en,
-               flags: d.flags, top: d.top, ready: d.ready };
+               flags: d.flags, top: d.top, ready: d.ready, vf: d.vf };
     });
   }
   var ids = ['q', 'f-company', 'f-location', 'f-type', 'f-country', 'f-min-score',
-             'f-deadline', 'f-wa', 'f-lang', 'f-top30', 'f-flags',
+             'f-deadline', 'f-wa', 'f-lang', 'f-top30', 'f-flags', 'f-vf',
              'sort', 'count', 'clear', 'f-badge'];
   var els = {};
   ids.forEach(function (id) { els[id] = document.getElementById(id); });
@@ -1795,7 +1815,8 @@ function if_filter_sort(rows, st, sortKey) {
       wa: els['f-wa'] ? els['f-wa'].value : '',
       lang: els['f-lang'] ? els['f-lang'].value : '',
       top30: els['f-top30'] ? els['f-top30'].checked : false,
-      flags: els['f-flags'] ? els['f-flags'].checked : false
+      flags: els['f-flags'] ? els['f-flags'].checked : false,
+      vf: els['f-vf'] ? els['f-vf'].checked : false
     };
   }
   function badgeCount() {
@@ -1805,7 +1826,7 @@ function if_filter_sort(rows, st, sortKey) {
      'f-deadline', 'f-wa', 'f-lang'].forEach(function (id) {
       if (els[id] && els[id].value) n++;
     });
-    ['f-top30', 'f-flags'].forEach(function (id) {
+    ['f-top30', 'f-flags', 'f-vf'].forEach(function (id) {
       if (els[id] && els[id].checked) n++;
     });
     return n;
@@ -1846,6 +1867,7 @@ function if_filter_sort(rows, st, sortKey) {
     });
     if (els['f-top30']) els['f-top30'].checked = false;
     if (els['f-flags']) els['f-flags'].checked = false;
+    if (els['f-vf']) els['f-vf'].checked = false;
     if (els.q) els.q.value = '';
     if (els['f-min-score']) els['f-min-score'].value = '';
     els.sort.value = 'score-desc';
@@ -1863,6 +1885,7 @@ function if_filter_sort(rows, st, sortKey) {
   wire('f-lang', 'change');
   wire('f-top30', 'change');
   wire('f-flags', 'change');
+  wire('f-vf', 'change');
   wire('sort', 'change');
   if (els.clear) {
     els.clear.addEventListener('click', function () {
@@ -1874,6 +1897,7 @@ function if_filter_sort(rows, st, sortKey) {
       });
       if (els['f-top30']) els['f-top30'].checked = false;
       if (els['f-flags']) els['f-flags'].checked = false;
+      if (els['f-vf']) els['f-vf'].checked = false;
       apply();
     });
   }
@@ -2119,6 +2143,8 @@ def _filters_panel_html(expiring_note: str) -> str:
         'id="f-top30"> Top 30 (perfil ativo)</label></span>'
         '<span class="fld"><label class="chk"><input type="checkbox" '
         'id="f-flags"> com quality flags</label></span>'
+        '<span class="fld"><label class="chk"><input type="checkbox" '
+        'id="f-vf"> 🛂 visa friendly (empresa)</label></span>'
         "</div>"
         f'<p class="hint">{html.escape(expiring_note)}</p>'
         '<button type="button" id="clear">limpar filtros</button>'

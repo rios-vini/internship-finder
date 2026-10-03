@@ -80,7 +80,16 @@ from internship_finder.registry import CompanyRegistry
 # ---------------------------------------------------------------------------
 
 WEIGHT_AREA_TITLE = 2.0  # area do TITULO (filters.area_score, so titulo)
-WEIGHT_AREA_DESC = 0.0  # area da DESCRICAO (calibrado: 0 — ruido dos templates)
+# F5 (03/10): experimento offline nos 29 pares benchmark-x-snapshot atual
+# (benchmarks/ranking_benchmark_v1.json x eligible 478; ver relatorio F5
+# §experimento): W in {0.25, 0.5, 1.0} — tau +0.712 -> +0.732 (so W=1.0),
+# gap elite-bad +6.26 -> +7.10 (as duas classes sobem JUNTAS — o sinal nao
+# discrimina), drift top-10 = 1 permuta boa<->boa, inversoes elite-bad 3->2.
+# Evidencia FRACA a favor de W>0 num N=29 dominado por vagas do proprio
+# perfil (dados/supply) — o FP original da calibracao (Marketing citando
+# "data" no template) NAO esta na amostra (churn). Mantem 0.0: calibracao
+# original em 13.482 brutas > experimento em 29; honestidade > completude.
+WEIGHT_AREA_DESC = 0.0  # area da DESCRICAO (mantido: 0 — experimento F5 nao autoriza mudanca)
 WEIGHT_SKILL = 0.75  # por competencia do perfil na descricao
 WEIGHT_LANG_EN = 1.5  # ingles essencial (qualquer evidencia no titulo/descricao)
 PENALTY_LANG_DE_REQUIRED = -2.0  # "German required", "fließende Deutschkenntnisse"...

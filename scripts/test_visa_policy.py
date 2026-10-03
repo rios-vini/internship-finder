@@ -92,43 +92,58 @@ def test_states() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. Arquivo curado: 12 empresas, 10 not_verified + 2 unclear com fonte
+# 2. Arquivo curado: regras paramétricas (F5: 12 → 16 empresas; contagens
+#    exatas deram lugar a INVARIANTES que valem para qualquer curadoria)
 # ---------------------------------------------------------------------------
 
 
 def test_curated_file() -> None:
-    print("== arquivo curado: 12 empresas (2 unclear c/ fonte, 10 not_verified) ==")
+    print("== arquivo curado: invariantes paramétricas (F5) ==")
     ci = ROOT / "company_intel" / "company_intelligence.json"
     if not ci.exists():
         check("arquivo curado presente", False)
         return
     m = oi.load_company_intel(ci)
     # dedup por entrada (aliases apontam para a MESMA entrada)
-    entries = {id(v): v for v in m.values()}.values()
-    entries = list(entries)
-    check("12 empresas curadas", len(entries) == 12)
+    entries = list({id(v): v for v in m.values()}.values())
+    check("≥12 empresas curadas (F5 expandiu: 16)", len(entries) >= 12)
     by_state: dict[str, int] = {}
     for e in entries:
         st = str(e.get("visa_policy") or "sem_campo")
         by_state[st] = by_state.get(st, 0) + 1
-    check("10 not_verified", by_state.get("not_verified") == 10)
-    check("2 unclear", by_state.get("unclear") == 2)
-    # as 2 unclear têm fonte válida em sources_for.visa_policy
-    for e in entries:
-        if e.get("visa_policy") == "unclear":
-            vp = (e.get("sources_for") or {}).get("visa_policy")
-            ok = (isinstance(vp, list) and vp
-                  and vp[0].get("url", "").startswith("http")
-                  and vp[0].get("quality") in oi.SOURCE_QUALITIES
-                  and vp[0].get("checked"))
-            check(f"fonte visa_policy válida ({e['company']})", bool(ok))
+    check("todas em VISA_POLICY_STATES",
+          set(by_state) <= set(oi.VISA_POLICY_STATES))
+    check("≥2 unclear com fonte (SAP+Bosch pré-F5; +BASF F5)",
+          by_state.get("unclear", 0) >= 2)
+    # TODAS as empresas em estado VERIFICADO (≠ not_verified) têm fonte válida
+    # em sources_for.visa_policy — regra da auditoria item 11: estado só
+    # existe com rastreabilidade (url http + quality + checked).
+    verified = [e for e in entries
+                if e.get("visa_policy") not in (None, "not_verified")]
+    check("há estados verificados (unclear/candidate_must_...)",
+          len(verified) >= 3)
+    for e in verified:
+        vp = (e.get("sources_for") or {}).get("visa_policy")
+        ok = (isinstance(vp, list) and vp
+              and vp[0].get("url", "").startswith("http")
+              and vp[0].get("quality") in oi.SOURCE_QUALITIES
+              and vp[0].get("checked"))
+        check(f"fonte visa_policy válida ({e['company']})", bool(ok))
     # nenhuma promoted além do curado
     check("nenhuma explicit_support (curadoria honesta)",
           by_state.get("explicit_support") is None)
-    # as 10 not_verified têm nota de rastreabilidade
-    notes = [e for e in entries if e.get("visa_policy") == "not_verified"
-             and e.get("visa_policy_note")]
-    check("10 not_verified com visa_policy_note", len(notes) == 10)
+    # TODAS as not_verified têm nota de rastreabilidade
+    nv = [e for e in entries if e.get("visa_policy") == "not_verified"]
+    notes = [e for e in nv if e.get("visa_policy_note")]
+    check("todas not_verified com visa_policy_note",
+          len(notes) > 0 and len(notes) == len(nv))
+    # F5: derivação visa_friendly — TODAS as unclear são visa_friendly,
+    # TODAS as must_have_authorization e not_verified NÃO são (o filtro
+    # "suporta non-EU" do HTML lê ESTE sinal, não o texto da vaga).
+    for e in entries:
+        want = e.get("visa_policy") in oi.VISA_FRIENDLY_STATES
+        check(f"visa_friendly consistente ({e['company']})",
+              oi.visa_friendly(e) == want)
 
 
 # ---------------------------------------------------------------------------

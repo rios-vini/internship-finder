@@ -54,6 +54,18 @@ collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
 `eligible` e o conceito final da cascata (passou em tipo + area + pais);
 **best matches = TOP N do ranked** (sem entidade/camada nova):
 
+**F5 — sinal `visa_friendly` (03/10)**: apos o ranking, cada vaga ganha o
+campo booleano `visa_friendly` (JSON + ultima coluna do CSV): `true` quando a
+EMPRESA tem `visa_policy` curada ∈ {`explicit_support`, `unclear`} no
+`company_intel/company_intelligence.json` (16 empresas; SAP/Bosch/BASF =
+unclear com fonte oficial). E um SINAI DE EMPRESA (nunca do texto da vaga) e
+NAO entra no score de relevancia — na pagina publica vira badge 🛂 e filtro
+"visa friendly" (o filtro "suporta non-EU" antigo dependia do enrichment
+desligado e retornava 0 vagas; agora le este campo). Empresas com
+`candidate_must_have_authorization` (Volkswagen, Mercedes-Benz, Siemens —
+exigem work permit propria do candidato) sao honestamente `false`. Ver
+`docs/f5_visa_dedup_ranking.md`.
+
 > **Nota (dados)**: `data/` e gitignored e local — os numeros abaixo sao
 > documentacao de coleta, nao arquivos versionados. O default
 > (`data/eligible_jobs.json`/`.csv`) grava localmente; para validacao sem

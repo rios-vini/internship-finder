@@ -70,6 +70,11 @@ from internship_finder.official_page import (
     print_official_page_report,
 )
 from internship_finder.models.job import Job, normalize_job_dict
+from internship_finder.opportunity_intel import (
+    company_intel_for,
+    load_company_intel,
+    visa_friendly,
+)
 from internship_finder.ranking import rank_jobs
 from internship_finder.registry import (
     CompanyRegistry,
@@ -98,6 +103,11 @@ CSV_COLUMNS = [
     "application_deadline",
     "collected_at",
     "score",
+    # F5 — sinal visa_friendly da EMPRESA (visa_policy curada ∈
+    # {explicit_support, unclear}); aditivo no fim do contrato. NAO entra no
+    # score (regra de independencia). ``extrasaction="ignore"`` mantem
+    # compat para dicts sem o campo.
+    "visa_friendly",
 ]
 
 
@@ -173,6 +183,30 @@ def _dump_csv(fh: TextIO, rows: list[dict]) -> None:
     writer.writeheader()
     for row in rows:
         writer.writerow(row)
+
+
+def _apply_visa_friendly(jobs: list[dict]) -> int:
+    """F5: adiciona ``visa_friendly: bool`` a cada vaga (sinal de EMPRESA).
+
+    Deriva do arquivo CURADO ``company_intel/company_intelligence.json``
+    (mesma fonte do bloco Opportunity Intelligence da interface): empresa
+    com ``visa_policy_state`` ∈ {explicit_support, unclear} => True. Best
+    effort e aditivo — arquivo ausente/invalido deixa as vagas SEM o
+    campo (o CSV escreve vazio; a interface trata ausente como False);
+    nunca derruba o run, nunca altera score/ordem/eligibilidade.
+
+    Retorna o numero de vagas com visa_friendly=True (para log/metricas).
+    """
+    intel_map = load_company_intel()
+    if not intel_map:
+        return 0
+    n = 0
+    for job in jobs:
+        entry = company_intel_for(job, intel_map)
+        job["visa_friendly"] = visa_friendly(entry)
+        if job["visa_friendly"]:
+            n += 1
+    return n
 
 
 def save_outputs(jobs: list[Job] | list[dict], output: Path) -> None:
@@ -373,6 +407,14 @@ def run_filter_pipeline(
         official_page_stats = None
     if rank:
         selected = rank_jobs(selected)
+    # F5 — sinal visa_friendly (empresa): apos o ranking (aditivo; nunca
+    # altera score/ordem), antes de gravar JSON/CSV. Best-effort.
+    visa_friendly_count = _apply_visa_friendly(selected)
+    if visa_friendly_count:
+        print(
+            f"=== visa_friendly: {visa_friendly_count} vagas de empresas com "
+            "política/programa de visto (visa_policy ∈ {explicit_support, unclear}) ==="
+        )
     print(f"\n=== {len(selected)} vagas eligible{', ranqueadas por perfil' if rank else ''} ===")
     if rank:
         print_ranking(selected)
