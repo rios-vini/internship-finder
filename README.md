@@ -66,6 +66,23 @@ desligado e retornava 0 vagas; agora le este campo). Empresas com
 exigem work permit propria do candidato) sao honestamente `false`. Ver
 `docs/f5_visa_dedup_ranking.md`.
 
+**F6 — pagina publica MINIMA + Telegram top-5 (03/10)**: o `index.html`
+publicado em GitHub Pages passa a ser gerado por
+`scripts/minimal_page.py` (novo) em vez da `interface.py` completa — o HTML
+tinha chegado a **9,5 MB** (crescia a cada run com TODAS as vagas +
+breakdowns/fit/intel por vaga; nao abria direito no celular) e passa a ~40 KB
+fixos: top-50 do dia, um card compacto por vaga (titulo, empresa, local,
+score, link de candidatura, badge 🛂 `visa_friendly`, salario quando citado),
+dark mode, CSS inline, vanilla JS minimo (busca + filtro visa-friendly).
+Campos MORTOS fora do template: `application_deadline` (validade do FEED,
+F1), `official_page` (desligado, F1) e as secoes de intel que dependiam do
+enrichment LLM (cookie-walled). A mecanica de deploy NAO mudou (escrita
+atomica, `check_public_safe`, push so do `index.html`). O Telegram ganha a
+secao "⚡ Top 5 do dia (candidatura direta)" no digest existente do
+`--always-notify` — 1 linha por vaga (titulo — empresa — score — apply_url),
+funcao pura `ranking_digest.format_top5` com truncagem segura no limite de
+4096. JSON/CSV completos INTACTOS (base de dados, nao interface).
+
 > **Nota (dados)**: `data/` e gitignored e local — os numeros abaixo sao
 > documentacao de coleta, nao arquivos versionados. O default
 > (`data/eligible_jobs.json`/`.csv`) grava localmente; para validacao sem

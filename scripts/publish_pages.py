@@ -187,20 +187,28 @@ def ensure_deploy_clone(
 def render_ranking_html(
     root: Path, output_path: Path, *, top: int = PUBLIC_TOP, timeout: float = 300.0,
 ) -> str:
-    """Gera o HTML do ranking reusando ``scripts/interface.py`` (mesmo mecanismo).
+    """Gera o HTML do ranking publico (F6: pagina MÍNIMA mobile-first).
+
+    F6 substitui o render monolitico da ``interface.py`` (9,5 MB com todas
+    as vagas + breakdowns/fit/intel por vaga) pelo render mínimo do
+    ``scripts/minimal_page.py``: top-50 do dia, card compacto por vaga
+    (título, empresa, local, score, link de candidatura, badge 🛂
+    visa_friendly, salário quando citado), CSS inline escuro, ~40 KB.
+    Os campos mortos (``application_deadline`` = validade do FEED, ``official_page``,
+    intel de enrichment da Fase 3) não são renderizados; o badge visa_friendly
+    (F5) é preservado com fallback retrocompat do company_intel curado.
 
     O ``--input`` e o caminho RELATIVO ``data/eligible_jobs.json`` (com cwd na
-    raiz do repo), de proposito: o rotulo exibido na pagina ("data/
-    eligible_jobs.json (N vagas ranqueadas)") nao expoe caminho absoluto da
-    VPS. Retorna o texto gerado; o arquivo temporario de saida e removido.
+    raiz do repo), de proposito: nenhum caminho absoluto da VPS entra na
+    pagina. Retorna o texto gerado; o arquivo temporario de saida e removido.
     """
-    script = root / "scripts" / "interface.py"
+    script = root / "scripts" / "minimal_page.py"
     if not script.exists():
-        raise RuntimeError(f"scripts/interface.py nao encontrado em {root}")
+        raise RuntimeError(f"scripts/minimal_page.py nao encontrado em {root}")
     cmd = [
         sys.executable, str(script),
         "--input", "data/eligible_jobs.json",
-        "--top", str(top),
+        "--top", str(min(top, minimal_page_top())),
         "--output", str(output_path),
     ]
     env = {**os.environ, "PYTHONPATH": str(root / "src")}
@@ -212,12 +220,27 @@ def render_ranking_html(
         raise RuntimeError(f"geracao do HTML estourou o tempo ({timeout:.0f}s)") from exc
     if proc.returncode != 0:
         raise RuntimeError(
-            f"interface.py falhou (exit {proc.returncode}): "
+            f"minimal_page.py falhou (exit {proc.returncode}): "
             f"{(proc.stderr or proc.stdout).strip()}"
         )
     text = output_path.read_text(encoding="utf-8")
     output_path.unlink(missing_ok=True)
     return text
+
+
+def minimal_page_top() -> int:
+    """Teto de vagas da pagina publica (F6): o top do dia, nao o universo.
+
+    Chamadores antigos passavam ``top=PUBLIC_TOP`` (100000 = todas as
+    vagas); a pagina mínima mostra no maximo o top-50 (spec F6) — o JSON e
+    o CSV COMPLETOS continuam sendo gerados intocados pelo pipeline (sao a
+    base de dados, nao a interface).
+    """
+    try:
+        import minimal_page  # scripts/ vive no sys.path deste modulo
+        return minimal_page.PAGE_TOP
+    except ImportError:
+        return 50
 
 
 def publish_html(html: str, deploy_dir: Path, *, run_id: str, log=None) -> bool:
