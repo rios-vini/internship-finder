@@ -83,6 +83,28 @@ secao "⚡ Top 5 do dia (candidatura direta)" no digest existente do
 funcao pura `ranking_digest.format_top5` com truncagem segura no limite de
 4096. JSON/CSV completos INTACTOS (base de dados, nao interface).
 
+**F7 — expansao multi-paises LU+NL+FI+BE com visa_policy por pais (03/10)**:
+o filtro de pais ja aceitava lista ISO (`--country de,at,ch` desde P2 #12) —
+a F7 conecta isso a PRODUCAO. O prefilter do dataset (F3) e generalizado
+(`is_country_row(row, isos)`; default `("de",)` = retrocompat total) e a
+producao passa a coletar `TARGET_COUNTRIES = de,lu,nl,fi,be` via
+`collection_command` (`--country` explicito; crontab intocado). O EURES
+amplia `locationCodes` para os 5 paises (semantica OR medida ao vivo:
+41.594 = soma exata dos 5); a BA permanece DE (servico publico alemao).
+`infer_country_iso` reconhece os nomes LOCAIS dos alvos (belgien,
+niederlande, luxemburg, suomi...) — sem isso, rows aprovadas no prefilter
+morreriam no filtro final com ISO vazio. Curadoria `company_intelligence.json`
+16 → 36 entries com campo `country`: LU (Amazon EU, Deloitte, Deutsche
+Börse, Millicom, ArcelorMittal), NL (Philips, ASML, Nokia NL, KONE NL,
+ArcelorMittal NL — sponsors reconhecidos IND com numero de registro na
+fonte), FI (Nokia, KONE, Wärtsilä), BE (AB InBev, Solvay, Barco, Agfa, KBC,
+UCB, Bekaert — AB InBev `candidate_must_have_authorization`: exige work
+permit permanente valida, citacao literal). O sinal `visa_friendly` (F5) e
+o MESMO por empresa — nada recriado; a pagina minima mostra bandeira+ISO no
+card quando a vaga nao e DE e o digest top-5 ganha a bandeira na linha.
+DE continua o alvo PRIMARIO (~85% do volume); LU/NL/FI/BE sao canal
+secundario no output.
+
 > **Nota (dados)**: `data/` e gitignored e local — os numeros abaixo sao
 > documentacao de coleta, nao arquivos versionados. O default
 > (`data/eligible_jobs.json`/`.csv`) grava localmente; para validacao sem

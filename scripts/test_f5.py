@@ -426,21 +426,35 @@ def test_weight_area_desc() -> None:
 
 
 def test_curadoria_f5() -> None:
-    section("F5.8 curadoria expandida: 16 empresas, estados honestos, fontes")
+    section("F5.8 curadoria: invariantes paramétricas (F7 expandiu 16 → 36; "
+            "contagens exatas deram lugar a REGRAS — mesma evolução do "
+            "test_visa_policy na F5)")
     ci = ROOT / "company_intel" / "company_intelligence.json"
     m = oi.load_company_intel(ci)
     entries = list({id(v): v for v in m.values()}.values())
-    check("16 empresas curadas (12 + VW/BASF/Allianz/Telekom/Mercedes/Siemens)",
-          len(entries) == 16)
+    # F5 adicionou 4 (VW/BASF/Allianz/Telekom/Mercedes/Siemens sobre as 12);
+    # F7 expandiu para LU/NL/FI/BE — o arquivo cresce com a curadoria.
+    check("≥16 empresas curadas (F5: 16; F7: 36)",
+          len(entries) >= 16)
     states = {}
     for e in entries:
         states[e.get("visa_policy")] = states.get(e.get("visa_policy"), 0) + 1
-    check("3 unclear (SAP, Bosch, BASF)", states.get("unclear") == 3)
-    check("3 candidate_must_have_authorization (VW, Mercedes, Siemens)",
-          states.get("candidate_must_have_authorization") == 3)
-    check("10 not_verified", states.get("not_verified") == 10)
+    # F5 (histórico): 3 unclear (SAP, Bosch, BASF) + 3 must_have (VW,
+    # Mercedes, Siemens) + 10 not_verified. F7 adicionou unclear/not_verified
+    # de outros países — as contagens SÓ PODEM CRESCER (regra paramétrica).
+    check("≥3 unclear (SAP, Bosch, BASF da F5)",
+          states.get("unclear", 0) >= 3)
+    check("≥3 candidate_must_have_authorization (VW, Mercedes, Siemens da F5)",
+          states.get("candidate_must_have_authorization", 0) >= 3)
+    check("≥10 not_verified", states.get("not_verified", 0) >= 10)
     check("0 explicit_support (honestidade: nenhuma declaração incondicional)",
           states.get("explicit_support") is None)
+    # F7: todas as entries têm campo country (16 'de' + novas por país)
+    check("campo country presente em TODAS as entries (F7)",
+          all(e.get("country") for e in entries))
+    de_count = sum(1 for e in entries if e.get("country") == "de")
+    check("16 entries DE preservadas (F7 marcou country=de)",
+          de_count == 16)
     # estados verificados SEMPRE têm fonte com citação
     for e in entries:
         if e.get("visa_policy") in ("unclear", "candidate_must_have_authorization",

@@ -103,6 +103,18 @@ SF_DATASET_SOURCES: list[str] | None = None
 # medido §2.5). Case-insensitive, word-boundary para o ISO.
 _DE_MARKER_RE = re.compile(r"\bde\b|deutschland|germany", re.IGNORECASE)
 
+# F7 — marcadores de location por pais-alvo (canal secundario). Formatos
+# medidos nas fatias reais (2026-10-03): "LU", "NL (NL126)", "FI (FI1B1)",
+# "Belgien", "Niederlande", "Aarschot, BE, 3200", "Antwerpen, BE".
+# Word-boundary no ISO de 2 letras; nomes locais do pais como fallback.
+_LOCATION_MARKERS: dict[str, re.Pattern[str]] = {
+    "de": _DE_MARKER_RE,
+    "lu": re.compile(r"\blu\b|luxembourg|luxemburg", re.IGNORECASE),
+    "nl": re.compile(r"\bnl\b|netherlands|nederland|niederlande|holland", re.IGNORECASE),
+    "fi": re.compile(r"\bfi\b|finland|suomi", re.IGNORECASE),
+    "be": re.compile(r"\bbe\b|belgium|belgique|belgien|belgië", re.IGNORECASE),
+}
+
 # Patterns de estagio/exclusao compilados UMA vez (reuso integral de
 # ``filters`` - zero vocabulario novo; mesma heuristica do funil).
 _STUDENT_RE = [re.compile(p, re.IGNORECASE) for p in STUDENT_TYPE_PATTERNS]
@@ -133,21 +145,44 @@ def _parse_dt(value: Any) -> datetime | None:
         return None
 
 
-def is_de_row(country_iso: Any, location: Any) -> bool:
-    """Row e da Alemanha? (criterio (c) do prefilter).
+def is_country_row(
+    country_iso: Any,
+    location: Any,
+    isos: Any = ("de",),
+) -> bool:
+    """Row e de um dos paises-alvo? (criterio (c) do prefilter; F7).
 
-    ``country_iso == "de"`` OU a location carrega marcador DE
-    (``\\bDE\\b``/deutschland/germany, case-insensitive). A fatia
-    successfactors tem ``country_iso`` vazio e a location resolve 'de' pelo
-    ``infer_country_iso`` do projeto na conversao (fato §2.5) - o prefilter
-    e propositalmente MAIS BARATO que a inferencia completa (regex) porque
-    roda sobre 5,1M rows; a inferencia canonica acontece depois, so nas
-    ~21k sobreviventes.
+    F7 generaliza o ``is_de_row`` da F3 para um CONJUNTO de ISOs:
+
+    - ``country_iso`` da row em ``isos`` (case-insensitive); OU
+    - a location carrega marcador textual de um dos paises (regex por
+      ISO, word-boundary — mesmo espirito do ``\\bDE\\b``/deutschland/
+      germany da F3, extendido aos paises-alvo).
+
+    Default sem argumento = so DE (retrocompatibilidade TOTAL: os
+    chamadores existentes da F3/F4 nao mudam de comportamento). A fatia
+    eures/bundesagentur tem ``country_iso`` populado; a successfactors
+    povoou a coluna a partir do manifest de out/2026 (fato medido F7:
+    35.496 rows 'de', 6.412 'nl', 6025 'fr'...) mas o marcador de
+    location continua como fallback barato — o prefilter e
+    propositalmente MAIS BARATO que a inferencia completa porque roda
+    sobre ~5,8M rows; a inferencia canonica acontece depois, so nos
+    sobreviventes.
     """
     iso = _clean(country_iso)
-    if iso and iso.lower() == "de":
+    if isos:
+        targets = {str(t).strip().lower() for t in isos}
+    else:
+        targets = set()
+    if iso and iso.lower() in targets:
         return True
-    return bool(_DE_MARKER_RE.search(str(location or "")))
+    loc = str(location or "")
+    return any(_LOCATION_MARKERS[t].search(loc) for t in targets if t in _LOCATION_MARKERS)
+
+
+def is_de_row(country_iso: Any, location: Any) -> bool:
+    """Row e da Alemanha? (retrocompat — delega a ``is_country_row``)."""
+    return is_country_row(country_iso, location, ("de",))
 
 
 def row_is_intern_candidate(title: Any) -> bool:
@@ -280,6 +315,7 @@ def collect_dataset_jobs(
     http_fetch: Callable[[str, Path], int] | None = None,
     now: Callable[[], float] = time.monotonic,
     workdir: Path | None = None,
+    country_isos: Any = ("de",),
 ) -> tuple[list[Job], dict[str, Any]]:
     """Coleta do dataset hospedado com prefilter; devolve ``(jobs, summary)``.
 
@@ -289,6 +325,9 @@ def collect_dataset_jobs(
       fixtures locais); default baixa via urllib em streaming.
     - ``workdir``: diretorio para as fatias temporarias (default: tempdir
       do SO - TMPDIR em producao; testes apontam para o tempdir do teste).
+    - ``country_isos`` (F7): ISOs-alvo do prefilter (criterio (c)). Default
+      ``("de",)`` = retrocompatibilidade total com a F3; a producao passa
+      ``countries.TARGET_COUNTRIES`` (DE primario + LU/NL/FI/BE).
 
     Summary (dict de metricas, gravado no JSONL como registro
     ``type: dataset`` pelo CLI):
@@ -361,7 +400,7 @@ def collect_dataset_jobs(
             slice_path = tmp_dir / f"{name}.csv"
             try:
                 summary["bytes_downloaded"] += fetch(str(meta["csv"]), slice_path)
-                slice_jobs, rows, kept, invalid = _prefilter_slice(slice_path, name)
+                slice_jobs, rows, kept, invalid = _prefilter_slice(slice_path, name, country_isos)
                 summary["rows_total"] += rows
                 summary["rows_prefiltered"] += kept
                 summary["invalid_rows"] += invalid
@@ -386,7 +425,11 @@ def collect_dataset_jobs(
     return jobs, summary
 
 
-def _prefilter_slice(path: Path, ats_type: str) -> tuple[list[Job], int, int, int]:
+def _prefilter_slice(
+    path: Path,
+    ats_type: str,
+    isos: Any = ("de",),
+) -> tuple[list[Job], int, int, int]:
     """Prefilter em streaming de UMA fatia: (jobs, rows, kept, invalid)."""
     jobs: list[Job] = []
     rows = kept = invalid = 0
@@ -396,7 +439,7 @@ def _prefilter_slice(path: Path, ats_type: str) -> tuple[list[Job], int, int, in
             title = str(row.get("title") or "")
             if not row_is_intern_candidate(title):
                 continue
-            if not is_de_row(row.get("country_iso"), row.get("location")):
+            if not is_country_row(row.get("country_iso"), row.get("location"), isos):
                 continue
             kept += 1
             job = row_to_job(row, ats_type)

@@ -121,6 +121,27 @@ def _short_location(job: dict) -> str:
     return loc.split(",", 1)[0].strip() or "—"
 
 
+# F7: bandeiras dos paises-alvo (custo ~0 — 1 emoji no meta do card).
+# Fora da lista: sem bandeira (o filtro de pais continua sendo o corte
+# oficial do pipeline; a bandeira e apenas viz).
+COUNTRY_FLAGS = {
+    "de": "🇩🇪", "lu": "🇱🇺", "nl": "🇳🇱", "fi": "🇫🇮", "be": "🇧🇪",
+}
+
+
+def _country_badge(job: dict) -> str:
+    """F7: ISO/bandeira do pais da vaga quando NAO e DE (DE e o default
+
+    visual — a pagina e majoritariamente alema; bandeira so no canal
+    secundario LU/NL/FI/BE para destacar a origem). Custo ~0: 2 chars.
+    """
+    iso = str(job.get("country_iso") or "").strip().lower()
+    if not iso or iso == "de":
+        return ""
+    flag = COUNTRY_FLAGS.get(iso)
+    return f" {flag} {iso.upper()}" if flag else f" {iso.upper()}"
+
+
 def _snippet(job: dict, limit: int = 140) -> str:
     """Trecho curto da descricao ORIGINAL (sem traducao/inferencia)."""
     text = " ".join(str(job.get("description") or "").split())
@@ -137,7 +158,7 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     inner = f'<a class="t" href="{_esc(job_href)}" target="_blank" rel="noopener">{title}</a>{vf}' if job_href else f'<span class="t">{title}</span>{vf}'
     meta_bits = [
         _esc(job.get("company") or "—"),
-        _esc(_short_location(job)),
+        _esc(_short_location(job) + _country_badge(job)),
     ]
     if salary:
         meta_bits.append(f'<b class="sal">{_esc(salary)}</b>')

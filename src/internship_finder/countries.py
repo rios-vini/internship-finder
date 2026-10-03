@@ -13,6 +13,12 @@ pais).
 
 Pais configuravel (``parse_country_spec``): ISO alpha-2, "europe", "remote"
 ou "all" (sem filtro).
+
+F7 — expansao multi-pais: ``TARGET_COUNTRIES`` e a lista de producao
+(DE primario + LU/NL/FI/BE como canal secundario). O filtro de pais ja era
+multi-pais (``parse_country_spec`` aceita lista ISO desde a extracao do
+modulo); a F7 conecta essa capacidade aos ESTAGIOS de coleta (prefilter do
+dataset e locationCodes do EURES).
 """
 
 from __future__ import annotations
@@ -37,8 +43,18 @@ COUNTRY_CODES = frozenset(
     PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI
     SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR
     TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW
-    """.lower().split()
-)
+    """.lower().split())
+
+# ---------------------------------------------------------------------------
+# F7 — paises-alvo da producao
+# ---------------------------------------------------------------------------
+
+# DE continua o alvo PRIMARIO (volume ~85% do universo EURES); LU/NL/FI/BE
+# sao canal SECUNDARIO (pesquisa de vistos 14 paises, 08-2026: LU = residence
+# permit trainee, NL = intern permit via sponsor IND reconhecido, FI =
+# residence permit internship ate 18 meses, BE = single permit trainee via
+# empregador). Ordem preservada: DE primeiro, o resto por volume estimado.
+TARGET_COUNTRIES = ("de", "lu", "nl", "fi", "be")
 
 # "Europa" para o dono: UE/EEE + CH + UK + Balcas (paises onde estagio/estudo
 # em alemao e viavel ou comum no contexto). RU/BY ficam de fora pelo mesmo
@@ -137,6 +153,18 @@ COUNTRY_NAMES: dict[str, str] = {
     "people's republic of china": "cn", "the bahamas": "bs",
     "the netherlands": "nl", "the philippines": "ph",
     "democratic republic of congo": "cd", "dr congo": "cd", "dr. congo": "cd",
+    # F7 — nomes LOCAIS dos paises-alvo (dado real das fatias do dataset e
+    # do EURES: BA grava "Belgien"/"Niederlande"/"Luxemburg" em alemao; o
+    # infer precisa resolve-los ou rows que PASSAM no prefilter morrem no
+    # filtro final com country_iso=None). Alemao + holandes + frances +
+    # finlandes + suedes dos 5 alvos (de, lu, nl, fi, be).
+    "deutschland": "de",
+    "luxembourg": "lu", "luxemburg": "lu", "lëtzebuerg": "lu",
+    "letzebuerg": "lu",
+    "niederlande": "nl", "nederland": "nl", "holland": "nl",
+    "finland": "fi", "suomi": "fi",
+    "belgien": "be", "belgique": "be", "belgië": "be", "belgie": "be",
+    "belgium": "be",
 }
 
 

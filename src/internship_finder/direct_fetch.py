@@ -75,6 +75,11 @@ EURES_API_URL = "https://europa.eu/eures/api/jv-searchengine/public/jv-search/se
 EURES_KEYWORD = "Praktikum"
 EURES_SEARCH_CODE = "EVERYWHERE"
 EURES_LOCATION_DE = "de"
+# F7: locationCodes ACEITA lista e a semantica e OR (probe ao vivo 03/10:
+# [de] 35.486 + [nl] 2.435 + [lu] 51 + [fi] 289 + [be] 3.334 = 41.594 total
+# para [de,nl,lu,fi,be] — soma exata, nenhum AND). DE primeiro (ordem de
+# MOST_RECENT e dominio de volume preservados).
+EURES_TARGET_LOCATIONS = ("de", "lu", "nl", "fi", "be")
 
 # --- Limites conservadores (spec §3.3) -------------------------------------
 DIRECT_FETCH_TIMEOUT = 20.0  # por request (curto)
@@ -475,7 +480,13 @@ def _eures_item_to_job(item: dict[str, Any]) -> Job | None:
 # ---------------------------------------------------------------------------
 
 
-def _eures_search_body(page: int, rpp: int) -> dict[str, Any]:
+def _eures_search_body(page: int, rpp: int, location_codes: Any = None) -> dict[str, Any]:
+    """Body da busca EURES. F7: ``location_codes`` injetavel (OR — probe 03/10);
+    default mantem DE puro (retrocompat total com a F4)."""
+    if location_codes is None:
+        codes: list[str] = [EURES_LOCATION_DE]
+    else:
+        codes = [str(c).strip().lower() for c in location_codes if str(c).strip()]
     return {
         "resultsPerPage": rpp,
         "page": page,
@@ -491,7 +502,7 @@ def _eures_search_body(page: int, rpp: int) -> dict[str, Any]:
         "sectorCodes": [],
         "educationAndQualificationLevelCodes": [],
         "positionOfferingCodes": [],
-        "locationCodes": [EURES_LOCATION_DE],
+        "locationCodes": codes,
         "euresFlagCodes": [],
         "otherBenefitsCodes": [],
         "requiredLanguages": [],
@@ -507,18 +518,29 @@ def fetch_eures_praktikum(
     timeout: float = DIRECT_FETCH_TIMEOUT,
     http_json: Callable[..., dict[str, Any] | None] | None = None,
     base_url: str = EURES_API_URL,
+    location_codes: Any = None,
 ) -> tuple[list[Job], dict[str, Any]]:
-    """Amostra fresca DE com keyword Praktikum (EVERYWHERE) do EURES.
+    """Amostra fresca com keyword Praktikum (EVERYWHERE) do EURES.
 
     1 keyword por query (multiplas entries sao ANDadas — probe 02/10).
     Paginacao SEQUENCIAL, parando em ``max_jobs``. A resposta da BUSCA ja
     embute description (1-2k chars, probe 14) — nenhum request extra por
     vaga. Falha = skip logado, degradacao graciosa.
+
+    F7: ``location_codes`` (OR entre codigos — probe 03/10) amplia a busca
+    aos paises-alvo; ``None`` = so DE (retrocompat F4). O country_iso de
+    cada Job desce do locationMap da propria resposta (``_eures_item_to_job``)
+    — o filtro de pais do pipeline aplica o corte oficial depois.
     """
     fetch_json = http_json or _http_json
     stats: dict[str, Any] = {
         "source": "direct:eures", "status": "ok", "rows_seen": 0,
         "jobs": 0, "pages": 0, "truncated_cap": False, "error": None,
+        "location_codes": (
+            [EURES_LOCATION_DE] if location_codes is None
+            else [str(c).strip().lower() for c in location_codes if str(c).strip()]
+        ),
+        "jobs_by_country": {},
     }
     jobs: list[Job] = []
     seen: set[str] = set()
@@ -527,7 +549,8 @@ def fetch_eures_praktikum(
     while len(jobs) < max_jobs:
         # size CONSTANTE (offset = (page-1)*rpp): variar recua o offset.
         payload = fetch_json(
-            "POST", base_url, payload=_eures_search_body(page, EURES_PAGE_SIZE),
+            "POST", base_url, payload=_eures_search_body(
+                page, EURES_PAGE_SIZE, location_codes),
             timeout=timeout,
         )
         if payload is None:
@@ -552,6 +575,9 @@ def fetch_eures_praktikum(
             job = _eures_item_to_job(it)
             if job is not None:
                 jobs.append(job)
+                # F7: contagem por pais (observabilidade do canal secundario)
+                code = str(job.country_iso or "?").lower()
+                stats["jobs_by_country"][code] = stats["jobs_by_country"].get(code, 0) + 1
                 if len(jobs) >= max_jobs:
                     stats["truncated_cap"] = True
                     break
@@ -577,6 +603,7 @@ def collect_direct_fetch(
     ba_fetch: Callable[..., tuple[list[Job], dict[str, Any]]] | None = None,
     eures_fetch: Callable[..., tuple[list[Job], dict[str, Any]]] | None = None,
     now: Callable[[], float] = time.monotonic,
+    eures_location_codes: Any = None,
 ) -> tuple[list[Job], dict[str, Any]]:
     """Estagio F4: BA + EURES direto com filtro de estagio; devolve (jobs, summary).
 
@@ -587,6 +614,9 @@ def collect_direct_fetch(
     fonte em andamento — caps de jobs/paginas ja limitam cada uma).
     ``max_jobs`` e o cap POR FONTE (default 200; medidor de rate limit).
     Fetchers injetados (testes) recebem ``max_jobs`` como kwarg.
+    ``eures_location_codes`` (F7): repassado ao EURES (OR de paises-alvo;
+    None = so DE, retrocompat). A BA permanece DE — servico publico alemao,
+    nao forcar outros paises (spec F7 §3.2).
     """
     from functools import partial
 
@@ -600,9 +630,14 @@ def collect_direct_fetch(
     if eures_fetch is not None:
         eures_fn = eures_fetch
     elif max_jobs is not None:
-        eures_fn = partial(fetch_eures_praktikum, max_jobs=max_jobs)
+        eures_fn = partial(
+            fetch_eures_praktikum, max_jobs=max_jobs,
+            location_codes=eures_location_codes,
+        )
     else:
-        eures_fn = fetch_eures_praktikum
+        eures_fn = partial(
+            fetch_eures_praktikum, location_codes=eures_location_codes,
+        )
     summary: dict[str, Any] = {
         "source": "direct_fetch", "status": "ok",
         "ba": {}, "eures": {}, "jobs": 0, "duration": 0.0,

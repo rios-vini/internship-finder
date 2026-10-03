@@ -76,6 +76,10 @@ ENRICH_TOP5 = 5
 TOP5_TITLE_LIMIT = 48
 TOP5_URL_LIMIT = 72
 
+# F7: bandeira por país no Top 5 (canal secundário LU/NL/FI/BE visível no
+# Telegram; DE = vazio — default visual, 0 chars no caso dominante).
+_TOP5_FLAGS = {"lu": "🇱🇺 ", "nl": "🇳🇱 ", "fi": "🇫🇮 ", "be": "🇧🇪 "}
+
 # Spec de pais do filtro (espelha o default de ``cli.py --country``; o teste
 # test_digest confere os dois — se o CLI mudar o default, o teste falha).
 DEFAULT_COUNTRY_SPEC = "de"
@@ -509,8 +513,12 @@ def format_top5(jobs: list[dict], *, max_len: int | None = None) -> str:
     lines: list[str] = []
     for pos, job in enumerate(list(jobs)[:DIGEST_TOP5], 1):
         url = _apply_url_of(job) or "—"
+        # F7: bandeira do pais (1-2 chars) quando a vaga NAO e DE — destaca
+        # o canal secundario LU/NL/FI/BE sem quebrar o formato da linha.
+        iso = str(job.get("country_iso") or "").strip().lower()
+        flag = _TOP5_FLAGS.get(iso, "")
         lines.append(
-            f"{pos}. {_clip(job.get('title'), TOP5_TITLE_LIMIT)} — "
+            f"{pos}. {flag}{_clip(job.get('title'), TOP5_TITLE_LIMIT)} — "
             f"{_clip(job.get('company'), 24)} — "
             f"{_score_text(job.get('score'))} — "
             f"{_clip(url, TOP5_URL_LIMIT)}"
