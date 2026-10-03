@@ -140,11 +140,13 @@ def test_publish_html_git() -> None:
 
 
 def _make_repo_fixture(tmp_root: Path) -> Path:
-    """Raiz fake de repo: src/ (pacote real copiado) + scripts/interface.py +
+    """Raiz fake de repo: src/ (pacote real copiado) + scripts (interface.py
+    para o uso local + minimal_page.py para o render publico F6) +
     data/eligible_jobs.json (2 vagas sinteticas). Offline."""
     root = Path(__file__).resolve().parent.parent
     (tmp_root / "scripts").mkdir(parents=True)
     shutil.copy2(root / "scripts" / "interface.py", tmp_root / "scripts" / "interface.py")
+    shutil.copy2(root / "scripts" / "minimal_page.py", tmp_root / "scripts" / "minimal_page.py")
     shutil.copytree(
         root / "src" / "internship_finder",
         tmp_root / "src" / "internship_finder",
@@ -174,7 +176,7 @@ def _make_repo_fixture(tmp_root: Path) -> Path:
 
 
 def test_render_ranking_html() -> None:
-    print("== renderizacao real via scripts/interface.py (offline) ==")
+    print("== renderizacao real via scripts/minimal_page.py (F6, offline) ==")
     with tempfile.TemporaryDirectory(prefix="t_pp_render_") as tmp:
         fake_root = _make_repo_fixture(Path(tmp))
         out = Path(tmp) / "out" / "index.html"
@@ -187,13 +189,14 @@ def test_render_ranking_html() -> None:
         check("links das vagas no HTML",
               'href="https://jobs.example.com/1"' in html
               and 'href="https://jobs.example.com/2"' in html)
-        check("rotulo da fonte e RELATIVO (nao expoe caminho da VPS)",
-              "data/eligible_jobs.json" in html
-              and str(fake_root) not in html
-              and "/home/" not in html)
+        check("sem caminho absoluto da VPS/fixture no HTML (F6)",
+              str(fake_root) not in html
+              and "/home/" not in html and "/tmp/" not in html)
         check("arquivo temporario de saida removido", not out.exists())
         check("gate de seguranca aprova o HTML gerado",
               pp.check_public_safe(html) == [])
+        check("tamanho abaixo do cap duro da F6 (150 KB)",
+              len(html.encode("utf-8")) < 150_000)
 
 
 def test_publish_ranking_gates() -> None:

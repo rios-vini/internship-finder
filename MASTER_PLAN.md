@@ -27,34 +27,34 @@ execução da suíte (18/09) ou nos docs.
 ## 1. Estado verificado em 2026-10-03
 
 ### Main público (GitHub)
-- **F4 MERGEADA (02/10, PR #96 squash `36319f0`)** — BUNDESAGENTUR + EURES
-  COM FILTRO DE ESTÁGIO: fonte `direct_fetch` (amostra diária BA
-  `angebotsart=34` + EURES `keywords=[{Praktikum, EVERYWHERE}]`, cap
-  200/fonte, degradação graciosa), hidratação `_SINGLE_SOURCE_ATS`
-  (bundesagentur/eures detail v4), `--direct-fetch` default ON no
-  `--registry`; upstream PR #293 (kalil0321/ats-scrapers) ABERTO com os
-  kwargs opt-in. Detalhes no Log 02/10.
-- **F5 EM ANDAMENTO (03/10)** — branch `feature/f5-visa-dedup-ranking`
-  (base `main` `36319f0` = F4 mergeada; §3.1: branch F4 local tree-idêntica
-  ao main, diff vazio): **visa_friendly + dedup utm/DE-EN + ranking
-  weights**. (1) `visa_friendly`: sinal de EMPRESA derivado do visa_policy
-  curado (explicit_support/unclear → true), campo no JSON/CSV + badge 🛂 +
-  filtro no HTML (o filtro non-EU antigo dependia do texto da vaga —
-  100% "Not mentioned" pós-F1, retornava 0 vagas); NÃO entra no score
-  (independência preservada). Curadoria 12→16 empresas com fonte oficial:
-  BASF unclear (divisão consulting, condicional); VW/Mercedes/Siemens
-  candidate_must_have_authorization (exigem permit própria — negativo p/
-  BR); Allianz/Telekom not_verified c/ nota; 0 explicit_support.
-  (2) Dedup: `normalize_url` stripa utm/gclid/fbclid/ref (params
-  funcionais pid/page/id preservados — o buraco l.107 fechado); tier 4
-  `company+title+location+de/en` (dicionário mínimo DE→EN de conteúdo +
-  alias de cidade Fase 7) — A/B snapshot 478: −5 fusões, TODAS Bayer
-  espelhos DE/EN cross-ATS que a auditoria pós-Fases-1-8 já apontava como
-  duplicata TRUE residual; 0 score diffs, ordem preservada.
-  (3) `WEIGHT_AREA_DESC`: experimento nos 29 pares benchmark×snapshot
-  (tau +0.712→+0.732, gap sobe por inflação geral) → 0.0 MANTIDO,
-  documentado. `test_f5.py` 77 checks (49º do CI); `test_visa_policy.py`
-  evoluído a invariantes paramétricas. Detalhes: `docs/f5_visa_dedup_ranking.md`.
+- **F6 EM ANDAMENTO (03/10)** — branch `feature/f6-minimal-ui` (base
+  `main` `44bff5b` = F5 mergeada PR #97): **página pública MÍNIMA +
+  Telegram top-5, matando o HTML de 9,5 MB**. (1) `scripts/minimal_page.py`
+  (novo) renderiza o index.html público: top-50 do dia, card compacto
+  (título/empresa/cidade/score/botão de candidatura/badge 🛂 visa_friendly
+  F5 com fallback retrocompat/salário citado/snippet), dark mode, CSS
+  inline ~1,9 KB, JS vanilla ~470 bytes (busca + filtro visa). Tamanho
+  medido no snapshot real: 43,3 KB (era 9.470.207 bytes — −99,5%; cap
+  duro 150 KB no teste). Campos mortos fora: application_deadline,
+  official_page, intel de enrichment. `publish_pages.render_ranking_html`
+  despacha para o minimal_page (assinatura/callers intactos); mecânica de
+  deploy intacta (atômico/check_public_safe/push só index.html).
+  (2) `ranking_digest.format_top5` (função pura): 1 linha/vaga com
+  apply_url, 0 vagas → mensagem graciosa, truncagem segura ≤4096;
+  integrada ao `digest_sections` (seção "⚡ Top 5 do dia" antes do link) —
+  o cron JÁ usa `--always-notify`, crontab intocado. JSON/CSV completos
+  intactos. `test_f6.py` 56 checks (50º do CI, array no mesmo commit).
+  Detalhes no Log 03/10 e `~/.hermes/handoff/f6-minimal-ui/`.
+- **F5 MERGEADA (03/10, PR #97 squash `44bff5b`)** — VISA_FRIENDLY SIGNAL
+  + DEDUP UTM/DE-EN + RANKING WEIGHTS: sinal de EMPRESA derivado do
+  visa_policy curado (explicit_support/unclear → true), campo no JSON/CSV +
+  badge 🛂 + filtro no HTML; curadoria 12→16 empresas (BASF unclear;
+  VW/Mercedes/Siemens candidate_must_have_authorization — negativo p/ BR;
+  Allianz/Telekom not_verified); dedup `normalize_url` stripa utm +
+  tier 4 `company+title+location+de/en` (5 fusões Bayer = a duplicata
+  TRUE residual da auditoria pós-Fases-1-8); WEIGHT_AREA_DESC 0.0 mantido
+  (experimento documentado). 115/473 (24%) visa_friendly=True no
+  snapshot. Detalhes no Log 03/10.
 - **F3 MERGEADA (02/10, PR #95 squash `6c5536b`)** — SF DATASET COMO FONTE
   PRIMÁRIA, REGISTRY COMO LISTA DE INTERESSE: fonte `sf_dataset` (prefilter
   streaming DE+estágio das 63 fatias do dataset hospedado; ~22,3k rows), CLI

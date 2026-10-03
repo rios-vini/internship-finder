@@ -42,6 +42,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from internship_finder import filters
 from internship_finder import ranking as ranking_mod
@@ -69,6 +70,11 @@ MATERIALS_NEW_MAX = 5
 
 # Fase 3 (enrichment): tetos da secao de dados da pagina oficial.
 ENRICH_TOP5 = 5
+
+# F6: Top 5 diário com apply_url no digest. Teto de truncagem por linha
+# (títulos longos não estouram o limite de 4096 do Telegram).
+TOP5_TITLE_LIMIT = 48
+TOP5_URL_LIMIT = 72
 
 # Spec de pais do filtro (espelha o default de ``cli.py --country``; o teste
 # test_digest confere os dois — se o CLI mudar o default, o teste falha).
@@ -454,6 +460,80 @@ def _top5_section(current: list[dict]) -> list[str]:
     return lines
 
 
+# ---------------------------------------------------------------------------
+# F6 — Top 5 diário com apply_url (função pura, offline-testável)
+# ---------------------------------------------------------------------------
+
+def _apply_url_of(job: dict) -> str | None:
+    """URL de candidatura da vaga: raw.apply_url (http/https) com fallback
+    para job.url — a MESMA prioridade da página (Fase B/F6)."""
+    raw = job.get("raw") if isinstance(job.get("raw"), dict) else {}
+    for candidate in (raw.get("apply_url"), job.get("url")):
+        if not candidate:
+            continue
+        text = str(candidate).strip()
+        try:
+            scheme = urlsplit(text).scheme
+        except ValueError:
+            continue
+        if scheme.casefold() in ("http", "https"):
+            return text
+    return None
+
+
+def _clip(text: str, limit: int) -> str:
+    """Corta no limite com elipse; strings curtas intactas."""
+    text = str(text or "").strip()
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def format_top5(jobs: list[dict], *, max_len: int | None = None) -> str:
+    """Top-5 do dia em 1 linha compacta por vaga (F6; função PURA).
+
+    Formato por linha (spec §3.4): ``N. título — empresa — score —
+    apply_url``. Regras:
+
+    - ``0 vagas`` -> mensagem graciosa ("nenhuma vaga elegível hoje");
+    - lista maior que 5 -> só as 5 primeiras (ordem oficial do ranking);
+    - cada título cortado em ``TOP5_TITLE_LIMIT`` chars e URL em
+      ``TOP5_URL_LIMIT``;
+    - ``max_len`` (default: limite do Telegram) -> truncagem SEGURA no
+      limite de mensagem, cortando linhas inteiras (nunca no meio de uma
+      linha) e avisando quantas ficaram de fora.
+    """
+    if max_len is None:
+        from refresh_daily import TELEGRAM_MAX_LEN  # lazy (evita ciclo de import)
+        max_len = TELEGRAM_MAX_LEN
+    if not jobs:
+        return "🙂 Nenhuma vaga elegível hoje — ranking vazio."
+    lines: list[str] = []
+    for pos, job in enumerate(list(jobs)[:DIGEST_TOP5], 1):
+        url = _apply_url_of(job) or "—"
+        lines.append(
+            f"{pos}. {_clip(job.get('title'), TOP5_TITLE_LIMIT)} — "
+            f"{_clip(job.get('company'), 24)} — "
+            f"{_score_text(job.get('score'))} — "
+            f"{_clip(url, TOP5_URL_LIMIT)}"
+        )
+    text = "\n".join(lines)
+    if len(text) > max_len:
+        # Truncagem segura: mantém linhas inteiras que caibam e avisa.
+        kept: list[str] = []
+        used = 0
+        notice = f"(+{len(lines) - 1} na página)"
+        for line in lines:
+            budget = max_len - len(notice) - 1
+            if used + len(line) + 1 > budget:
+                break
+            kept.append(line)
+            used += len(line) + 1
+        if not kept:
+            return notice
+        kept.append(f"(+{len(lines) - len(kept)} na página)")
+        text = "\n".join(kept)
+    return text
+
+
 def _changes_section(
     changes: dict,
     new_ids: set[str],
@@ -673,6 +753,18 @@ def digest_sections(
     if enr_lines:
         lines.append("")
         lines.extend(enr_lines)
+
+    # F6 — Top 5 com apply_url (1 linha/vaga): logo após o "Top 5 atual"
+    # (resumo visual). A lista vem do ranking em ordem oficial; a função é
+    # pura e best-effort (nunca derruba o digest).
+    try:
+        top5_text = format_top5(current)
+        if top5_text:
+            lines.append("")
+            lines.append("⚡ Top 5 do dia (candidatura direta)")
+            lines.extend(top5_text.splitlines())
+    except Exception:  # noqa: BLE001 — seção extra nunca derruba o digest
+        pass
 
     lines.append("")
     lines.append(f"🔗 Ranking completo (todas as vagas elegíveis): {pages_url}")
