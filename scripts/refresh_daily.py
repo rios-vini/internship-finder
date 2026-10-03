@@ -336,6 +336,10 @@ def collection_command(timeout: float) -> list[str]:
     (angebotsart=34) e EURES (keywords Praktikum) com filtro de estagio
     nativo — mesmo espirito do --dataset: explicito no contrato, default
     ON no --registry, cap conservador de jobs por fonte.
+    ``--country de,lu,nl,fi,be`` (F7): escopo multi-pais da producao —
+    DE primario + LU/NL/FI/BE canal secundario (visa_policy por pais no
+    company_intel). O cron NAO muda (flags/schedule intocados): esta e a
+    unica porta de entrada do escopo, como --dataset/--direct-fetch.
     ``--sqlite data/jobs.db``: persistencia first_seen/last_seen/active/
     archived (P1 #5); a flag e idempotente e falha de escrita nunca derruba
     a coleta. O ``jobs.db`` nao e rotacionado (historico acumulativo). Os
@@ -344,11 +348,13 @@ def collection_command(timeout: float) -> list[str]:
     persistem. Jobs do direct_fetch (F4) seguem a MESMA regra: fonte
     efemera, re-derivada a cada run.
     """
+    from internship_finder.countries import TARGET_COUNTRIES
     return [
         sys.executable, "-m", "internship_finder.cli",
         "--registry",
         "--dataset",
         "--direct-fetch",
+        "--country", ",".join(TARGET_COUNTRIES),
         "--timeout", str(timeout),
         "--sqlite", "data/jobs.db",
     ]
