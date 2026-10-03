@@ -262,14 +262,21 @@ def test_comando_subprocesso() -> None:
     print("== comando do subprocesso de coleta ==")
     cmd = rd.collection_command(60)
     check("usa -m internship_finder.cli", cmd[:3] == [sys.executable, "-m", "internship_finder.cli"])
-    check("--registry + --dataset (F3) + --direct-fetch (F4) + --timeout + --sqlite no fim",
-          cmd[3:] == ["--registry", "--dataset", "--direct-fetch", "--timeout", "60",
+    check("--registry + --dataset (F3) + --direct-fetch (F4) + --country (F7) + --timeout + --sqlite no fim",
+          cmd[3:] == ["--registry", "--dataset", "--direct-fetch",
+                      "--country", "de,lu,nl,fi,be",
+                      "--timeout", "60",
                       "--sqlite", "data/jobs.db"]
           and "--sqlite" in cmd and "data/jobs.db" in cmd)
     cmd2 = rd.collection_command(120)
     check("timeout propagado com sqlite",
           cmd2[cmd2.index("--timeout") + 1] == "120"
           and cmd2[-2:] == ["--sqlite", "data/jobs.db"])
+    # F7: o country do subprocesso segue TARGET_COUNTRIES (fonte unica)
+    from internship_finder.countries import TARGET_COUNTRIES
+    check("--country segue TARGET_COUNTRIES",
+          cmd[cmd.index("--country") + 1] == ",".join(TARGET_COUNTRIES)
+          and tuple(cmd[cmd.index("--country") + 1].split(",")) == TARGET_COUNTRIES)
 
 
 def test_env_subprocesso_herdado() -> None:

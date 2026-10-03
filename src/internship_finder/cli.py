@@ -570,7 +570,34 @@ def _dataset_record(run_id: str, summary: dict) -> dict:
     }
 
 
-def _run_dataset_stage(run_id: str, budget_secs: float) -> tuple[list[Job], dict | None]:
+def _country_isos_for_stages(spec_result: frozenset[str] | str | None) -> tuple[str, ...]:
+    """F7: ISOs-alvo derivados do ``--country`` do CLI (fonte unica).
+
+    O ``--country`` e a UNICA fonte de verdade do escopo de pais do run:
+    os estagios de coleta (prefilter do dataset, locationCodes do EURES)
+    seguem o MESMO escopo do filtro final. ``frozenset`` -> ISOs na ordem
+    canonica de TARGET_COUNTRIES primeiro (DE primeiro); ``"remote"`` ->
+    escopo de coleta default DE (o filtro remoto e pos-coleta, o dataset
+    nao tem faceta de remote no prefilter — documentado); ``None`` (all) ->
+    todos os ISOs validos.
+    """
+    from internship_finder import countries as countries_mod
+
+    if spec_result is None:  # --country all: coleta tudo (corte e do filtro)
+        return tuple(sorted(countries_mod.COUNTRY_CODES))
+    if isinstance(spec_result, str):  # "remote": coleta default DE
+        return ("de",)
+    ordered = [c for c in countries_mod.TARGET_COUNTRIES
+               if c in spec_result]
+    ordered += sorted(c for c in spec_result if c not in ordered)
+    return tuple(ordered) if ordered else ("de",)
+
+
+def _run_dataset_stage(
+    run_id: str,
+    budget_secs: float,
+    country_isos: Any = ("de",),
+) -> tuple[list[Job], dict | None]:
     """Estagio dataset (F3): best-effort TOTAL — nunca levanta para o run.
 
     Devolve ``(jobs, registro)``; em falha estrutural (manifest/rede), os
@@ -578,7 +605,9 @@ def _run_dataset_stage(run_id: str, budget_secs: float) -> tuple[list[Job], dict
     o CLI loga e segue so com os jobs do registry (exit code inalterado).
     """
     try:
-        jobs, summary = collect_dataset_jobs(budget_seconds=budget_secs)
+        jobs, summary = collect_dataset_jobs(
+            budget_seconds=budget_secs, country_isos=country_isos
+        )
     except Exception as exc:  # noqa: BLE001 - dataset nunca derruba o run
         log.error("estagio dataset falhou (%s); run segue com registry only", exc)
         return [], _dataset_record(run_id, {
@@ -627,6 +656,7 @@ def _run_direct_fetch_stage(
     run_id: str,
     budget_secs: float,
     max_jobs: int | None,
+    eures_location_codes: Any = None,
 ) -> tuple[list[Job], dict | None]:
     """Estagio direct_fetch (F4): best-effort TOTAL — nunca levanta o run.
 
@@ -636,7 +666,8 @@ def _run_direct_fetch_stage(
     """
     try:
         jobs, summary = collect_direct_fetch(
-            budget_seconds=budget_secs, max_jobs=max_jobs
+            budget_seconds=budget_secs, max_jobs=max_jobs,
+            eures_location_codes=eures_location_codes,
         )
     except Exception as exc:  # noqa: BLE001 - direct_fetch nunca derruba o run
         log.error("estagio direct_fetch falhou (%s); run segue sem fetch direto", exc)
@@ -918,6 +949,14 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
 
+    # F7: ISOs-alvo dos ESTAGIOS de coleta derivados do --country (mesma
+    # fonte de verdade do filtro final). Ex.: "de,lu,nl,fi,be" -> prefilter
+    # do dataset e locationCodes do EURES nos 5 paises; "de" -> comportamento
+    # identico a F3/F4 (retrocompat).
+    stage_country_isos = _country_isos_for_stages(
+        parse_country_spec(args.country)
+    )
+
     # P3 #20 (ACH-14): valida flags de coleta cedo. Antes, --timeout <= 0 e
     # --limit negativo eram aceitos silenciosamente com comportamento
     # indefinido (deadline do subprocesso virava so a margem / slice ``[:-k]``
@@ -1013,7 +1052,8 @@ def main(argv: list[str] | None = None) -> int:
         # segue so com os jobs do registry.
         if dataset_enabled:
             dataset_jobs, dataset_record = _run_dataset_stage(
-                run_id, args.dataset_budget_secs
+                run_id, args.dataset_budget_secs,
+                country_isos=stage_country_isos,
             )
             all_jobs = all_jobs + dataset_jobs
             total = len(all_jobs)
@@ -1034,6 +1074,7 @@ def main(argv: list[str] | None = None) -> int:
                 run_id,
                 DIRECT_FETCH_BUDGET_SECONDS,
                 args.direct_fetch_max_jobs,
+                eures_location_codes=stage_country_isos,
             )
             all_jobs = all_jobs + direct_fetch_jobs
             total = len(all_jobs)
