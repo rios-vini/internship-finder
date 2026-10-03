@@ -744,6 +744,33 @@ def visa_policy_state(intel: dict | None) -> str:
     return state if state in VISA_POLICY_STATES else "not_verified"
 
 
+# F5 — estados que qualificam a empresa como "visa friendly". Deliberadamente
+# EXCLUDEM ``candidate_must_have_authorization`` (o cidadao precisa JÁ ter a
+# autorizacao — o oposto de a empresa patrocinar) e, claro, ``explicit_no_support``.
+# ``unclear`` entra: a auditoria definiu o criterio certo como "empresa tem
+# historico/programa formal" = explicit_support OU unclear com fonte (a
+# condicao e o estado honesto quando a fonte oficial nao declara suporte
+# incondicional — nao existe "explicit_support" na pratica para estagios DE).
+VISA_FRIENDLY_STATES = ("explicit_support", "unclear")
+
+
+def visa_friendly(intel: dict | None) -> bool:
+    """F5: a empresa da vaga tem politica/programa de visto?
+
+    ``True`` somente quando ``visa_policy_state(intel)`` ∈
+    ``VISA_FRIENDLY_STATES`` (explicit_support ou unclear com fonte). Um
+    SINAI de empresa, nunca da vaga: deriva do arquivo CURADO
+    (company_intel) e NAO do texto do anuncio — o filtro "suporta non-EU"
+    do HTML passa a ler ESTE campo (o texto da vaga era 100% "Not
+    mentioned" e o filtro antigo retornava 0 vagas).
+
+    NAO entra no score de relevancia (regra de independencia
+    visa_policy x work_authorization x score, item 11): e um badge/filtro
+    aditivo. Se o dono quiser peso no score, sera fase futura.
+    """
+    return visa_policy_state(intel) in VISA_FRIENDLY_STATES
+
+
 def pathway_percentage(intel: dict | None) -> dict | None:
     """Percentual oficial de efetivacao (dado factual de fonte), se houver.
 

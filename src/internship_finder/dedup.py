@@ -30,10 +30,14 @@ Data & Analytics" == "Praktikum Data Analytics in der Logistik"). Palavras
 repetidas na bag sao colapsadas (ex.: "Werkstudentin / Werkstudent" vira um
 unico "working student").
 
-Limite documentado: titulos que sao traducao real (conteudo diferente, nao so
-palavra funcional — ex.: "Marketing Deutschland" vs "Marketing Germany",
-"Strategischer Vertrieb" vs "Strategic Sales") NAO sao considerados duplicatas:
-exigiria dicionario de traducao/fuzzy, fora do escopo do MVP.
+Limite documentado (parcialmente fechado pela F5): o tier 4 agora cobre a
+traducao REAL mais comum — marcadores de tipo ja eram equivalentes no tier
+3 (Praktikum<->Internship); a F5 adicionou o dicionario MINIMO de conteudo
+DE->EN (Logistik/Logistics, Einkauf/Purchasing, Vertrieb/Sales...) e alias
+de cidade (Munich/Munchen). Titulos com conteudo fora do dicionario minimo
+(ex.: "Betriebswirtschaft" vs "Business Administration") NAO fundem: o
+dicionario e deliberadamente minimo para nao gerar falsos positivos — um
+token divergente impede a fusao (trade-off documentado no relatorio F5).
 
 Regra do "vencedor" quando duas versoes da mesma vaga existem (deterministica):
 1. a que tem ``description`` preenchida; 2. senao a que tem ``employment_type``;
@@ -46,6 +50,11 @@ import re
 import unicodedata
 from collections import Counter
 from typing import Any
+
+# F5 — aliases de cidade EN->DE do Company Intelligence (mesma fonte da
+# verdade do enriquecimento; ``opportunity_intel`` nao importa ``dedup``,
+# sem ciclo). Usados SO pelo tier DE/EN da deduplicacao.
+from internship_finder.opportunity_intel import CITY_ALIASES as _CITY_ALIASES
 
 # ---------------------------------------------------------------------------
 # Normalizacoes
@@ -91,6 +100,54 @@ FUNCTION_WORDS = frozenset(
 
 _URL_FRAGMENT = re.compile(r"#.*$")
 
+# F5 — params de TRACKING removidos da URL canonica de dedup (tier 1/URL).
+# O buraco documentado (dedup.py antes da F5): "?utm_*" nao fundia a mesma
+# vaga — dup perdido (aceito ate hoje). Agora o strip e ANTES da chave URL.
+# REGRA: so params que NUNCA carregam identidade da vaga. Params funcionais
+# (page, id, pid, jf, refNum, req...) sao PRESERVADOS — em ATS como eightfold
+# a identidade vive na query ("...?pid=5638..."); strip-la fundiria vagas
+# diferentes (falso positivo caro). Assimetria deliberada: param novo
+# duvidoso NAO entra (um dup perdido e mais barato que uma fusao errada).
+#
+# Duas regras: (1) qualquer param com prefixo ``utm_`` e tracking POR
+# DEFINICAO (convencao do Google Analytics — utm_source, utm_medium,
+# utm_campaign, utm_content, e qualquer variante futura); (2) lista fixa de
+# trackers conhecidos, incluindo os citados pela spec (gclid, fbclid, ref,
+# source). "site"/"siteid"/"sjid" ficam FORA: podem ser funcionais em boards.
+_TRACKING_PARAMS = frozenset(
+    """
+    gclid fbclid msclkid dclid twclid ttclid li_fat_id igshid
+    mc_cid mc_eid ref referrer referer source spm
+    _ga _gl _hsenc _hsmi
+    """.lower().split()
+)
+_TRACKING_PREFIXES = ("utm_",)
+
+
+def _is_tracking_param(name: str) -> bool:
+    """Param de tracking? (prefixo ``utm_`` OU lista fixa)."""
+    n = name.strip().lower()
+    if not n:
+        return False
+    if n in _TRACKING_PARAMS:
+        return True
+    return any(n.startswith(p) for p in _TRACKING_PREFIXES)
+
+
+def _strip_tracking_params(query: str) -> str:
+    """Remove params de tracking de uma query string (sem '?')."""
+    if not query:
+        return ""
+    kept: list[str] = []
+    for part in query.split("&"):
+        if not part:
+            continue
+        name = part.split("=", 1)[0]
+        if _is_tracking_param(name):
+            continue
+        kept.append(part)
+    return "&".join(kept)
+
 
 def _strip_accents(text: str) -> str:
     """Remove acentos (ex.: 'Höhe' -> 'Hohe', 'für' -> 'fur')."""
@@ -100,17 +157,25 @@ def _strip_accents(text: str) -> str:
 
 
 def normalize_url(url: str | None) -> str:
-    """URL canonica: sem fragmento, sem barra final, casefold.
+    """URL canonica: sem fragmento, sem barra final, casefold, sem tracking.
 
-    A QUERY string e MANTIDA: em ATS como eightfold a identidade da vaga vive
-    na query (ex.: ``.../job/private?pid=5638...``) — strip-la fundiria vagas
-    diferentes. Consequencia aceita: query de tracking (``?utm_*``) nao funde
-    a mesma vaga — e um dup perdido (seguro), nao um falso positivo.
+    A QUERY string e MANTIDA (menos params de tracking — F5): em ATS como
+    eightfold a identidade da vaga vive na query (ex.: ``.../job/private?
+    pid=5638...``) — strip-la fundiria vagas diferentes. Params de tracking
+    (``utm_*``, gclid, fbclid, ref, source...) sao REMOVIDOS antes da
+    comparacao: nunca carregam identidade, so campanha de marketing. O
+    buraco documentado antes da F5 ("query de tracking nao funde a mesma
+    vaga") esta fechado — mesmo anuncio compartilhado com e sem ``?utm_``
+    agora colapsa na chave URL.
     """
     if not url:
         return ""
     u = str(url).strip()
     u = _URL_FRAGMENT.sub("", u)  # strip #fragment (query fica)
+    if "?" in u:
+        base, _, query = u.partition("?")
+        query = _strip_tracking_params(query)
+        u = f"{base}?{query}" if query else base
     u = u.rstrip("/")
     return u.casefold()
 
@@ -152,6 +217,87 @@ def normalize_location(location: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# F5 — Tier DE/EN: traducao MINIMA de conteudo para o 4o tier da dedup
+# ---------------------------------------------------------------------------
+
+# Dicionario DE<->EN de palavras de CONTEUDO para o tier DE/EN (4a chave).
+# MINIMALISTA E INTENCIONAL, 3 regras:
+#   (1) so termos de area funcional comuns em titulos de vagas — nunca
+#       jargo proprio de empresa/produto (traduzir "S4 Hana" seria FP);
+#   (2) so pares UNIVOCOS (sem polissemia: "personal" NAO entra — "Personal
+#       DE=RH" cruzaria com "Personal Assistant EN");
+#   (3) marcadores de TIPO de vaga NAO entram aqui — ja sao colapsados pelo
+#       ``TYPE_EQUIVALENCES`` do ``normalize_title`` em TODOS os tiers
+#       (Praktikum<->internship, Werkstudent<->working student — a spec F5
+#       cita exatamente esses pares; o que FALTA no tier 3 e a traducao de
+#       CONTEUDO e o alias de CIDADE).
+# Forma: token -> forma canonica (DE e EN convergem para a MESMA string;
+# valores multi-palavra sao re-divididos em tokens pelo consumidor).
+CONTENT_TRANSLATIONS: dict[str, str] = {
+    # logistica/operacoes (canonica EN)
+    "logistik": "logistics",
+    "lieferkette": "supply chain",
+    "einkauf": "purchasing",
+    "beschaffung": "procurement",
+    "lager": "warehouse",
+    "versand": "shipping",
+    "produktion": "production",
+    "fertigung": "manufacturing",
+    # dados/IT
+    "daten": "data",
+    "datenanalyse": "data analytics",
+    "informatik": "computer science",
+    "kunstliche": "artificial",
+    "intelligenz": "intelligence",
+    # negocios
+    "vertrieb": "sales",
+    "buchhaltung": "accounting",
+    "finanzen": "finance",
+    # adjetivos comuns com flexao de genero/caso DE (Einkauf/Vertrieb)
+    "strategischer": "strategic",
+    "strategische": "strategic",
+    "strategisches": "strategic",
+}
+
+
+def _de_en_title_key(title: str | None) -> str:
+    """Chave de titulo do tier DE/EN: bag normalizada + traducao de conteudo.
+
+    Partir do ``normalize_title`` (bag ordenada, ja com marcadores de tipo
+    colapsados e palavras funcionais removidas) e aplicar o dicionario
+    DE->EN token a token. Valores multi-palavra ("supply chain") sao
+    RE-DIVIDIDOS em tokens — DE e EN convergem para a mesma bag. Palavras
+    fora do dicionario ficam como estao: o par so funde se TODO o conteudo
+    bater apos a traducao (conservador — um token divergente nao funde).
+    """
+    bag = normalize_title(title)
+    if not bag:
+        return ""
+    out: list[str] = []
+    for token in bag.split():
+        out.extend(CONTENT_TRANSLATIONS.get(token, token).split())
+    return " ".join(sorted(dict.fromkeys(out)))
+
+
+def _de_en_location_key(location: str | None) -> str:
+    """Chave de localizacao do tier DE/EN: CIDADE com alias EN->DE colapsado.
+
+    Reuso da MESMA tabela do enriquecimento de cidade (Fase 7,
+    ``CITY_ALIASES``): "Munich" == "München" == "munchen". A chave do tier
+    DE/EN e a CIDADE CANONICA — primeira parte da localizacao, no formato
+    REAL do dataset ("Stuttgart, BW, de" — cidade primeiro; as demais
+    partes são região/ISO/CEP e divergem entre idiomas sem ganho: o
+    titulo+empresa do tier já discriminam). A forma exibida ao usuário
+    nunca muda — só a chave de dedup.
+    """
+    loc = normalize_location(location)
+    if not loc:
+        return ""
+    city = loc.split(",", 1)[0].strip()
+    return _CITY_ALIASES.get(city, city)
+
+
+# ---------------------------------------------------------------------------
 # Chaves de deduplicacao
 # ---------------------------------------------------------------------------
 
@@ -159,7 +305,16 @@ def normalize_location(location: str | None) -> str:
 KEY_EXTERNAL_ID = "external_id"
 KEY_URL = "url"
 KEY_COMPANY_TITLE_LOCATION = "company+title+location"
-KEY_LABELS = [KEY_EXTERNAL_ID, KEY_URL, KEY_COMPANY_TITLE_LOCATION]
+# F5 — 4o tier: mesma empresa + local + titulo apos traducao MINIMA de
+# conteudo DE<->EN (o tier 3 ja colapsa marcadores de tipo; este cobre o
+# par "Praktikum Logistik" vs "Logistics Internship" e "Munich"/"München").
+KEY_COMPANY_TITLE_LOCATION_DE_EN = "company+title+location+de/en"
+KEY_LABELS = [
+    KEY_EXTERNAL_ID,
+    KEY_URL,
+    KEY_COMPANY_TITLE_LOCATION,
+    KEY_COMPANY_TITLE_LOCATION_DE_EN,
+]
 
 
 def candidate_keys(job: dict[str, Any]) -> list[tuple[str, str | tuple[str, str] | tuple[str, str, str]]]:
@@ -209,6 +364,18 @@ def candidate_keys(job: dict[str, Any]) -> list[tuple[str, str | tuple[str, str]
     location = normalize_location(job.get("location"))
     if company and title and location:
         keys.append((KEY_COMPANY_TITLE_LOCATION, (company, title, location)))
+
+    # F5 — tier DE/EN: a MESMA vaga publicada em DE e EN (conteudo do titulo
+    # traduzido, cidade com alias EN<->DE). Conservador por construcao: so
+    # funde se empresa E local E conteudo-do-titulo baterem apos a traducao
+    # minima — um token de conteudo fora do dicionario ja impede a fusao.
+    # Exige os mesmos campos do tier 3 (titulo E localizacao nao vazios).
+    de_en_title = _de_en_title_key(job.get("title"))
+    de_en_location = _de_en_location_key(job.get("location"))
+    if company and de_en_title and de_en_location:
+        keys.append(
+            (KEY_COMPANY_TITLE_LOCATION_DE_EN, (company, de_en_title, de_en_location))
+        )
 
     return keys
 
