@@ -291,7 +291,8 @@ def test_visa_policy_countries() -> None:
     by_country = {}
     for e in uniq:
         by_country.setdefault(e["country"], []).append(e)
-    check("16 DE preservadas", len(by_country.get("de", [])) == 16)
+    check("≥16 DE preservadas (F7: 16; F9 expandiu p/ 46 — nunca remover)",
+          len(by_country.get("de", [])) >= 16)
     for iso in ("lu", "nl", "fi", "be"):
         got = len(by_country.get(iso, []))
         check(f"pais {iso.upper()} presente (got {got})", got > 0)

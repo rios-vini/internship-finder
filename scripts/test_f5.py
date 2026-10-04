@@ -453,8 +453,11 @@ def test_curadoria_f5() -> None:
     check("campo country presente em TODAS as entries (F7)",
           all(e.get("country") for e in entries))
     de_count = sum(1 for e in entries if e.get("country") == "de")
-    check("16 entries DE preservadas (F7 marcou country=de)",
-          de_count == 16)
+    # F9 expandiu as DE (30 entries novas, onda 1): a regra é "as 16
+    # históricas JAMAIS somem" — a contagem só pode CRESCER (mesma
+    # evolução paramétrica que a F7 aplicou às contagens da F5).
+    check("≥16 entries DE preservadas (F7: 16; F9: 46)",
+          de_count >= 16)
     # estados verificados SEMPRE têm fonte com citação
     for e in entries:
         if e.get("visa_policy") in ("unclear", "candidate_must_have_authorization",
