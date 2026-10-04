@@ -76,6 +76,13 @@ ENRICH_TOP5 = 5
 TOP5_TITLE_LIMIT = 48
 TOP5_URL_LIMIT = 72
 
+# F6.1 — header da secao ⚡ do digest. O compactador do Telegram
+# (refresh_daily.build_message) extrai essa secao para preserva-la no
+# encurtamento; o PREFIXO e o contrato de reconhecimento (o sufixo pode
+# evoluir sem quebrar o compactador).
+TOP5_SECTION_PREFIX = "⚡ Top 5 do dia"
+TOP5_SECTION_HEADER = f"{TOP5_SECTION_PREFIX} (candidatura direta)"
+
 # F7: bandeira por país no Top 5 (canal secundário LU/NL/FI/BE visível no
 # Telegram; DE = vazio — default visual, 0 chars no caso dominante).
 _TOP5_FLAGS = {"lu": "🇱🇺 ", "nl": "🇳🇱 ", "fi": "🇫🇮 ", "be": "🇧🇪 "}
@@ -542,6 +549,32 @@ def format_top5(jobs: list[dict], *, max_len: int | None = None) -> str:
     return text
 
 
+def top5_section_lines(digest_lines: list[str]) -> list[str]:
+    """Extrai a secao ⚡ (header + linhas seguintes) de ``digest_lines`` (F6.1).
+
+    O compactador do Telegram (``refresh_daily.build_message``) recebe o
+    digest ja montado como lista de linhas e precisa preservar o Top 5 do
+    dia mesmo quando a mensagem estoura 4096 chars. Esta funcao devolve a
+    secao inteira — header + corpo ate a proxima linha em branco (as secoes
+    do ``digest_sections`` sao sempre separadas por uma linha em branco) —
+    ou ``[]`` quando a secao nao existe (digest vazio/None, ranking vazio,
+    falha best-effort na montagem). Somente leitura; nunca lanca.
+    """
+    header_idx = None
+    for idx, line in enumerate(digest_lines):
+        if line.startswith(TOP5_SECTION_PREFIX):
+            header_idx = idx
+            break
+    if header_idx is None:
+        return []
+    section = [digest_lines[header_idx]]
+    for line in digest_lines[header_idx + 1:]:
+        if not line.strip():
+            break
+        section.append(line)
+    return section
+
+
 def _changes_section(
     changes: dict,
     new_ids: set[str],
@@ -769,7 +802,7 @@ def digest_sections(
         top5_text = format_top5(current)
         if top5_text:
             lines.append("")
-            lines.append("⚡ Top 5 do dia (candidatura direta)")
+            lines.append(TOP5_SECTION_HEADER)
             lines.extend(top5_text.splitlines())
     except Exception:  # noqa: BLE001 — seção extra nunca derruba o digest
         pass
