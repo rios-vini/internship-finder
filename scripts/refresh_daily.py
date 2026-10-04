@@ -683,6 +683,10 @@ def build_message(
         lines.append("")
         lines.append("⚠️ Problemas detectados:")
         lines.extend(problems)
+    # F6.1 — captura os indices da lista de problemas (para o compactador
+    # resumi-la em contagem quando a base precisar encolher; -1 = sem lista).
+    problems_start = len(lines) - len(problems) if problems else -1
+    n_problems = len(problems)
 
     if disk_warning:
         lines.append("")
@@ -704,16 +708,68 @@ def build_message(
         lines.extend(digest_lines)
     text = "\n".join(lines)
     if digest_lines and len(text) > TELEGRAM_MAX_LEN:
-        # Telegram aceita no maximo 4096 chars. A mensagem base (operacional)
-        # e preservada INTEGRA; o digest vira 1 linha com o link — melhor do
-        # que nao chegar nada (sendMessage devolveria 400).
+        # Telegram aceita no maximo 4096 chars. F6.1 — o encurtamento tem
+        # PRIORIDADE de secoes (bug real 03/10: digest de 2.214 vagas
+        # colapsou INTEIRO em 1 linha e matou o Top 5 do dia — a feature
+        # mais valiosa do produto). Ordem de preservacao:
+        #   (1) base operacional INTEGRA (como sempre);
+        #   (2) secao ⚡ Top 5 do dia com apply_urls (o produto);
+        #   (3) 🔗 link do ranking completo por ULTIMO.
+        # O resto do digest (perfil, novas, mudancas, materials, enrichment,
+        # pessoais) e cortado/resumido — o link leva ao ranking completo.
         link = next(
             (line for line in reversed(digest_lines) if line.startswith("🔗")),
             digest_lines[-1],
         )
-        compact = (f"ℹ️ Resumo do ranking encurtado (mensagem longa) — "
-                   f"ranking completo: {link}")
-        text = "\n".join(lines[:base_len] + ["", compact])
+        base = lines[:base_len]
+        top5 = ranking_digest.top5_section_lines(digest_lines)
+        if not top5:
+            # Digest sem secao ⚡ (ranking vazio/erro na montagem):
+            # comportamento pre-F6.1 preservado — 1 linha com o link.
+            compact = (f"ℹ️ Resumo do ranking encurtado (mensagem longa) — "
+                       f"ranking completo: {link}")
+            text = "\n".join(base + ["", compact])
+        else:
+            # Nivel 1: base INTEGRA + secao ⚡ + link (o caso real de 03/10).
+            compact_parts = base + [""] + top5 + ["", link]
+            if len("\n".join(compact_parts)) <= TELEGRAM_MAX_LEN:
+                text = "\n".join(compact_parts)
+            else:
+                # Nivel 2: a base inteira + Top 5 ainda estoura — resume a
+                # LISTA de problemas em 1 linha de contagem (o bloco mais
+                # caro e menos denso da base; os detalhes vivem no ranking).
+                # O slice termina em base_len: ``lines`` ja contem o digest
+                # anexado, que e reconstruido abaixo (top5 + link).
+                summarized = (lines[:problems_start]
+                               + [f"⚠️ {n_problems} problemas (ver ranking)"]
+                               + lines[problems_start + n_problems:base_len]) \
+                    if problems_start >= 0 else base
+                compact_parts = summarized + [""] + top5 + ["", link]
+                if len("\n".join(compact_parts)) <= TELEGRAM_MAX_LEN:
+                    text = "\n".join(compact_parts)
+                else:
+                    # Nivel 3 (teto defensivo da secao ⚡): mantem o header e
+                    # adiciona LINHAS INTEIRAS do Top 5 enquanto a mensagem
+                    # COMPLETA (base resumida + secao + link) couber no
+                    # limite — mesma semantica de linhas inteiras do
+                    # format_top5, sem aritmetica de budget paralela.
+                    kept: list[str] = [top5[0]]
+                    for line in top5[1:]:
+                        candidate = (summarized + [""] + kept + [line]
+                                      + ["", link])
+                        if len("\n".join(candidate)) > TELEGRAM_MAX_LEN:
+                            break
+                        kept.append(line)
+                    if len(kept) > 1:
+                        parts = summarized + [""] + kept + ["", link]
+                        text = "\n".join(parts)
+                    else:
+                        # Ultimo recurso: NENHUMA linha de vaga cabe — linha
+                        # unica com o link (comportamento pre-F6.1).
+                        compact = (f"ℹ️ Resumo do ranking encurtado "
+                                   f"(mensagem longa) — ranking completo: "
+                                   f"{link}")
+                        text = "\n".join(base + ["", compact])
     return text
 
 
