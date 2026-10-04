@@ -264,8 +264,8 @@ def test_preservation_f5_f7() -> None:
     for iso, before in (("lu", 5), ("nl", 5), ("fi", 3), ("be", 7)):
         check(f"{iso.upper()} não diminuiu (antes {before}, agora {by_country.get(iso, 0)})",
               by_country.get(iso, 0) >= before)
-    check("total entries cresceu (36 -> 66)",
-          len(data["companies"]) == 66)
+    check(f"total entries cresceu (F9 deixou 66; agora {len(data['companies'])} >= 66)",
+          len(data["companies"]) >= 66)
     # nomes F5/F7 todos ainda presentes
     historic = ["BMW AG", "SAP", "BoschGroup", "Volkswagen AG", "BASF SE",
                 "Amazon EU S.à r.l.", "Nokia", "AB InBev", "Solvay", "Bekaert"]
