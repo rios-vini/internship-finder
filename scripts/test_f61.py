@@ -335,14 +335,16 @@ def test_giant_top5() -> None:
     print("== F6.1-e: Top 5 gigante (URLs longas) — teto respeitado ==")
     summary = _summary()
     alerts = _base_alerts_real()
-    # URLs de 300 chars: format_top5 clipa em TOP5_URL_LIMIT=72, entao as
-    # linhas ficam ~160 chars — o digest cabe por si; forçamos estouro com
-    # perfil gigante para exercitar o compact com o Top 5 de linhas longas.
+    # URLs de 300 chars: desde a F12.5 a URL sai INTEIRA (elipse dentro do
+    # link = 404 ao clicar; bug real do Telegram de 05/10). As linhas
+    # ficam longas (~360 chars) — forçamos estouro com perfil gigante
+    # para exercitar o compact com o Top 5 de linhas longas.
     jobs = [_job(i, apply_url=f"https://apply.example.com/{i}/"
                 + "y" * 300) for i in range(5)]
     top5_lines = rg.format_top5(jobs).splitlines()
-    check("format_top5 clipa URLs longas (<= TOP5_URL_LIMIT + elipse)",
-          all(len(ln) <= 160 for ln in top5_lines))
+    check("F12.5: URLs de 300 chars saem INTEIRAS no Top 5",
+          all(f"https://apply.example.com/{i}/" + "y" * 300 in ln
+              for i, ln in enumerate(top5_lines)))
     digest = ["", "🎯 Perfil e critérios ativos"] \
         + ["linha de perfil " + "x" * 240 for _ in range(14)] \
         + ["", "⚡ Top 5 do dia (candidatura direta)"] + top5_lines \
@@ -351,12 +353,12 @@ def test_giant_top5() -> None:
                            digest_lines=digest)
     check("mensagem com Top 5 de linhas longas cabe",
           len(msg) <= rd.TELEGRAM_MAX_LEN)
-    check("as 5 linhas do Top 5 inteiras (format_top5 truncou antes)",
+    check("as 5 URLs inteiras sobrevivem ao compact (F12.5: sem clip)",
           msg.count("https://apply.example.com/") == 5)
     check("link por ultimo", msg.endswith("🔗 Ranking completo: https://x/"))
 
-    # Nivel 3 forcado: linhas de vaga GIGANTES (bypass do clip via
-    # monkeypatch do limite em runtime — a constante do codigo intacta).
+    # Nivel 3 forcado: linhas de vaga GIGANTES (bypass do clip de TITULO
+    # via monkeypatch do limite em runtime — a constante do codigo intacta).
     # O compact corta por LINHAS INTEIRAS: mantem header + as linhas que
     # couberem, nunca no meio de uma linha.
     import unittest.mock as mock
@@ -369,8 +371,7 @@ def test_giant_top5() -> None:
     summary60["error"] = [("s", f"E{i}", "HTTP_500") for i in range(60)]
     alerts60 = [_alert("recurring_error", f"s{i}", f"E{i}", runs_seq=30)
                 for i in range(60)]
-    with mock.patch.object(rg, "TOP5_TITLE_LIMIT", 1500), \
-         mock.patch.object(rg, "TOP5_URL_LIMIT", 1500):
+    with mock.patch.object(rg, "TOP5_TITLE_LIMIT", 1500):
         msg_g = rd.build_message(summary60, alerts60, 2, always_notify=True,
                                  digest_lines=digest_g)
     check("nivel 3: mensagem cabe mesmo com linhas de 1500 chars",

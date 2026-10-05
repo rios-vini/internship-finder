@@ -73,8 +73,13 @@ ENRICH_TOP5 = 5
 
 # F6: Top 5 diário com apply_url no digest. Teto de truncagem por linha
 # (títulos longos não estouram o limite de 4096 do Telegram).
+# F12.5: a URL NUNCA é truncada — elipse DENTRO do link quebra o acesso
+# (bug real do Telegram de 05/10: 4 das 5 URLs do Top 5 com 404 ao
+# clicar). O comprimento da mensagem continua garantido pela truncagem
+# por LINHAS INTEIRAS (``max_len`` + aviso "(+N na página)"): linha a
+# mais sai inteira, link nunca cortado ao meio. Título/empresa seguem
+# clipados (não são clicáveis).
 TOP5_TITLE_LIMIT = 48
-TOP5_URL_LIMIT = 72
 
 # F6.1 — header da secao ⚡ do digest. O compactador do Telegram
 # (refresh_daily.build_message) extrai essa secao para preserva-la no
@@ -548,8 +553,8 @@ def format_top5(jobs: list[dict], *, max_len: int | None = None) -> str:
 
     - ``0 vagas`` -> mensagem graciosa ("nenhuma vaga elegível hoje");
     - lista maior que 5 -> só as 5 primeiras (ordem oficial do ranking);
-    - cada título cortado em ``TOP5_TITLE_LIMIT`` chars e URL em
-      ``TOP5_URL_LIMIT``;
+    - cada título cortado em ``TOP5_TITLE_LIMIT`` chars; a URL sai
+      INTEIRA (F12.5 — link cortado ao meio é link quebrado);
     - ``max_len`` (default: limite do Telegram) -> truncagem SEGURA no
       limite de mensagem, cortando linhas inteiras (nunca no meio de uma
       linha) e avisando quantas ficaram de fora.
@@ -570,7 +575,7 @@ def format_top5(jobs: list[dict], *, max_len: int | None = None) -> str:
             f"{pos}. {flag}{_clip(job.get('title'), TOP5_TITLE_LIMIT)} — "
             f"{_clip(job.get('company'), 24)} — "
             f"{_score_text(job.get('score'))} — "
-            f"{_clip(url, TOP5_URL_LIMIT)}"
+            f"{url}"  # F12.5: URL inteira, NUNCA clipada (link quebrado = 404)
         )
     text = "\n".join(lines)
     if len(text) > max_len:
@@ -803,7 +808,7 @@ def new_since_lines(
         lines.append(
             f"  {shown + 1}. {_short_title(job)} — "
             f"{job.get('company') or '—'} — {_score_text(job.get('score'))} "
-            f"— {_clip(url, TOP5_URL_LIMIT)}"
+            f"— {url}"  # F12.5: URL inteira, NUNCA clipada (link quebrado = 404)
         )
         shown += 1
     if len(new_ids) > shown:
