@@ -30,6 +30,20 @@ F11 (funil de aplicacao) adiciona ao render:
   separada abaixo do ranking principal com header explicando o perfil
   alternativo.
 
+F12 (camada de exibição EN) adiciona ao render — tudo display-only:
+
+- **Linha EN abaixo do título** (``_title_en_line``): tradução DE→EN
+  determinística por dicionário (``display_translate.title_en``),
+  offline, apenas quando difere do original. O título DE NUNCA é
+  substituído.
+- **Snippet EN de descrição** (``_snippet_en_fallback``): quando o
+  cache ``data/translation_cache.json`` tem tradução para a vaga, o
+  resumo exibido é a tradução (marcada "EN · "); sem cache o trecho DE
+  como hoje. O cache é runtime (ferramenta on-demand
+  ``translate_description.py``), NUNCA escrito pelo cron/pipeline.
+- **Rodapé-glossário estático** (``_glossary_html``): 6 termos fixos
+  DE→EN, HTML puro, sem JS.
+
 Mortos removidos (F6): ``application_deadline`` (F1: validade do FEED,
 nao data real), ``official_page`` (F1: desligado) e os campos de intel do
 enrichment LLM (Fase 3, cookie-walled). Nada disso e renderizado. O
@@ -62,6 +76,7 @@ from urllib.parse import urlsplit
 __all__ = [
     "PAGE_TOP", "PAGE_TARGET_BYTES", "COMPANY_MAX_CARDS",
     "NEW_SINCE_SECTION_TOP", "MATERIALS_SECTION_TOP",
+    "GLOSSARY_TERMS",
     "render_minimal_html", "render_minimal_html_from_file",
     "apply_company_cap",
 ]
@@ -182,6 +197,70 @@ def _snippet(job: dict, limit: int = 140) -> str:
     return text[:limit] + ("…" if len(text) > limit else "")
 
 
+# F12 T1 — linha EN abaixo do título: deterministica e OFFLINE (dicionario
+# display DE->EN em ``display_translate.title_en``; sem rede, sem LLM). O
+# título DE NUNCA e substituido — a linha EN so entra quando a traducao
+# DIFERE do original (já-EN/fora-do-dicionario nao ganham linha falsa).
+def _title_en_line(job: dict) -> str:
+    """HTML da linha 'EN: <título traduzido>' (vazio quando não se aplica)."""
+    original = job.get("title")
+    if not original:
+        return ""
+    try:
+        from internship_finder import display_translate
+        translated = display_translate.title_en(original)
+    except Exception:  # noqa: BLE001 — view best-effort
+        return ""
+    if not translated or translated == str(original):
+        return ""
+    return f'<div class="en">{_esc(f"EN: {translated}")}</div>'
+
+
+# F12 T2 — snippet de descricao: quando existe traducao em cache para a
+# vaga, o resumo exibido é a tradução EN (marcada "EN · ") no lugar do
+# trecho DE. Sem cache -> trecho DE como hoje (a pagina nunca promete
+# traducao imediata — o cache e preenchido offline pela ferramenta
+# on-demand e aparece no render seguinte).
+def _snippet_en_fallback(job: dict, cache: dict | None,
+                        limit: int = 140) -> tuple[str, bool]:
+    """(texto_do_snippet, eh_traducao) — EN em cache prioriza o DE."""
+    if cache:
+        jid = str(job.get("id") or "")
+        if jid:
+            try:
+                from internship_finder import display_translate
+                cached = display_translate.cached_translation(cache, jid)
+            except Exception:  # noqa: BLE001 — view best-effort
+                cached = None
+            if cached:
+                text = " ".join(cached.split())
+                snip = text[:limit] + ("…" if len(text) > limit else "")
+                return snip, True
+    return _snippet(job, limit), False
+
+
+# F12 T4 — rodapé-glossário estático (HTML puro, sem JS, sem rede): os 6
+# termos fixos da spec. Vive no fim da página, discreto; idêntico em todo
+# render (offline por construção).
+GLOSSARY_TERMS = [
+    ("Praktikum", "internship"),
+    ("Werkstudent", "working student"),
+    ("Pflichtpraktikum", "mandatory internship"),
+    ("Beschaffung", "procurement"),
+    ("Einkauf", "purchasing"),
+    ("Logistik", "logistics"),
+]
+
+
+def _glossary_html() -> str:
+    parts = " · ".join(
+        f"{_esc(de)} = {_esc(en)}" for de, en in GLOSSARY_TERMS
+    )
+    return (
+        '<p class="gloss">Glossário DE→EN: ' + parts + "</p>"
+    )
+
+
 def _german_level_attr(job: dict) -> str:
     """data-de do card: 'required'|'preferred'|'plus'|'none' (F11 T2).
 
@@ -249,8 +328,14 @@ def apply_company_cap(jobs: list[dict], *, limit: int = PAGE_TOP,
 def _card(rank: int, job: dict, *, visa: bool, salary: str,
           snippet: str, apply_href: str | None, job_href: str | None,
           de_level: str, age: str, dead: bool = False,
-          is_new: bool = False, score_override=None) -> str:
-    """Card compacto de uma vaga (mobile-first) com atributos F11."""
+          is_new: bool = False, score_override=None,
+          en_title_html: str = "", snippet_is_en: bool = False) -> str:
+    """Card compacto de uma vaga (mobile-first) com atributos F11.
+
+    F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
+    quando não se aplica); ``snippet_is_en`` marca o snippet como tradução
+    (classe ``en`` + prefixo honesto "EN · ").
+    """
     vf = ' <span class="vf" title="Empresa com política de visto (visa_policy: explicit_support ou unclear)">🛂</span>' if visa else ""
     if de_level == "required":
         vf += ' <span class="de" title="Anúncio exige alemão (german_level: required)">🇩🇪 DE exigido</span>'
@@ -276,7 +361,12 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         btn = f'<a class="btn" href="{_esc(apply_href)}" target="_blank" rel="noopener">candidatar-se ↗</a>'
     elif job_href:
         btn = f'<a class="btn" href="{_esc(job_href)}" target="_blank" rel="noopener">abrir vaga ↗</a>'
-    snip = f'<p class="d">{_esc(snippet)}</p>' if snippet else ""
+    if snippet and snippet_is_en:
+        snip = f'<p class="d en">{_esc("EN · " + snippet)}</p>'
+    elif snippet:
+        snip = f'<p class="d">{_esc(snippet)}</p>'
+    else:
+        snip = ""
     qtext = " ".join(x for x in (job.get("title"), job.get("company"),
                                  job.get("location")) if x)
     return (
@@ -288,7 +378,7 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         f' data-new="{1 if is_new else 0}"'
         f' data-q="{_esc(qtext)}">'
         f'<span class="r">{rank}</span><span class="s">{score}</span>'
-        f'<div class="bd">{inner}<div class="m">{meta}</div>{snip}{btn}</div></li>'
+        f'<div class="bd">{inner}{en_title_html}<div class="m">{meta}</div>{snip}{btn}</div></li>'
     )
 
 
@@ -319,6 +409,9 @@ a.t:hover{text-decoration:underline}
 .m{color:#9aa7b4;font-size:.82rem;margin-top:2px}
 .m .sal{color:#e8cf8a;font-weight:600}
 .d{color:#8b98a5;font-size:.8rem;margin:5px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.d.en{color:#8fb8d8}
+.en{color:#9fb3c8;font-size:.78rem;margin:1px 0 0}
+.gloss{color:#7d8a97;font-size:.72rem;margin:6px 0 0;line-height:1.5}
 .btn{display:inline-block;margin-top:7px;padding:6px 14px;border:1px solid #1c7a4a;color:#9fd8b4;border-radius:999px;font-size:.82rem;text-decoration:none}
 .btn:hover{background:#1c7a4a;color:#10151b}
 .f{color:#9aa7b4;font-size:.72rem;margin:10px 0 0}
@@ -341,7 +434,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     new_ids: set[str] | None, dead_ids: set[str] | None,
                     ref: datetime, company_entry_cache: dict,
                     rank_start: int = 1, score_key: str = "score",
-                    with_snippet: bool = True) -> list[str]:
+                    with_snippet: bool = True,
+                    translation_cache: dict | None = None) -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -349,6 +443,11 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     que e um ranking PROPRIO; exibir o score do perfil principal la
     seria desinformacao). ``with_snippet``: False = sem o resumo de
     descricao (degradacao size-aware — campo decorativo).
+
+    F12: ``translation_cache`` (dict, default None = sem cache) faz o
+    snippet da descricao usar a traducao EN em cache quando existir —
+    marcada como tradução ("EN · "). Best-effort: sem entrada, snippet
+    DE como hoje. A linha EN do título é independente (offline).
     """
     rows: list[str] = []
     new_ids = new_ids or set()
@@ -378,14 +477,19 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
         # sem ele, o botão é "abrir vaga" (job.url). Nenhum rótulo de ação
         # direta aponta para uma URL que não é de candidatura.
         apply_href = _safe_url(raw.get("apply_url"))
+        if with_snippet:
+            snippet, snippet_is_en = _snippet_en_fallback(job, translation_cache)
+        else:
+            snippet, snippet_is_en = "", False
         rows.append(_card(
             i, job, visa=visa, salary=salary,
-            snippet=_snippet(job) if with_snippet else "",
+            snippet=snippet, snippet_is_en=snippet_is_en,
             apply_href=apply_href, job_href=job_href,
             de_level=_german_level_attr(job), age=_age_days_text(job, ref),
             dead=jid in dead_ids, is_new=jid in new_ids,
             score_override=(job.get(score_key)
                             if score_key != "score" else None),
+            en_title_html=_title_en_line(job),
         ))
     return rows
 
@@ -401,6 +505,7 @@ def render_minimal_html(
     dead_link_ids: set[str] | None = None,
     materials: list[dict] | None = None,
     with_snippets: bool = True,
+    translation_cache: dict | None = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
 
@@ -414,6 +519,12 @@ def render_minimal_html(
     ``dead_link_ids`` = ids com URL 410/404 confirmado (badge + descem do
     topo exibido). ``materials`` = ranking materials JA computado e
     cortado pelo chamador (secao opcional); None = sem secao.
+
+    F12: ``translation_cache`` = cache de traducoes de descricao
+    (``display_translate.load_translation_cache``; default None = sem
+    cache, snippet DE como hoje). Best-effort e display-only: afeta SO o
+    snippet exibido, nunca o JSON/CSV. A linha EN do título e o glossário
+    do rodapé sao OFFLINE (sempre presentes).
 
     Size-aware (contrato da docstring desde a F6, agora real): com
     ``with_snippets=True`` o render e' montado com snippets; o chamador
@@ -432,7 +543,7 @@ def render_minimal_html(
     body = "\n".join(_cards_section(
         shown, company_intel_map=company_intel_map, new_ids=new_ids,
         dead_ids=dead_ids, ref=ref, company_entry_cache=entry_cache,
-        with_snippet=with_snippets,
+        with_snippet=with_snippets, translation_cache=translation_cache,
     ))
     n_vf = sum(1 for j in shown if _visa_friendly(
         j, entry_cache.get(str(j.get("id") or ""))))
@@ -452,6 +563,7 @@ def render_minimal_html(
             new_ids=new_ids, dead_ids=dead_ids, ref=ref,
             company_entry_cache=entry_cache, rank_start=1,
             score_key="score", with_snippet=with_snippets,
+            translation_cache=translation_cache,
         ))
         new_section = (
             f'<h2>🆕 Novas desde ontem — {len(new_ids)} nova(s){extra}</h2>'
@@ -467,6 +579,7 @@ def render_minimal_html(
             new_ids=new_ids, dead_ids=dead_ids, ref=ref,
             company_entry_cache=entry_cache, rank_start=1,
             score_key="materials_score", with_snippet=with_snippets,
+            translation_cache=translation_cache,
         ))
         materials_section = (
             '<h2>🧪 Materials Engineering — top 10 (perfil alternativo)</h2>'
@@ -481,6 +594,8 @@ def render_minimal_html(
         "(empresa com política de visto) · ranking, JSON e CSV completos "
         "são gerados pelo pipeline no VPS"
     )
+    # F12 T4 — rodapé-glossário estático (offline; sempre presente).
+    glossary = _glossary_html()
     # Select de pais SEM bandeiras: o contrato da F7 e "DE e o default visual
     # — bandeira so no canal secundario"; o select e um controle, nao um
     # card (e o emoji DE no select poluiria o documento inteiro).
@@ -514,6 +629,7 @@ def render_minimal_html(
 {new_section}
 {materials_section}
 <p class="f">{_esc(footer_note)}</p>
+{glossary}
 </main>
 <script>{_JS}</script>
 </body>
@@ -531,6 +647,7 @@ def render_size_aware(
     new_since_ids: set[str] | None = None,
     dead_link_ids: set[str] | None = None,
     materials: list[dict] | None = None,
+    translation_cache: dict | None = None,
 ) -> str:
     """``render_minimal_html`` com degradacao progressiva de tamanho (F11).
 
@@ -538,12 +655,18 @@ def render_size_aware(
     chars; o botao abre o anuncio completo). Se o render COM snippets
     estoura ``PAGE_TARGET_BYTES``, remonta SEM snippets — nunca corta
     vagas a menos e nunca estoura o cap duro (assert do teste).
+
+    F12: o snippet remontado sem snippets tambem perde a traducao EN
+    (ela vive no snippet) — a linha EN do título e o glossário permanecem
+    (nao sao campos decorativos). ``translation_cache`` e passado ao
+    render em ambas as montagens (best-effort).
     """
     html = render_minimal_html(
         jobs, total_eligible=total_eligible, generated_at=generated_at,
         top=top, company_intel_map=company_intel_map,
         new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
         materials=materials, with_snippets=True,
+        translation_cache=translation_cache,
     )
     if len(html.encode("utf-8")) > PAGE_TARGET_BYTES:
         html = render_minimal_html(
@@ -551,6 +674,7 @@ def render_size_aware(
             top=top, company_intel_map=company_intel_map,
             new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
             materials=materials, with_snippets=False,
+            translation_cache=translation_cache,
         )
     return html
 
@@ -581,6 +705,7 @@ def render_minimal_html_from_file(
     archive_root: Path | None = None,
     dead_link_ids: set[str] | None = None,
     include_materials: bool = True,
+    translation_cache_path: Path | str | None = None,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
 
@@ -588,12 +713,25 @@ def render_minimal_html_from_file(
     ``data/archive/`` (maior timestamp < agora; mecanica reutilizada do
     ranking_digest) quando ``archive_root`` e dado. Best-effort: snapshot
     corrompido/ausente -> secao 🆕 omitida (nunca erro).
+
+    F12: ``translation_cache_path`` = cache de traducoes de descricao
+    (default None = desligado; o CLI passa ``data/translation_cache.json``).
+    Best-effort: ausente/corrompido -> cache vazio, snippet DE como hoje.
     """
     with path.open(encoding="utf-8") as fh:
         jobs = json.load(fh)
     if not isinstance(jobs, list):
         raise ValueError(f"formato inesperado em {path}: esperado lista de vagas")
     generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+
+    translation_cache: dict = {}
+    if translation_cache_path:
+        try:
+            from internship_finder import display_translate
+            translation_cache = display_translate.load_translation_cache(
+                translation_cache_path)
+        except Exception:  # noqa: BLE001 — cache e best-effort, nunca erro
+            translation_cache = {}
 
     new_ids: set[str] | None = None
     if archive_root is not None:
@@ -615,7 +753,7 @@ def render_minimal_html_from_file(
         jobs, total_eligible=len(jobs), generated_at=generated,
         top=top, company_intel_map=company_intel_map,
         new_since_ids=new_ids, dead_link_ids=dead_link_ids,
-        materials=materials,
+        materials=materials, translation_cache=translation_cache,
     )
 
 
@@ -630,13 +768,19 @@ def main(argv: list[str] | None = None) -> int:
     (default: data/archive do repo — o publish repassa o caminho relativo).
     ``--dead-list FILE`` recebe os ids mortos apurados pelo estagio de
     vitalidade do refresh (um id por linha; ausente = nenhuma marca).
+
+    F12: ``--translation-cache PATH`` habilita o snippet EN das descricoes
+    com traducao em cache (default: data/translation_cache.json; '' desliga).
+    Best-effort: arquivo ausente/corrompido = snippet DE como hoje. A
+    ferramenta que PREENCHE o cache e ``scripts/translate_description.py``
+    (on-demand, fora do cron); este render so LE.
     """
     import argparse
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
     parser = argparse.ArgumentParser(
-        description="Render minimo da pagina publica (F6/F11): top do dia, "
-                    "mobile-first, dark, self-contained.",
+        description="Render minimo da pagina publica (F6/F11/F12): top do "
+                    "dia, mobile-first, dark, self-contained.",
     )
     parser.add_argument("--input", default="data/eligible_jobs.json",
                         metavar="PATH", help="JSON ranqueado do run")
@@ -654,6 +798,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dead-list", default=None, metavar="PATH",
                         help="arquivo com ids de vagas mortas (404/410), "
                              "um por linha (estagio url_liveness)")
+    parser.add_argument("--translation-cache", default="data/translation_cache.json",
+                        metavar="PATH",
+                        help="cache de traducoes EN de descricao "
+                             "(data/translation_cache.json da F12; '' "
+                             "desliga o snippet EN)")
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -679,9 +828,13 @@ def main(argv: list[str] | None = None) -> int:
                         if line.strip()}
 
     archive_root = Path(args.archive) if args.archive else None
+    translation_cache_path = (
+        Path(args.translation_cache) if args.translation_cache else None
+    )
     page = render_minimal_html_from_file(
         Path(args.input), top=args.top, company_intel_map=company_intel_map,
         archive_root=archive_root, dead_link_ids=dead_ids,
+        translation_cache_path=translation_cache_path,
     )
     if args.output == "-":
         sys.stdout.write(page)

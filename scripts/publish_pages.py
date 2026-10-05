@@ -207,6 +207,12 @@ def render_ranking_html(
     O ``--input`` e o caminho RELATIVO ``data/eligible_jobs.json`` (com cwd na
     raiz do repo), de proposito: nenhum caminho absoluto da VPS entra na
     pagina. Retorna o texto gerado; o arquivo temporario de saida e removido.
+
+    F12: ``--translation-cache data/translation_cache.json`` (default do
+    minimal_page; passado explicitamente para fixar o contrato) habilita o
+    snippet EN das descricoes com traducao em cache. Best-effort: arquivo
+    ausente/corrompido -> snippet DE como hoje (a pagina nunca quebra).
+    O cache NUNCA e publicado — so o texto traduzido entra no HTML.
     """
     script = root / "scripts" / "minimal_page.py"
     if not script.exists():
@@ -217,6 +223,7 @@ def render_ranking_html(
         "--top", str(min(top, minimal_page_top())),
         "--output", str(output_path),
         "--archive", "data/archive",
+        "--translation-cache", "data/translation_cache.json",
     ]
     if dead_link_ids:
         dead_tmp = output_path.parent / ".dead_ids.txt"
