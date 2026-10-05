@@ -227,6 +227,48 @@ def _ids(ranking: list[dict]) -> set[str]:
     return {j.get("id") for j in ranking if j.get("id")}
 
 
+def load_ranking_or_none(path: str | Path) -> list[dict] | None:
+    """Ranking do snapshot anterior; ``None`` = arquivo INACEITAVEL (F11).
+
+    Distingue (o ``load_ranking`` best-effort nao distingue): lista vazia
+    VALIDA -> ``[]`` (snapshot existe e o run anterior nao tinha vagas — o
+    diff e legitimo e diz "tudo e novo"); arquivo AUSENTE/corrompido/nao-
+    lista -> ``None`` (sem estado anterior; o chamador NAO monta secao de
+    diff — nunca trata o dataset inteiro como "novo de ontem").
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, list):
+        return None
+    return [j for j in data if isinstance(j, dict) and j.get("id")]
+
+
+def new_since_previous(
+    current: list[dict],
+    previous: list[dict] | None,
+) -> tuple[set[str], set[str]] | None:
+    """Diff de IDs do dia vs o snapshot anterior (F11 Tarefa 1; pura).
+
+    Devolve ``(new_ids, gone_ids)`` — ids presentes hoje e ausentes ontem
+    ("novas de ontem") e vice-versa ("sumiram"). ``previous=None`` (sem
+    snapshot usavel) -> ``None``: o chamador omite a secao, sem erro. Um
+    snapshot anterior VALIDO e vazio (``[]``) e um estado real (primeiro
+    run com dataset vazio): devolve todos os ids atuais como novos.
+
+    O diff e de EXIBICAO: nada e escrito em data/; ids de jobs
+    ``sf_dataset:*``/``direct:*`` nunca passaram pelo SQLite e o
+    ``first_seen`` NAO os cobre — por isso o diff e de IDs contra o
+    snapshot arquivado, nao contra o banco.
+    """
+    if previous is None:
+        return None
+    cur_ids = _ids(current)
+    prev_ids = _ids(previous)
+    return (cur_ids - prev_ids, prev_ids - cur_ids)
+
+
 def new_top_entries(
     current: list[dict],
     previous: list[dict],
@@ -656,6 +698,119 @@ def materials_lines(current: list[dict], previous: list[dict]) -> list[str]:
     return lines
 
 
+# ---------------------------------------------------------------------------
+# F11 — secoes do funil de aplicacao
+# ---------------------------------------------------------------------------
+
+# Contagem que caracteriza "evento de dataset novo" (ex.: onboarding de
+# fonte nova): o diff e legitimo mas listar top-3 como "novas de ontem"
+# vende uma ida de shopping como novidade do dia. Acima disso, o digest
+# mostra so a contagem honesta; a pagina segue mostrando o top-10.
+NEW_SINCE_BIG_DIFF = 500
+
+# Exibicao da secao 🆕 da pagina (spec F11 T1: top 10 por score).
+NEW_SINCE_PAGE_TOP = 10
+
+
+def _german_level_of(job: dict) -> str:
+    """Nivel de alemao da vaga ('required'/'preferred'/'plus'/'none').
+
+    MESMO detector do fit da interface (app_intel.german_level sobre
+    titulo+descricao); None = sem mencao -> 'none'. Best-effort: falha
+    de import/parse -> 'none' (nunca derruba render/digest).
+    """
+    try:
+        from internship_finder import app_intel
+        text = f"{job.get('title') or ''} {job.get('description') or ''}"
+        gl = app_intel.german_level(text)
+        return gl.level if gl is not None else "none"
+    except Exception:  # noqa: BLE001 — view best-effort
+        return "none"
+
+
+def applicable_lines(current: list[dict], *, top: int = DIGEST_TOP5) -> list[str]:
+    """Secao '🎯 Top 5 aplicáveis' (F11 T2c): sem DE-required E visa_friendly.
+
+    Escaneia o ranking em ordem oficial ate preencher ``top``; se houver
+    menos, lista o que houver; se 0, linha graciosa honesta (filtros
+    muito restritivos hoje) — nunca lista vagas fora do criterio.
+    """
+    lines = ["🎯 Top 5 aplicáveis (sem alemão exigido + 🛂)"]
+    if not current:
+        return lines + ["— ranking vazio"]
+    picks: list[dict] = []
+    for job in current:
+        if len(picks) >= top:
+            break
+        if not bool(job.get("visa_friendly")):
+            continue
+        if _german_level_of(job) == "required":
+            continue
+        picks.append(job)
+    if not picks:
+        return lines + [
+            "— nenhuma vaga aplicável hoje — filtros de alemão/visto "
+            "muito restritivos"
+        ]
+    for pos, job in enumerate(picks, 1):
+        lines.append(
+            f"  {pos}. {_short_title(job)} — {job.get('company') or '—'} "
+            f"({_score_text(job.get('score'))})"
+        )
+    return lines
+
+
+def new_since_lines(
+    diff: tuple[set[str], set[str]] | None,
+    current: list[dict],
+    *,
+    max_shown: int = 3,
+    big_diff: int = NEW_SINCE_BIG_DIFF,
+) -> list[str]:
+    """Secao '🆕 Novas desde ontem' do digest (F11 T1; contagem + top 3).
+
+    ``diff`` = saida de ``new_since_previous`` (None = sem snapshot; secao
+    ausente). Diff gigante (>= ``big_diff`` novas — evento de dataset
+    novo, ex. onboarding de fonte): mostra SO a contagem, NUNCA a lista
+    (o +1.793 de 03/10 nao caberia e seria desinformacao util).
+
+    O top-3 e escaneado em ordem oficial (score do pipeline) entre as
+    novas; cada linha: titulo, empresa, score, apply_url (mesma prioridade
+    da pagina — raw.apply_url com fallback job.url).
+    """
+    if diff is None:
+        return []
+    new_ids, gone_ids = diff
+    if not new_ids:
+        lines = ["🆕 Novas desde ontem: 0 (nenhuma vaga nova no dataset)"]
+        if gone_ids:
+            lines.append(f"({len(gone_ids)} vaga(s) saíram do dataset)")
+        return lines
+    lines = [f"🆕 Novas desde ontem: {len(new_ids)}"]
+    if len(new_ids) >= big_diff:
+        lines.append(
+            "(evento de dataset novo — onboarding de fonte; o dia a dia "
+            "volta no próximo run)"
+        )
+        return lines
+    shown = 0
+    for job in current:
+        if shown >= max_shown:
+            break
+        if job.get("id") not in new_ids:
+            continue
+        url = _apply_url_of(job) or "—"
+        lines.append(
+            f"  {shown + 1}. {_short_title(job)} — "
+            f"{job.get('company') or '—'} — {_score_text(job.get('score'))} "
+            f"— {_clip(url, TOP5_URL_LIMIT)}"
+        )
+        shown += 1
+    if len(new_ids) > shown:
+        lines.append(f"  (+{len(new_ids) - shown} outras novas — ver página)")
+    return lines
+
+
 def enrichment_lines(
     current: list[dict],
     enrichment_path: str | Path | None,
@@ -782,6 +937,27 @@ def digest_sections(
     if mat_lines:
         lines.append("")
         lines.extend(mat_lines)
+
+    # F11 — secoes do funil de aplicacao (antes do link, best-effort):
+    # 🆕 Novas desde ontem (diff de IDs contra o snapshot anterior — o
+    # `previous_path` e o MESMO snapshot da rotacao usado pelas secoes
+    # acima; sem snapshot usavel, secao ausente) e 🎯 Top 5 aplicaveis
+    # (visa_friendly E sem DE-required — o filtro que mais importa para
+    # o dono). Falha em qualquer secao nova NUNCA derruba o digest.
+    try:
+        previous_for_diff = load_ranking_or_none(previous_path)
+        diff = new_since_previous(current, previous_for_diff)
+        ns_lines = new_since_lines(diff, current)
+        if ns_lines:
+            lines.append("")
+            lines.extend(ns_lines)
+    except Exception:  # noqa: BLE001 — secao nova nunca derruba o digest
+        pass
+    try:
+        lines.append("")
+        lines.extend(applicable_lines(current))
+    except Exception:  # noqa: BLE001
+        pass
 
     # Fase 3 (enrichment): secao de dados da pagina oficial (antes do link;
     # store ausente -> secao inteira some — enrichment nunca e obrigatorio).

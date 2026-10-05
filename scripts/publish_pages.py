@@ -186,17 +186,23 @@ def ensure_deploy_clone(
 
 def render_ranking_html(
     root: Path, output_path: Path, *, top: int = PUBLIC_TOP, timeout: float = 300.0,
+    dead_link_ids: set[str] | None = None,
 ) -> str:
     """Gera o HTML do ranking publico (F6: pagina MÍNIMA mobile-first).
 
     F6 substitui o render monolitico da ``interface.py`` (9,5 MB com todas
     as vagas + breakdowns/fit/intel por vaga) pelo render mínimo do
-    ``scripts/minimal_page.py``: top-50 do dia, card compacto por vaga
+    ``scripts/minimal_page.py``: top do dia, card compacto por vaga
     (título, empresa, local, score, link de candidatura, badge 🛂
     visa_friendly, salário quando citado), CSS inline escuro, ~40 KB.
     Os campos mortos (``application_deadline`` = validade do FEED, ``official_page``,
     intel de enrichment da Fase 3) não são renderizados; o badge visa_friendly
     (F5) é preservado com fallback retrocompat do company_intel curado.
+
+    F11: ``dead_link_ids`` (ids 404/410 apurados pelo estagio de
+    vitalidade do refresh) sao repassados via ``--dead-list`` — as vagas
+    mortas ganham badge e descem do topo exibido (o JSON/CSV ficam
+    intactos). Default ``None`` = sem marcas (comportamento F6).
 
     O ``--input`` e o caminho RELATIVO ``data/eligible_jobs.json`` (com cwd na
     raiz do repo), de proposito: nenhum caminho absoluto da VPS entra na
@@ -210,7 +216,14 @@ def render_ranking_html(
         "--input", "data/eligible_jobs.json",
         "--top", str(min(top, minimal_page_top())),
         "--output", str(output_path),
+        "--archive", "data/archive",
     ]
+    if dead_link_ids:
+        dead_tmp = output_path.parent / ".dead_ids.txt"
+        dead_tmp.parent.mkdir(parents=True, exist_ok=True)
+        dead_tmp.write_text("\n".join(sorted(dead_link_ids)) + "\n",
+                            encoding="utf-8")
+        cmd += ["--dead-list", str(dead_tmp)]
     env = {**os.environ, "PYTHONPATH": str(root / "src")}
     try:
         proc = subprocess.run(
@@ -218,6 +231,9 @@ def render_ranking_html(
         )
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"geracao do HTML estourou o tempo ({timeout:.0f}s)") from exc
+    finally:
+        if dead_link_ids:
+            (output_path.parent / ".dead_ids.txt").unlink(missing_ok=True)
     if proc.returncode != 0:
         raise RuntimeError(
             f"minimal_page.py falhou (exit {proc.returncode}): "
@@ -282,15 +298,20 @@ def publish_ranking(
     run_id: str,
     top: int = PUBLIC_TOP,
     log=None,
+    dead_link_ids: set[str] | None = None,
 ) -> bool:
     """Publica o ranking do run em GitHub Pages.
 
     Gate (funcao UNICA ``publication_allowed``, auditoria 23/09): publica com
     vagas elegiveis > 0 e dataset confiavel — exit 0 (ok) OU exit 2 (parcial
-    com falhas perifericas de fontes individuais). Dataset vazio (exit 1),
-    run truncado (exit 124) ou exit inesperado nao publicam nada — a pagina
+    com falhas perifericas de fontes individuais). Dataset vazio (exit 1), run
+    truncado (exit 124) ou exit inesperado nao publicam nada — a pagina
     anterior permanece. O HTML e gerado em diretorio temporario e so entra no
     clone apos a verificacao de seguranca.
+
+    F11: ``dead_link_ids`` (ids 404/410 do estagio de vitalidade) sao
+    repassados ao render — as mortas ganham badge e descem do topo
+    exibido. Default ``None`` = comportamento F6 (sem marcas).
     """
     if not publication_allowed(exit_code, eligible):
         _log(log, "pages: publicacao pulada (exit=%d eligible=%d — dataset "
@@ -299,7 +320,8 @@ def publish_ranking(
     origin_url = _git(root, "config", "--get", "remote.origin.url")
     ensure_deploy_clone(deploy_dir, origin_url, root=root, log=log)
     with tempfile.TemporaryDirectory(prefix="if_pages_") as td:
-        html = render_ranking_html(root, Path(td) / INDEX_NAME, top=top)
+        html = render_ranking_html(
+            root, Path(td) / INDEX_NAME, top=top, dead_link_ids=dead_link_ids)
         return publish_html(html, deploy_dir, run_id=run_id, log=log)
 
 

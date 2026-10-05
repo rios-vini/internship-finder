@@ -529,7 +529,8 @@ def test_pages_dir_integrado() -> None:
                 fh.write(json.dumps(_run_record("r1", 400, 50)) + "\n")
             return subprocess.CompletedProcess(args[0], 0)
 
-        def fake_publish(root, pages, *, exit_code, eligible, run_id):
+        def fake_publish(root, pages, *, exit_code, eligible, run_id,
+                         dead_link_ids=None):
             calls["publish"].append((exit_code, eligible, run_id))
             return True
 
