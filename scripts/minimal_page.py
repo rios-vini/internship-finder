@@ -1,30 +1,49 @@
-"""Render minimal da pagina publica (F6) — top-50 do dia, mobile-first.
+"""Render minimal da pagina publica (F6; F11 = funil de aplicacao) — top do dia.
 
 Substitui o HTML monolitico da interface.py na publicacao: em vez de
 embutir TODAS as vagas elegiveis com breakdowns/fit/intel por vaga (9,5 MB
-e crescendo a cada run), a pagina publica mostra o TOP-50 do dia com os
+e crescendo a cada run), a pagina publica mostra o TOP do dia com os
 campos de decisao rapida — titulo, empresa, local, score, link de
 candidatura e badge visa_friendly (F5) — num card compacto por vaga.
 
-Decisoes (spec F6):
+F11 (funil de aplicacao) adiciona ao render:
 
-- **Mortos removidos**: ``application_deadline`` (F1: validade do FEED,
-  nao data real), ``official_page`` (F1: desligado) e os campos de intel
-  que dependiam do enrichment LLM (Fase 3, cookie-walled desde F1). Nada
-  disso e renderizado.
-- **Badge 🛂 visa_friendly PRESERVADA** (F5, mergeada horas antes): lida
-  do campo do job (pipeline F5) com fallback re-derivando do
-  ``company_intel`` curado (retrocompat de snapshots pre-F5, mesmo
-  comportamento da interface.py).
-- **Salario quando citado no anuncio** (evidencia textual — nunca
-  inventado; mesma regra da interface.py/opportunity_intel).
-- **CSS inline minimo, dark mode default** (spec: "dark mode"), sem
-  framework; mobile-first com cards. Vanilla JS opcional (filtro
-  visa-friendly + busca) cabe em ~1,5 KB — mantido por utilidade real e
-  tamanho irrelevante.
-- **Ordenacao: score do pipeline, server-side** (a lista ja vem ordenada;
-  o sort e defensivo). Nenhum JS de ordenacao.
-- **JSON/CSV completos NAO mudam**: sao a base de dados, nao a interface.
+- **Top-100** (spec F11 T4; era 50 — medicao: 92 KB com 100 vagas reais).
+- **data-de por card** (nivel de alemao via ``app_intel.german_level``;
+  None -> "none") + badge "🇩🇪 DE exigido" quando required + toggle
+  client-side "sem alemão exigido" (mesmo padrao do checkbox 🛂 F5).
+- **Regra de EXIBICAO max 2 vagas por empresa** no top (ordem oficial de
+  score; a 3a+ ocorrencia da empresa e pulada e o corte e refeito com as
+  seguintes). Nao mexe em score nem no JSON/CSV.
+- **Seção "🆕 Novas desde ontem"** (diff de IDs contra o snapshot anterior
+  do ``data/archive/``): top 10 por score, cards no mesmo formato. Sem
+  snapshot usavel a secao e omitida; diff gigante mostra so a contagem.
+- **Filtro client-side de pais** (select DE/LU/NL/FI/BE via country_iso)
+  e **toggle "só novas de ontem"** (ids do diff; sem diff = toggle oculto).
+- **dead_link**: o campo chega do chamador (refresh_daily checa 404/410
+  via ``url_liveness.check_liveness`` ANTES de publicar); vagas mortas
+  descem do top exibido (a proxima sobe) e ganham badge discreto "🔗
+  morta (404/410)" — nunca sao removidas do JSON/CSV (a base de dados).
+- **Idade no card** ("há Nd") quando posted_at existe — so display.
+- **Seção Materials Engineering** (opcional): top 10 por materials_score
+  (``rank_materials_jobs`` — o MESMO ranking proprio do digest), secao
+  separada abaixo do ranking principal com header explicando o perfil
+  alternativo.
+
+Mortos removidos (F6): ``application_deadline`` (F1: validade do FEED,
+nao data real), ``official_page`` (F1: desligado) e os campos de intel do
+enrichment LLM (Fase 3, cookie-walled). Nada disso e renderizado. O
+badge 🛂 visa_friendly e PRESERVADO (F5) com fallback re-derivado do
+``company_intel`` curado (retrocompat snapshots pre-F5).
+
+Salario quando citado no anuncio (evidencia textual — nunca inventado;
+mesma regra da interface.py/opportunity_intel). CSS inline minimo, dark
+mode default, sem framework; mobile-first com cards. Vanilla JS de
+filtro (busca + 🛂 + sem-DE + pais + novas) — mesmo desenho F6.
+
+Ordenacao: score do pipeline, server-side (a lista ja vem ordenada; o
+sort e defensivo). Nenhum JS de ordenacao. JSON/CSV completos NAO
+mudam: sao a base de dados, nao a interface.
 
 A mecanica de deploy e intocada (publish_pages.publish_html atomico,
 ``check_public_safe``, clone gh-pages, push so do index.html): este
@@ -36,17 +55,30 @@ from __future__ import annotations
 import html as _html
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
 __all__ = [
-    "PAGE_TOP", "PAGE_TARGET_BYTES", "render_minimal_html",
-    "render_minimal_html_from_file",
+    "PAGE_TOP", "PAGE_TARGET_BYTES", "COMPANY_MAX_CARDS",
+    "NEW_SINCE_SECTION_TOP", "MATERIALS_SECTION_TOP",
+    "render_minimal_html", "render_minimal_html_from_file",
+    "apply_company_cap",
 ]
 
-# Quantas vagas a pagina publica mostra (spec F6: top-50 do dia).
-PAGE_TOP = 50
+# Quantas vagas a pagina publica mostra (F6: 50; F11 T4: 100 — o tamanho
+# real medido com 100 vagas do snapshot 04/10 e 92 KB, dentro do alvo).
+PAGE_TOP = 100
+
+# Maximo de vagas EXIBIDAS por empresa no top (spec F11 T4 — regra de
+# EXIBICAO: nao altera score/ranking/JSON/CSV; o corte e refeito com as
+# vagas seguintes da ordem oficial).
+COMPANY_MAX_CARDS = 2
+
+# Top da secao 🆕 (spec F11 T1: top 10 por score) e da secao Materials
+# (spec F11 T4 opcional: top 10 por materials_score).
+NEW_SINCE_SECTION_TOP = 10
+MATERIALS_SECTION_TOP = 10
 
 # Orcamento de tamanho da pagina (spec: alvo <=100KB, cap duro 150KB
 # verificado no teste). O render e' size-aware: se o conteudo real
@@ -150,10 +182,82 @@ def _snippet(job: dict, limit: int = 140) -> str:
     return text[:limit] + ("…" if len(text) > limit else "")
 
 
+def _german_level_attr(job: dict) -> str:
+    """data-de do card: 'required'|'preferred'|'plus'|'none' (F11 T2).
+
+    MESMO detector do fit da interface (app_intel.german_level sobre
+    titulo+descricao); None = sem mencao -> 'none'. Best-effort: falha
+    de import/parse -> 'none' (nunca derruba o render).
+    """
+    try:
+        from internship_finder import app_intel
+        text = f"{job.get('title') or ''} {job.get('description') or ''}"
+        gl = app_intel.german_level(text)
+        return gl.level if gl is not None else "none"
+    except Exception:  # noqa: BLE001 — view best-effort
+        return "none"
+
+
+def _parse_posted_at(value) -> datetime | None:
+    """posted_at ISO (com Z ou offset) -> datetime UTC-aware; None em falha."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
+
+
+def _age_days_text(job: dict, ref: datetime) -> str:
+    """Badge de idade 'há Nd' quando posted_at existe (F11 T3; so display)."""
+    dt = _parse_posted_at(job.get("posted_at"))
+    if dt is None:
+        return ""
+    days = (ref - dt).days
+    if days < 0:
+        return ""  # posted no futuro (clock skew) — nao exibe idade falsa
+    if days == 0:
+        return "há <1d"
+    return f"há {days}d"
+
+
+def apply_company_cap(jobs: list[dict], *, limit: int = PAGE_TOP,
+                      max_per_company: int = COMPANY_MAX_CARDS) -> list[dict]:
+    """Corte do top exibido com max N vagas por empresa (F11 T4; pura).
+
+    Percorre a ordem oficial (ja ordenada por score): a 1a e 2a vagas de
+    cada empresa entram, a 3a+ e pulada e a vaga seguinte do ranking
+    preenche a vaga. Regra de EXIBICAO — nao altera scores, nao reordena
+    o que entrou, nao toca o JSON/CSV. Deterministica.
+    """
+    shown: list[dict] = []
+    counts: dict[str, int] = {}
+    for job in jobs:
+        if len(shown) >= limit:
+            break
+        company = str(job.get("company") or "").strip().casefold() or "—"
+        if counts.get(company, 0) >= max_per_company:
+            continue
+        counts[company] = counts.get(company, 0) + 1
+        shown.append(job)
+    return shown
+
+
 def _card(rank: int, job: dict, *, visa: bool, salary: str,
-          snippet: str, apply_href: str | None, job_href: str | None) -> str:
-    """Card compacto de uma vaga (mobile-first)."""
+          snippet: str, apply_href: str | None, job_href: str | None,
+          de_level: str, age: str, dead: bool = False,
+          is_new: bool = False, score_override=None) -> str:
+    """Card compacto de uma vaga (mobile-first) com atributos F11."""
     vf = ' <span class="vf" title="Empresa com política de visto (visa_policy: explicit_support ou unclear)">🛂</span>' if visa else ""
+    if de_level == "required":
+        vf += ' <span class="de" title="Anúncio exige alemão (german_level: required)">🇩🇪 DE exigido</span>'
+    if dead:
+        vf += ' <span class="dead" title="URL retornou 404/410 no check de vitalidade — a vaga provavelmente foi preenchida/removida">🔗 morta</span>'
+    if is_new:
+        vf += ' <span class="newb">🆕</span>'
     title = _esc(job.get("title") or "(sem título)")
     inner = f'<a class="t" href="{_esc(job_href)}" target="_blank" rel="noopener">{title}</a>{vf}' if job_href else f'<span class="t">{title}</span>{vf}'
     meta_bits = [
@@ -162,8 +266,11 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     ]
     if salary:
         meta_bits.append(f'<b class="sal">{_esc(salary)}</b>')
+    if age:
+        meta_bits.append(f'<span class="age">{_esc(age)}</span>')
     meta = ' · '.join(meta_bits)
-    score = _fmt_score(job.get("score"))
+    score = _fmt_score(score_override if score_override is not None
+                      else job.get("score"))
     btn = ""
     if apply_href:
         btn = f'<a class="btn" href="{_esc(apply_href)}" target="_blank" rel="noopener">candidatar-se ↗</a>'
@@ -173,8 +280,12 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     qtext = " ".join(x for x in (job.get("title"), job.get("company"),
                                  job.get("location")) if x)
     return (
-        f'<li class="c{" vf-on" if visa else ""}" data-s="{score}"'
+        f'<li class="c{" vf-on" if visa else ""}{" dead-on" if dead else ""}"'
+        f' data-s="{score}"'
         f' data-vf="{1 if visa else 0}"'
+        f' data-de="{_esc(de_level)}"'
+        f' data-iso="{_esc(str(job.get("country_iso") or "").strip().lower())}"'
+        f' data-new="{1 if is_new else 0}"'
         f' data-q="{_esc(qtext)}">'
         f'<span class="r">{rank}</span><span class="s">{score}</span>'
         f'<div class="bd">{inner}<div class="m">{meta}</div>{snip}{btn}</div></li>'
@@ -184,11 +295,14 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
 _CSS = """body{margin:0;background:#10151b;color:#e6edf3;font:16px/1.45 -apple-system,"Segoe UI",Roboto,Arial,sans-serif}
 main{max-width:760px;margin:0 auto;padding:16px 14px 40px}
 h1{font-size:1.05rem;margin:0 0 2px}
+h2{font-size:.95rem;margin:26px 0 4px;color:#c8d3dd}
 .p{color:#9aa7b4;font-size:.8rem;margin:2px 0 12px}
+.p2{color:#9aa7b4;font-size:.78rem;margin:0 0 10px}
 .bar{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap;align-items:center}
 .bar input[type=search]{flex:1 1 160px;min-width:0;padding:8px 12px;border:1px solid #2a343e;border-radius:8px;background:#192027;color:#e6edf3;font-size:16px}
 .bar input[type=checkbox]{accent-color:#4da3ff}
 .bar label{font-size:.82rem;color:#9aa7b4;white-space:nowrap}
+.bar select{padding:7px 10px;border:1px solid #2a343e;border-radius:8px;background:#192027;color:#e6edf3;font-size:.85rem}
 ol{list-style:none;margin:0;padding:0}
 li.c{display:flex;gap:10px;padding:12px 10px;border-bottom:1px solid #2a343e}
 .r{flex:0 0 24px;color:#9aa7b4;font-size:.75rem;font-variant-numeric:tabular-nums;padding-top:3px}
@@ -198,6 +312,10 @@ li.c{display:flex;gap:10px;padding:12px 10px;border-bottom:1px solid #2a343e}
 a.t:visited{color:#c8d3dd}
 a.t:hover{text-decoration:underline}
 .vf{font-size:.8rem}
+.de{font-size:.72rem;color:#e8cf8a}
+.dead{font-size:.72rem;color:#d98282}
+.newb{font-size:.72rem}
+.age{font-size:.78rem;color:#9aa7b4}
 .m{color:#9aa7b4;font-size:.82rem;margin-top:2px}
 .m .sal{color:#e8cf8a;font-weight:600}
 .d{color:#8b98a5;font-size:.8rem;margin:5px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -207,39 +325,47 @@ a.t:hover{text-decoration:underline}
 @media(min-width:640px){main{padding:24px 20px 56px}h1{font-size:1.25rem}}
 """
 
-_JS = """(function(){var q=document.getElementById('q'),vf=document.getElementById('f-vf'),n=document.getElementById('n');
-if(!q)return;function f(){var t=q.value.trim().toLowerCase(),v=vf&&vf.checked,c=0;
+_JS = """(function(){var q=document.getElementById('q'),vf=document.getElementById('f-vf'),n=document.getElementById('n'),de=document.getElementById('f-de'),co=document.getElementById('f-country'),nw=document.getElementById('f-new');
+if(!q)return;function f(){var t=q.value.trim().toLowerCase(),v=vf&&vf.checked,d=de&&de.checked,iso=co&&co.value,nwv=nw&&nw.checked,c=0;
 document.querySelectorAll('li.c').forEach(function(li){var ok=!t||li.getAttribute('data-q').toLowerCase().indexOf(t)>-1;
-if(v)ok=ok&&li.getAttribute('data-vf')==='1';li.style.display=ok?'':'none';if(ok)c++;});
-if(n)n.textContent=c;}q.addEventListener('input',f);if(vf)vf.addEventListener('change',f);})();
+if(v)ok=ok&&li.getAttribute('data-vf')==='1';
+if(d)ok=ok&&li.getAttribute('data-de')!=='required';
+if(iso)ok=ok&&li.getAttribute('data-iso')===iso;
+if(nwv)ok=ok&&li.getAttribute('data-new')==='1';
+li.style.display=ok?'':'none';if(ok)c++;});
+if(n)n.textContent=c;}q.addEventListener('input',f);if(vf)vf.addEventListener('change',f);if(de)de.addEventListener('change',f);if(co)co.addEventListener('change',f);if(nw)nw.addEventListener('change',f);})();
 """
 
 
-def render_minimal_html(
-    jobs: list[dict],
-    *,
-    total_eligible: int,
-    generated_at: str,
-    top: int = PAGE_TOP,
-    company_intel_map: dict | None = None,
-) -> str:
-    """HTML minimo do top-N do dia (self-contained; ~10-40 KB tipico).
+def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
+                    new_ids: set[str] | None, dead_ids: set[str] | None,
+                    ref: datetime, company_entry_cache: dict,
+                    rank_start: int = 1, score_key: str = "score",
+                    with_snippet: bool = True) -> list[str]:
+    """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
-    ``jobs``: lista JA ordenada pelo score do pipeline (ordem oficial). A
-    pagina nao re-ranqueia nada — apenas enumera o topo. ``total_eligible``
-    e o tamanho do conjunto elegivel inteiro (o rodape informa que a
-    pagina mostra o top-N e o resto vive no JSON/CSV completos).
+    ``score_key``: campo exibido na coluna de score — "score" (perfil
+    principal / secoes de novas) ou "materials_score" (secao Materials,
+    que e um ranking PROPRIO; exibir o score do perfil principal la
+    seria desinformacao). ``with_snippet``: False = sem o resumo de
+    descricao (degradacao size-aware — campo decorativo).
     """
-    shown = list(jobs[:top])
     rows: list[str] = []
-    for i, job in enumerate(shown, 1):
+    new_ids = new_ids or set()
+    dead_ids = dead_ids or set()
+    for i, job in enumerate(jobs, rank_start):
+        jid = str(job.get("id") or "")
         entry = None
         if company_intel_map is not None:
-            try:
-                from internship_finder import opportunity_intel
-                entry = opportunity_intel.company_intel_for(job, company_intel_map)
-            except Exception:  # noqa: BLE001 — view best-effort
-                entry = None
+            if jid in company_entry_cache:
+                entry = company_entry_cache[jid]
+            else:
+                try:
+                    from internship_finder import opportunity_intel
+                    entry = opportunity_intel.company_intel_for(job, company_intel_map)
+                except Exception:  # noqa: BLE001 — view best-effort
+                    entry = None
+                company_entry_cache[jid] = entry
         visa = _visa_friendly(job, entry)
         try:
             from internship_finder import opportunity_intel
@@ -254,14 +380,113 @@ def render_minimal_html(
         apply_href = _safe_url(raw.get("apply_url"))
         rows.append(_card(
             i, job, visa=visa, salary=salary,
-            snippet=_snippet(job), apply_href=apply_href, job_href=job_href,
+            snippet=_snippet(job) if with_snippet else "",
+            apply_href=apply_href, job_href=job_href,
+            de_level=_german_level_attr(job), age=_age_days_text(job, ref),
+            dead=jid in dead_ids, is_new=jid in new_ids,
+            score_override=(job.get(score_key)
+                            if score_key != "score" else None),
         ))
-    body = "\n".join(rows)
-    n_vf = sum(1 for r in rows if 'vf-on' in r)
+    return rows
+
+
+def render_minimal_html(
+    jobs: list[dict],
+    *,
+    total_eligible: int,
+    generated_at: str,
+    top: int = PAGE_TOP,
+    company_intel_map: dict | None = None,
+    new_since_ids: set[str] | None = None,
+    dead_link_ids: set[str] | None = None,
+    materials: list[dict] | None = None,
+    with_snippets: bool = True,
+) -> str:
+    """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
+
+    ``jobs``: lista JA ordenada pelo score do pipeline (ordem oficial). A
+    pagina nao re-ranqueia nada — apenas enumera o topo. ``total_eligible``
+    e o tamanho do conjunto elegivel inteiro (o rodape informa que a
+    pagina mostra o top-N e o resto vive no JSON/CSV completos).
+
+    F11: ``new_since_ids`` = ids novos vs o snapshot anterior (secao 🆕 +
+    data-new + toggle); None/'' = sem diff (secao/toggle ausentes).
+    ``dead_link_ids`` = ids com URL 410/404 confirmado (badge + descem do
+    topo exibido). ``materials`` = ranking materials JA computado e
+    cortado pelo chamador (secao opcional); None = sem secao.
+
+    Size-aware (contrato da docstring desde a F6, agora real): com
+    ``with_snippets=True`` o render e' montado com snippets; o chamador
+    ``render_size_aware`` remonta sem snippets (campo DECORATIVO) quando
+    o resultado estoura o alvo de bytes — nunca vagas a menos.
+    """
+    ref = datetime.now(UTC)
+    dead_ids = set(dead_link_ids or set())
+    # F11 T3: vagas mortas descem do top exibido (a seguinte sobe) — o
+    # corte com a regra 2/empresa percorre a lista JA sem as mortas.
+    # Regra de exibicao; o JSON/CSV (base de dados) e intocavel.
+    alive = [j for j in jobs if str(j.get("id") or "") not in dead_ids]
+    shown = apply_company_cap(alive, limit=top)
+    new_ids = set(new_since_ids or set())
+    entry_cache: dict = {}
+    body = "\n".join(_cards_section(
+        shown, company_intel_map=company_intel_map, new_ids=new_ids,
+        dead_ids=dead_ids, ref=ref, company_entry_cache=entry_cache,
+        with_snippet=with_snippets,
+    ))
+    n_vf = sum(1 for j in shown if _visa_friendly(
+        j, entry_cache.get(str(j.get("id") or ""))))
+
+    # Seção 🆕 — top 10 por score ENTRE as novas (a ordem oficial ja e
+    # por score; sem snapshot usavel a secao e omitida, sem erro).
+    new_section = ""
+    if new_ids:
+        new_jobs = [j for j in alive if str(j.get("id") or "") in new_ids]
+        new_section_jobs = new_jobs[:NEW_SINCE_SECTION_TOP]
+        if len(new_ids) > len(new_section_jobs):
+            extra = f" (+{len(new_ids) - len(new_section_jobs)} outras novas)"
+        else:
+            extra = ""
+        new_cards = "\n".join(_cards_section(
+            new_section_jobs, company_intel_map=company_intel_map,
+            new_ids=new_ids, dead_ids=dead_ids, ref=ref,
+            company_entry_cache=entry_cache, rank_start=1,
+            score_key="score", with_snippet=with_snippets,
+        ))
+        new_section = (
+            f'<h2>🆕 Novas desde ontem — {len(new_ids)} nova(s){extra}</h2>'
+            f'{new_cards}'
+        )
+
+    # Seção Materials — perfil alternativo, ranking proprio (digest ja
+    # usa o MESMO rank_materials_jobs); top 10 por materials_score.
+    materials_section = ""
+    if materials:
+        mat_cards = "\n".join(_cards_section(
+            materials, company_intel_map=company_intel_map,
+            new_ids=new_ids, dead_ids=dead_ids, ref=ref,
+            company_entry_cache=entry_cache, rank_start=1,
+            score_key="materials_score", with_snippet=with_snippets,
+        ))
+        materials_section = (
+            '<h2>🧪 Materials Engineering — top 10 (perfil alternativo)</h2>'
+            '<p class="p2">Ranking próprio para Materials Engineering '
+            '(mesmas vagas elegíveis, pesos distintos dos de Supply '
+            'Chain). O score à esquerda é o do perfil Materials.</p>'
+            + mat_cards
+        )
+
     footer_note = (
         f"Top {len(shown)} de {total_eligible} vagas elegíveis · {n_vf} com 🛂 "
         "(empresa com política de visto) · ranking, JSON e CSV completos "
         "são gerados pelo pipeline no VPS"
+    )
+    # Select de pais SEM bandeiras: o contrato da F7 e "DE e o default visual
+    # — bandeira so no canal secundario"; o select e um controle, nao um
+    # card (e o emoji DE no select poluiria o documento inteiro).
+    country_opts = "".join(
+        f'<option value="{iso}">{iso.upper()}</option>'
+        for iso in COUNTRY_FLAGS
     )
     return f"""<!doctype html>
 <html lang="pt-BR">
@@ -279,10 +504,15 @@ def render_minimal_html(
 <div class="bar">
 <input id="q" type="search" placeholder="Buscar título, empresa, local…">
 <label><input type="checkbox" id="f-vf"> 🛂 só visa friendly</label>
+<label><input type="checkbox" id="f-de"> sem alemão exigido</label>
+<select id="f-country"><option value="">todos os países</option>{country_opts}</select>
+{'<label><input type="checkbox" id="f-new"> só novas de ontem</label>' if new_ids else ''}
 </div>
 <ol id="list">
 {body}
 </ol>
+{new_section}
+{materials_section}
 <p class="f">{_esc(footer_note)}</p>
 </main>
 <script>{_JS}</script>
@@ -291,17 +521,101 @@ def render_minimal_html(
 """
 
 
-def render_minimal_html_from_file(path: Path, *, top: int = PAGE_TOP,
-                                  company_intel_map: dict | None = None) -> str:
-    """Le o eligible_jobs.json e devolve o HTML minimo do topo."""
+def render_size_aware(
+    jobs: list[dict],
+    *,
+    total_eligible: int,
+    generated_at: str,
+    top: int = PAGE_TOP,
+    company_intel_map: dict | None = None,
+    new_since_ids: set[str] | None = None,
+    dead_link_ids: set[str] | None = None,
+    materials: list[dict] | None = None,
+) -> str:
+    """``render_minimal_html`` com degradacao progressiva de tamanho (F11).
+
+    O snippet de descricao e o campo DECORATIVO do card (resumo de 140
+    chars; o botao abre o anuncio completo). Se o render COM snippets
+    estoura ``PAGE_TARGET_BYTES``, remonta SEM snippets — nunca corta
+    vagas a menos e nunca estoura o cap duro (assert do teste).
+    """
+    html = render_minimal_html(
+        jobs, total_eligible=total_eligible, generated_at=generated_at,
+        top=top, company_intel_map=company_intel_map,
+        new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
+        materials=materials, with_snippets=True,
+    )
+    if len(html.encode("utf-8")) > PAGE_TARGET_BYTES:
+        html = render_minimal_html(
+            jobs, total_eligible=total_eligible, generated_at=generated_at,
+            top=top, company_intel_map=company_intel_map,
+            new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
+            materials=materials, with_snippets=False,
+        )
+    return html
+
+
+def _previous_snapshot(archive_root: Path) -> list[dict] | None:
+    """Snapshot anterior do archive via ``ranking_digest`` (REUSO da
+    mecanica — mesma selecao do digest; nao duplicada aqui).
+
+    Devolve o ranking anterior (lista, possivelmente vazia = estado
+    real) ou ``None`` (sem snapshot usavel: ausente/corrompido) — o
+    chamador omite a secao 🆕. Import lazy: em repos de fixture sem
+    scripts/ranking_digest.py (testes de publish) o diff simplesmente
+    nao monta, sem erro.
+    """
+    try:
+        import ranking_digest  # scripts/ vive no sys.path do subprocesso
+        prev_path = ranking_digest._latest_archive_eligible(archive_root)
+        if not prev_path:
+            return None
+        return ranking_digest.load_ranking_or_none(prev_path)
+    except Exception:  # noqa: BLE001 — diff e best-effort, nunca erro
+        return None
+
+
+def render_minimal_html_from_file(
+    path: Path, *, top: int = PAGE_TOP,
+    company_intel_map: dict | None = None,
+    archive_root: Path | None = None,
+    dead_link_ids: set[str] | None = None,
+    include_materials: bool = True,
+) -> str:
+    """Le o eligible_jobs.json e devolve o HTML minimo do topo.
+
+    F11: computa o diff de IDs contra o snapshot anterior do
+    ``data/archive/`` (maior timestamp < agora; mecanica reutilizada do
+    ranking_digest) quando ``archive_root`` e dado. Best-effort: snapshot
+    corrompido/ausente -> secao 🆕 omitida (nunca erro).
+    """
     with path.open(encoding="utf-8") as fh:
         jobs = json.load(fh)
     if not isinstance(jobs, list):
         raise ValueError(f"formato inesperado em {path}: esperado lista de vagas")
     generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
-    return render_minimal_html(
+
+    new_ids: set[str] | None = None
+    if archive_root is not None:
+        prev = _previous_snapshot(archive_root)
+        if prev is not None:
+            cur_ids = {str(j.get("id")) for j in jobs
+                       if isinstance(j, dict) and j.get("id")}
+            new_ids = cur_ids - {str(j.get("id")) for j in prev}
+
+    materials: list[dict] | None = None
+    if include_materials:
+        try:
+            from internship_finder.materials_ranking import rank_materials_jobs
+            materials = rank_materials_jobs(jobs)[:MATERIALS_SECTION_TOP]
+        except Exception:  # noqa: BLE001 — secao opcional nunca derruba
+            materials = None
+
+    return render_size_aware(
         jobs, total_eligible=len(jobs), generated_at=generated,
         top=top, company_intel_map=company_intel_map,
+        new_since_ids=new_ids, dead_link_ids=dead_link_ids,
+        materials=materials,
     )
 
 
@@ -311,12 +625,17 @@ def main(argv: list[str] | None = None) -> int:
     Chamado pelo ``publish_pages.render_ranking_html`` como subprocesso com
     ``--input`` RELATIVO (cwd = raiz do repo): nenhum caminho absoluto da
     VPS entra na pagina. ``--output -`` imprime no stdout (uso manual).
+
+    F11: ``--archive DIR`` habilita o diff de IDs contra o snapshot anterior
+    (default: data/archive do repo — o publish repassa o caminho relativo).
+    ``--dead-list FILE`` recebe os ids mortos apurados pelo estagio de
+    vitalidade do refresh (um id por linha; ausente = nenhuma marca).
     """
     import argparse
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
     parser = argparse.ArgumentParser(
-        description="Render minimo da pagina publica (F6): top do dia, "
+        description="Render minimo da pagina publica (F6/F11): top do dia, "
                     "mobile-first, dark, self-contained.",
     )
     parser.add_argument("--input", default="data/eligible_jobs.json",
@@ -329,6 +648,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="JSON curado de company intel (default: "
                              "company_intel/company_intelligence.json do "
                              "repo; ausente = sem fallback do badge)")
+    parser.add_argument("--archive", default="data/archive", metavar="DIR",
+                        help="raiz do archive de snapshots para o diff de "
+                             "novas-de-ontem ('' desliga a seção 🆕)")
+    parser.add_argument("--dead-list", default=None, metavar="PATH",
+                        help="arquivo com ids de vagas mortas (404/410), "
+                             "um por linha (estagio url_liveness)")
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -344,8 +669,19 @@ def main(argv: list[str] | None = None) -> int:
         opportunity_intel.load_company_intel(intel_path)
         if intel_path.exists() else None
     )
+
+    dead_ids: set[str] = set()
+    if args.dead_list:
+        dp = Path(args.dead_list)
+        if dp.exists():
+            dead_ids = {line.strip() for line in
+                        dp.read_text(encoding="utf-8").splitlines()
+                        if line.strip()}
+
+    archive_root = Path(args.archive) if args.archive else None
     page = render_minimal_html_from_file(
         Path(args.input), top=args.top, company_intel_map=company_intel_map,
+        archive_root=archive_root, dead_link_ids=dead_ids,
     )
     if args.output == "-":
         sys.stdout.write(page)

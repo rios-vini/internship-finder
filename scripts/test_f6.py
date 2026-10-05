@@ -93,7 +93,10 @@ def test_render_minimal() -> None:
         jobs, total_eligible=478, generated_at="2026-10-03 12:00",
     )
     size = len(html.encode("utf-8"))
-    check("top-50 renderizado (50 cards)", html.count("<li class=") == 50)
+    # F11: cap de EXIBICAO 2 vagas/empresa — 50 vagas em 6 empresas => 12 cards
+    n_cards = html.count("<li class=")
+    check("cap 2/empresa aplicado (50 vagas/6 empresas -> 12 cards)",
+          n_cards == 12)
     check("tamanho < 150 KB (cap duro)", size < mp.PAGE_HARD_CAP_BYTES)
     check("tamanho <= 100 KB (alvo)", size <= mp.PAGE_TARGET_BYTES,
           )
@@ -103,8 +106,12 @@ def test_render_minimal() -> None:
     check("sem intel de enrichment (Fase 3 morta)", "🔎" not in html
           and "enrichment" not in html.lower())
     check("badge visa_friendly presente (🛂)", "🛂" in html)
-    n_vf = sum(1 for j in jobs if j.get("visa_friendly"))
-    check("contagem de badges = vagas visa_friendly",
+    # F11: o badge conta por CARD RENDERIZADO (pos-cap), nao por vaga de
+    # entrada — recalcular contra a lista pos-cap.
+    from minimal_page import apply_company_cap
+    shown = apply_company_cap(jobs)
+    n_vf = sum(1 for j in shown if j.get("visa_friendly"))
+    check("contagem de badges = vagas visa_friendly EXIBIDAS",
           html.count('vf-on') == n_vf)
     check("titulo da 1a vaga presente", "Praktikum Supply Chain 0" in html)
     check("empresa presente", ">SAP<" in html or "SAP ·" in html)
@@ -112,7 +119,8 @@ def test_render_minimal() -> None:
     check("score presente", 'data-s="16"'.replace('"', '"') in html
           or "16.0" in html)
     check("apply_url vira botao candidatar-se",
-          html.count('>candidatar-se') == sum(1 for j in jobs if j.get("raw", {}).get("apply_url")))
+          html.count('>candidatar-se') == sum(
+              1 for j in shown if j.get("raw", {}).get("apply_url")))
     check("job.url usado como fallback (sem apply_url)",
           'abrir vaga' in html)
     check("sem caminho absoluto da VPS", "/home/" not in html
@@ -130,11 +138,14 @@ def test_render_minimal() -> None:
 
 
 def test_render_top_cap() -> None:
-    print("== F6.1b: cap do top-50 e top menor ==")
+    print("== F6.1b: cap do top e top menor ==")
     jobs = _jobs_realistic(80)
     html = mp.render_minimal_html(jobs, total_eligible=80,
                                   generated_at="x", top=50)
-    check("80 vagas -> topo cortado em 50", html.count("<li class=") == 50)
+    # F11: cap 2/empresa — 80 vagas em 6 empresas -> 12 cards (o corte em
+    # ``top`` 50 e o teto de VAGAS EXIBIDAS, nao de entrada).
+    check("80 vagas/6 empresas -> 12 cards (cap 2/empresa)",
+          html.count("<li class=") == 12)
     html2 = mp.render_minimal_html(jobs[:3], total_eligible=80,
                                     generated_at="x", top=50)
     check("3 vagas -> 3 cards", html2.count("<li class=") == 3)
@@ -272,7 +283,13 @@ def _make_repo_fixture(tmp_root: Path) -> Path:
                         ignore=shutil.ignore_patterns("__pycache__"))
     data_dir = tmp_root / "data"
     data_dir.mkdir()
-    jobs = _jobs_realistic(55)
+    # F11: empresas DISTINTAS (30 empresas x ~2) — o corte 2/empresa nao
+    # pode mascarar o cap do ``top``; o cenario antigo (6 empresas
+    # ciclando) parava em 12 cards por causa do cap novo.
+    jobs = []
+    for i in range(55):
+        jobs.append(_job(i, score=16.0 - i * 0.2,
+                         company=f"Firma {i} GmbH"))
     (data_dir / "eligible_jobs.json").write_text(
         json.dumps(jobs, ensure_ascii=False, indent=1), encoding="utf-8")
     return tmp_root
@@ -287,7 +304,14 @@ def test_publish_integration() -> None:
         html = pp.render_ranking_html(fake_root, out, top=pp.PUBLIC_TOP)
         size = len(html.encode("utf-8"))
         check("HTML gerado pelo minimal_page", "top do dia" in html)
-        check("55 vagas -> cap 50 cards", html.count("<li class=") == 50)
+        # F11: PAGE_TOP=100; 55 vagas em 55 empresas -> 55 cards PRINCIPAIS
+        # (a seção Materials opcional adiciona os seus — contar o <ol>).
+        main_list = html.split('<ol id="list">')[1].split("</ol>")[0]
+        check("55 vagas/55 empresas -> 55 cards no ranking principal",
+              main_list.count("<li class=") == 55)
+        check("seção Materials presente (top 10, perfil alternativo)",
+              "🧪 Materials Engineering" in html
+              and html.count("<li class=") == 55 + mp.MATERIALS_SECTION_TOP)
         check("tamanho < 150 KB no cenario integrado", size < mp.PAGE_HARD_CAP_BYTES)
         check("tamanho <= 100 KB (alvo) no cenario integrado",
               size <= mp.PAGE_TARGET_BYTES)

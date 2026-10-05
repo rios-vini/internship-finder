@@ -116,8 +116,10 @@ from internship_finder.storage.sqlite_backup import (  # backup do jobs.db (P3)
     backup_jobs_db,
     cleanup_backups,
 )
+import minimal_page  # F6: render da pagina publica (cap 2/empresa F11)
 import publish_pages  # publicacao do ranking em GitHub Pages (Fase 1)
 import ranking_digest  # digest do ranking no Telegram (Fase 2)
+import url_liveness  # F11: vitalidade de URL do top exibido (404/410)
 
 log = logging.getLogger("refresh_daily")
 
@@ -1225,10 +1227,35 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("disco: filesystem de %s com %d%% de uso (>= %d%%)",
                     data_dir, disk_pct, DISK_WARN_PCT)
 
+    # F11 — vitalidade de URL do top exibido (ANTES de publicar; best-effort
+    # TOTAL: qualquer falha vira log e o publish segue SEM mortas marcadas —
+    # o pipeline NUNCA derruba por causa do check). So 404/410 = morta
+    # (desce do top exibido; a proxima sobe); 403/429/timeout = bloqueio de
+    # bot/rede, ignora. Falha total de rede: nenhuma marca (sem evidencia).
+    # Roda apenas quando ha publicacao (o check existe para servir a pagina
+    # publicada; sem --pages-dir nao ha o que proteger) e o corte e o MESMO
+    # da pagina: company-cap 2/empresa sobre o topo.
+    dead_ids: set[str] = set()
+    pages_dir = Path(args.pages_dir).expanduser() if args.pages_dir else None
+    if pages_dir is not None:
+        try:
+            ranking = json.loads(
+                (data_dir / "eligible_jobs.json").read_text(encoding="utf-8")
+            ) if (data_dir / "eligible_jobs.json").exists() else []
+            top_shown = minimal_page.apply_company_cap(ranking)
+            if top_shown:
+                dead_ids = url_liveness.check_liveness(top_shown, log=log)
+                if dead_ids:
+                    log.info("liveness: %d vaga(s) do top com URL morta "
+                             "(404/410) — descem do topo exibido",
+                             len(dead_ids))
+        except Exception as exc:  # noqa: BLE001 — vitalidade nunca derruba o run
+            log.warning("estagio de vitalidade falhou (publish segue sem "
+                        "marcas): %s: %s", type(exc).__name__, exc)
+
     # Fase 1 — publicacao do ranking em GitHub Pages (apos a coleta e o health;
     # nunca derruba o run: falha vira publish_error, reportada no Telegram).
     publish_error: str | None = None
-    pages_dir = Path(args.pages_dir).expanduser() if args.pages_dir else None
     if pages_dir is not None:
         try:
             changed = publish_pages.publish_ranking(
@@ -1236,6 +1263,7 @@ def main(argv: list[str] | None = None) -> int:
                 exit_code=exit_code,
                 eligible=summary.get("eligible") or 0,
                 run_id=summary.get("run_id") or utcnow_iso(),
+                dead_link_ids=dead_ids,
             )
             if changed:
                 log.info("ranking publicado em GitHub Pages (branch gh-pages)")
