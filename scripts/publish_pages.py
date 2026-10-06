@@ -213,6 +213,11 @@ def render_ranking_html(
     snippet EN das descricoes com traducao em cache. Best-effort: arquivo
     ausente/corrompido -> snippet DE como hoje (a pagina nunca quebra).
     O cache NUNCA e publicado — so o texto traduzido entra no HTML.
+
+    F13: ``--watchlist config/company_watchlist.json`` (default do
+    minimal_page; explicito aqui para fixar o contrato) habilita a secao
+    🎯 Empresas-alvo na pagina. Best-effort: watchlist ausente (fixture de
+    teste sem config/) -> secao omitida, a pagina nunca quebra.
     """
     script = root / "scripts" / "minimal_page.py"
     if not script.exists():
@@ -224,6 +229,7 @@ def render_ranking_html(
         "--output", str(output_path),
         "--archive", "data/archive",
         "--translation-cache", "data/translation_cache.json",
+        "--watchlist", "config/company_watchlist.json",
     ]
     if dead_link_ids:
         dead_tmp = output_path.parent / ".dead_ids.txt"

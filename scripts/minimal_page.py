@@ -68,6 +68,7 @@ from __future__ import annotations
 
 import html as _html
 import json
+import re
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -325,6 +326,35 @@ def apply_company_cap(jobs: list[dict], *, limit: int = PAGE_TOP,
     return shown
 
 
+# F13 — flags de TITULO para os toggles client-side (puras; casefold). O
+# ``employment_type`` NAO serve para Werkstudent: medido 06/10, 0
+# ocorrências no campo vs 972 títulos contendo "werkstudent" — o filtro é
+# por TÍTULO, mesmo padrão do f-de (german_level) e f-vf (visa_friendly).
+# data/BI: keywords por PALAVRA INTEIRA ("bi" como substring casaria
+# "Elektromobilität"/"E-Mobility" — 47 FPs medidos no dataset real; com
+# \b casam 441 títulos hoje, sem FP).
+_DATA_BI_KEYWORDS = (
+    "data", "bi", "business intelligence", "analytics", "analyst",
+    "tableau", "power bi", "sql", "dashboard", "reporting",
+)
+_DATA_BI_RE = re.compile(
+    "|".join(
+        (rf"\b{re.escape(k)}\b" if " " not in k else re.escape(k))
+        for k in _DATA_BI_KEYWORDS
+    )
+)
+
+
+def is_werkstudent_title(job: dict) -> bool:
+    """Título menciona Werkstudent (casefold; F13 toggle f-ws)."""
+    return "werkstudent" in str(job.get("title") or "").casefold()
+
+
+def is_data_bi_title(job: dict) -> bool:
+    """Título casa keywords de data/BI (palavra inteira; F13 toggle f-data)."""
+    return bool(_DATA_BI_RE.search(str(job.get("title") or "").casefold()))
+
+
 def _card(rank: int, job: dict, *, visa: bool, salary: str,
           snippet: str, apply_href: str | None, job_href: str | None,
           de_level: str, age: str, dead: bool = False,
@@ -335,6 +365,11 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
     quando não se aplica); ``snippet_is_en`` marca o snippet como tradução
     (classe ``en`` + prefixo honesto "EN · ").
+
+    F13: ``data-ws``/``data-data`` = flags de título para os toggles
+    client-side (mesma regra casefold do JS; medição F13: 972 títulos
+    contêm "werkstudent", o campo ``employment_type`` tem 0 ocorrências —
+    por isso o filtro é por TÍTULO, como o f-de por german_level).
     """
     vf = ' <span class="vf" title="Empresa com política de visto (visa_policy: explicit_support ou unclear)">🛂</span>' if visa else ""
     if de_level == "required":
@@ -376,6 +411,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         f' data-de="{_esc(de_level)}"'
         f' data-iso="{_esc(str(job.get("country_iso") or "").strip().lower())}"'
         f' data-new="{1 if is_new else 0}"'
+        f' data-ws="{1 if is_werkstudent_title(job) else 0}"'
+        f' data-data="{1 if is_data_bi_title(job) else 0}"'
         f' data-q="{_esc(qtext)}">'
         f'<span class="r">{rank}</span><span class="s">{score}</span>'
         f'<div class="bd">{inner}{en_title_html}<div class="m">{meta}</div>{snip}{btn}</div></li>'
@@ -418,15 +455,16 @@ a.t:hover{text-decoration:underline}
 @media(min-width:640px){main{padding:24px 20px 56px}h1{font-size:1.25rem}}
 """
 
-_JS = """(function(){var q=document.getElementById('q'),vf=document.getElementById('f-vf'),n=document.getElementById('n'),de=document.getElementById('f-de'),co=document.getElementById('f-country'),nw=document.getElementById('f-new');
-if(!q)return;function f(){var t=q.value.trim().toLowerCase(),v=vf&&vf.checked,d=de&&de.checked,iso=co&&co.value,nwv=nw&&nw.checked,c=0;
+_JS = """(function(){var q=document.getElementById('q'),vf=document.getElementById('f-vf'),n=document.getElementById('n'),de=document.getElementById('f-de'),co=document.getElementById('f-country'),nw=document.getElementById('f-new'),ws=document.getElementById('f-ws'),da=document.getElementById('f-data');
+if(!q)return;function f(){var t=q.value.trim().toLowerCase(),v=vf&&vf.checked,d=de&&de.checked,iso=co&&co.value,nwv=nw&&nw.checked,wsv=ws&&ws.checked,dav=da&&da.checked,c=0;
 document.querySelectorAll('li.c').forEach(function(li){var ok=!t||li.getAttribute('data-q').toLowerCase().indexOf(t)>-1;
 if(v)ok=ok&&li.getAttribute('data-vf')==='1';
 if(d)ok=ok&&li.getAttribute('data-de')!=='required';
 if(iso)ok=ok&&li.getAttribute('data-iso')===iso;
 if(nwv)ok=ok&&li.getAttribute('data-new')==='1';
-li.style.display=ok?'':'none';if(ok)c++;});
-if(n)n.textContent=c;}q.addEventListener('input',f);if(vf)vf.addEventListener('change',f);if(de)de.addEventListener('change',f);if(co)co.addEventListener('change',f);if(nw)nw.addEventListener('change',f);})();
+if(wsv)ok=ok&&li.getAttribute('data-ws')!=='1';
+if(dav)ok=ok&&li.getAttribute('data-data')==='1';
+li.style.display=ok?'':'none';if(ok)c++;});if(n)n.textContent=c;}q.addEventListener('input',f);if(vf)vf.addEventListener('change',f);if(de)de.addEventListener('change',f);if(co)co.addEventListener('change',f);if(nw)nw.addEventListener('change',f);if(ws)ws.addEventListener('change',f);if(da)da.addEventListener('change',f);})();
 """
 
 
@@ -506,6 +544,7 @@ def render_minimal_html(
     materials: list[dict] | None = None,
     with_snippets: bool = True,
     translation_cache: dict | None = None,
+    watchlist_events: list[dict] | None = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
 
@@ -525,6 +564,13 @@ def render_minimal_html(
     cache, snippet DE como hoje). Best-effort e display-only: afeta SO o
     snippet exibido, nunca o JSON/CSV. A linha EN do título e o glossário
     do rodapé sao OFFLINE (sempre presentes).
+
+    F13: ``watchlist_events`` = vagas novas de ontem em empresas da
+    watchlist (saida de ``ranking_digest.radar_events``; None = sem
+    watchlist/radar -> secao 🎯 ausente). Seção equivalente à do digest,
+    com cards (todos os eventos, não só o top-5 — o "+N outras" do
+    digest promete "ver página"). Regra de EXIBIÇÃO: eventos já
+    exibidos na seção 🆕 não são duplicados aqui.
 
     Size-aware (contrato da docstring desde a F6, agora real): com
     ``with_snippets=True`` o render e' montado com snippets; o chamador
@@ -568,6 +614,29 @@ def render_minimal_html(
         new_section = (
             f'<h2>🆕 Novas desde ontem — {len(new_ids)} nova(s){extra}</h2>'
             f'{new_cards}'
+        )
+
+    # Seção 🎯 Empresas-alvo (F13) — vagas novas de ontem em empresas da
+    # watchlist. Cards na ordem oficial (o radar NÃO reordena nada); TODOS
+    # os eventos entram aqui (o digest lista 5 e promete "ver página").
+    # Igual ao digest: um evento pode aparecer na 🆕 E aqui (seções com
+    # critérios diferentes — 🆕 é "nova", 🎯 é "nova E alvo"; a página
+    # espelha essa semântica, sem dedup entre seções).
+    # Exibição pura: zero impacto em score/ranking/JSON/CSV.
+    watch_section = ""
+    if watchlist_events:
+        wl_cards_jobs = list(watchlist_events)
+        wl_cards = "\n".join(_cards_section(
+            wl_cards_jobs, company_intel_map=company_intel_map,
+            new_ids=new_ids, dead_ids=dead_ids, ref=ref,
+            company_entry_cache=entry_cache, rank_start=1,
+            score_key="score", with_snippet=with_snippets,
+            translation_cache=translation_cache,
+        ))
+        watch_section = (
+            f'<h2>🎯 Empresas-alvo — {len(wl_cards_jobs)} nova(s) nas '
+            f'empresas que você acompanha</h2>'
+            f'{wl_cards}'
         )
 
     # Seção Materials — perfil alternativo, ranking proprio (digest ja
@@ -622,11 +691,14 @@ def render_minimal_html(
 <label><input type="checkbox" id="f-de"> sem alemão exigido</label>
 <select id="f-country"><option value="">todos os países</option>{country_opts}</select>
 {'<label><input type="checkbox" id="f-new"> só novas de ontem</label>' if new_ids else ''}
+<label><input type="checkbox" id="f-ws"> sem Werkstudent</label>
+<label><input type="checkbox" id="f-data"> Data/BI</label>
 </div>
 <ol id="list">
 {body}
 </ol>
 {new_section}
+{watch_section}
 {materials_section}
 <p class="f">{_esc(footer_note)}</p>
 {glossary}
@@ -648,6 +720,7 @@ def render_size_aware(
     dead_link_ids: set[str] | None = None,
     materials: list[dict] | None = None,
     translation_cache: dict | None = None,
+    watchlist_events: list[dict] | None = None,
 ) -> str:
     """``render_minimal_html`` com degradacao progressiva de tamanho (F11).
 
@@ -660,6 +733,9 @@ def render_size_aware(
     (ela vive no snippet) — a linha EN do título e o glossário permanecem
     (nao sao campos decorativos). ``translation_cache`` e passado ao
     render em ambas as montagens (best-effort).
+
+    F13: ``watchlist_events`` repassado as duas montagens (a secao 🎯
+    nao e campo decorativo — sobrevive a remontagem sem snippets).
     """
     html = render_minimal_html(
         jobs, total_eligible=total_eligible, generated_at=generated_at,
@@ -667,6 +743,7 @@ def render_size_aware(
         new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
         materials=materials, with_snippets=True,
         translation_cache=translation_cache,
+        watchlist_events=watchlist_events,
     )
     if len(html.encode("utf-8")) > PAGE_TARGET_BYTES:
         html = render_minimal_html(
@@ -675,6 +752,7 @@ def render_size_aware(
             new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
             materials=materials, with_snippets=False,
             translation_cache=translation_cache,
+            watchlist_events=watchlist_events,
         )
     return html
 
@@ -706,6 +784,7 @@ def render_minimal_html_from_file(
     dead_link_ids: set[str] | None = None,
     include_materials: bool = True,
     translation_cache_path: Path | str | None = None,
+    watchlist_path: Path | str | None = None,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
 
@@ -717,6 +796,12 @@ def render_minimal_html_from_file(
     F12: ``translation_cache_path`` = cache de traducoes de descricao
     (default None = desligado; o CLI passa ``data/translation_cache.json``).
     Best-effort: ausente/corrompido -> cache vazio, snippet DE como hoje.
+
+    F13: ``watchlist_path`` = ``config/company_watchlist.json`` (default
+    None = sem secao 🎯). O radar REUSA o mesmo diff de IDs da secao 🆕
+    (uma unica leitura do snapshot) e cruza com a watchlist — sem coletor
+    novo, sem HTTP. Best-effort: watchlist ausente/corrompida ou falha
+    qualquer -> secao 🎯 omitida, nunca erro.
     """
     with path.open(encoding="utf-8") as fh:
         jobs = json.load(fh)
@@ -734,12 +819,26 @@ def render_minimal_html_from_file(
             translation_cache = {}
 
     new_ids: set[str] | None = None
+    watchlist_events: list[dict] | None = None
     if archive_root is not None:
         prev = _previous_snapshot(archive_root)
         if prev is not None:
             cur_ids = {str(j.get("id")) for j in jobs
                        if isinstance(j, dict) and j.get("id")}
             new_ids = cur_ids - {str(j.get("id")) for j in prev}
+            # F13 — radar: cruza o MESMO diff com a watchlist (best-effort;
+            # reuso integral do ranking_digest — nenhuma logica duplicada).
+            if watchlist_path and new_ids:
+                try:
+                    import ranking_digest as _rg
+                    wl = _rg.load_watchlist(watchlist_path)
+                    if wl:
+                        diff = _rg.new_since_previous(
+                            jobs if isinstance(jobs, list) else [],
+                            prev)
+                        watchlist_events = _rg.radar_events(diff, jobs, wl)
+                except Exception:  # noqa: BLE001 — radar nunca derruba render
+                    watchlist_events = None
 
     materials: list[dict] | None = None
     if include_materials:
@@ -754,6 +853,7 @@ def render_minimal_html_from_file(
         top=top, company_intel_map=company_intel_map,
         new_since_ids=new_ids, dead_link_ids=dead_link_ids,
         materials=materials, translation_cache=translation_cache,
+        watchlist_events=watchlist_events,
     )
 
 
@@ -803,6 +903,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="cache de traducoes EN de descricao "
                              "(data/translation_cache.json da F12; '' "
                              "desliga o snippet EN)")
+    parser.add_argument("--watchlist", default="config/company_watchlist.json",
+                        metavar="PATH",
+                        help="watchlist de empresas-alvo (F13; default "
+                             "config/company_watchlist.json do repo; '' "
+                             "desliga a seção 🎯)")
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -831,10 +936,12 @@ def main(argv: list[str] | None = None) -> int:
     translation_cache_path = (
         Path(args.translation_cache) if args.translation_cache else None
     )
+    watchlist_path = Path(args.watchlist) if args.watchlist else None
     page = render_minimal_html_from_file(
         Path(args.input), top=args.top, company_intel_map=company_intel_map,
         archive_root=archive_root, dead_link_ids=dead_ids,
         translation_cache_path=translation_cache_path,
+        watchlist_path=watchlist_path,
     )
     if args.output == "-":
         sys.stdout.write(page)

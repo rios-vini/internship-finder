@@ -716,7 +716,11 @@ def build_message(
         # mais valiosa do produto). Ordem de preservacao:
         #   (1) base operacional INTEGRA (como sempre);
         #   (2) secao ⚡ Top 5 do dia com apply_urls (o produto);
-        #   (3) 🔗 link do ranking completo por ULTIMO.
+        #   (3) secoes 🆕 Novas e 🎯 Empresas-alvo (F13) — COLAPSAM para
+        #       contagem quando aperta (1 linha cada), NUNCA sao dropadas
+        #       inteiras (bug F11×F6.1: 05/10 a mensagem de 4414 chars
+        #       derrubava 🆕 e 🎯 juntas);
+        #   (4) 🔗 link do ranking completo por ULTIMO.
         # O resto do digest (perfil, novas, mudancas, materials, enrichment,
         # pessoais) e cortado/resumido — o link leva ao ranking completo.
         link = next(
@@ -725,6 +729,21 @@ def build_message(
         )
         base = lines[:base_len]
         top5 = ranking_digest.top5_section_lines(digest_lines)
+        # F13 — extracoes das secoes 🆕/🎯 (header+corpo; [] quando ausentes)
+        # e o header de cada uma, que JA carrega a contagem do dia (o
+        # "colapso para contagem" = manter so o header, padrao do
+        # "(+N outras novas — ver página)" da F11 e do "⚠️ N problemas"
+        # do N2 — o header e a linha mais densa e barata da secao).
+        new_since = ranking_digest.new_since_section_lines(digest_lines)
+        watch = ranking_digest.watchlist_section_lines(digest_lines)
+        # Base com a lista de problemas resumida em contagem (computada UMA
+        # vez, pura; o slice termina em base_len porque ``lines`` ja contem
+        # o digest anexado, que e reconstruido abaixo pelas secoes + top5 +
+        # link). Usada a partir do nivel 2; o nivel 1 usa ``base`` integra.
+        summarized = (lines[:problems_start]
+                      + [f"⚠️ {n_problems} problemas (ver ranking)"]
+                      + lines[problems_start + n_problems:base_len]) \
+            if problems_start >= 0 else base
         if not top5:
             # Digest sem secao ⚡ (ranking vazio/erro na montagem):
             # comportamento pre-F6.1 preservado — 1 linha com o link.
@@ -732,46 +751,81 @@ def build_message(
                        f"ranking completo: {link}")
             text = "\n".join(base + ["", compact])
         else:
-            # Nivel 1: base INTEGRA + secao ⚡ + link (o caso real de 03/10).
-            compact_parts = base + [""] + top5 + ["", link]
-            if len("\n".join(compact_parts)) <= TELEGRAM_MAX_LEN:
-                text = "\n".join(compact_parts)
-            else:
-                # Nivel 2: a base inteira + Top 5 ainda estoura — resume a
-                # LISTA de problemas em 1 linha de contagem (o bloco mais
-                # caro e menos denso da base; os detalhes vivem no ranking).
-                # O slice termina em base_len: ``lines`` ja contem o digest
-                # anexado, que e reconstruido abaixo (top5 + link).
-                summarized = (lines[:problems_start]
-                               + [f"⚠️ {n_problems} problemas (ver ranking)"]
-                               + lines[problems_start + n_problems:base_len]) \
-                    if problems_start >= 0 else base
-                compact_parts = summarized + [""] + top5 + ["", link]
-                if len("\n".join(compact_parts)) <= TELEGRAM_MAX_LEN:
-                    text = "\n".join(compact_parts)
-                else:
-                    # Nivel 3 (teto defensivo da secao ⚡): mantem o header e
-                    # adiciona LINHAS INTEIRAS do Top 5 enquanto a mensagem
-                    # COMPLETA (base resumida + secao + link) couber no
-                    # limite — mesma semantica de linhas inteiras do
-                    # format_top5, sem aritmetica de budget paralela.
-                    kept: list[str] = [top5[0]]
-                    for line in top5[1:]:
-                        candidate = (summarized + [""] + kept + [line]
-                                      + ["", link])
-                        if len("\n".join(candidate)) > TELEGRAM_MAX_LEN:
-                            break
-                        kept.append(line)
-                    if len(kept) > 1:
-                        parts = summarized + [""] + kept + ["", link]
+            # Montagem por PRIORIDADE F13 (greedy decrescente): tenta a
+            # mensagem mais completa que cabe; cada nivel de aperto colapsa
+            # a secao de MENOR prioridade que ainda esta inteira — 🎯
+            # (empresas-alvo) colapsa antes da 🆕 (novas), que colapsa
+            # antes do Top 5 (que so perde linhas no teto defensivo N3).
+            # As duas nunca desaparecem: o header com contagem sobrevive.
+            def _fits(parts: list[str]) -> bool:
+                return len("\n".join(parts)) <= TELEGRAM_MAX_LEN
+
+            # niveis de COLAPSO de cada secao: [header, ...corpo]
+            ns_full = new_since or []
+            wl_full = watch or []
+            variants: list[tuple[list[str], list[str]]] = []
+            for ns_collapsed, wl_collapsed in (
+                    (False, False), (False, True), (True, True)):
+                ns_part = [ns_full[0]] if ns_full and ns_collapsed else ns_full
+                wl_part = [wl_full[0]] if wl_full and wl_collapsed else wl_full
+                variants.append((ns_part, wl_part))
+
+            text = None
+            for ns_part, wl_part in variants:
+                # Ordem de exibicao = ordem do digest (F13 §2.3): 🆕 antes
+                # do ⚡, 🎯 depois do ⚡ — so o colapso muda, nunca o layout.
+                parts = base + [""]
+                if ns_part:
+                    parts += ns_part
+                parts += top5
+                if wl_part:
+                    parts += wl_part
+                parts += ["", link]
+                if _fits(parts):
+                    text = "\n".join(parts)
+                    break
+            if text is None:
+                # Nivel 2: a base inteira + tudo colapsado + Top 5 AINDA
+                # estoura — a lista de problemas da base ja esta resumida
+                # em ``summarized`` (1 linha de contagem; o bloco mais caro
+                # e menos denso da base, os detalhes vivem no ranking).
+                for ns_part, wl_part in variants:
+                    parts = summarized + [""]
+                    if ns_part:
+                        parts += ns_part
+                    parts += top5
+                    if wl_part:
+                        parts += wl_part
+                    parts += ["", link]
+                    if _fits(parts):
                         text = "\n".join(parts)
-                    else:
-                        # Ultimo recurso: NENHUMA linha de vaga cabe — linha
-                        # unica com o link (comportamento pre-F6.1).
-                        compact = (f"ℹ️ Resumo do ranking encurtado "
-                                   f"(mensagem longa) — ranking completo: "
-                                   f"{link}")
-                        text = "\n".join(base + ["", compact])
+                        break
+            if text is None:
+                # Nivel 3 (teto defensivo da secao ⚡): mantem o header do
+                # Top 5 e adiciona LINHAS INTEIRAS que couberem — mesma
+                # semantica de linhas inteiras do format_top5, sem
+                # aritmetica de budget paralela. 🆕/🎯 seguem colapsadas
+                # (so o header com contagem).
+                ns_part = [ns_full[0]] if ns_full else []
+                wl_part = [wl_full[0]] if wl_full else []
+                kept: list[str] = [top5[0]]
+                for line in top5[1:]:
+                    candidate = (summarized + [""] + ns_part + kept
+                                 + wl_part + [line] + ["", link])
+                    if len("\n".join(candidate)) > TELEGRAM_MAX_LEN:
+                        break
+                    kept.append(line)
+                if len(kept) > 1:
+                    parts = summarized + [""] + ns_part + kept + wl_part \
+                        + ["", link]
+                    text = "\n".join(parts)
+                else:
+                    # Ultimo recurso: NENHUMA linha de vaga cabe — linha
+                    # unica com o link (comportamento pre-F6.1).
+                    compact = (f"ℹ️ Resumo do ranking encurtado "
+                               f"(mensagem longa) — ranking completo: "
+                               f"{link}")
+                    text = "\n".join(base + ["", compact])
     return text
 
 
@@ -941,6 +995,9 @@ def _run_dry_run(retention_days: int = DEFAULT_RETENTION_DAYS) -> int:
             data_dir / "eligible_jobs.json",
             archive_dir / "eligible_jobs.json",
             pages_url=ranking_digest.resolve_pages_url(base),
+            # F13: watchlist do tempdir do dry-run (nao existe — radar off;
+            # em producao o caminho e o do checkout real).
+            watchlist_path=base / "config" / "company_watchlist.json",
         )
         print("digest montado:",
               "sim" if digest else "nao (sem ranking atual)", 
@@ -1290,6 +1347,10 @@ def main(argv: list[str] | None = None) -> int:
                 current_path=data_dir / "eligible_jobs.json",
                 previous_path=archive_dir / "eligible_jobs.json",
                 pages_url=ranking_digest.resolve_pages_url(root),
+                # F13 — radar de empresas-alvo: watchlist versionada no repo
+                # (config/company_watchlist.json; ausente = radar off, o
+                # digest sai byte a byte igual ao de antes).
+                watchlist_path=root / "config" / "company_watchlist.json",
             )
         except Exception as exc:  # noqa: BLE001 — digest e best-effort
             log.warning("digest do ranking nao montado (run segue normal): %s", exc)
