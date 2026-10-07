@@ -684,6 +684,16 @@ def cmd_weekly(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     return 0
 
 
+def waiting_response(conn: sqlite3.Connection) -> int:
+    """Aplicacoes sem resposta/entrevista (§9 do Telegram)."""
+    return conn.execute(
+        "SELECT COUNT(*) c FROM job_applications a "
+        "LEFT JOIN job_status s USING (job_id) "
+        "WHERE a.response_at IS NULL AND a.interview_at IS NULL "
+        "AND s.status IN ('applied','review')"
+    ).fetchone()["c"]
+
+
 # ------------------------------------------------------------------ CLI
 
 def build_parser() -> argparse.ArgumentParser:
@@ -833,16 +843,6 @@ def reminder_jobs(conn: sqlite3.Connection, ranking: list[dict],
             })
     out.sort(key=lambda r: r["days"])
     return out
-
-
-def waiting_response(conn: sqlite3.Connection) -> int:
-    """Aplicacoes sem resposta/entrevista (§9 do Telegram)."""
-    return conn.execute(
-        "SELECT COUNT(*) c FROM job_applications a "
-        "LEFT JOIN job_status s USING (job_id) "
-        "WHERE a.response_at IS NULL AND a.interview_at IS NULL "
-        "AND s.status IN ('applied','review')"
-    ).fetchone()["c"]
 
 
 # ------------------------------------------------------- F14 — follow-up

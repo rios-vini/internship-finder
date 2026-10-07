@@ -29,12 +29,18 @@ Cobre as 4 tarefas da fase sem rede e sem ``data/`` de produção
 - **T5 Privacidade/regressão**: página com badges passa no gate
   público; ``jobs_personal.db`` NÃO aparece no HTML; digest sem
   pendentes é byte a byte idêntico ao de antes (com e sem banco).
+- **T6 CLI via subprocess (F14.1)**: o comando ``weekly`` roda como
+  processo REAL (``subprocess`` — não import: defs definidas APÓS o
+  guard ``if __name__`` só existem via import; foi assim que o
+  NameError da F14.1 escapou da suíte) e sai exit 0 com as métricas
+  (``candidaturas``) no stdout.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 from datetime import UTC, datetime, timedelta
@@ -651,6 +657,42 @@ def test_privacy_and_regression() -> None:
 
 
 # ---------------------------------------------------------------------------
+# T6 — CLI via subprocess (regressão F14.1: NameError def pós-guard)
+# ---------------------------------------------------------------------------
+
+def test_weekly_cli_subprocess() -> None:
+    section("T6: CLI weekly via subprocess — exit 0 + métricas no stdout")
+    # F14.1: `weekly_metrics` (pré-guard) chamava `waiting_response`,
+    # definida APÓS o guard — via import as defs existem (suíte 82
+    # verde, CI 2/2 verde) mas via CLI/subprocess o main() executa no
+    # guard e morre com NameError antes de alcançar a def. Só um
+    # subprocess DE VERDADE reproduz o caminho que quebrava.
+    base, env = _make_env("t_f14_weekly_cli_")
+    now = datetime.now(UTC)
+    d = lambda n: (now - timedelta(days=n)).strftime("%Y-%m-%d")  # noqa: E731
+    # seed: 2 candidaturas na janela de 7d (uma com resposta) + 1 fora
+    env.cli("applied", "W1", "--date", d(2))
+    env.cli("applied", "W2", "--date", d(4), "--response", d(1))
+    env.cli("applied", "W3", "--date", d(20))
+
+    r = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parent
+                             / "personal_tracker.py"),
+         "--db", str(env.db), "--ranking", str(env.ranking),
+         "--jobs-db", str(env.jobs_db), "weekly"],
+        capture_output=True, text=True,
+    )
+    ok = (r.returncode == 0 and "candidaturas" in r.stdout
+          and "Métricas semanais" in r.stdout)
+    if not ok:
+        print(f"    rc={r.returncode}\n    stdout={r.stdout!r}\n"
+              f"    stderr={r.stderr[-500:]!r}")
+    check("subprocess weekly: exit 0 e imprime métricas (candidaturas)",
+          ok)
+    shutil.rmtree(base)
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -662,6 +704,7 @@ def main() -> int:
     test_personal_sections_followup()
     test_compact_followup()
     test_privacy_and_regression()
+    test_weekly_cli_subprocess()
     print()
     if FAILURES:
         print(f"FALHAS: {len(FAILURES)}")
