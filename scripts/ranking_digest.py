@@ -816,6 +816,149 @@ def new_since_lines(
     return lines
 
 
+# ---------------------------------------------------------------------------
+# F13 — radar de empresas-alvo (watchlist). O MECANISMO de "vaga nova" é o
+# diff de IDs da F11 (``new_since_previous``); a watchlist é apenas um FILTRO
+# por empresa (string exata, casefold). Nenhum coletor novo, nenhum HTTP novo.
+# ---------------------------------------------------------------------------
+
+# Cap de linhas/dia da seção 🎯 (spec F13 §2.3: máx. 5 linhas/dia).
+RADAR_MAX_SHOWN = 5
+
+# Header ÚNICO da seção de radar — distinto dos outros usos de 🎯 no digest
+# ("🎯 Perfil e critérios ativos" e "🎯 Top 5 aplicáveis"): o compactador
+# extrai seções por prefixo EXATO de header, nunca por emoji.
+WATCHLIST_SECTION_PREFIX = "🎯 Empresas-alvo"
+WATCHLIST_SECTION_HEADER = (
+    f"{WATCHLIST_SECTION_PREFIX} (watchlist) — vagas novas de ontem nas "
+    "empresas que você acompanha"
+)
+
+
+def _norm_company(value) -> str:
+    """Casefold + colapso de espaços (mesma normalização do cap de exibição)."""
+    return " ".join(str(value or "").strip().casefold().split())
+
+
+def load_watchlist(path: str | Path) -> list[str] | None:
+    """Carrega ``config/company_watchlist.json`` (F13; pura, best-effort).
+
+    Devolve a lista de strings de empresa (EXATAS como no dataset; o match
+    e casefold) ou ``None`` quando o arquivo nao existe / e invalido / nao
+    contem ``companies`` — o chamador omite a secao de radar inteira, sem
+    erro (o radar nunca e obrigatorio; arquivo e opcional por design).
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = data.get("companies")
+    if not isinstance(raw, list):
+        return None
+    companies = [str(c).strip() for c in raw
+                 if isinstance(c, (str, int, float)) and str(c).strip()]
+    return companies or None
+
+
+def radar_events(
+    diff: tuple[set[str], set[str]] | None,
+    current: list[dict],
+    watchlist: list[str] | None,
+) -> list[dict]:
+    """Vagas NOVAS cuja empresa esta na watchlist (F13; pura).
+
+    ``diff`` = saida de ``new_since_previous`` (None = sem snapshot ->
+    sem eventos). O match e por STRING EXATA casefold — a watchlist carrega
+    os strings que o dataset usa (ex.: ``BoschGroup``, ``lidlstiftup2``),
+    NAO nomes bonitos. Ordem oficial do ranking (nao reordena nada); a
+    vaga fora do top exibido tambem conta (o radar e alerta, nao ranking).
+    Empresa ausente do dataset = simplesmente nunca casa (silencio).
+    """
+    if diff is None or not watchlist:
+        return []
+    new_ids = diff[0]
+    if not new_ids:
+        return []
+    wanted = {_norm_company(c) for c in watchlist}
+    events: list[dict] = []
+    for job in current:
+        if job.get("id") not in new_ids:
+            continue
+        if _norm_company(job.get("company")) in wanted:
+            events.append(job)
+    return events
+
+
+def radar_lines(
+    diff: tuple[set[str], set[str]] | None,
+    current: list[dict],
+    watchlist: list[str] | None,
+    *,
+    max_shown: int = RADAR_MAX_SHOWN,
+) -> list[str]:
+    """Secao '🎯 Empresas-alvo' do digest (F13; contagem + cap 5).
+
+    Sem watchlist, sem snapshot, ou zero eventos -> ``[]`` (secao AUSENTE,
+    sem linha vazia — spec §2.3). Cada evento: ``🎯 <empresa>: <titulo>
+    (<local>)`` — 1 linha por vaga, cap ``max_shown``; excedentes viram a
+    linha ``(+N outras — ver página)`` (padrao de colapso-para-contagem da
+    F11/F6.1). O header carrega a CONTAGEM (sobrevive ao compact).
+    """
+    events = radar_events(diff, current, watchlist)
+    if not events:
+        return []
+    lines = [f"{WATCHLIST_SECTION_HEADER} — {len(events)} nova(s)"]
+    for pos, job in enumerate(events[:max_shown], 1):
+        lines.append(
+            f"  🎯 {pos}. {job.get('company') or '—'}: "
+            f"{_short_title(job)} ({_short_location(job)})"
+        )
+    if len(events) > max_shown:
+        lines.append(f"  (+{len(events) - max_shown} outras — ver página)")
+    return lines
+
+
+def watchlist_section_lines(digest_lines: list[str]) -> list[str]:
+    """Extrai a secao 🎯 de radar de ``digest_lines`` (F13; para o compact).
+
+    Espelho de ``top5_section_lines`` (F6.1): header + corpo ate a proxima
+    linha em branco, ou ``[]`` quando a secao nao existe. Somente leitura.
+    """
+    header_idx = None
+    for idx, line in enumerate(digest_lines):
+        if line.startswith(WATCHLIST_SECTION_PREFIX):
+            header_idx = idx
+            break
+    if header_idx is None:
+        return []
+    section = [digest_lines[header_idx]]
+    for line in digest_lines[header_idx + 1:]:
+        if not line.strip():
+            break
+        section.append(line)
+    return section
+
+
+def new_since_section_lines(digest_lines: list[str]) -> list[str]:
+    """Extrai a secao 🆕 'Novas desde ontem' de ``digest_lines`` (F13).
+
+    O header da secao e sempre o emitido por ``new_since_lines`` (comeca
+    com ``🆕 Novas desde ontem:``); o corpo segue ate o blank. ``[]`` quando
+    ausente. Uso: compactador do Telegram (prioridade de preservacao F13).
+    """
+    for idx, line in enumerate(digest_lines):
+        if line.startswith("🆕 Novas desde ontem:"):
+            section = [line]
+            for ln in digest_lines[idx + 1:]:
+                if not ln.strip():
+                    break
+                section.append(ln)
+            return section
+    return []
+
+
 def enrichment_lines(
     current: list[dict],
     enrichment_path: str | Path | None,
@@ -893,6 +1036,7 @@ def digest_sections(
     country_spec: str = DEFAULT_COUNTRY_SPEC,
     top: int = DIGEST_TOP,
     enrichment_path: str | Path | None = None,
+    watchlist_path: str | Path | None = None,
 ) -> list[str] | None:
     """Secoes do digest do Telegram; ``None`` quando nao ha ranking atual.
 
@@ -901,6 +1045,12 @@ def digest_sections(
     a ultima linha). ``previous_path`` e o snapshot da rotacao (ranking do
     run anterior); sem snapshot (primeiro run), o digest avisa que a
     comparacao comeca no proximo run — nunca trata todo o Top 30 como novo.
+
+    F13: ``watchlist_path`` = ``config/company_watchlist.json`` (default
+    ``None`` = radar desligado — secao 🎯 ausente e o digest e byte a byte
+    o de antes). A secao de radar reusa o MESMO diff de IDs da secao 🆕
+    (``new_since_previous``): vaga nova em empresa da watchlist = evento,
+    independente de score/posicao. Best-effort: falha nunca derruba o digest.
     """
     current = load_ranking(current_path)
     if not current:
@@ -987,6 +1137,25 @@ def digest_sections(
             lines.extend(top5_text.splitlines())
     except Exception:  # noqa: BLE001 — seção extra nunca derruba o digest
         pass
+
+    # F13 — radar de empresas-alvo: cruza o MESMO diff de IDs da secao 🆕
+    # (nenhuma leitura nova, nenhum coletor novo) com a watchlist (strings
+    # exatas de empresa; match casefold). Sem watchlist/sem snapshot/zero
+    # eventos -> secao ausente. Best-effort: nunca derruba o digest.
+    # Posicao (spec §2.3): DEPOIS do ⚡ Top 5 e das 🆕 — ultima secao antes
+    # do link; o radar NAO reordena nada, so alerta.
+    if watchlist_path is not None:
+        try:
+            watchlist = load_watchlist(watchlist_path)
+            if watchlist:
+                previous_for_radar = load_ranking_or_none(previous_path)
+                diff_for_radar = new_since_previous(current, previous_for_radar)
+                radar = radar_lines(diff_for_radar, current, watchlist)
+                if radar:
+                    lines.append("")
+                    lines.extend(radar)
+        except Exception:  # noqa: BLE001 — seção nova nunca derruba o digest
+            pass
 
     lines.append("")
     lines.append(f"🔗 Ranking completo (todas as vagas elegíveis): {pages_url}")
