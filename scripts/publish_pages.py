@@ -218,6 +218,12 @@ def render_ranking_html(
     minimal_page; explicito aqui para fixar o contrato) habilita a secao
     🎯 Empresas-alvo na pagina. Best-effort: watchlist ausente (fixture de
     teste sem config/) -> secao omitida, a pagina nunca quebra.
+
+    F14: ``--tracker-db data/personal/jobs_personal.db`` (default do
+    minimal_page; explicito aqui para fixar o contrato) habilita o
+    badge "já aplicou" nos cards. O banco é lido READ-ONLY e é
+    gitignored — nada dele é publicado; best-effort: ausente/ilegível
+    -> nenhum badge, a pagina nunca quebra.
     """
     script = root / "scripts" / "minimal_page.py"
     if not script.exists():
@@ -230,6 +236,7 @@ def render_ranking_html(
         "--archive", "data/archive",
         "--translation-cache", "data/translation_cache.json",
         "--watchlist", "config/company_watchlist.json",
+        "--tracker-db", "data/personal/jobs_personal.db",
     ]
     if dead_link_ids:
         dead_tmp = output_path.parent / ".dead_ids.txt"

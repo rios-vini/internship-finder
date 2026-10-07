@@ -198,6 +198,93 @@ def _snippet(job: dict, limit: int = 140) -> str:
     return text[:limit] + ("…" if len(text) > limit else "")
 
 
+# ---------------------------------------------------------------------------
+# F14 — badge "já aplicou" (estado pessoal do tracker no card público).
+# PRIVACIDADE: o card mostra APENAS o ícone de status (✅/📞/❌/…). Notas,
+# contatos, feedback e datas NUNCA entram no HTML — o gate
+# ``check_public_safe`` segue bloqueando jobs.db/caminhos privados.
+# ---------------------------------------------------------------------------
+
+# Ícone curto por status pessoal (spec F14 §2.1 — "ícones curtos, sem
+# notas/contatos"). Status sem ícone (new/interesting/review) = sem
+# badge: marcado-antes-de-aplicar não é "já aplicou".
+_PERSONAL_STATUS_ICONS: dict[str, str] = {
+    "applied": "✅",
+    "interview": "📞",
+    "offer": "🎉",
+    "rejected": "❌",
+    "withdrawn": "🚫",
+    "ignored": "👁️",
+}
+
+# Rótulo title= do span (acessibilidade; fixo por status, sem dado pessoal).
+_PERSONAL_STATUS_TITLES: dict[str, str] = {
+    "applied": "Você já aplicou a esta vaga (tracker)",
+    "interview": "Entrevista marcada/realizada (tracker)",
+    "offer": "Oferta recebida (tracker)",
+    "rejected": "Candidatura rejeitada (tracker)",
+    "withdrawn": "Candidatura retirada (tracker)",
+    "ignored": "Vaga ignorada no tracker",
+}
+
+
+def personal_status_icon(status: "str | None") -> str:
+    """Ícone do badge para um status pessoal; '' quando não há badge.
+
+    Pura — o mapeamento status→ícone vive em UM lugar só. Status de
+    pré-candidatura (new/interesting/review) e status desconhecido não
+    geram badge (o card fica idêntico ao de antes).
+    """
+    if not status:
+        return ""
+    return _PERSONAL_STATUS_ICONS.get(str(status).strip().lower(), "")
+
+
+def personal_status_badge(personal_status: "str | None") -> str:
+    """Span HTML do badge "já aplicou" (F14 §2.1); '' quando ausente.
+
+    ``personal_status`` = status atual da vaga no banco pessoal (None/''
+    ou status de pré-candidatura = sem badge). Pura e sem dado privado:
+    o único texto é o ícone + o title fixo do dicionário — nunca
+    notas/contatos/feedback/datas.
+    """
+    icon = personal_status_icon(personal_status)
+    if not icon:
+        return ""
+    status = str(personal_status).strip().lower()
+    title = _esc(_PERSONAL_STATUS_TITLES.get(status, "Status no tracker"))
+    return f' <span class="pt" title="{title}">{icon}</span>'
+
+
+def personal_status_map(db_path: Path | str | None) -> dict:
+    """Mapa job_id → status pessoal (F14; leitura READ-ONLY do banco).
+
+    Best-effort TOTAL: banco ausente, ilegível, corrompido ou sem o
+    schema esperado → ``{}`` (nenhum badge, nenhum erro — a página nunca
+    quebra por causa do tracker). NÃO cria o banco quando ausente (o
+    render da página pública nunca escreve em ``data/``); usa
+    ``sqlite3`` em modo ``mode=ro`` direto — sem passar pelo
+    ``personal_tracker.connect`` (que cria diretórios/schema).
+    """
+    if not db_path:
+        return {}
+    path = Path(db_path)
+    if not path.is_file():
+        return {}
+    try:
+        import sqlite3
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            rows = conn.execute(
+                "SELECT job_id, status FROM job_status"
+            ).fetchall()
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001 — badge é best-effort, nunca erro
+        return {}
+    return {str(r[0]): str(r[1]) for r in rows}
+
+
 # F12 T1 — linha EN abaixo do título: deterministica e OFFLINE (dicionario
 # display DE->EN em ``display_translate.title_en``; sem rede, sem LLM). O
 # título DE NUNCA e substituido — a linha EN so entra quando a traducao
@@ -359,7 +446,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           snippet: str, apply_href: str | None, job_href: str | None,
           de_level: str, age: str, dead: bool = False,
           is_new: bool = False, score_override=None,
-          en_title_html: str = "", snippet_is_en: bool = False) -> str:
+          en_title_html: str = "", snippet_is_en: bool = False,
+          personal_status: str | None = None) -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -370,6 +458,10 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     client-side (mesma regra casefold do JS; medição F13: 972 títulos
     contêm "werkstudent", o campo ``employment_type`` tem 0 ocorrências —
     por isso o filtro é por TÍTULO, como o f-de por german_level).
+
+    F14: ``personal_status`` = status do tracker pessoal (None/'' =
+    sem badge — vaga não marcada). O badge é APENAS o ícone curto
+    (✅/📞/❌/…) com title fixo; nenhum dado privado no HTML.
     """
     vf = ' <span class="vf" title="Empresa com política de visto (visa_policy: explicit_support ou unclear)">🛂</span>' if visa else ""
     if de_level == "required":
@@ -378,6 +470,7 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         vf += ' <span class="dead" title="URL retornou 404/410 no check de vitalidade — a vaga provavelmente foi preenchida/removida">🔗 morta</span>'
     if is_new:
         vf += ' <span class="newb">🆕</span>'
+    vf += personal_status_badge(personal_status)
     title = _esc(job.get("title") or "(sem título)")
     inner = f'<a class="t" href="{_esc(job_href)}" target="_blank" rel="noopener">{title}</a>{vf}' if job_href else f'<span class="t">{title}</span>{vf}'
     meta_bits = [
@@ -442,6 +535,7 @@ a.t:hover{text-decoration:underline}
 .de{font-size:.72rem;color:#e8cf8a}
 .dead{font-size:.72rem;color:#d98282}
 .newb{font-size:.72rem}
+.pt{font-size:.72rem}
 .age{font-size:.78rem;color:#9aa7b4}
 .m{color:#9aa7b4;font-size:.82rem;margin-top:2px}
 .m .sal{color:#e8cf8a;font-weight:600}
@@ -473,7 +567,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     ref: datetime, company_entry_cache: dict,
                     rank_start: int = 1, score_key: str = "score",
                     with_snippet: bool = True,
-                    translation_cache: dict | None = None) -> list[str]:
+                    translation_cache: dict | None = None,
+                    personal_statuses: dict | None = None) -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -490,6 +585,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     rows: list[str] = []
     new_ids = new_ids or set()
     dead_ids = dead_ids or set()
+    personal_statuses = personal_statuses or {}
     for i, job in enumerate(jobs, rank_start):
         jid = str(job.get("id") or "")
         entry = None
@@ -528,6 +624,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             score_override=(job.get(score_key)
                             if score_key != "score" else None),
             en_title_html=_title_en_line(job),
+            personal_status=personal_statuses.get(jid),
         ))
     return rows
 
@@ -545,6 +642,7 @@ def render_minimal_html(
     with_snippets: bool = True,
     translation_cache: dict | None = None,
     watchlist_events: list[dict] | None = None,
+    tracker_db: Path | str | None = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
 
@@ -572,6 +670,12 @@ def render_minimal_html(
     digest promete "ver página"). Regra de EXIBIÇÃO: eventos já
     exibidos na seção 🆕 não são duplicados aqui.
 
+    F14: ``tracker_db`` = banco pessoal do tracker (read-only; None/''
+    = sem badge). O card ganha o badge discreto "já aplicou" (✅/📞/❌/)
+    para vagas marcadas — APENAS o ícone + title fixo, nunca
+    notas/contatos. Banco ausente/corrompido = nenhum badge, nenhum
+    erro (best-effort; ``personal_status_map``).
+
     Size-aware (contrato da docstring desde a F6, agora real): com
     ``with_snippets=True`` o render e' montado com snippets; o chamador
     ``render_size_aware`` remonta sem snippets (campo DECORATIVO) quando
@@ -579,6 +683,9 @@ def render_minimal_html(
     """
     ref = datetime.now(UTC)
     dead_ids = set(dead_link_ids or set())
+    # F14 — mapa job_id → status pessoal (uma leitura read-only; banco
+    # ausente/corrompido = {} = nenhum badge, a página nunca quebra).
+    p_statuses = personal_status_map(tracker_db)
     # F11 T3: vagas mortas descem do top exibido (a seguinte sobe) — o
     # corte com a regra 2/empresa percorre a lista JA sem as mortas.
     # Regra de exibicao; o JSON/CSV (base de dados) e intocavel.
@@ -590,6 +697,7 @@ def render_minimal_html(
         shown, company_intel_map=company_intel_map, new_ids=new_ids,
         dead_ids=dead_ids, ref=ref, company_entry_cache=entry_cache,
         with_snippet=with_snippets, translation_cache=translation_cache,
+        personal_statuses=p_statuses,
     ))
     n_vf = sum(1 for j in shown if _visa_friendly(
         j, entry_cache.get(str(j.get("id") or ""))))
@@ -610,6 +718,7 @@ def render_minimal_html(
             company_entry_cache=entry_cache, rank_start=1,
             score_key="score", with_snippet=with_snippets,
             translation_cache=translation_cache,
+            personal_statuses=p_statuses,
         ))
         new_section = (
             f'<h2>🆕 Novas desde ontem — {len(new_ids)} nova(s){extra}</h2>'
@@ -632,6 +741,7 @@ def render_minimal_html(
             company_entry_cache=entry_cache, rank_start=1,
             score_key="score", with_snippet=with_snippets,
             translation_cache=translation_cache,
+            personal_statuses=p_statuses,
         ))
         watch_section = (
             f'<h2>🎯 Empresas-alvo — {len(wl_cards_jobs)} nova(s) nas '
@@ -649,6 +759,7 @@ def render_minimal_html(
             company_entry_cache=entry_cache, rank_start=1,
             score_key="materials_score", with_snippet=with_snippets,
             translation_cache=translation_cache,
+            personal_statuses=p_statuses,
         ))
         materials_section = (
             '<h2>🧪 Materials Engineering — top 10 (perfil alternativo)</h2>'
@@ -721,6 +832,7 @@ def render_size_aware(
     materials: list[dict] | None = None,
     translation_cache: dict | None = None,
     watchlist_events: list[dict] | None = None,
+    tracker_db: Path | str | None = None,
 ) -> str:
     """``render_minimal_html`` com degradacao progressiva de tamanho (F11).
 
@@ -736,6 +848,9 @@ def render_size_aware(
 
     F13: ``watchlist_events`` repassado as duas montagens (a secao 🎯
     nao e campo decorativo — sobrevive a remontagem sem snippets).
+
+    F14: ``tracker_db`` repassado as duas montagens (o badge "já
+    aplicou" tambem sobrevive — nao e campo decorativo).
     """
     html = render_minimal_html(
         jobs, total_eligible=total_eligible, generated_at=generated_at,
@@ -744,6 +859,7 @@ def render_size_aware(
         materials=materials, with_snippets=True,
         translation_cache=translation_cache,
         watchlist_events=watchlist_events,
+        tracker_db=tracker_db,
     )
     if len(html.encode("utf-8")) > PAGE_TARGET_BYTES:
         html = render_minimal_html(
@@ -753,6 +869,7 @@ def render_size_aware(
             materials=materials, with_snippets=False,
             translation_cache=translation_cache,
             watchlist_events=watchlist_events,
+            tracker_db=tracker_db,
         )
     return html
 
@@ -785,6 +902,7 @@ def render_minimal_html_from_file(
     include_materials: bool = True,
     translation_cache_path: Path | str | None = None,
     watchlist_path: Path | str | None = None,
+    tracker_db: Path | str | None = None,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
 
@@ -802,6 +920,10 @@ def render_minimal_html_from_file(
     (uma unica leitura do snapshot) e cruza com a watchlist — sem coletor
     novo, sem HTTP. Best-effort: watchlist ausente/corrompida ou falha
     qualquer -> secao 🎯 omitida, nunca erro.
+
+    F14: ``tracker_db`` = banco pessoal (default None = sem badge);
+    lido READ-ONLY por ``personal_status_map`` — ausente/corrompido =
+    nenhum badge, nunca erro. NUNCA criado pelo render.
     """
     with path.open(encoding="utf-8") as fh:
         jobs = json.load(fh)
@@ -854,6 +976,7 @@ def render_minimal_html_from_file(
         new_since_ids=new_ids, dead_link_ids=dead_link_ids,
         materials=materials, translation_cache=translation_cache,
         watchlist_events=watchlist_events,
+        tracker_db=tracker_db,
     )
 
 
@@ -908,6 +1031,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="watchlist de empresas-alvo (F13; default "
                              "config/company_watchlist.json do repo; '' "
                              "desliga a seção 🎯)")
+    parser.add_argument("--tracker-db", default="data/personal/jobs_personal.db",
+                        metavar="PATH",
+                        help="banco pessoal do tracker (F14; lido em "
+                             "modo read-only p/ o badge 'já aplicou'; "
+                             "default data/personal/jobs_personal.db do "
+                             "repo; '' desliga o badge)")
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -937,11 +1066,13 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.translation_cache) if args.translation_cache else None
     )
     watchlist_path = Path(args.watchlist) if args.watchlist else None
+    tracker_db = Path(args.tracker_db) if args.tracker_db else None
     page = render_minimal_html_from_file(
         Path(args.input), top=args.top, company_intel_map=company_intel_map,
         archive_root=archive_root, dead_link_ids=dead_ids,
         translation_cache_path=translation_cache_path,
         watchlist_path=watchlist_path,
+        tracker_db=tracker_db,
     )
     if args.output == "-":
         sys.stdout.write(page)

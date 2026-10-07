@@ -941,6 +941,108 @@ def watchlist_section_lines(digest_lines: list[str]) -> list[str]:
     return section
 
 
+# ---------------------------------------------------------------------------
+# F14 — pendências de follow-up (banco privado; best-effort sempre).
+# A MÁQUINA é a do personal_tracker (followup_pending); o digest só
+# formata. Colapsa ao header com contagem no compact (padrão F13).
+# ---------------------------------------------------------------------------
+
+# Header ÚNICO da seção (o compactador extrai por prefixo EXATO).
+FOLLOWUP_SECTION_PREFIX = "⏰ Follow-up"
+FOLLOWUP_SECTION_HEADER = (
+    f"{FOLLOWUP_SECTION_PREFIX} — candidaturas sem resposta"
+)
+
+# Cap de linhas/dia da seção (spec F14 §2.3: máx. 5 linhas).
+FOLLOWUP_MAX_SHOWN = 5
+
+
+def _format_followup(pending: list[dict], ranking: list[dict], *,
+                     after_days: int,
+                     max_shown: int = FOLLOWUP_MAX_SHOWN) -> list[str]:
+    """Formatador puro da seção ⏰ (F14; usado pelo digest e testes).
+
+    ``pending`` = saída de ``personal_tracker.followup_pending``;
+    ``ranking`` = ranking atual (título/empresa das linhas; vaga fora do
+    ranking segue listada — aplicada não desaparece, §19 da F8).
+    """
+    if not pending:
+        return []
+    by_id = {str(j.get("id")): j for j in ranking if j.get("id")}
+    lines = [f"{FOLLOWUP_SECTION_HEADER} — {len(pending)} pendente(s) "
+             f"(aplicadas há mais de {after_days} dias sem resposta)"]
+    for pos, p in enumerate(pending[:max_shown], 1):
+        j = by_id.get(p["job_id"], {})
+        title = str(j.get("title") or "").strip() or "(fora do ranking atual)"
+        company = str(j.get("company") or "").strip() or "—"
+        lines.append(
+            f"  ⏰ {pos}. {company}: {_short_title({'title': title})} "
+            f"(há {p['days']} dias)"
+        )
+    if len(pending) > max_shown:
+        lines.append(f"  (+{len(pending) - max_shown} outra(s) — ver "
+                     f"`personal_tracker.py list --status applied`)")
+    return lines
+
+
+def followup_lines(db_path: str | Path, current_path: str | Path, *,
+                   ref_date=None, after_days: int | None = None,
+                   max_shown: int = FOLLOWUP_MAX_SHOWN) -> list[str]:
+    """Seção '⏰ Follow-up' do digest (F14 §2.3; contagem + cap 5).
+
+    Vagas com status ``applied`` há mais de ``after_days`` dias (default
+    10 = ``personal_tracker.FOLLOWUP_AFTER_DAYS``) sem evento de
+    interação posterior (a máquina é ``personal_tracker.followup_pending``
+    — zero regra duplicada), formatadas por ``_format_followup`` com o
+    ranking atual de ``current_path``.
+
+    Banco ausente/corrompido ou zero pendências -> ``[]`` (seção
+    AUSENTE, sem linha vazia). Sem notas, sem contatos, sem dados
+    privados — só empresa/título/dias.
+    """
+    try:
+        sys_path_scripts = Path(__file__).resolve().parent
+        if str(sys_path_scripts) not in __import__("sys").path:
+            __import__("sys").path.insert(0, str(sys_path_scripts))
+        import personal_tracker as pt
+        conn = pt.connect(db_path)
+    except Exception:  # noqa: BLE001 — banco pessoal nunca derruba o run
+        return []
+    try:
+        if after_days is None:
+            after_days = pt.FOLLOWUP_AFTER_DAYS
+        pending = pt.followup_pending(conn, ref=ref_date,
+                                      after_days=after_days,
+                                      max_shown=0)  # cap é do FORMATADOR
+    except Exception:  # noqa: BLE001 — leitura inválida -> silêncio
+        return []
+    finally:
+        conn.close()
+    return _format_followup(pending, load_ranking(current_path),
+                            after_days=after_days, max_shown=max_shown)
+
+
+def followup_section_lines(digest_lines: list[str]) -> list[str]:
+    """Extrai a seção ⏰ de ``digest_lines`` (F14; para o compact).
+
+    Espelho de ``watchlist_section_lines`` (F13): header + corpo até a
+    próxima linha em branco; ``[]`` quando ausente.
+    """
+    header_idx = None
+    for idx, line in enumerate(digest_lines):
+        if line.startswith(FOLLOWUP_SECTION_PREFIX):
+            header_idx = idx
+            break
+    if header_idx is None:
+        return []
+    section = [digest_lines[header_idx]]
+    for line in digest_lines[header_idx + 1:]:
+        if not line.strip():
+            break
+        section.append(line)
+    return section
+
+
 def new_since_section_lines(digest_lines: list[str]) -> list[str]:
     """Extrai a secao 🆕 'Novas desde ontem' de ``digest_lines`` (F13).
 
@@ -1168,8 +1270,10 @@ def digest_sections(
 
 def personal_sections(db_path: str | Path, current_path: str | Path, *,
                       ref_date=None, reminders_days: int = 3,
-                      max_shown: int = 3) -> list[str]:
-    """Secoes pessoais do digest (Fase 8): reminders + aguardando resposta.
+                      max_shown: int = 3,
+                      followup_after_days: int | None = None) -> list[str]:
+    """Secoes pessoais do digest (Fase 8 + F14 §2.3): reminders, follow-up
+    e aguardando resposta.
 
     Le o banco privado ``data/personal/jobs_personal.db`` via
     ``scripts/personal_tracker.py`` (mesmo schema; nada de segunda fonte de
@@ -1180,6 +1284,12 @@ def personal_sections(db_path: str | Path, current_path: str | Path, *,
     - shortlist = interesting/review/applied/interview/offer;
     - notas pessoais completas NUNCA sao enviadas;
     - banco ausente/corrompido -> ``[]`` silencioso (nunca derruba o run).
+
+    F14: a secao "⏰ Follow-up" (aplicadas ha > ``followup_after_days``
+    dias, default 10 do personal_tracker, sem interacao posterior; cap 5
+    linhas + contagem) entra ANTES da linha de aguardando resposta —
+    pendencia cronica na frente do contador de estado. Zero pendentes =
+    secao ausente (sem linha vazia).
 
     As linhas entram ANTES do link do ranking (o link continua sendo a
     ultima linha do digest montado pelo chamador).
@@ -1196,6 +1306,12 @@ def personal_sections(db_path: str | Path, current_path: str | Path, *,
         ranking = pt.load_ranking(current_path)
         reminders = pt.reminder_jobs(conn, ranking, ref=ref_date,
                                      max_days=reminders_days)
+        followup = pt.followup_pending(
+            conn, ref=ref_date,
+            after_days=(pt.FOLLOWUP_AFTER_DAYS
+                        if followup_after_days is None
+                        else followup_after_days),
+            max_shown=0)  # cap aplicado pelo formatador (F14)
         waiting = pt.waiting_response(conn)
     except Exception:  # noqa: BLE001 — leitura invalida -> silencio
         return []
@@ -1213,6 +1329,12 @@ def personal_sections(db_path: str | Path, current_path: str | Path, *,
             lines.append(f"{r['company']} — {r['title']} ({days})")
         if len(reminders) > max_shown:
             lines.append(f"(+{len(reminders) - max_shown} outra(s))")
+    if followup:
+        after = (pt.FOLLOWUP_AFTER_DAYS if followup_after_days is None
+                 else followup_after_days)
+        lines.append("")
+        lines.extend(_format_followup(
+            followup, ranking, after_days=after))
     if waiting:
         lines.append("")
         lines.append(f"\U0001F4CC {waiting} aplicação(ões) aguardando resposta")

@@ -561,6 +561,129 @@ def cmd_ranking_feedback(conn: sqlite3.Connection, args: argparse.Namespace) -> 
     return 0
 
 
+# ------------------------------------------------------------- F14 (semanal)
+
+# F14 — métricas semanais janela: 7 dias corridos (spec §2.2).
+WEEKLY_WINDOW_DAYS = 7
+
+
+def _parse_event_ts(value: str) -> datetime | None:
+    """Parse tolerante do ``ts`` de um evento (ISO com Z ou data pura)."""
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _response_status(conn: sqlite3.Connection, job_id: str) -> str | None:
+    """Status DE RESPOSTA da vaga, derivado do estado atual (F14; pura).
+
+    "Resposta" = qualquer desfecho pós-candidatura: interview/offer =
+    sinal positivo; rejected/withdrawn = fechamento. Status ainda
+    ``applied``/`review` = sem resposta (None).
+    """
+    row = conn.execute(
+        "SELECT status FROM job_status WHERE job_id = ?", (job_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    if row["status"] in ("interview", "offer"):
+        return "positive"
+    if row["status"] in ("rejected", "withdrawn"):
+        return "closed"
+    return None
+
+
+def weekly_metrics(conn: sqlite3.Connection, *, days: int = WEEKLY_WINDOW_DAYS,
+                   ref: "datetime | str | None" = None) -> dict:
+    """Métricas da janela semanal (F14 §2.2) a partir de ``job_events``.
+
+    Janela = últimos ``days`` dias corridos (default 7). Conta FATOS do
+    append-only ``job_events`` — zero schema novo, zero banco novo:
+
+    - ``applied``: eventos ``applied_at`` cujo ``ts`` (data da
+      candidatura registrada no detail) cai na janela;
+    - ``responses``: eventos ``response_at``/``interview_at`` na janela
+      (resposta recebida — positiva ou negativa);
+    - ``response_rate``: (interview+rejected+withdrawn)/applied — aqui
+      via eventos: respostas/applied da janela, 0% gracioso quando
+      ``applied == 0`` (sem divisão por zero, sem mentira);
+    - ``interviews``: eventos ``interview_at`` na janela;
+    - ``pending``: candidaturas SEM resposta nenhuma até agora (estado,
+      não janela — para contexto da seção de follow-up).
+
+    Datas: o evento ``applied_at`` carrega a data real da candidatura no
+    ``detail`` (``cmd_applied`` grava o --date; ``cmd_mark`` grava
+    utcnow). O ``ts`` do registro é usado como fallback quando o detail
+    não parseia.
+    """
+    from datetime import date as _date, timedelta as _timedelta
+    if ref is None:
+        ref = datetime.now(UTC)
+    elif isinstance(ref, str):
+        ref = datetime.fromisoformat(ref.replace("Z", "+00:00"))
+    start = (ref - _timedelta(days=days)).date()
+
+    def _event_date(row: sqlite3.Row):
+        # detail (data real da candidatura) com fallback ao ts do evento
+        for value in (row["detail"], row["ts"]):
+            if not value:
+                continue
+            try:
+                return _date.fromisoformat(str(value)[:10])
+            except ValueError:
+                continue
+        return None
+
+    applied_ids: set[str] = set()
+    response_count = 0
+    interview_count = 0
+    for row in conn.execute(
+        "SELECT job_id, ts, kind, detail FROM job_events "
+        "WHERE kind IN ('applied_at', 'response_at', 'interview_at')"
+    ).fetchall():
+        d = _event_date(row)
+        if d is None or d < start or d > ref.date():
+            continue
+        if row["kind"] == "applied_at":
+            applied_ids.add(row["job_id"])
+        elif row["kind"] == "interview_at":
+            interview_count += 1
+            response_count += 1
+        elif row["kind"] == "response_at":
+            response_count += 1
+
+    # aguardando resposta: MESMA semântica da F8 (§9) — reuso direto,
+    # zero duplicação de regra (colunas de job_applications).
+    pending = waiting_response(conn)
+
+    n_applied = len(applied_ids)
+    rate = (100.0 * response_count / n_applied) if n_applied else 0.0
+    return {
+        "window_days": days,
+        "applied": n_applied,
+        "responses": response_count,
+        "interviews": interview_count,
+        "response_rate_pct": round(rate, 1),
+        "pending_no_response": pending,
+    }
+
+
+def cmd_weekly(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Comando `weekly` (F14 §2.2) — métricas semanais no stdout."""
+    m = weekly_metrics(conn, days=args.days)
+    print("== Métricas semanais (últimos 7 dias) ==")
+    print(f"  candidaturas:        {m['applied']}")
+    print(f"  respostas:           {m['responses']}")
+    print(f"  entrevistas:         {m['interviews']}")
+    print(f"  taxa de resposta:   {m['response_rate_pct']:.0f}% "
+          f"({m['responses']}/{m['applied']})"
+          + (" — sem candidaturas na janela" if not m["applied"] else ""))
+    print(f"  aguardando resposta: {m['pending_no_response']}")
+    print("(contagens de fatos do job_events; nenhuma interpretação)")
+    return 0
+
+
 # ------------------------------------------------------------------ CLI
 
 def build_parser() -> argparse.ArgumentParser:
@@ -628,6 +751,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("metrics", help="metricas descritivas")
     sub.add_parser("funnel", help="opportunity funnel")
     sub.add_parser("ranking-feedback", help="Top 30 vs fora (diagnostico)")
+    w = sub.add_parser("weekly", help="metricas semanais (F14): janela de "
+                       "7 dias a partir dos job_events")
+    w.add_argument("--days", type=int, default=WEEKLY_WINDOW_DAYS,
+                   metavar="N", help=f"janela em dias (default {WEEKLY_WINDOW_DAYS})")
     return p
 
 
@@ -657,6 +784,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_funnel(conn, args)
         if args.cmd == "ranking-feedback":
             return cmd_ranking_feedback(conn, args)
+        if args.cmd == "weekly":
+            return cmd_weekly(conn, args)
         conn.close()
         return 1
     finally:
@@ -714,3 +843,119 @@ def waiting_response(conn: sqlite3.Connection) -> int:
         "WHERE a.response_at IS NULL AND a.interview_at IS NULL "
         "AND s.status IN ('applied','review')"
     ).fetchone()["c"]
+
+
+# ------------------------------------------------------- F14 — follow-up
+
+# Dias sem resposta que transformam uma candidatura em pendência de
+# follow-up (spec F14 §2.3; configurável por parâmetro).
+FOLLOWUP_AFTER_DAYS = 10
+
+# Eventos que NÃO contam como interação posterior à candidatura:
+# - ``applied_at``: é a PRÓPRIA candidatura (detail = data real; o ts é
+#   o momento do registro, que pode ser posterior à data retroativa);
+# - ``marked``: meta-evento do upsert de status (acompanha o registro
+#   da candidatura, mesmo ts do applied_at);
+# - ``status_changed``: transição de ESTADO — o desfecho (interview/
+#   rejected/withdrawn/offer) já tira a vaga pelo filtro status=
+#   'applied'; voltar para applied = voltou a esperar (sem resposta),
+#   a pendência volta a valer;
+# - ``removed_from_ranking``/``ats_gone``: sincronização automática do
+#   refresh (o sistema dizendo que a vaga saiu — não uma interação
+#   do dono; follow-up segue válido para vaga que saiu do ATS).
+# Interações que contam: note, response_at, interview_at, contact,
+# priority, feedback_liked/feedback_ignored (ações e desfechos
+# registrados pelo dono).
+_NON_INTERACTION_KINDS = ("applied_at", "marked", "status_changed",
+                          "removed_from_ranking", "ats_gone")
+
+# Kinds cujo ``detail`` carrega uma DATA real (YYYY-MM-DD) — para eles
+# a data do evento é o detail (ex.: resposta datada), não o ts do
+# registro. Para os demais (note, status_changed, priority, feedback,
+# contact) o ts do registro É a data real da interação.
+_DATE_DETAIL_KINDS = ("applied_at", "response_at", "interview_at")
+
+
+def _event_real_date(kind: str, ts: str, detail: "str | None") -> "str | None":
+    """Data real (YYYY-MM-DD) de um evento; None quando indatável."""
+    from datetime import date as _date
+    if kind in _DATE_DETAIL_KINDS and detail:
+        try:
+            return _date.fromisoformat(str(detail)[:10]).isoformat()
+        except ValueError:
+            pass
+    try:
+        return _date.fromisoformat(str(ts)[:10]).isoformat()
+    except ValueError:
+        return None
+
+
+def followup_pending(conn: sqlite3.Connection, *, ref=None,
+                     after_days: int = FOLLOWUP_AFTER_DAYS,
+                     max_shown: int = 5) -> list[dict]:
+    """Candidaturas aplicadas há > ``after_days`` dias SEM evento posterior.
+
+    F14 §2.3 — pendências de follow-up, do banco privado
+    (``job_applications`` + ``job_events``; zero schema novo):
+
+    - status ATUAL ``applied`` (interview/offer/rejected/withdrawn já
+      são desfechos, saem da lista);
+    - data da candidatura (``job_applications.applied_at``) há mais de
+      ``after_days`` dias em relação a ``ref`` (default hoje);
+    - SEM evento de interação posterior à candidatura (nota, resposta,
+      entrevista, contato, prioridade, feedback) — meta-eventos do
+      registro (``applied_at``/``marked``), transições de status
+      (``status_changed`` — o desfecho já é filtrado pelo status atual)
+      e eventos de sincronização (``removed_from_ranking``/``ats_gone``)
+      NÃO contam.
+
+    Ordem: a mais antiga primeiro (a que está apertando mais). Cap
+    ``max_shown`` (digest); ``max_shown<=0`` = sem cap (uso manual).
+    Pura: só lê o banco.
+    """
+    from datetime import date as _date
+    if ref is None:
+        ref = _date.today()
+    elif isinstance(ref, str):
+        ref = _date.fromisoformat(ref[:10])
+    elif isinstance(ref, datetime):
+        ref = ref.date()
+
+    # eventos de interação por vaga (uma leitura única; escala pessoal)
+    later_by_job: dict[str, str] = {}
+    placeholders = ",".join("?" * len(_NON_INTERACTION_KINDS))
+    for ev in conn.execute(
+        "SELECT job_id, ts, kind, detail FROM job_events "
+        f"WHERE kind NOT IN ({placeholders})",
+        _NON_INTERACTION_KINDS,
+    ).fetchall():
+        d = _event_real_date(ev["kind"], ev["ts"], ev["detail"])
+        if d is None:
+            continue
+        cur = later_by_job.get(ev["job_id"])
+        if cur is None or d > cur:
+            later_by_job[ev["job_id"]] = d
+
+    rows = conn.execute(
+        "SELECT a.job_id, a.applied_at, s.status "
+        "FROM job_applications a "
+        "JOIN job_status s USING (job_id) "
+        "WHERE s.status = 'applied' AND a.applied_at IS NOT NULL"
+    ).fetchall()
+    out: list[dict] = []
+    for row in rows:
+        try:
+            applied = _date.fromisoformat(str(row["applied_at"])[:10])
+        except ValueError:
+            continue
+        days = (ref - applied).days
+        if days <= after_days:
+            continue
+        if later_by_job.get(row["job_id"], "") > applied.isoformat():
+            continue  # interação posterior à candidatura
+        out.append({
+            "job_id": row["job_id"], "applied_at": str(row["applied_at"]),
+            "days": days,
+        })
+    out.sort(key=lambda r: (-r["days"], r["job_id"]))
+    return out if max_shown <= 0 else out[:max_shown]
