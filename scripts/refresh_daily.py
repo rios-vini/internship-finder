@@ -736,6 +736,11 @@ def build_message(
         # do N2 — o header e a linha mais densa e barata da secao).
         new_since = ranking_digest.new_since_section_lines(digest_lines)
         watch = ranking_digest.watchlist_section_lines(digest_lines)
+        # F14 — extracao da secao ⏰ Follow-up (padrao das demais; []
+        # quando ausente). No compact a ⏰ colapsa ANTES do Top 5
+        # (prioridade: base > 🆕 > ⚡ Top 5 > 🎯 > ⏰ — o follow-up e
+        # lembrete de pendencia cronica, o Top 5 e o produto do dia).
+        followup = ranking_digest.followup_section_lines(digest_lines)
         # Base com a lista de problemas resumida em contagem (computada UMA
         # vez, pura; o slice termina em base_len porque ``lines`` ja contem
         # o digest anexado, que e reconstruido abaixo pelas secoes + top5 +
@@ -763,23 +768,36 @@ def build_message(
             # niveis de COLAPSO de cada secao: [header, ...corpo]
             ns_full = new_since or []
             wl_full = watch or []
-            variants: list[tuple[list[str], list[str]]] = []
-            for ns_collapsed, wl_collapsed in (
-                    (False, False), (False, True), (True, True)):
+            fu_full = followup or []
+            # Ordem de colapso (greedy F13 + F14): 🎯 colapsa antes da
+            # 🆕; a ⏰ (F14) colapsa PRIMEIRO de todas — a pendencia
+            # cronica abre espaco para o produto do dia (Top 5) e para
+            # as novidades. Nenhuma secao e dropada inteira: quando
+            # todas as variantes ainda estouram, nivel 2/3 mantem os
+            # headers com contagem.
+            variants: list[tuple[list[str], list[str], list[str]]] = []
+            for fu_collapsed, wl_collapsed, ns_collapsed in (
+                    (False, False, False), (True, False, False),
+                    (True, True, False), (True, True, True)):
                 ns_part = [ns_full[0]] if ns_full and ns_collapsed else ns_full
                 wl_part = [wl_full[0]] if wl_full and wl_collapsed else wl_full
-                variants.append((ns_part, wl_part))
+                fu_part = [fu_full[0]] if fu_full and fu_collapsed else fu_full
+                variants.append((ns_part, wl_part, fu_part))
 
             text = None
-            for ns_part, wl_part in variants:
+            for ns_part, wl_part, fu_part in variants:
                 # Ordem de exibicao = ordem do digest (F13 §2.3): 🆕 antes
                 # do ⚡, 🎯 depois do ⚡ — so o colapso muda, nunca o layout.
+                # F14: a ⏰ vem das secoes pessoais (depois do 🎯, antes
+                # do link) e mantem essa posicao no compact.
                 parts = base + [""]
                 if ns_part:
                     parts += ns_part
                 parts += top5
                 if wl_part:
                     parts += wl_part
+                if fu_part:
+                    parts += fu_part
                 parts += ["", link]
                 if _fits(parts):
                     text = "\n".join(parts)
@@ -789,13 +807,15 @@ def build_message(
                 # estoura — a lista de problemas da base ja esta resumida
                 # em ``summarized`` (1 linha de contagem; o bloco mais caro
                 # e menos denso da base, os detalhes vivem no ranking).
-                for ns_part, wl_part in variants:
+                for ns_part, wl_part, fu_part in variants:
                     parts = summarized + [""]
                     if ns_part:
                         parts += ns_part
                     parts += top5
                     if wl_part:
                         parts += wl_part
+                    if fu_part:
+                        parts += fu_part
                     parts += ["", link]
                     if _fits(parts):
                         text = "\n".join(parts)
@@ -804,20 +824,21 @@ def build_message(
                 # Nivel 3 (teto defensivo da secao ⚡): mantem o header do
                 # Top 5 e adiciona LINHAS INTEIRAS que couberem — mesma
                 # semantica de linhas inteiras do format_top5, sem
-                # aritmetica de budget paralela. 🆕/🎯 seguem colapsadas
-                # (so o header com contagem).
+                # aritmetica de budget paralela. 🆕/🎯/⏰ seguem
+                # colapsadas (so o header com contagem).
                 ns_part = [ns_full[0]] if ns_full else []
                 wl_part = [wl_full[0]] if wl_full else []
+                fu_part = [fu_full[0]] if fu_full else []
                 kept: list[str] = [top5[0]]
                 for line in top5[1:]:
                     candidate = (summarized + [""] + ns_part + kept
-                                 + wl_part + [line] + ["", link])
+                                 + wl_part + fu_part + [line] + ["", link])
                     if len("\n".join(candidate)) > TELEGRAM_MAX_LEN:
                         break
                     kept.append(line)
                 if len(kept) > 1:
                     parts = summarized + [""] + ns_part + kept + wl_part \
-                        + ["", link]
+                        + fu_part + ["", link]
                     text = "\n".join(parts)
                 else:
                     # Ultimo recurso: NENHUMA linha de vaga cabe — linha

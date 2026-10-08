@@ -936,6 +936,55 @@ menções a `jobs.db`/caminhos privados).
 Relatório oficial: `docs/relatorio_fase8_decision_tracking.md`. Testes:
 `scripts/test_personal_tracker.py` (novo, 30º — cobre os 20 itens do §25).
 
+### Application Tracker no dia a dia (F14, 07/10)
+
+Camada de USO diário sobre o banco da Fase 8 — zero schema novo, zero
+banco novo. Três peças: badge na página, métricas semanais e lembrete
+de follow-up no digest.
+
+- **Badge "já aplicou" na página**: o render público lê o banco
+  pessoal (READ-ONLY, `--tracker-db`, default
+  `data/personal/jobs_personal.db`) e marca o card com o ícone do
+  status atual: ✅ applied · 📞 interview · 🎉 offer · ❌ rejected ·
+  🚫 withdrawn. Discreto, sem notas/contatos (nada privado no HTML —
+  só o ícone + `title` fixo; o gate `check_public_safe` segue no
+  publicador). Banco ausente/vazio/vaga não marcada = sem badge, sem
+  erro.
+- **Métricas semanais** (`weekly`): candidaturas da semana, respostas,
+  entrevistas e taxa de resposta (respostas/candidaturas da janela de 7
+  dias, calculadas dos `job_events` existentes; 0 candidaturas = 0%
+  gracioso). Comando manual — rode quando quiser o retrato da semana
+  (nada automático no digest; decisão documentada: o digest diário já
+  é denso e a janela semanal não muda dentro do dia).
+- **⏰ Follow-up no digest**: candidaturas com status `applied` há mais
+  de N dias (default 10, configurável) sem evento posterior (resposta,
+  entrevista, nota, contato...) aparecem na seção "⏰ Follow-up" do
+  digest diário, cap 5 linhas + contagem. Sem pendentes = seção
+  ausente. No compact do Telegram colapsa ao header com contagem
+  (padrão F13), antes do Top 5.
+
+Rotina diária pós-candidatura (fluxo F8+F14):
+
+```bash
+# 1. aplicou hoje (ou --date YYYY-MM-DD para retroativo):
+.venv/bin/python scripts/personal_tracker.py applied "<job_id>" --date 2026-10-07
+#    (equivalente: mark "<job_id>" --status applied --date 2026-10-07)
+
+# 2. resposta chega -> registra E tira a vaga do follow-up:
+.venv/bin/python scripts/personal_tracker.py applied "<job_id>" --response 2026-10-15
+.venv/bin/python scripts/personal_tracker.py mark "<job_id>" --status interview   # ou rejected
+
+# 3. retrato da semana (candidaturas/respostas/taxa):
+.venv/bin/python scripts/personal_tracker.py weekly
+
+# 4. o digest cuida do resto: ⏰ Follow-up lembra as candidaturas
+#    paradas há >10 dias (nenhuma ação sua).
+```
+
+O badge aparece sozinho na página do dia seguinte (o render cruza os
+IDs do top com o `job_status`). Testes: `scripts/test_f14.py` (59ª
+suíte do CI).
+
 ### Enrichment LLM (camada opcional — Fases 1–3, 24–26/09)
 
 Camada isolada que extrai dados estruturados da **página oficial da vaga**
