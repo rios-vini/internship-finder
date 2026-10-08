@@ -146,8 +146,9 @@ python scripts/test_dedup.py
 - **[docs/README-operacional.md](docs/README-operacional.md)** — the full
   operational documentation: setup, cron, runbook, coverage tables, and
   the daily-refresh workflow (PT-BR, the repo's working language).
-- **[docs/](docs/)** — 32 phase reports covering every design decision,
-  measurement, and audit trail behind the pipeline (PT-BR).
+- **[docs/](docs/)** — 33 documents: phase reports, audits, and design
+  notes covering every decision and measurement behind the pipeline
+  (PT-BR).
 
 ## License
 
