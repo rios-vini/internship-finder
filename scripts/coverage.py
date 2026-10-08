@@ -63,12 +63,26 @@ def main(jobs: list[dict] | None = None, eligible: list[dict] | None = None) -> 
         eligible = load("eligible_jobs.json")
 
     # --- Funil (recomputado com a cascata real; sem rede) ---
-    _, c_tipo = select_eligible(jobs, student=True, area=False, country="all")
-    _, c_area = select_eligible(jobs, student=True, area=True, country="all")
-    _, c_pais = select_eligible(jobs, student=True, area=True, country="de")
+    # F18: ``applicability=False`` — este relatório mede o funil CLÁSSICO
+    # (tipo/area/pais) e o dedup; o estágio de aplicabilidade (pós-pais)
+    # não faz parte da comparação apple-to-apple com o eligible pré-F18
+    # (o eligible_jobs.json pós-F18 contém só aplicáveis; incluí-lo aqui
+    # mislabelaria as exclusões como "dedup_removed").
+    _, c_tipo = select_eligible(jobs, student=True, area=False, country="all",
+                                applicability=False)
+    _, c_area = select_eligible(jobs, student=True, area=True, country="all",
+                                applicability=False)
+    _, c_pais = select_eligible(jobs, student=True, area=True, country="de",
+                                applicability=False)
+    # F18: mesmo funil COM o estágio de aplicabilidade (default ON) — separa
+    # as exclusões de aplicabilidade do dedup na leitura do relatório.
+    _, c_appl = select_eligible(jobs, student=True, area=True, country="de")
     raw, tipo, area, pais = c_tipo["total"], c_tipo["tipo"], c_area["area"], c_pais["pais"]
+    appl_excluded = pais - c_appl["aplicabilidade"]
     eligible_n = len(eligible)
-    dedup_removed = pais - eligible_n
+    # dedup real: pais - (exclusões de aplicabilidade) - eligible do arquivo
+    # (o eligible_jobs.json pós-F18 já tem ambos aplicados).
+    dedup_removed = pais - appl_excluded - eligible_n
     # O eligible_jobs.json ja e o resultado ranqueado (score/score_breakdown);
     # nao ha arquivo ranked separado.
     ranked_n = eligible_n
@@ -78,6 +92,8 @@ def main(jobs: list[dict] | None = None, eligible: list[dict] | None = None) -> 
     print(f"  + tipo estudante     : {tipo}")
     print(f"  + area-alvo          : {area}")
     print(f"  + pais (DE)          : {pais}")
+    print(f"  - aplicabilidade (F18): {appl_excluded} "
+          f"-> {c_appl['aplicabilidade']} aplicáveis")
     print(f"  eligible (pos-dedup) : {eligible_n}")
     print(f"  dedup removidas      : {dedup_removed}")
     print(f"  ranked               : {ranked_n}")

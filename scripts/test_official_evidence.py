@@ -58,7 +58,9 @@ def op_job(
     ``seq`` diferencia titulo/localizacao entre fixtures (dedup
     company+title+location do projeto colapsa vagas identicas).
     """
-    title = "Werkstudent Data Analytics"
+    # F18: título HÍBRIDO — Werkstudent puro sai no hard exclude de
+    # aplicabilidade; este bloco testa a evidência official_page (A/B).
+    title = "Werkstudent / Praktikum Data Analytics"
     location = "Munich, Bavaria"
     if seq:
         title = f"{title} {seq}"

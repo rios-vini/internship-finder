@@ -63,7 +63,9 @@ def base_job(**over) -> dict:
     job = {
         "id": "ACME|smartrecruiters:acme:123",
         "source": "smartrecruiters:acme",
-        "title": "Werkstudent Procurement (m/w/d)",
+        # F18: título HÍBRIDO — Werkstudent puro sai no hard exclude de
+        # aplicabilidade; as fixtures deste bloco testam campos estruturados.
+        "title": "Werkstudent / Praktikum Procurement (m/w/d)",
         "company": "ACME",
         "location": "München, DE",
         "country": "DE",
@@ -318,9 +320,10 @@ def test_raw_robustness() -> None:
 
 def test_ranking_eligible_unchanged() -> None:
     print("== [11-12] ranking e eligible identicos com novo consumo ==")
-    plain = [base_job(title=f"Werkstudent Procurement {i}") for i in range(3)]
+    plain = [base_job(title=f"Werkstudent / Praktikum Procurement {i}")
+             for i in range(3)]
     enriched = [base_job(
-        title=f"Werkstudent Procurement {i}",
+        title=f"Werkstudent / Praktikum Procurement {i}",
         raw={"department": "Purchasing", "employment_type": "FULL_TIME",
              "is_remote": False, "apply_url": "https://a/apply",
              "requisition_id": f"REF-{i}", "global_id": f"smartrecruiters:{i}"},
