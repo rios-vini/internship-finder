@@ -543,8 +543,11 @@ def test_registry_not_filter() -> None:
     # "Levio GmbH": fora do registry (fato medido §2.6 — 39 intern-DE),
     # DE + estagio + area-match -> deve passar pelo funil inteiro.
     ds_job = row_to_job(make_row(
+        # F18: título HÍBRIDO (Werkstudent + Praktikum) — Werkstudent puro
+        # sairia pelo hard exclude de aplicabilidade; o híbrido fica e o
+        # bloco continua testando o componente registry (não-filtro).
         url="https://careers.levio.de/job/9",
-        title="Werkstudent Data Analytics (m/w/d)",
+        title="Werkstudent / Praktikum Data Analytics (m/w/d)",
         company="Levio GmbH", description="sap reporting python",
         employment_type="INTERN"), "successfactors")
     selected, counts = select_eligible([ds_job.to_dict()], country="de")
@@ -556,7 +559,7 @@ def test_registry_not_filter() -> None:
     # contraste: mesma vaga na Bosch (registry) ganha +1.0
     bosch = row_to_job(make_row(
         url="https://jobs.bosch.com/job/9",
-        title="Werkstudent Data Analytics (m/w/d)",
+        title="Werkstudent / Praktikum Data Analytics (m/w/d)",
         company="Robert Bosch GmbH", description="sap reporting python",
         employment_type="INTERN"), "successfactors")
     sel_b, _ = select_eligible([bosch.to_dict()], country="de")

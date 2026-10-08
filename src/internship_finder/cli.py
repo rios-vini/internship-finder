@@ -209,6 +209,20 @@ def _apply_visa_friendly(jobs: list[dict]) -> int:
     return n
 
 
+def _load_applicability_intel() -> dict[str, dict] | None:
+    """F18: mapa de Company Intelligence para o estágio de aplicabilidade.
+
+    Best-effort (mesma tolerância de ``_apply_visa_friendly``): arquivo
+    ausente/inválido → ``None`` e o critério ``visa_blocked`` NÃO aplica
+    (os demais motivos de aplicabilidade continuam valendo — são puros,
+    derivados do próprio texto da vaga). Nunca derruba o run.
+    """
+    try:
+        return load_company_intel() or None
+    except Exception:  # noqa: BLE001 - best-effort, nunca fatal
+        return None
+
+
 def save_outputs(jobs: list[Job] | list[dict], output: Path) -> None:
     """Grava JSON e CSV (CSV derivado do nome do JSON). Aceita Job ou dict.
 
@@ -234,12 +248,28 @@ def save_outputs(jobs: list[Job] | list[dict], output: Path) -> None:
 
 
 def print_cascade(counts: dict[str, int], country: str) -> None:
-    """Imprime as contagens em cascata: total -> tipo -> area -> pais."""
+    """Imprime as contagens em cascata: total -> tipo -> area -> pais.
+
+    F18: quando o estágio de aplicabilidade rodou (chave presente),
+    imprime também o total mantido e a linha de exclusões por motivo
+    (first-match; ``aplicabilidade_excluidas_*``).
+    """
     print("=== Cascata de filtros ===")
     print(f"  total            : {counts['total']}")
     print(f"  + tipo estudante : {counts['tipo']}")
     print(f"  + area-alvo      : {counts['area']}")
     print(f"  + pais           : {counts['pais']}   (--country {country})")
+    if "aplicabilidade" in counts:
+        excluded = {
+            k.removeprefix("aplicabilidade_excluidas_"): v
+            for k, v in counts.items()
+            if k.startswith("aplicabilidade_excluidas_")
+        }
+        excluded_total = sum(excluded.values())
+        print(f"  + aplicabilidade : {counts['aplicabilidade']}   (F18 hard exclude)")
+        if excluded_total:
+            detail = ", ".join(f"{k} {v}" for k, v in excluded.items() if v)
+            print(f"    - excluídas {excluded_total} ({detail})")
 
 
 def print_examples(jobs: list[dict] | list[Job], limit: int = 15) -> None:
@@ -300,6 +330,7 @@ def run_filter_pipeline(
     official_page_transport: Any | None = None,
     metrics: Path | None = None,
     run_id: str | None = None,
+    applicability: bool = True,
 ) -> int:
     """Aplica a cascata, remove duplicatas, ranqueia por perfil, imprime e grava.
 
@@ -344,11 +375,16 @@ def run_filter_pipeline(
     normalized = [
         j.to_dict() if hasattr(j, "to_dict") else normalize_job_dict(j) for j in jobs
     ]
+    # F18 — estágio de aplicabilidade (default ON): o mapa de Company
+    # Intelligence é injetado AQUI (best-effort) para o critério de visto;
+    # ``select_eligible`` continua pura (nunca lê arquivos).
     selected, counts = select_eligible(
         normalized,
         student=student,
         area=area,
         country=country,
+        applicability=applicability,
+        intel_map=_load_applicability_intel() if applicability else None,
     )
     print_cascade(counts, country)
     dedup_stats: dict[str, int] = {}
@@ -432,6 +468,13 @@ def run_filter_pipeline(
                 "filtered": counts["pais"],
                 "dedup_removed": sum(dedup_stats.values()) if dedup else 0,
                 "eligible": len(selected),
+                # F18 — contagem por motivo do hard exclude (first-match;
+                # chaves ausentes quando applicability=False).
+                **{
+                    f"applicability_excluded_{k.removeprefix('aplicabilidade_excluidas_')}": v
+                    for k, v in counts.items()
+                    if k.startswith("aplicabilidade_excluidas_")
+                },
             }
         ]
         if hydration_stats is not None:
@@ -872,6 +915,16 @@ def main(argv: list[str] | None = None) -> int:
         "default: ligado; --no-rank desliga e mantem a ordem original)",
     )
     parser.add_argument(
+        "--applicability",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="F18: exclui da saida eligible as vagas inaplicaveis ao perfil "
+        "(alemao exigido, empresa que exige autorizacao previa de trabalho, "
+        "tese por titulo, Werkstudent puro por titulo, mestrado exigido). "
+        "Default: ligado; --no-applicability desliga (reversivel — a coleta "
+        "bruta nunca muda).",
+    )
+    parser.add_argument(
         "--metrics",
         default=None,
         help="Caminho do JSONL de metricas da execucao (default no modo coleta: "
@@ -1183,6 +1236,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             metrics=metrics_path,
             run_id=run_id,
+            applicability=args.applicability,
         )
         if had_failure:
             log.warning("coleta parcial com falhas (timeout/erro/sem match); "
@@ -1213,6 +1267,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.official_page_limit is not None
             else OFFICIAL_PAGE_LIMIT
         ),
+        applicability=args.applicability,
     )
 
 

@@ -80,7 +80,9 @@ def make_job(**overrides) -> dict:
     base = {
         "id": "TestCo|a:TestCo:1",
         "source": "a:TestCo",
-        "title": "Werkstudent Data Analytics",
+        # F18: título HÍBRIDO — Werkstudent puro sai no hard exclude de
+        # aplicabilidade; este bloco testa o estágio official-page.
+        "title": "Werkstudent / Praktikum Data Analytics",
         "company": "TestCo",
         "location": "Munich, Bavaria",
         "url": "https://jobs.example.com/1",
@@ -111,7 +113,8 @@ def jp_full(**overrides) -> dict:
     """JobPosting JSON-LD rico e consistente com a fixture make_job()."""
     base = {
         "@type": "JobPosting",
-        "title": "Werkstudent Data Analytics",
+        # F18: híbrido — consistente com a fixture make_job() acima.
+        "title": "Werkstudent / Praktikum Data Analytics",
         "description": ("<p>Wir suchen einen Werkstudent im Bereich Data "
                        "Analytics & Supply Chain mit Python und SQL.</p> " * 10),
         "validThrough": "2026-12-31T23:59:59+01:00",
