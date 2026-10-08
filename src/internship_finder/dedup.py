@@ -46,6 +46,7 @@ Regra do "vencedor" quando duas versoes da mesma vaga existem (deterministica):
 
 from __future__ import annotations
 
+import base64
 import re
 import unicodedata
 from collections import Counter
@@ -309,12 +310,117 @@ KEY_COMPANY_TITLE_LOCATION = "company+title+location"
 # conteudo DE<->EN (o tier 3 ja colapsa marcadores de tipo; este cobre o
 # par "Praktikum Logistik" vs "Logistics Internship" e "Munich"/"München").
 KEY_COMPANY_TITLE_LOCATION_DE_EN = "company+title+location+de/en"
+# F20 — 5o tier: espelho BA×EURES. O external_id da EURES é o base64 da
+# referência BA da MESMA vaga (verificado na investigação 07/10:
+# "MTY5NDctOTU5MDQyOTQwLVMgMQ" → "16947-959042940-S 1"; "MTY1NjctNDQ0MDU1MDQt
+# ODI3LVMgMQ" → "16567-44405904-827-S 1"). Decodificado e normalizado (strip
+# de whitespace e do sufixo numérico trailing " 1"), casa com a referência
+# BA normalizada (o external_id cru da fonte *:bundesagentur É a referência)
+# — chave determinística e FP-safe por construção (base64 válido +
+# referência textual idêntica). Escopada pela EMPRESA (mesmo padrão P1.1
+# dos demais tiers). A MESMA label serve aos DOIS lados do par, para o
+# ``seen`` do ``deduplicate`` casar independentemente da ordem de chegada.
+KEY_BA_EURES_MIRROR = "ba_eures_mirror"
 KEY_LABELS = [
     KEY_EXTERNAL_ID,
     KEY_URL,
     KEY_COMPANY_TITLE_LOCATION,
     KEY_COMPANY_TITLE_LOCATION_DE_EN,
+    KEY_BA_EURES_MIRROR,
 ]
+
+# F20 — sufixos de fonte usados nos external_ids espelhados: a referência
+# vive no id de fontes "*:bundesagentur" (cru) e "*:eures" (base64).
+_BA_SOURCE_SUFFIX = ":bundesagentur"
+_EURES_SOURCE_SUFFIX = ":eures"
+
+# Sufixo numérico trailing que o feed da EURES acrescenta à referência BA
+# decodificada (ex.: "...-S 1"): NÃO faz parte da identidade da vaga.
+_TRAILING_COUNTER_RE = re.compile(r"\s+\d+\s*$")
+
+
+def _posted_at_sort_key(job: dict[str, Any]) -> tuple[int, str]:
+    """Chave de frescor do vencedor (F20; mesmo critério do mirror_dedup).
+
+    ``posted_at`` ausente = "infinito" (perde para qualquer valor
+    presente); comparação lexicográfica ISO (o campo é serializado ISO
+    8601 — aproximação aceitável para o desempate de vencedor).
+    """
+    value = job.get("posted_at")
+    if value is None:
+        return (1, "")
+    return (0, str(value))
+
+
+def normalize_ba_reference(ref: str | None) -> str:
+    """Referência BA canônica para o espelho BA×EURES (F20; pura).
+
+    Dois passos, aplicados IGUAIS nos dois lados do par: (1) strip de
+    whitespace das bordas; (2) remoção do sufixo numérico trailing com
+    whitespace antes (``"16947-959042940-S 1"`` → ``"16947-959042940-S"``)
+    — o contador é do feed EURES, não da vaga. Casefold fecha diferenças
+    de capitalização entre feeds.
+    """
+    if not ref:
+        return ""
+    s = str(ref).strip()
+    s = _TRAILING_COUNTER_RE.sub("", s)
+    return s.strip().casefold()
+
+
+def decode_eures_reference(external_id: str | None) -> str | None:
+    """Referência BA contida no ``external_id`` da fonte EURES (F20).
+
+    O external_id EURES é o base64 (sem padding) da referência BA da
+    MESMA vaga. Decodificação tolerante: re-padding com ``=``, validação
+    estrita (caracteres fora do alfabeto = None) e UTF-8 (a referência é
+    texto). String não-base64/decode inválido → ``None`` (ignora gracioso
+    — nunca derruba; a vaga simplesmente não ganha a chave de espelho).
+    Referência decodificada vazia/branca → ``None`` (nada a casar).
+    """
+    if not external_id:
+        return None
+    s = str(external_id).strip()
+    if not s:
+        return None
+    padded = s + "=" * (-len(s) % 4)
+    try:
+        raw = base64.b64decode(padded, validate=True)
+        text = raw.decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return text if text.strip() else None
+
+
+def _ba_eures_mirror_key(job: dict[str, Any]) -> tuple[str, str] | None:
+    """Chave de espelho BA×EURES de uma vaga (F20); ``None`` quando não se aplica.
+
+    Dois lados, MESMA chave ``(company_casefold, ref_normalizada)``:
+
+    - fonte ``*:eures``: ``external_id`` é base64 → decodifica para a
+      referência BA (decode inválido → ``None``, ignora gracioso);
+    - fonte ``*:bundesagentur``: ``external_id`` É a referência BA (crua).
+
+    A direção do casamento é irrelevante — a chave é idêntica dos dois
+    lados, então o ``seen`` do ``deduplicate`` casa em qualquer ordem de
+    chegada dos feeds. Empresa vazia → ``None`` (sem escopo, sem fusão).
+    """
+    source = str(job.get("source") or "")
+    company = str(job.get("company") or "").strip().casefold()
+    if not company:
+        return None
+    if source.endswith(_EURES_SOURCE_SUFFIX):
+        ref = decode_eures_reference(job.get("external_id"))
+    elif source.endswith(_BA_SOURCE_SUFFIX):
+        ref = str(job.get("external_id") or "").strip() or None
+    else:
+        return None
+    if ref is None:
+        return None
+    normalized = normalize_ba_reference(ref)
+    if not normalized:
+        return None
+    return company, normalized
 
 
 def candidate_keys(job: dict[str, Any]) -> list[tuple[str, str | tuple[str, str] | tuple[str, str, str]]]:
@@ -377,6 +483,15 @@ def candidate_keys(job: dict[str, Any]) -> list[tuple[str, str | tuple[str, str]
             (KEY_COMPANY_TITLE_LOCATION_DE_EN, (company, de_en_title, de_en_location))
         )
 
+    # F20 — tier espelho BA×EURES: a MESMA vaga publicada nos dois feeds
+    # (id EURES = base64 da referência BA). A chave existe nos dois lados
+    # com valor idêntico (empresa + referência normalizada), então o
+    # casamento funciona em qualquer ordem de chegada. Decode inválido ou
+    # fonte neutra = sem chave (ignora gracioso).
+    mirror = _ba_eures_mirror_key(job)
+    if mirror is not None:
+        keys.append((KEY_BA_EURES_MIRROR, mirror))
+
     return keys
 
 
@@ -384,12 +499,23 @@ def _prefer(candidate: dict[str, Any], current: dict[str, Any]) -> bool:
     """``candidate`` deve substituir ``current`` como vencedor?
 
     Regra deterministica: (1) descricao preenchida; (2) employment_type
-    preenchido; (3) quem veio primeiro vence (ordem da lista de entrada).
+    preenchido; (3) F20 — mais fresca (menor ``posted_at``; ausente perde
+    para presente, mesmo critério do ``_posted_at_sort_key`` do
+    mirror_dedup); (4) quem veio primeiro vence (ordem da lista de
+    entrada).
     """
     if bool(candidate.get("description")) and not bool(current.get("description")):
         return True
     if bool(candidate.get("employment_type")) and not bool(current.get("employment_type")):
         return True
+    if bool(candidate.get("description")) != bool(current.get("description")):
+        return False
+    if bool(candidate.get("employment_type")) != bool(current.get("employment_type")):
+        return False
+    key_c = _posted_at_sort_key(candidate)
+    key_k = _posted_at_sort_key(current)
+    if key_c != key_k:
+        return key_c < key_k
     return False
 
 

@@ -96,6 +96,14 @@ COMPANY_MAX_CARDS = 2
 NEW_SINCE_SECTION_TOP = 10
 MATERIALS_SECTION_TOP = 10
 
+# F20 — orcamento de bytes da secao 🎯 Empresas-alvo (item 4, dobra da
+# pendencia F15 — decisao do dono 08/10, opcao (a): ORCAMENTO, o cap de
+# PAGE_HARD_CAP_BYTES FICA). A secao entra inteira quando cabe; quando a
+# pagina total estoura o cap, e aparada para as RADAR_TOP_N vagas de
+# maior prioridade (nova primeiro, score desc, tie-break por id) + linha
+# honesta "+X outras vagas de empresas-alvo" com a contagem real.
+RADAR_TOP_N = 15
+
 # Orcamento de tamanho da pagina (spec: alvo <=100KB, cap duro 150KB
 # verificado no teste). O render e' size-aware: se o conteudo real
 # estourar o alvo, corta campos decorativos (snippet de descricao)
@@ -421,6 +429,45 @@ def _age_days_text(job: dict, ref: datetime) -> str:
     return f"há {days}d"
 
 
+def radar_budget_sort_key(job: dict) -> tuple:
+    """Prioridade do orcamento 🎯 (F20; pura, deterministica).
+
+    Ordem de prioridade da spec (item 4): (1) vagas NOVAS primeiro —
+    todos os eventos do radar sao novos por construcao (``radar_events``
+    e o diff de novas), entao o desempate efetivo comeca aqui;
+    (2) score DESC; (3) tie-break deterministico por id (invertido para
+    manter a ordem estavel do dataset no empate total de score).
+    """
+    try:
+        score = float(job.get("score") or 0.0)
+    except (TypeError, ValueError):
+        score = 0.0
+    return (-score, str(job.get("id") or ""))
+
+
+def apply_radar_budget(
+    watchlist_events: list[dict] | None,
+    *, limit: int = RADAR_TOP_N,
+) -> tuple[list[dict] | None, int]:
+    """Apara a lista de eventos 🎯 para o orcamento de bytes (F20; pura).
+
+    Devolve ``(eventos_aparados, n_omitidas)``. Sem orcamento apertado
+    (len <= limit) a lista entra INTEIRA e n_omitidas = 0 (a linha
+    \"+X outras\" so existe quando algo e aparado — nada de linha extra
+    nem aviso quando nada e cortado, spec item 4). Ordenacao interna
+    preserva a ordem oficial do radar (nao reordena nada na exibicao);
+    apenas SELECIONA os N de maior prioridade.
+    """
+    if watchlist_events is None or len(watchlist_events) <= limit:
+        return watchlist_events, 0
+    ranked = sorted(
+        enumerate(watchlist_events),
+        key=lambda pair: (radar_budget_sort_key(pair[1]), pair[0]),
+    )
+    kept_idx = sorted(i for i, _ in ranked[:limit])
+    return [watchlist_events[i] for i in kept_idx], len(watchlist_events) - limit
+
+
 def apply_company_cap(jobs: list[dict], *, limit: int = PAGE_TOP,
                       max_per_company: int = COMPANY_MAX_CARDS) -> list[dict]:
     """Corte do top exibido com max N vagas por empresa (F11 T4; pura).
@@ -478,7 +525,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           is_new: bool = False, score_override=None,
           en_title_html: str = "", snippet_is_en: bool = False,
           personal_status: str | None = None,
-          quality_entry: dict | None = None) -> str:
+          quality_entry: dict | None = None,
+          inapplicable: bool = False) -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -503,6 +551,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         vf += ' <span class="de" title="Anúncio exige alemão (german_level: required)">🇩🇪 DE exigido</span>'
     if dead:
         vf += ' <span class="dead" title="URL retornou 404/410 no check de vitalidade — a vaga provavelmente foi preenchida/removida">🔗 morta</span>'
+    if inapplicable:
+        vf += ' <span class="dead" title="A descrição completa da vaga (hidratada do site) revelou requisito de alemão ou mestrado — vaga inaplicável ao perfil; sai do top">🚫 inaplicável</span>'
     if is_new:
         vf += ' <span class="newb">🆕</span>'
     vf += personal_status_badge(personal_status)
@@ -542,6 +592,7 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         f' data-new="{1 if is_new else 0}"'
         f' data-ws="{1 if is_werkstudent_title(job) else 0}"'
         f' data-data="{1 if is_data_bi_title(job) else 0}"'
+        f' data-ia="{1 if inapplicable else 0}"'
         f' data-q="{_esc(qtext)}">'
         f'<span class="r">{rank}</span><span class="s">{score}</span>'
         f'<div class="bd">{inner}{en_title_html}<div class="m">{meta}</div>{snip}{btn}</div></li>'
@@ -573,6 +624,7 @@ a.t:hover{text-decoration:underline}
 .newb{font-size:.72rem}
 .pt{font-size:.72rem}
 .eq{font-size:.72rem;color:#e8d9a0}
+.radar-more{color:#9aa7b4;font-size:.78rem;font-weight:400}
 .spot{margin:2px 0 0;padding:0 0 0 18px;color:#c8d3dd;font-size:.8rem}
 .spot li{margin:2px 0}
 .age{font-size:.78rem;color:#9aa7b4}
@@ -608,7 +660,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     with_snippet: bool = True,
                     translation_cache: dict | None = None,
                     personal_statuses: dict | None = None,
-                    quality_map: dict | None = None) -> list[str]:
+                    quality_map: dict | None = None,
+                    inapplicable_ids: set[str] | None = None) -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -625,10 +678,15 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     F15: ``quality_map`` = mapa normalizado do employer_quality (None =
     sem badge em nenhum card, comportamento pré-F15). Lookup exato por
     empresa com cache por vaga (mesma mecânica do company_intel_map).
+
+    F20: ``inapplicable_ids`` = ids demovidos pela re-avaliação pós-
+    hidratação (F18 sobre a descrição completa). O badge "🚫 inaplicável"
+    é honesto (NUNCA o "🔗 morta" — a URL está viva).
     """
     rows: list[str] = []
     new_ids = new_ids or set()
     dead_ids = dead_ids or set()
+    inapplicable_ids = inapplicable_ids or set()
     personal_statuses = personal_statuses or {}
     for i, job in enumerate(jobs, rank_start):
         jid = str(job.get("id") or "")
@@ -679,6 +737,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             en_title_html=_title_en_line(job),
             personal_status=personal_statuses.get(jid),
             quality_entry=q_entry,
+            inapplicable=jid in inapplicable_ids,
         ))
     return rows
 
@@ -699,6 +758,8 @@ def render_minimal_html(
     tracker_db: Path | str | None = None,
     quality_map: dict | None = None,
     sweet_spot_rows: list[dict] | None = None,
+    radar_limit: int | None = None,
+    inapplicable_ids: set[str] | None = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
 
@@ -710,7 +771,13 @@ def render_minimal_html(
     F11: ``new_since_ids`` = ids novos vs o snapshot anterior (secao 🆕 +
     data-new + toggle); None/'' = sem diff (secao/toggle ausentes).
     ``dead_link_ids`` = ids com URL 410/404 confirmado (badge + descem do
-    topo exibido). ``materials`` = ranking materials JA computado e
+    topo exibido). F20: ``inapplicable_ids`` = ids demovidos pela
+    re-avaliacao POS-HIDRATACAO (german_level/requires_master da F18
+    revelou inaplicabilidade na descricao hidratada) — descem do topo
+    exibido como o dead_link, com marcador PROPRIO e honesto ("saida do
+    top: alemão exigido/mestrado revelado pela descrição completa" —
+    NUNCA o badge "🔗 morta", que seria desinformativo: a vaga existe e
+    a URL está viva). ``materials`` = ranking materials JA computado e
     cortado pelo chamador (secao opcional); None = sem secao.
 
     F12: ``translation_cache`` = cache de traducoes de descricao
@@ -747,13 +814,19 @@ def render_minimal_html(
     """
     ref = datetime.now(UTC)
     dead_ids = set(dead_link_ids or set())
+    # F20 — inaplicaveis-apos-hidratacao: saem do top exibido (mesma
+    # mecanica do dead_link) mas NAO ganham o badge "🔗 morta" (a URL
+    # esta viva; o que mudou e a aplicabilidade revelada pela descricao
+    # completa). O corte usa os DOIS conjuntos; o badge usa SO o dead.
+    inapplicable = set(inapplicable_ids or set())
+    excluded = dead_ids | inapplicable
     # F14 — mapa job_id → status pessoal (uma leitura read-only; banco
     # ausente/corrompido = {} = nenhum badge, a página nunca quebra).
     p_statuses = personal_status_map(tracker_db)
     # F11 T3: vagas mortas descem do top exibido (a seguinte sobe) — o
     # corte com a regra 2/empresa percorre a lista JA sem as mortas.
     # Regra de exibicao; o JSON/CSV (base de dados) e intocavel.
-    alive = [j for j in jobs if str(j.get("id") or "") not in dead_ids]
+    alive = [j for j in jobs if str(j.get("id") or "") not in excluded]
     shown = apply_company_cap(alive, limit=top)
     new_ids = set(new_since_ids or set())
     entry_cache: dict = {}
@@ -763,6 +836,7 @@ def render_minimal_html(
         with_snippet=with_snippets, translation_cache=translation_cache,
         personal_statuses=p_statuses,
         quality_map=quality_map,
+        inapplicable_ids=inapplicable,
     ))
     n_vf = sum(1 for j in shown if _visa_friendly(
         j, entry_cache.get(str(j.get("id") or ""))))
@@ -793,14 +867,24 @@ def render_minimal_html(
 
     # Seção 🎯 Empresas-alvo (F13) — vagas novas de ontem em empresas da
     # watchlist. Cards na ordem oficial (o radar NÃO reordena nada); TODOS
-    # os eventos entram aqui (o digest lista 5 e promete "ver página").
+    # os eventos entram aqui QUANDO O ORÇAMENTO PERMITE (o digest lista 5
+    # e promete "ver página"). F20 (item 4): quando a página inteira não
+    # cabe no cap, o chamador (``render_size_aware``) remonta com a 🎯
+    # aparada p/ top-N de prioridade (``radar_limit``) + linha honesta
+    # "+X outras vagas de empresas-alvo" (contagem real; SEM linha extra
+    # e SEM aviso quando nada é aparado).
     # Igual ao digest: um evento pode aparecer na 🆕 E aqui (seções com
     # critérios diferentes — 🆕 é "nova", 🎯 é "nova E alvo"; a página
     # espelha essa semântica, sem dedup entre seções).
     # Exibição pura: zero impacto em score/ranking/JSON/CSV.
     watch_section = ""
+    radar_omitted = 0
     if watchlist_events:
         wl_cards_jobs = list(watchlist_events)
+        if radar_limit is not None and len(wl_cards_jobs) > radar_limit:
+            wl_cards_jobs, radar_omitted = apply_radar_budget(
+                wl_cards_jobs, limit=radar_limit)
+        wl_cards_jobs = list(wl_cards_jobs)  # type: ignore[arg-type]
         wl_cards = "\n".join(_cards_section(
             wl_cards_jobs, company_intel_map=company_intel_map,
             new_ids=new_ids, dead_ids=dead_ids, ref=ref,
@@ -810,9 +894,14 @@ def render_minimal_html(
             personal_statuses=p_statuses,
             quality_map=quality_map,
         ))
+        total_line = f'{len(watchlist_events)} nova(s) nas empresas que você acompanha'
+        if radar_omitted:
+            extra_radar = (f' <span class="radar-more">+{radar_omitted} outras '
+                           f'vagas de empresas-alvo</span>')
+        else:
+            extra_radar = ""
         watch_section = (
-            f'<h2>🎯 Empresas-alvo — {len(wl_cards_jobs)} nova(s) nas '
-            f'empresas que você acompanha</h2>'
+            f'<h2>🎯 Empresas-alvo — {total_line}{extra_radar}</h2>'
             f'{wl_cards}'
         )
 
@@ -863,6 +952,7 @@ def render_minimal_html(
             score_key="materials_score", with_snippet=with_snippets,
             translation_cache=translation_cache,
             personal_statuses=p_statuses,
+            inapplicable_ids=inapplicable,
         ))
         materials_section = (
             '<h2>🧪 Materials Engineering — top 10 (perfil alternativo)</h2>'
@@ -939,29 +1029,38 @@ def render_size_aware(
     tracker_db: Path | str | None = None,
     quality_map: dict | None = None,
     sweet_spot_rows: list[dict] | None = None,
+    inapplicable_ids: set[str] | None = None,
 ) -> str:
-    """``render_minimal_html`` com degradacao progressiva de tamanho (F11).
+    """``render_minimal_html`` com degradacao progressiva de tamanho (F11+F20).
 
-    O snippet de descricao e o campo DECORATIVO do card (resumo de 140
-    chars; o botao abre o anuncio completo). Se o render COM snippets
-    estoura ``PAGE_TARGET_BYTES``, remonta SEM snippets — nunca corta
-    vagas a menos e nunca estoura o cap duro (assert do teste).
+    Cadeia de degradacao em ORDEM (o cap duro ``PAGE_HARD_CAP_BYTES`` NUNCA
+    estoura por causa de campos decorativos; o alvo de ``PAGE_TARGET_BYTES``
+    continua o gatilho da remontagem sem snippets — campo DECORATIVO):
+
+    1. render COM snippets + 🎯 inteira + ⭐ (o estado ideal);
+    2. > alvo 100KB: remonta SEM snippets (F11 — decorativo);
+    3. > cap 150KB (F20, item 4): remonta com a 🎯 aparada p/ top
+       ``RADAR_TOP_N`` de prioridade (score desc, tie-break id) + linha
+       honesta "+X outras vagas de empresas-alvo". O orçamento vale COM
+       OU SEM rows ⭐ (a página pré-F15 já estourava o cap sozinha);
+    4. se MESMO aparada > cap: o gate ⭐ (F15) dispara no chamador
+       (``render_minimal_html_from_file``) como ÚLTIMO recurso — aviso
+       verbatim preservado.
 
     F12: o snippet remontado sem snippets tambem perde a traducao EN
     (ela vive no snippet) — a linha EN do título e o glossário permanecem
     (nao sao campos decorativos). ``translation_cache`` e passado ao
-    render em ambas as montagens (best-effort).
+    render em todas as montagens (best-effort).
 
-    F13: ``watchlist_events`` repassado as duas montagens (a secao 🎯
-    nao e campo decorativo — sobrevive a remontagem sem snippets).
+    F13: ``watchlist_events`` repassado as montagens (a secao 🎯 nao e
+    campo decorativo — sobrevive a remontagem sem snippets; na degradacao
+    F20 e aparada, nunca dropada inteira).
 
-    F14: ``tracker_db`` repassado as duas montagens (o badge "já
-    aplicou" tambem sobrevive — nao e campo decorativo).
+    F14: ``tracker_db`` repassado as montagens (o badge "já aplicou"
+    tambem sobrevive — nao e campo decorativo).
 
-    F15: ``quality_map``/``sweet_spot_rows`` repassados as duas montagens
-    (o badge ⭐/🏆 e a seção Ponto ótimo NÃO são decorativos). Cap duro
-    de ``PAGE_HARD_CAP_BYTES`` permanece inalterado: o TESTE continua
-    validando o cap, e a seção ponto ótimo só entra se couber.
+    F15: ``quality_map``/``sweet_spot_rows`` repassados as montagens (o
+    badge ⭐/🏆 e a seção Ponto ótimo NÃO são decorativos).
     """
     html = render_minimal_html(
         jobs, total_eligible=total_eligible, generated_at=generated_at,
@@ -972,6 +1071,7 @@ def render_size_aware(
         watchlist_events=watchlist_events,
         tracker_db=tracker_db,
         quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
+        inapplicable_ids=inapplicable_ids,
     )
     if len(html.encode("utf-8")) > PAGE_TARGET_BYTES:
         html = render_minimal_html(
@@ -983,7 +1083,30 @@ def render_size_aware(
             watchlist_events=watchlist_events,
             tracker_db=tracker_db,
             quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
+            inapplicable_ids=inapplicable_ids,
         )
+    # F20 (item 4) — orçamento 🎯: só quando a montagem mais enxuta AINDA
+    # estoura o cap duro. A 🎯 é aparada (top RADAR_TOP_N por prioridade)
+    # ANTES do gate ⭐ da F15 — inverte a pendência: a seção de valor
+    # entra, a lista longa degrada honestamente.
+    if watchlist_events and len(watchlist_events) > RADAR_TOP_N \
+            and len(html.encode("utf-8")) > PAGE_HARD_CAP_BYTES:
+        html = render_minimal_html(
+            jobs, total_eligible=total_eligible, generated_at=generated_at,
+            top=top, company_intel_map=company_intel_map,
+            new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
+            materials=materials, with_snippets=False,
+            translation_cache=translation_cache,
+            watchlist_events=watchlist_events,
+            tracker_db=tracker_db,
+            quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
+            radar_limit=RADAR_TOP_N,
+            inapplicable_ids=inapplicable_ids,
+        )
+        print(f"pages: orçamento 🎯 ativo — seção aparada p/ top-{RADAR_TOP_N} "
+              f"de {len(watchlist_events)} eventos; página agora "
+              f"{len(html.encode('utf-8'))} bytes (cap "
+              f"{PAGE_HARD_CAP_BYTES})")
     return html
 
 
@@ -1017,6 +1140,7 @@ def render_minimal_html_from_file(
     watchlist_path: Path | str | None = None,
     tracker_db: Path | str | None = None,
     employer_quality_path: Path | str | None = None,
+    inapplicable_ids: set[str] | None = None,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
 
@@ -1119,6 +1243,7 @@ def render_minimal_html_from_file(
         watchlist_events=watchlist_events,
         tracker_db=tracker_db,
         quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
+        inapplicable_ids=inapplicable_ids,
     )
     # F15 §4 — a seção Ponto ótimo só permanece se a página COM ela
     # couber no cap duro (150KB); a MEDIÇÃO é no render FINAL (com todas
@@ -1136,6 +1261,7 @@ def render_minimal_html_from_file(
             watchlist_events=watchlist_events,
             tracker_db=tracker_db,
             quality_map=quality_map, sweet_spot_rows=None,
+            inapplicable_ids=inapplicable_ids,
         )
         print(f"pages: seção ⭐ Ponto ótimo OMITIDA — página com ela "
               f"({size_with} bytes) estoura o cap de {PAGE_HARD_CAP_BYTES} "
@@ -1184,7 +1310,11 @@ def main(argv: list[str] | None = None) -> int:
                              "novas-de-ontem ('' desliga a seção 🆕)")
     parser.add_argument("--dead-list", default=None, metavar="PATH",
                         help="arquivo com ids de vagas mortas (404/410), "
-                             "um por linha (estagio url_liveness)")
+                        "um por linha (estagio url_liveness)")
+    parser.add_argument("--inapplicable-list", default=None, metavar="PATH",
+                        help="F20: arquivo com ids de vagas inaplicaveis "
+                        "(re-avaliacao pós-hidratação F18), um por linha; "
+                        "descem do top com badge próprio (nunca o de morta)")
     parser.add_argument("--translation-cache", default="data/translation_cache.json",
                         metavar="PATH",
                         help="cache de traducoes EN de descricao "
@@ -1230,6 +1360,13 @@ def main(argv: list[str] | None = None) -> int:
             dead_ids = {line.strip() for line in
                         dp.read_text(encoding="utf-8").splitlines()
                         if line.strip()}
+    inapplicable_ids: set[str] = set()
+    if args.inapplicable_list:
+        ip = Path(args.inapplicable_list)
+        if ip.exists():
+            inapplicable_ids = {line.strip() for line in
+                                ip.read_text(encoding="utf-8").splitlines()
+                                if line.strip()}
 
     archive_root = Path(args.archive) if args.archive else None
     translation_cache_path = (
@@ -1247,6 +1384,7 @@ def main(argv: list[str] | None = None) -> int:
         watchlist_path=watchlist_path,
         tracker_db=tracker_db,
         employer_quality_path=employer_quality_path,
+        inapplicable_ids=inapplicable_ids,
     )
     if args.output == "-":
         sys.stdout.write(page)
