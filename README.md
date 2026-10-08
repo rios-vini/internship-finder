@@ -1,1197 +1,154 @@
 # internship-finder
 
-Buscador de estagios (internship / working student / Praktikum / Werkstudent) com
-foco em **Supply Chain, Procurement, BI, Analytics e Automacao** (perfil
-principal) e **Materials Engineering** (perfil secundario — mesmo conjunto de
-vagas, ranking proprio e independente), prioridade para a **Alemanha**.
-Pipeline **orientado a empresas**:
+**A production pipeline that streams ~5 million job postings every day, deduplicates them across 65 ATS platforms, and publishes a ranked, visa-aware shortlist of internships and working-student jobs in Germany.**
 
+[![CI](https://github.com/rios-vini/internship-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/rios-vini/internship-finder/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-3DA639.svg)](LICENSE)
+[![Live site](https://img.shields.io/badge/site-live-brightgreen)](https://rios-vini.github.io/internship-finder/)
+
+**→ Live ranking, refreshed every morning at 09:00 UTC:
+[rios-vini.github.io/internship-finder](https://rios-vini.github.io/internship-finder/)**
+
+![Live ranking — top 100 of the day, dark mode, visa-friendly badges](docs/img/hero.png)
+
+---
+
+## Why I built this
+
+I'm a Materials Engineering student at UFSCar (Brazil) with a mandatory
+internship coming in 2027 — and a plan to relocate to Germany with my
+family.
+
+When I started searching, I found a fragmented landscape: internships in
+Germany are posted as *Praktikum* and *Werkstudent* roles scattered across
+dozens of ATS platforms (Workday, SuccessFactors, SmartRecruiters, EURES,
+…), many only in German, with no unified view, no fit ranking, and no
+signal for which employers actually support visas.
+
+Job boards show you everything. I needed the opposite: a short, ranked,
+deduplicated list of the few postings that fit my profile — waiting for me
+every morning. So I built the funnel I couldn't find.
+
+Built solo, with AI pair-programming held to a human-grade engineering
+bar: every change ships with tests, benchmarks, and byte-identical A/B
+proof (see below).
+
+## How it works
+
+A cron job on an Oracle Linux VPS runs the full pipeline once a day and
+has done so in production since September 2026:
+
+```mermaid
+flowchart LR
+    DS["ats-scrapers hosted dataset<br/>~5.1M postings · 63 per-ATS slices<br/>refreshed daily ~05:00 UTC"] -->|"streaming prefilter"| F
+    RG["curated registry<br/>101 companies · 65 ATS platforms"] -->|"per-company fetch"| F
+    F["eligibility filters<br/>student type + target area + country"] --> D
+    D["dedup<br/>3 keys + DE/EN mirror collapse"] --> R
+    R["deterministic ranking<br/>2 profiles · score breakdown"] --> P
+    P --> GH["GitHub Pages<br/>top 100 · filters · visa badge"]
+    P --> TG["Telegram digest<br/>top 5 · new postings · follow-ups"]
+    P --> JS["JSON + CSV<br/>full eligible set"]
 ```
-Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeout) → adapter → Job (pydantic) → filtros → dedup → ranking → print/save (JSON/CSV)
-```
 
-Base de empresas/ATS: pacote [`ats-scrapers`](https://pypi.org/project/ats-scrapers/)
-(~80k empresas, 65 ATS). A busca global do pacote pode travar; por isso o fluxo e por
-empresa (`find_company` com selecao exata para nao pegar empresa parecida errada,
-ex.: "sap" -> asap/Casap).
+- **Sources** — a hosted dataset of ~5.1M job postings (streamed slice by
+  slice, never fully materialized) plus per-company collection from a
+  curated registry of 101 companies across 65 ATS platforms.
+- **Filters** — student-type roles (*Praktikum*, *Werkstudent*, internship,
+  working student) in Supply Chain / Procurement / BI / Analytics, plus a
+  secondary Materials Engineering profile with its own independent
+  ranking over the same eligible set.
+- **Countries** — Germany (primary, ~85% of volume) + Luxembourg,
+  Netherlands, Finland, Belgium.
+- **Dedup** — three independent keys (URL, id, normalized title+company)
+  plus DE/EN mirror detection collapse the same posting repeated across
+  platforms and languages.
+- **Ranking** — deterministic, reproducible scoring (no ML) with a full
+  per-component breakdown; ties broken by score → title → company → id.
+- **Visa signal** — a 🛂 badge marks the 36 companies with a curated,
+  sourced visa policy; it is a company-level signal and never enters the
+  relevance score.
+- **Outputs** — GitHub Pages (top 100 with search and filters), a Telegram
+  digest (top 5, what's new, application-tracker follow-up reminders),
+  and the full JSON/CSV set.
 
-## Setup
+## By the numbers
+
+| | |
+|---|---|
+| **~5.1M** | job postings streamed daily from the upstream dataset |
+| **2,428** | eligible jobs in a typical daily run (Oct 2026) → top 100 published |
+| **101 / 65** | curated companies / ATS platforms in the registry |
+| **5** | target countries (DE primary + LU, NL, FI, BE) |
+| **59** | CI test suites, all green on every push |
+| **+0.65** | Kendall tau vs. a 59-job human-labeled ranking benchmark |
+| **67** | commits — every feature PR merged with CI green twice on the exact merge SHA |
+
+## Engineering decisions worth noticing
+
+- **Dedup that survives the real world.** The same internship shows up on
+  three platforms in two languages. Three independent dedup keys plus
+  DE/EN mirror detection collapse them to one row — measured, not
+  assumed.
+- **Deterministic ranking, benchmarked against humans.** No ML, no hidden
+  state: every score is reproducible and ships with a per-component
+  breakdown. Before trusting it, I labeled 59 real postings by hand and
+  measured ordinal agreement (Kendall tau +0.65); the benchmark is
+  versioned in-repo and re-runnable.
+- **A/B byte-identical before every merge.** Each feature PR proves that
+  unchanged paths produce byte-identical outputs, and CI must pass twice
+  on the exact merge SHA. Production data is never touched by
+  experiments.
+- **One gate to production.** The public page goes through a single
+  publication gate: secret scanning (zero matches for tokens and server
+  paths), atomic writes, and a failure mode that keeps yesterday's site
+  online.
+- **SQLite with a lifecycle.** Single-writer discipline, archive rotation
+  before every run (rollback = copy back), and a backup suite in CI.
+- **Kill switches for every optional stage.** LLM enrichment, deadline
+  hydration, official-page verification — each default-OFF, each tested.
+- **Upstream contributions.** Fixes found while building this went back
+  to [`ats-scrapers`](https://github.com/kalil0321/ats-scrapers), the
+  library this project builds on.
+
+## Tech stack
+
+**Python 3.12+** · pydantic (canonical `Job` model) · sqlite3 ·
+requests / BeautifulSoup · GitHub Actions (59 suites on a clean runner) ·
+GitHub Pages · Telegram Bot API · Oracle Linux VPS + cron
+
+## Quickstart
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e .
+.venv/bin/internship-finder        # filter + rank from data/jobs.json
 ```
 
-Requer Python **>= 3.12** (testado em 3.12; vale para 3.13/3.14).
-
-### Dependencias do projeto vs snapshot do ambiente
-
-Dois arquivos na raiz com papeis diferentes (nao confundir):
-
-- **`pyproject.toml`** — a fonte de verdade das dependencias do projeto
-  (declaradas + restricoes de versao). A instalacao padrao (`pip install -e .`,
-  acima) e o CI resolvem as dependencias a partir dele.
-- **`requirements-lock.txt`** — snapshot congelado do ambiente resolvido
-  (`pip freeze` do venv), para reproducao exata do ambiente quando necessario.
-  Nao e um lock declarativo moderno (uv.lock/poetry.lock), nao e a fonte primaria
-  das dependencias e nao e usado pelo CI nem pela instalacao padrao. Regenerar na
-  raiz do repo com `.venv/bin/python -m pip freeze > requirements-lock.txt`
-  (o cabecalho do arquivo documenta isso).
-
-## Como rodar
-
-O CLI tem tres modos: **filtro** (default), **coleta** (`--companies`) e **health** (`--health`).
-
-**Filtro** — le vagas ja coletadas e retorna apenas as ELIGIBLE
-(estudante/estagio + area-alvo + pais), **ranqueadas por perfil** (score +
-TOP 20), gravando em `data/eligible_jobs.json` + `.csv` (com campo `score`;
-`--no-rank` desliga o ranking). Conceitos do pipeline:
-
-```
-collected -> filtered -> eligible -> deduplicated -> ranked -> best matches
-```
-
-`eligible` e o conceito final da cascata (passou em tipo + area + pais);
-**best matches = TOP N do ranked** (sem entidade/camada nova):
-
-**F5 — sinal `visa_friendly` (03/10)**: apos o ranking, cada vaga ganha o
-campo booleano `visa_friendly` (JSON + ultima coluna do CSV): `true` quando a
-EMPRESA tem `visa_policy` curada ∈ {`explicit_support`, `unclear`} no
-`company_intel/company_intelligence.json` (16 empresas; SAP/Bosch/BASF =
-unclear com fonte oficial). E um SINAI DE EMPRESA (nunca do texto da vaga) e
-NAO entra no score de relevancia — na pagina publica vira badge 🛂 e filtro
-"visa friendly" (o filtro "suporta non-EU" antigo dependia do enrichment
-desligado e retornava 0 vagas; agora le este campo). Empresas com
-`candidate_must_have_authorization` (Volkswagen, Mercedes-Benz, Siemens —
-exigem work permit propria do candidato) sao honestamente `false`. Ver
-`docs/f5_visa_dedup_ranking.md`.
-
-**F6 — pagina publica MINIMA + Telegram top-5 (03/10)**: o `index.html`
-publicado em GitHub Pages passa a ser gerado por
-`scripts/minimal_page.py` (novo) em vez da `interface.py` completa — o HTML
-tinha chegado a **9,5 MB** (crescia a cada run com TODAS as vagas +
-breakdowns/fit/intel por vaga; nao abria direito no celular) e passa a ~40 KB
-fixos: top-50 do dia, um card compacto por vaga (titulo, empresa, local,
-score, link de candidatura, badge 🛂 `visa_friendly`, salario quando citado),
-dark mode, CSS inline, vanilla JS minimo (busca + filtro visa-friendly).
-Campos MORTOS fora do template: `application_deadline` (validade do FEED,
-F1), `official_page` (desligado, F1) e as secoes de intel que dependiam do
-enrichment LLM (cookie-walled). A mecanica de deploy NAO mudou (escrita
-atomica, `check_public_safe`, push so do `index.html`). O Telegram ganha a
-secao "⚡ Top 5 do dia (candidatura direta)" no digest existente do
-`--always-notify` — 1 linha por vaga (titulo — empresa — score — apply_url),
-funcao pura `ranking_digest.format_top5` com truncagem segura no limite de
-4096. JSON/CSV completos INTACTOS (base de dados, nao interface).
-
-**F7 — expansao multi-paises LU+NL+FI+BE com visa_policy por pais (03/10)**:
-o filtro de pais ja aceitava lista ISO (`--country de,at,ch` desde P2 #12) —
-a F7 conecta isso a PRODUCAO. O prefilter do dataset (F3) e generalizado
-(`is_country_row(row, isos)`; default `("de",)` = retrocompat total) e a
-producao passa a coletar `TARGET_COUNTRIES = de,lu,nl,fi,be` via
-`collection_command` (`--country` explicito; crontab intocado). O EURES
-amplia `locationCodes` para os 5 paises (semantica OR medida ao vivo:
-41.594 = soma exata dos 5); a BA permanece DE (servico publico alemao).
-`infer_country_iso` reconhece os nomes LOCAIS dos alvos (belgien,
-niederlande, luxemburg, suomi...) — sem isso, rows aprovadas no prefilter
-morreriam no filtro final com ISO vazio. Curadoria `company_intelligence.json`
-16 → 36 entries com campo `country`: LU (Amazon EU, Deloitte, Deutsche
-Börse, Millicom, ArcelorMittal), NL (Philips, ASML, Nokia NL, KONE NL,
-ArcelorMittal NL — sponsors reconhecidos IND com numero de registro na
-fonte), FI (Nokia, KONE, Wärtsilä), BE (AB InBev, Solvay, Barco, Agfa, KBC,
-UCB, Bekaert — AB InBev `candidate_must_have_authorization`: exige work
-permit permanente valida, citacao literal). O sinal `visa_friendly` (F5) e
-o MESMO por empresa — nada recriado; a pagina minima mostra bandeira+ISO no
-card quando a vaga nao e DE e o digest top-5 ganha a bandeira na linha.
-DE continua o alvo PRIMARIO (~85% do volume); LU/NL/FI/BE sao canal
-secundario no output.
-
-> **Nota (dados)**: `data/` e gitignored e local — os numeros abaixo sao
-> documentacao de coleta, nao arquivos versionados. O default
-> (`data/eligible_jobs.json`/`.csv`) grava localmente; para validacao sem
-> depender de `data/`, use `--output`/`--filter-output`/`--metrics` dedicados
-> (ex.: `/tmp/...`).
+Collect from the curated registry — the same command the daily cron runs:
 
 ```bash
-.venv/bin/internship-finder                              # data/jobs.json -> data/eligible_jobs.json (476 eligible no run do cron 18/09)
-.venv/bin/internship-finder --country europe             # Europa inteira em vez de so Alemanha
-.venv/bin/internship-finder --no-area                    # qualquer area, desde que estudante + Alemanha
-.venv/bin/internship-finder --no-dedup                   # mantem duplicatas (507 antes da dedup)
-.venv/bin/internship-finder --no-rank                    # sem ranking: ordem original + exemplos
-.venv/bin/internship-finder --all                        # copia tudo, sem filtros
-# validacao sem escrever em data/ (dados locais sao gitignored):
-.venv/bin/internship-finder --country de --output /tmp/eligible.json --metrics /tmp/coleta.jsonl
+.venv/bin/internship-finder --registry --country de,lu,nl,fi,be
 ```
 
-**Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
-mesma cascata, gravando o resultado em `data/eligible_jobs.json`. A lista de
-empresas nao e mais colado no comando: vem do **registry** (fonte de verdade
-das 101 empresas em codigo — ver "Registry de empresas" abaixo):
+## Testing
+
+59 standalone test suites run on every push (clean runner, Python 3.12,
+no network, no local data). Each one prints `[OK]`/`[FAIL]` and exits
+non-zero on failure:
 
 ```bash
-.venv/bin/internship-finder --registry --timeout 60
-# subconjunto, na ordem informada (empresas fora do registry sao ignoradas):
-.venv/bin/internship-finder --registry --companies "Bosch,SAP" --timeout 60
-# ou, sem instalar:
-python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
+python scripts/test_dedup.py
 ```
 
-### Registry de empresas
+## Documentation
 
-As 101 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
-E2 + 25 da expansao 08/09 — P3 #23, Otto removida em 15/09 — + 17 da expansao
-de cobertura 15/09 + 6 da auditoria 16/09 + 9 da auditoria próxima fronteira
-17/09 + 5 da última onda de cobertura 18/09: Sungrow EMEA, AutoScout24, Huawei
-Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH — ver
-`docs/` e MASTER_PLAN #23 e o
-Log de mudanças) vivem em **codigo**, no `SEED` de
-`src/internship_finder/registry.py` — a
-fonte de verdade do "quem coleta": nome canonico (a consulta do `--companies`),
-ATS/tenant de referencia e `enabled` (desabilitar tira da coleta sem apagar do
-registry). Nada de lista colada em doc: o `--companies` continua aceito por
-compatibilidade, mas a lista oficial e o registry.
+- **[docs/README-operacional.md](docs/README-operacional.md)** — the full
+  operational documentation: setup, cron, runbook, coverage tables, and
+  the daily-refresh workflow (PT-BR, the repo's working language).
+- **[docs/](docs/)** — 32 phase reports covering every design decision,
+  measurement, and audit trail behind the pipeline (PT-BR).
 
-```bash
-.venv/bin/internship-finder --registry --timeout 60          # todas as ENABLED
-.venv/bin/internship-finder --registry --companies "Bosch,SAP" --timeout 60  # subconjunto
-```
+## License
 
-- `--registry` (modo coleta): usa as empresas `enabled` do registry como lista;
-  `--companies` so restringe a um subconjunto (na ordem informada).
-- O **estado por empresa** (status/ultima coleta) NAO fica no registry: e
-  derivado do JSONL de metricas (`company_status`, read-only) e exposto pelo
-  `--health` (implementado em 06/09, PR #31) — registry = configuracao,
-  JSONL = status (decisao de design).
-- A **consistencia Registry x runtime** (tenant declarado x tenant que o
-  runtime efetivamente resolve/coleta) e verificada por empresa pelo
-  `--health` na secao `registry_consistency` (classificacao por empresa:
-  `consistent` / `drift` / `multi` / `dynamic` / `not_found` / `no_data` —
-  logica pura em `src/internship_finder/registry.py`, testes em
-  `scripts/test_registry_consistency.py`). Medido em 18/09/2026: 0 drift;
-  83 consistent, 15 multi (declarado presente com cobertura extra) e
-  3 dynamic (None declarado, resolucao pela base).
-- Seed e modelo: `src/internship_finder/registry.py` (pydantic, `SEED` com as
-  101 entradas operacionais); testes em `scripts/test_registry.py`.
-
-### Daily refresh (P2 #17)
-
-Rotina de producao que **faz a coleta real diariamente** e **alerta via
-Telegram SOMENTE em anomalia** (anti-spam), reusando o health do P1 #6:
-
-```bash
-.venv/bin/python scripts/refresh_daily.py              # producao (cacheia em data/)
-.venv/bin/python scripts/refresh_daily.py --dry-run    # demonstrativo: tempdir sintetico, sem rede/data
-.venv/bin/python scripts/refresh_daily.py --always-notify  # digest diario (Fase 2: usado no cron)
-```
-
-Fluxo: (1) **rotacao** — copia `data/jobs.json`/`.csv`,
-`data/eligible_jobs.json`/`.csv` e `data/collection_metrics.jsonl` para
-`data/archive/<timestamp>/` (copia, nao move: a origem fica intacta ate o CLI
-gravar; rollback = copiar de volta o archive + re-rodar `--health`); (2)
-**coleta real** — subprocesso do CLI (`--registry --timeout 60`, teto total
-`--max-collection-secs`, default 5400s); (3) **health** — `build_health_report`
-sobre o JSONL completo pos-run; (4) **alerta** — 1 mensagem por run, alertas
-deduplicados por fonte, disparado quando exit != 0 (coleta falhou/parcial) OU o
-relatorio tem alertas (queda brusca / erro recorrente / **zero-return**: uma
-fonte que tinha vagas e passou a responder `empty` por ≥3 runs ok>0 anteriores
-— P2 #10 / **regressão histórica**: empresa com ≥3 runs ok anteriores cujo
-run mais recente terminou em `error`/`timeout`, identificada por
-`(source, company)` — auditoria 23/09); sem anomalia, nada é
-enviado. `--always-notify` envia o resumo mesmo sem anomalia (digest diario;
-desde a Fase 2 o cron usa a flag — ver secao "Digest do Telegram");
-(5) **publicacao GitHub Pages** (Fase 1, opcional via `--pages-dir PATH`) —
-com vagas elegiveis e dataset confiavel, o ranking e publicado na branch
-`gh-pages` (ver secao abaixo); falha vira linha na mensagem, nunca derruba
-o run.
-(6) **digest do ranking no Telegram** (Fase 2) — com coleta OK (exit 0) a
-mensagem ganha o resumo do ranking (perfil/criterios, novas vagas no Top 30,
-Top 5, mudancas e o link do GitHub Pages); o "estado anterior" usado na
-comparacao e o snapshot da propria rotacao (ver secao abaixo).
-
-**Publicacao parcial segura (auditoria 23/09)**: o exit code OPERACIONAL do
-refresh (0/1/2/124, P1.3) e o da coleta e continua disponivel ao
-cron/monitoramento — mas ele NAO decide mais sozinho o que pode ser
-publicado. A decisao vive em UM unico predicado,
-`publish_pages.publication_allowed(exit_code, eligible)`, consultado pela
-publicacao (Pages), pelo digest e pelo sync do tracker (nenhum componente
-tem regra propria): **autoriza** com `eligible > 0` em runs ok (exit 0) OU
-parciais com falhas perifericas de fontes individuais (exit 2 — o CLI salva
-os outputs SEMPRE que ha vagas, com escrita atomica); **bloqueia** dataset
-vazio (exit 1, `eligible == 0`) e run truncado (exit 124 — dataset pode
-estar pela metade). Resultado: as ~17+ quedas perifericas conhecidas (Lidl
-timeout, K+N NXDOMAIN, SMA homonimo, SAP `CompanyNotFoundError`) deixam de
-deixar a pagina publica/digest/sync stale — o ranking parcial e publicado
-como oficial, com a parcialidade VISIVEL no resumo operacional da mensagem
-("⚠️ Coleta parcial: N de M fontes falharam").
-
-**Atribuicao de erro por empresa (auditoria 23/09)**: tenants ATS sao
-compartilhados (`successfactors:jobs` = SAP, BMW, ZF...); cada falha do run e
-atribuida a empresa do REGISTRO QUE FALHOU (identidade `(source, company)`),
-nao ao primeiro company visto no source — erro da SAP nunca mais e anunciado
-como "BMW AG". O health tambem identifica cada serie por `(source, company)`
-(P3 #37) e os alertas chegam `company` na mensagem.
-
-**Comportamento novo (06/09, PR #30)**: a coleta do refresh roda com
-`--sqlite data/jobs.db` (historico `first_seen`/`last_seen`/`active`/`archived`
-em producao; o `.db` NAO e rotacionado — e acumulativo e vive em `data/`,
-gitignored); o archive e limpo automaticamente apos cada rotacao
-(`--retention-days N`, default 14, 0 = desliga); uso de disco acima de 80%
-entra como `⚠️ Disco: N% usado` na mensagem; o subprocesso da coleta herda o
-ambiente do chamador. Novo arquivo `requirements-lock.txt` na raiz (snapshot de
-reproducibilidade via pip freeze, fora do CI).
-
-**Credenciais** (`.env` na raiz — gitignored): `TELEGRAM_BOT_TOKEN` e
-`TELEGRAM_CHAT_ID`. Sem token no `.env` o script loga aviso e NAO envia
-(nunca crasha). Envio via Bot API `sendMessage` (stdlib, sem dependencia
-nova); falha de rede do envio e logada, nao derruba o refresh.
-
-### Backup do jobs.db (P3)
-
-O historico SQLite (`data/jobs.db`, first_seen/last_seen/active/archived) tem
-**backup proprio** a cada run do refresh — o `.db` e acumulativo e nao
-rotaciona, entao merece snapshot independente do archive de JSONs.
-
-- **Onde**: `data/backups/jobs-<timestamp>.db` (`jobs-YYYYMMDDTHHMMSSZ.db`,
-  UTC — multiplos backups com historico ordenavel). `data/` e gitignored.
-- **Mecanismo**: backup API do sqlite3 (`sqlite3.Connection.backup()`,
-  stdlib), com a origem aberta **read-only** — snapshot CONSISTENTE mesmo com
-  o banco em uso, sem risco para o banco principal (nunca e escrito pela
-  rotina). O artefato sai em `journal_mode=DELETE`: **um unico arquivo SQLite
-  standalone**, sem sidecars `-wal`/`-shm`, validado por `PRAGMA quick_check`
-  antes do nome final (escrita atomica: temporario + rename).
-- **Automatico**: apos a coleta de cada refresh (`scripts/refresh_daily.py`).
-  Falha de backup NUNCA derruba o run nem muda o exit code — e logada e
-  entra como `⚠️ Backup do jobs.db falhou: ...` na mensagem do Telegram (so
-  quando ha envio no run).
-- **Manual**:
-  ```bash
-  .venv/bin/python scripts/backup_db.py                              # data/jobs.db -> data/backups/
-  .venv/bin/python scripts/backup_db.py --db data/jobs.db --retention-days 14  # + limpeza
-  .venv/bin/python scripts/backup_db.py --dry-run                    # so mostra destino
-  ```
-  Exit 0 = backup criado (imprime o caminho); 2 = falha (stderr claro, banco
-  principal intocado). No script manual a retencao e OPCIONAL (default 0 =
-  nao apaga nada) — backup manual nao deve apagar historico por surpresa.
-- **Retencao**: simples e documentada, mesma politica do archive —
-  `--backup-retention-days N` no refresh (default **14** dias; `0` desliga;
-  negativo rejeitado); nomes fora do formato `jobs-*.db` sao preservados com
-  aviso. Sem lifecycle complexo (deliberado).
-- **Restauracao manual**: parar o refresh (ou garantir que nada esta
-  escrevendo no banco) e sobrescrever o banco com o backup:
-  ```bash
-  cp data/backups/jobs-<timestamp>.db data/jobs.db
-  ```
-  O arquivo e um SQLite normal e utilizavel; o `SqliteStore` reativa o WAL no
-  proximo open. Recomendado conferir com
-  `.venv/bin/python -c "import sqlite3; print(sqlite3.connect('data/jobs.db').execute('PRAGMA integrity_check').fetchone())"`.
-- **Limitação**: a origem pode ganhar sidecars `-wal`/`-shm` transientes
-  durante o snapshot (comportamento WAL normal do SQLite; somem quando a
-  proxima conexao de escrita fecha). O backup em si e sempre um arquivo unico.
-
-**Cron** (instalado no VPS, 05/09): diario as 06:00 com `flock -n`
-(nao sobrepõe runs; se o anterior ainda roda, o novo e pulado). Desde a
-Fase 1 (18/09) o horario e **06:00 America/Sao_Paulo**, agendado como
-**`0 9 * * *` UTC** — o cron Vixie desta build do Ubuntu (3.0pl1) **nao
-suporta `CRON_TZ`** (testado 18/09 com protocolo dual: probe agendado
-11:45 America/Sao_Paulo nao disparou; o controle 14:45 UTC disparou) e o
-Brasil nao tem horario de verao desde 2019 (`America/Sao_Paulo` = UTC-3
-fixo, entao 06:00 BRT e permanentemente 09:00 UTC). Nenhuma aritmetica de
-horas no codigo — so o campo do cron, documentado. O refresh publica o
-ranking no GitHub Pages (`--pages-dir`; ver secao abaixo):
-
-```
-# 06:00 America/Sao_Paulo = 09:00 UTC (cron Vixie local sem suporte a CRON_TZ)
-# --pages-dir: publica o ranking no GitHub Pages (Fase 1).
-# --always-notify: envia o digest do Telegram todo dia, mesmo sem anomalia (Fase 2).
-0 9 * * * /usr/bin/flock -n /tmp/internship_finder_refresh.lock /home/ubuntu/internship-finder/.venv/bin/python /home/ubuntu/internship-finder/scripts/refresh_daily.py --enrichment --pages-dir /home/ubuntu/internship-finder-ghpages --always-notify >> /tmp/refresh_daily.log 2>&1
-```
-
-> **F1 (01/10)**: a linha acima mantem `--enrichment`, mas o enrichment LLM
-> fica OFF por default — so roda com `INTERNSHIP_FINDER_ENRICHMENT=1`
-> (env/`.env`), que o cron NAO define. Sem a env var o refresh pula o
-> subprocesso com log de UMA linha e o flock nunca mais fica preso por ele
-> (o run de 5h38 da janela NVIDIA degradada motivou o gate + o teto
-> `--enrichment-max-secs`; ver `docs/fase_f1_dead_components.md`).
-
-> **Corrigido 05/09 (noite)**: a 1a versao usava `flock ... cd /repo && python ...`
-> (padrao da tarefa), mas **flock executa o comando via `execvp`** — `cd` e
-> builtin do shell e nao existe como binario (falha "failed to execute cd",
-> exit 69) e o `&&` desligaria o python do lock. A linha acima usa caminhos
-> ABSOLUTOS (o script nao depende de cwd; resolve a raiz via `__file__`) e o
-> lock cobre o run inteiro. Validado: preflight cron-like (`env -i PATH=/usr/bin:/bin`
-> + `--dry-run`, exit 0, sem tocar `data/`) e reentrada do flock (`-n` com lock
-> segurado → exit 1; liberado → exit 0).
->
-> **Corrigido na Fase 1 (18/09)**: antes a linha era `0 6 * * *` SEM timezone —
-> o VPS roda em Etc/UTC, entao o refresh disparava as 06:00 UTC = **03:00 BRT**.
-> Agora o disparo e as **09:00 UTC = 06:00 America/Sao_Paulo** (UTC-3 fixo; ver
-> nota do `CRON_TZ` acima). O `--pages-dir` liga a publicacao automatica
-> (branch `gh-pages`).
->
-> **Fase 2 (18/09)**: a linha ganhou `--always-notify` — o digest diario do
-> Telegram passa a chegar TODOS os dias (o anti-spam continua valendo para os
-> avisos operacionais de anomalia, que entram na mesma mensagem).
-
-### Digest do Telegram (Fase 2)
-
-O Telegram deixou de ser so alerta e virou o **resumo diario do estado da
-busca** — o ranking completo continua sendo a pagina do GitHub Pages (o digest
-termina sempre com o link estavel). Implementacao:
-`scripts/ranking_digest.py` (funcoes puras) chamado por
-`scripts/refresh_daily.py`; a mensagem e UNICA por run (o resumo operacional
-de anomalia e o digest do ranking ficam juntos).
-
-A mensagem diaria traz, nesta ordem:
-
-1. **Resumo da execucao** (mantido da Fase anterior): status normal/parcial,
-   funil bruto → elegiveis, duplicatas, fontes ok/falhas e problemas.
-2. **Perfil e criterios ativos** — areas-alvo, localizacao principal (Germany),
-   tipos aceitos/excluidos e os **pesos do score lidos das constantes vivas**
-   de `src/internship_finder/ranking.py`/`filters.py` (nenhuma regra e
-   duplicada no digest; se o ranking mudar, o digest reflete sozinho).
-3. **Novas vagas no Top 30** — posicao, titulo, empresa, localizacao, score e
-   link de cada vaga que entrou no ranking desde a execucao anterior.
-   *"Nova vaga" ≠ "vaga que subiu"*: nova e a vaga cujo id NAO existia no
-   ranking elegivel anterior; vaga antiga que entrou no Top 30 aparece em
-   "Mudancas no ranking" (Entraram), nunca como "nova".
-4. **Top 5 atual** — resumo rapido sem abrir o site.
-5. **Mudancas relevantes no ranking** — entradas/saidas do Top 30 e maiores
-   movimentos de posicao (≥ 5 posicoes).
-6. **Link do ranking completo** (sempre a ultima linha).
-
-**Snapshot do run anterior**: NENHUM arquivo novo — a comparacao reusa o
-archive da propria **rotacao** do refresh: antes da coleta o `data/` atual
-(incluindo `eligible_jobs.json` do run anterior) e copiado para
-`data/archive/<ts>/`; o digest compara `data/eligible_jobs.json` (run atual)
-contra esse snapshot. Sem snapshot do run anterior (primeiro digest), a
-mensagem avisa que a comparacao comeca no proximo run — nunca trata o Top 30
-inteiro como "novo". Retencao = a do archive (`--retention-days`, 14).
-
-**Gates/robustez**: o digest e montado com o MESMO gate UNICO da publicacao
-(`publish_pages.publication_allowed` — auditoria 23/09): vagas elegiveis >
-0 com run ok (exit 0) OU parcial com falhas perifericas (exit 2); dataset
-vazio/truncado (exit 1/124) nao monta digest. Falha ao montar nunca derruba
-o run; o digest respeita o limite do Telegram (4096 chars) — em runs com
-MUITAS anomalias a mensagem base ja e longa e o digest vira 1 linha compacta
-com o link do ranking (o envio nunca falha por tamanho). Relevancia de
-posicao: `MOVER_MIN_DELTA = 5`.
-
-### GitHub Pages (Fase 1)
-
-O ranking gerado a cada refresh e publicado automaticamente em **GitHub Pages**:
-
-**URL estavel: https://rios-vini.github.io/internship-finder/**
-
-Fluxo diario: coleta (CLI) → `data/eligible_jobs.json` (ranqueado) →
-`scripts/interface.py` reusado para gerar o HTML (mesma pagina do uso local,
-nenhum frontend novo) → verificacao de seguranca → `index.html` gravado
-atomicamente no clone de deploy (`~/internship-finder-ghpages`, fora do repo)
-→ commit + push na branch `gh-pages` → GitHub Pages serve a pagina.
-Implementacao: `scripts/publish_pages.py` (tambem chamavel a mao), invocado
-pelo refresh via `--pages-dir`.
-
-**Gates**: a publicacao usa o predicado UNICO
-``publish_pages.publication_allowed(exit_code, eligible)`` (auditoria
-23/09) — publica com vagas elegiveis > 0 em runs ok (exit 0) OU parciais com
-falhas perifericas de fontes individuais (exit 2); dataset vazio (exit 1) e
-run truncado (exit 124) nunca publicam e a pagina anterior permanece. Falha
-de publicacao nao derruba o run: entra no log e na mensagem
-do Telegram (`⚠️ Publicação GitHub Pages falhou: ...`).
-
-**Seguranca**: antes do push o conteudo passa por `check_public_safe`
-(padroes de token/secret + caminhos privados da VPS); a branch `gh-pages`
-contem somente `index.html` — `jobs.db`, logs, `data/`, `.env` e outros
-artefatos internos nunca sao publicados.
-
-Publicar manualmente (caso necessario):
-
-```bash
-.venv/bin/python scripts/publish_pages.py --dry-run              # gera + verifica seguranca, sem push
-.venv/bin/python scripts/publish_pages.py                        # publica o ranking atual
-.venv/bin/python scripts/publish_pages.py --pages-dir /tmp/pages # clone de deploy custom
-```
-
-**Limitação documentada**: o JSONL de metricas acumulava lixo historico de
-validacao (registros `type: tenant` de mocks, ex.: `smartrecruiters:other` 70x
-`error` de 25/08–04/09). O health e defensivo (malformados pulados), mas lixo
-VALIDO entra nas contagens por fonte — uma fonte que so tem lixo emitiria
-"erro recorrente" em todo run ate o JSONL ser limpo. **Sanitizado em 05/09
-(noite)**: 460 → 104 linhas (removidos 142 run records de mock + 214 tenant
-records Acme/DATEV por criterio de run_id dos 4 runs reais: 31/08 37.373,
-01/09 1.084 x2, 05/09 38.038; preservados 100 tenant records de 39 companies).
-Backups: `/tmp/collection_metrics_pre_clean_0509.jsonl` (estado pos-E2E) +
-`data/archive/20260905T204307Z/collection_metrics.jsonl` (pre-E2E). Health
-pos-limpeza: 1 alerta factual — `successfactors:lidlstiftuP2` timeout em 31/08
-e 05/09.
-
-Resultado do ultimo run completo (cron de 18/09 06:00 UTC; numeros reproduzidos
-offline por `scripts/coverage.py` e pelo pipeline com o codigo atual):
-`total 72.866 -> tipo estudante 6.635 -> area-alvo 1.411 -> Alemanha 507`;
-pos-dedup: **476** eligible/ranked (31 remocoes), todos `country_iso='de'` —
-**65 empresas com vagas eligible** (top: BMW AG 81, SAP 74, BoschGroup 48,
-Volkswagen AG 23, teampicnic 20, Fraunhofer-Gesellschaft 19, Knorr-Bremse 15,
-Liebherr-International S.A. 13 — demais na tabela de cobertura). Notas: (1) desde 06/09 o filtro exclui o equivalente EN de
-aprendizagem (Apprentice/Apprenticeship — mesmo criterio do Ausbildung DE;
-P3 #31, PR #31); (2) o baseline antigo (12/08, 56.810 → 293) era de outra
-janela de mercado; a queda de volume **nao e regressao**. Dados em `data/` sao
-locais e gitignored: os numeros servem como documentacao de coleta, nao como
-arquivos versionados. A coleta total leva alguns minutos — cada tenant usa
-timeout proprio (`--timeout 60`).
-
-### Cobertura (101 na coleta → 65 com vagas eligible no run 18/09)
-
-**"Avaliada", "operacional" e "com vagas eligible" sao metricas DIFERENTES**:
-
-- **Avaliada** = empresa que passou pela verificacao do runbook
-  (`docs/empresas_verificacao.md`): match exato na base do `ats-scrapers` e
-  teste do tenant/ATS. Apos as expansoes de 15/09, 16/09, 17/09 e 18/09, sao **101 empresas**
-  operacionais na coleta (12 da validacao inicial + 27 novas + 25 da expansao
-  08/09, Otto removida 15/09 + 17 de cobertura 15/09 + 6 da auditoria 16/09
-  + 9 da auditoria próxima fronteira 17/09: Picnic, cbs Corporate Business
-  Solutions, AIXTRON SE, Holzland Becker, CarOnSale, CURRENTA GRUPPE, Miebach
-  Consulting, Engelhart, audibene/hear.com + 5 da onda final 18/09: Sungrow
-  EMEA, AutoScout24, Huawei Research Center Germany, EAT HAPPY GROUP, VDI
-  Technologiezentrum GmbH).
-- **Operacional** = retorna vagas no fetch real (tenant ativo, ATS com
-  scraper): **39** no snapshot 07/09 (**pré-expansão #23** — 35 tenants com
-  dados em `data/jobs.json`; a Bosch conta 2x no campo `company` — tenants
-  `BoschGroup` e `bosch-homecomfort`). Re-medição feita no 1º run com 65
-  empresas (08/09 — ver MASTER_PLAN #37 e o Log de mudanças de 08/09); run
-  18/09 (101 empresas): **115 fontes ok no run (100 empresas com vagas
-  coletadas; 9 sem vagas → bruto com 114 nomes de `company` distintos / 92
-  tenants com dados, contando variantes reportadas pelo ATS — ex.:
-  `careers.dhl.com`, `BoehringerPRD`).**
-- **Com vagas eligible** = tem pelo menos 1 vaga eligible na Alemanha apos a
-  cascata de filtros + dedup: **65** empresas / 50 tenants (medido no run 18/09).
-
-Falhas conhecidas (motivo da exclusao): Siemens (tenant `teamtailor` inativo),
-Mercedes-Benz e ThyssenKrupp (sem match exato na base). BMW entra somente como
-**BMW AG** (16/09, `successfactors:jobs` jobs.bmwgroup.com) — a consulta "BMW"
-sozinha continua falso positivo (`join_com:bmw-kuehnert`). **Expansao E2**:
-Symrise (API join.com 422), Hager Group e Lanxess ja RESOLVIDAS (adicionadas
-15/09; o "XML malformado" era limitacao do pin antigo do ats-scrapers);
-identidades excluidas por decisao:
-ifm (join 422), Metro (falso positivo), E.ON (sem match), GFT
-(0 vagas + FP `icims:gannettfleming`). Kuehne+Nagel (suica) entrou em 15/09
-via `phenom:nan` (multi; cornerstone DNS-fail recorrente por run, esperado).
-
-**Falhas recorrentes DOCUMENTADAS (investigadas em 17/09, classificadas como
-legitimas/externas — continuam aparecendo no health/refresh de proposito,
-NAO silenciar)**:
-
-1. **Lidl** (`successfactors:lidlstiftuP2`) — timeout recorrente (15 runs em 18/09):
-   feed externo enorme gerado sob demanda; aumentar timeout global/por fonte nao e
-   aceitavel.
-2. **Kuehne+Nagel** (`cornerstone:kuehne-nagel`) — tenant Cornerstone morto/NXDOMAIN;
-   a empresa valida continua sendo coletada via `phenom:nan`.
-3. **SMA** (`oracle:fa-exow-saasfaprod1/cx_1`) — homonimo externo confirmado
-   (academia maritima em Sharjah); nao adicionar `oracle` ao mecanismo de slug e
-   nao criar exclusao especifica (decisao 17/09).
-Adidas e
-Boehringer Ingelheim **nao sao mais exclusoes atuais**: a Adidas coleta
-normalmente (run 13/09 com **74 vagas** coletadas), a Boehringer coleta via
-`successfactors:BoehringerPRD` (run 14/09: **462 vagas** coletadas), todas
-participando da coleta; **Otto foi REMOVIDA em 15/09** (falso positivo —
-`jazzhr:otto` = otto.applytojob.com, nao e o Otto Group; nao readicionar).
-Limitacao de dados: **Workday** (Covestro,
-Evonik, Zalando e as novas Trumpf/Sartorius/DATEV/Zeiss/Hellmann/Fresenius)
-nao expoe codigo de pais nas localizacoes alemas — vagas alemas desses tenants
-ficam sem `country_iso` e o filtro de pais nao as inclui. **Mitigacao
-opcional**: `geocoding.py` (flag `INTERNSHIP_FINDER_GEOCODING`, OFF por
-default) resolve cidade → `de` via lista local + cache + geocoder (OSM), um
-fallback pos-`infer_country_iso` no adapter — com a flag ligada, o eligible
-do snapshot historico 31/08 subiu de 236 para **245** (+9 Workday DE
-recuperadas; medicao historica). No run 18/09, 16 vagas eligible vieram de
-tenants workday mesmo com a flag OFF (re-inferencia via location).
-
-Resumo de cobertura (reproduzido por `scripts/coverage.py`, offline e
-deterministico — `.venv/bin/python scripts/coverage.py`):
-
-| Metrica | Valor |
-| --- | --- |
-| Funil: raw → tipo → area → pais (DE) | 72.866 → 6.635 → 1.411 → 507 (run cron 18/09, 101 empresas) |
-| eligible (pos-dedup) → ranked | 507 → 476 (31 removidas na dedup, company+title+location; run 18/09) |
-| Empresas com eligible / tenants (source) | 65 / 50 (bruto run 18/09: 114 nomes de empresa / 92 tenants com dados; registry: 101; fontes ok no run: 115) |
-| Top empresas (eligible) | BMW AG 81, SAP 74, BoschGroup 48, Volkswagen AG 23, teampicnic 20, Fraunhofer-Gesellschaft 19, Knorr-Bremse 15, Liebherr-International S.A. 13, BASF SE 13, STIHL 12, ... (65 empresas no total; run 18/09) |
-| Contribuicao das maiores | top1 17,0% (BMW AG 81/476) | top3 42,6% | top5 51,7% |
-| Top ATS (eligible) | successfactors 296, smartrecruiters 54, greenhouse 33, phenom 24, workday 16, recruitee 14, eightfold 12, cornerstone 10, softgarden 6, ashby 4, personio 4, teamtailor 3 |
-| Paises (eligible) | `de` 476 (100%) — None/localizacao desconhecida: 0 (0,0%); (medicao historica com `INTERNSHIP_FINDER_GEOCODING=1` sobre o snapshot 31/08: 245) |
-
-(Fase 3: `country_iso` tem fonte unica — `filters.infer_country_iso`; a
-heuristica antiga de "tail da location" foi removida do adapter, entao
-"Friedrichshafen, BW, DE, 88046" vira `de` e nao mais `None`.)
-
-Saida: contagens em cascata (`total -> tipo estudante -> area-alvo -> pais`),
-linha de dedup (`removidas N: X por external_id, Y por URL, Z por
-company+title+location`), **TOP 20 ranqueado por perfil** (score + breakdown
-curto; `--no-rank` desliga e mostra exemplos como antes) e os arquivos
-gravados com o campo `score`.
-
-Flags do CLI:
-
-| Flag | Descricao |
-| --- | --- |
-| `--companies` | modo coleta: nomes separados por virgula (match exato na base; sem match, a empresa e ignorada com aviso) |
-| `--registry` | modo coleta orientado ao registry: usa as empresas `enabled` do `CompanyRegistry` (fonte de verdade em codigo); com `--companies` restringe a subconjunto, na ordem informada |
-| `--input` | modo filtro: JSON bruto de entrada (default: `data/jobs.json`) |
-| `--output` | filtro: saida eligible (default: `data/eligible_jobs.json`); coleta: saida bruta (default: `data/jobs.json`) |
-| `--filter-output` | modo coleta: saida eligible (default: `data/eligible_jobs.json`) |
-| `--student` / `--no-student` | filtra tipo estudante/estagio (Internship, Working Student, Praktikum, Werkstudent, iXp...; default: ligado) |
-| `--area` / `--no-area` | filtra areas-alvo do dono (Supply Chain, Procurement, BI, Analytics, Automacao; default: ligado) |
-| `--country`/`--countries` | pais/localizacao: ISO alpha-2 (`de`, `de,at,ch`), `europe`, `remote` ou `all` (default: `de`; valores fora desses -> erro claro, exit 2) |
-| `--all` | desliga os tres filtros de uma vez (copia o conjunto inteiro) |
-| `--dedup` / `--no-dedup` | remove duplicatas da saida (default: ligado) |
-| `--mirror-dedup` / `--no-mirror-dedup` | **Mirrors DE/EN (Fase C)**: remove a versao alema de vagas espelhadas DE/EN detectadas por `requisition_id` + marcadores de tipo (apos a dedup classica, antes da hidratacao; default: ligado) |
-| `--rank` / `--no-rank` | rankeia por compatibilidade com o perfil: score + TOP 20 (default: ligado; `--no-rank` mantem a ordem original) |
-| `--timeout` | teto de segundos por scraper (defensivo: uma empresa que trava nao derruba o resto); valor `<= 0` -> erro claro, exit 2 (P3 #20) |
-| `--limit N` | maximo de vagas por tenant, aplicado APOS a coleta (0 = sem limite); valor negativo -> erro claro, exit 2 (P3 #20) |
-| `--include-descriptions` | busca a descricao por vaga (mais lento em ATS que exigem chamada por vaga, ex. SmartRecruiters) |
-| `--hydrate-descriptions` / `--no-hydrate-descriptions` | **Hidratacao seletiva (Fase A)**: preenche a description AUSENTE das vagas ELEGIVEIS via detail-fetch do `ats-scrapers`, entre dedup e ranking (default: ligado; best-effort — falha por vaga nao derruba o run nem muda exit codes). Diferente de `--include-descriptions`, que busca descricao por vaga durante a COLETA inteira (bulk, mais lento) |
-| `--official-page` / `--no-official-page` | **Official page enrichment (Fase D)**: UM GET por vaga candidata (description ausente/teaser OU sem deadline OU sem salary) busca JSON-LD `JobPosting` na pagina oficial e registra evidencia estruturada em `job.official_page` (validThrough/baseSalary/employmentType/jobLocation/description), pos-hidratacao e pre-ranking (**default: DESLIGADO desde F1 01/10** — cookie-wall/JS-render tornaram o estagio sem retorno, ver `docs/fase_f1_dead_components.md`; best-effort; sem LLM/browser). `--official-page` liga sob demanda. Description teaser pode ser substituida pela do JobPosting (`description_source=official_page_jsonld`); salario so preenche quando o ATS nao tem nenhum; validThrough/identifier sao evidencia, nunca deadline/external_id canonico |
-| `--official-page-limit N` | Limite de vagas por execucao do official-page enrichment (default: 150, cortadas por prioridade: sem description > teaser > sem deadline > sem salary; `0` = sem limite) |
-| `--dataset` / `--no-dataset` | **Fonte sf_dataset (F3)**: coleta TAMBEM do dataset hospedado do ats-scrapers (manifest público, 63 fatias, prefilter DE+estágio em streaming ANTES de materializar — ~21,6k rows de 5,1M) e concatena com os jobs do registry no MESMO funil filtros→dedup→ranking. **Default: LIGADO no modo `--registry`** (inversão arquitetural: dataset é fonte primária, registry é lista de interesse no ranking), **DESLIGADO no `--companies` explícito**. Falha do dataset NUNCA derruba o run (best-effort: registro `type: dataset` com status; exit code segue o da coleta do registry). Jobs do dataset NÃO entram no lifecycle SQLite (fonte efêmera re-derivada a cada run). Ver `docs/f3_sf_dataset.md` |
-| `--dataset-budget-secs N` | Teto total do estágio dataset em segundos, checado ENTRE fatias (default 1800); estourado, as fatias restantes viram `skipped_budget` e o run segue |
-| `--direct-fetch` / `--no-direct-fetch` | **Fonte direct_fetch (F4)**: coleta TAMBÉM uma amostra diária DIRETA das APIs públicas **Bundesagentur** (facet `angebotsart=34` PRAKTIKUM_TRAINEE — a facet usa CÓDIGOS numéricos; o label `Praktikum` retorna 0) e **EURES** (body `keywords=[{"keyword": "Praktikum", "specificSearchCode": "EVERYWHERE"}]` — shape de OBJETOS; strings são rejeitadas com 400) com o filtro de estágio NATIVO de cada fonte, cap de 200 jobs/fonte/run, páginas sequenciais e timeout curto (rate limit conservador para serviços públicos). **Default: LIGADO no modo `--registry`**, DESLIGADO no `--companies` explícito. Falha de fonte NUNCA derruba o run (degradação graciosa: registro `type: direct_fetch` com status ok/partial/failed por fonte; exit code inalterado). A MESMA vaga no dataset e no direct colapsa no dedup pela URL. Jobs direct NÃO entram no lifecycle SQLite (fonte efêmera). Ver `docs/f4_ba_eures.md` |
-| `--direct-fetch-max-jobs N` | Limite de jobs POR FONTE (BA, EURES) por run do estágio direct_fetch (default 200 — o principal medidor de rate limit junto com 1 fetch/dia e páginas sequenciais) |
-| `--metrics PATH` | JSONL de metricas da execucao (modo coleta; default: `data/collection_metrics.jsonl`) |
-| `--sqlite PATH` | modo coleta: persiste o historico de cada vaga (`first_seen`/`last_seen`/`active`/`archived`) em banco `sqlite3` na PATH (default: desligado). **P1.2**: o lifecycle (archive de nao-vistos) e atualizado POR UNIDADE de coleta confiavel `(company, source)` — empresas/tenants com timeout/erro/not_found nao tem vagas arquivadas (ausencia observada != ausencia por falha de coleta) |
-| `--health [PATH]` | modo health (unico quando presente): relatorio JSON por tenant/ATS sobre o JSONL de metricas + alertas; arquivo inexistente -> erro no stderr e exit != 0 |
-| `--verbose` | log DEBUG |
-
-Ambiente:
-
-| Variavel | Descricao |
-| --- | --- |
-| `INTERNSHIP_FINDER_GEOCODING` | OFF por default. Com `=1`, liga o geocoder de rede (OSM Nominatim) + cache no fallback de pais (`geocoding.py`). Com OFF, o fallback se limita a lista local de cidades + cache ja populado — nenhuma chamada de rede. Medicao historica (snapshot 31/08): levava o eligible DE de 236 (pipeline 232) para **245** (+9 Workday). |
-| `INTERNSHIP_FINDER_ENRICHMENT` | **F1 (01/10): OFF por default.** Com `=1` (env ou `.env`), a flag `--enrichment` do `refresh_daily.py` volta a rodar o enrichment LLM incremental (`scripts/enrichment_run.py`). Motivo do OFF: janela NVIDIA degradada com retries ReadTimeout ~264s — run de 5h38 segurando o flock (29/09, 0/21 extracoes) e 17.615s (30/09, 6/22); retorno zero. Reativacao manual: `INTERNSHIP_FINDER_ENRICHMENT=1 .venv/bin/python scripts/refresh_daily.py --enrichment ...`. Teto de seguranca `--enrichment-max-secs` (default 1800s) mata o subprocesso estourado — o flock nunca mais fica preso por ele. |
-| `INTERNSHIP_FINDER_DEADLINE_HYDRATION` | **F1 (01/10): OFF por default.** Com `=1`, o `AtsJobAdapter` volta a popular `Job.application_deadline` a partir do campo da fonte. Motivo do OFF: em tenants SuccessFactors o valor e a validade do FEED (`g:expiration_date` = coleta + 30 dias, auditado 231/231 — PROJECT_STATUS P1.4), nao o prazo real de fechamento; o ranking nunca leu o campo (score/eligibilidade/dedup intactos — `test_f1.py` grupo C). A UI ja rotula platform_sf como "validade do anuncio", nao prazo. |
-
-### Deduplicacao
-
-A saida filtrada passa por dedup por padrao (`--no-dedup` desliga), usando
-chaves em ordem de confiabilidade — a primeira que bater decide (`src/internship_finder/dedup.py`):
-
-1. `external_id`/`id` do ATS (identidade oficial da vaga na origem);
-2. URL normalizada (sem fragmento, sem barra final, casefold; a query e
-   mantida — eightfold carrega o id da vaga nela);
-3. `company + titulo normalizado + localizacao normalizada` — pega versoes
-   EN/DE do mesmo cargo e repostagens: o titulo e normalizado (casefold, sem
-   acentos, sem sufixos de genero `m/w/d`/`f/m/d`/`w/m/div.`, `Werkstudent`
-   tratado como `Working Student`, sem palavras funcionais EN/DE e comparado
-   como saco de palavras — ordem indiferente).
-
-Quando duas versoes da mesma vaga existem, o "vencedor" e deterministico:
-a com `description` preenchida; senao a com `employment_type`; senao a que
-veio primeiro. O CLI reporta quantas foram removidas e por qual chave.
-Titulos que sao traducao real (conteudo diferente, ex.: "Marketing
-Deutschland" vs "Marketing Germany") NAO sao fundidos — exigiria dicionario
-de traducao/fuzzy, fora do escopo do MVP. No snapshot de 31/08 (historico):
-eligible 258 -> 236 (22 removidas, todas pela chave 3; 0 por external_id/URL).
-Com o dedup 2.0 (P2 #14) o pipeline produzia **232** (4 duplicatas TRUE a mais —
-pares EN/DE do mesmo cargo; ver `MASTER_PLAN.md` #14). No run 18/09:
-507 -> 476 eligible (31 removidas).
-
-#### Mirrors DE/EN por requisition_id (Fase C)
-
-Apos a dedup classica, um sub-estagio (`src/internship_finder/mirror_dedup.py`,
-`--mirror-dedup` default ligado) remove **mirrors linguisticos DE/EN** que a
-cascata de chaves nao pega: a mesma oportunidade publicada em alema e ingles
-com `requisition_id` igual. Regra conservadora e deterministica:
-
-- **Candidato**: mesma empresa + mesmo tenant (`source`) + `requisition_id`
-  duplicado (`requisition_id` vem do `raw` — Fase B; ausente = nunca candidato).
-  `requisition_id` sozinho NAO basta: vagas distintas compartilham req_id
-  (hellofresh, celonis — falsos positivos conhecidos da Fase B).
-- **Mirror**: `normalize_title` identica OU um titulo com marcador de tipo DE
-  (`Pflichtpraktikum`/`Praktikum`/`Praktikant`/`Werkstudent`) e o outro com
-  marcador EN (`Internship`/`Working Student`/`Intern`); guardrails: `country`
-  e `employment_type` iguais quando ambos presentes.
-- **Canonical**: o lado EN (representacao util para candidatura; score igual
-  ou maior nos casos reais); o lado DE sai apenas do conjunto elegivel —
-  historico SQLite intocado por construcao.
-- Reversivel: `--no-mirror-dedup` restaura o comportamento anterior
-  byte-a-byte. Nao ha fuzzy/embeddings/LLM/traducao automatica; nao ha merge
-  de campos.
-
-No snapshot 27/09 (412 eligible): 4 mirrors DE/EN detectados (Bosch x3,
-ABOUT YOU x1), 3 falsos positivos conhecidos preservados; 412 -> 408.
-
-### Hidratacao seletiva de descriptions (Fase A)
-
-Entre a deduplicacao e o ranking, o pipeline **hidrata a description das
-vagas elegiveis que estao sem ela** (`src/internship_finder/hydration.py`,
-default ligado; `--no-hydrate-descriptions` desliga). O criterio e simples:
-description vazia/None. Teasers curtos (ex.: phenom, mediana ~301 chars) NAO
-sao candidatos nesta fase — apenas o contador observacional
-`phenom_teaser_count` registra a situacao.
-
-- **Quem hidrata**: `BaseScraper.get_description(job)` do `ats-scrapers`
-  (detail por vaga) para os ATS com endpoint de detail na 0.3.0:
-  **smartrecruiters, workday, eightfold, personio**. O scraper e construido
-  por vaga a partir do `source` (slug do tenant; Workday usa a careers URL
-  derivada da `job.url`).
-- **F3 (jobs do dataset)**: jobs `sf_dataset:<ats>` carregam o ATS puro no
-  source (sem slug) — o ATS efetivo e o SUFIXO (`_effective_ats`) e o slug
-  de hidratacao e DERIVADO DA URL da vaga (`_slug_from_url`): workday pela
-  careers URL, smartrecruiters pelo primeiro segmento do path
-  (`jobs.smartrecruiters.com/<slug>/...`), personio pelo label do host
-  (`<tenant>.jobs.personio.<tld>`), eightfold pelo hostname. Nao derivavel
-  -> `unsupported_no_detail` (vaga preservada, contada). **F4 (02/10)**:
-  `sf_dataset:bundesagentur` e `sf_dataset:eures` (e os `direct:*`) agora
-  HIDRATAM — scrapers single-source ignoram `company_slug`, o mapa usa um
-  stub fixo (`_SINGLE_SOURCE_ATS`); a BA via detail v4 (a fatia tem 0%
-  description; probe real 3/3 refnrs hidrataram com 2.248–6.740 chars).
-- **Softgarden** e a excecao resolvida na COLETA: o feed ja embute a
-  description completa sem custo adicional de requests, entao
-  `collect_company` forca `include_descriptions=True` SO para softgarden
-  (excecao explicita e local — nunca um flag global).
-- **Phenom** fica pendente: o `ats-scrapers` 0.3.0 nao tem endpoint de
-  detail para ele; nenhuma tentativa e feita (vaga preservada com o teaser).
-- **Best-effort**: falha por vaga e registrada e o run segue (exit codes
-  inalterados — hidratacao e enriquecimento, nao requisito de elegibilidade).
-  Um orcamento total (`HYDRATION_BUDGET_SECONDS = 600`) garante que um
-  tenant lento nao bloqueia o refresh; quem sobra vira `hydration_skipped`.
-- **Proveniencia**: vaga hidratada ganha `description_source = "hydration"`;
-  description do feed fica com o campo ausente (`None`).
-- **Metricas**: um registro `type: "hydration"` no JSONL de metricas
-  (modo coleta/cron) carrega `eligible_before_hydration`,
-  `hydration_candidates/success/failed/skipped`, `already_has_description`,
-  `unsupported_no_detail`, `description_coverage_before/after`,
-  `hydration_duration`, `feed_description_count`,
-  `hydration_description_count`, `phenom_teaser_count` e `by_ats`.
-
-A hidratacao NAO muda criterios: elegibilidade congelou antes (a cascata le
-description), e o ranking apenas passa a ver texto que antes estava ausente
-(os detectores existentes de german/skills/area passam a pontuar sobre o
-conteudo hidratado). Validacao A/B real (26/09): cobertura 328/411 (79,8%)
--> 405/411 (**98,5%**), 77/77 hidratacoes com sucesso (SR 46, WD 20, EF 7,
-PS 4) em ~58s; 6 softgarden do snapshot antigo ficam `unsupported` ate a
-proxima coleta (o flag D4 resolve na origem).
-
-### Ranking por perfil
-
-Depois de filtrar e deduplicar, o CLI **ranqueia as vagas por compatibilidade
-com o perfil do dono** (`src/internship_finder/ranking.py`) — heuristica
-deterministica, sem ML — e mostra as melhores primeiro (TOP 20). Cada vaga
-ganha `score` (total) e `score_breakdown` (por componente) no JSON/CSV; o
-desempate e deterministico (score desc -> titulo -> empresa -> id).
-
-**Segundo perfil — Materials Engineering (Fase 4, 19/09)**: o MESMO conjunto
-elegivel tambem e ranqueado por relevancia para Engenharia de Materiais
-(`src/internship_finder/materials_ranking.py`): cada vaga ganha
-`materials_score` + `materials_breakdown` PROPRIOS. O `score` do perfil
-principal NUNCA muda — os dois rankings sao independentes (nunca somados) e
-operam sobre as MESMAS vagas elegiveis (nada e recolhido, re-filtrado ou
-deduplicado). A pagina publica (`index.html`) tem um seletor de perfil
-(**Procurement / Supply Chain** | **Materials Engineering**) e o digest
-diario do Telegram ganhou a secao "Perfil Materials Engineering" (Top 5 +
-novas no Top 30 Materials).
-
-Score = `area + skills + language + type + location + penalties + registry`:
-
-- **registry** (F3, lista de interesse): `+1.0`
-  (`WEIGHT_REGISTRY_INTEREST`) quando a empresa da vaga bate com um nome
-  canonico do CompanyRegistry (casefold exato OU substring — o dataset
-  hospedado traz nomes legais: "Robert Bosch GmbH" contem "bosch"). NAO e
-  filtro de elegibilidade: vaga de empresa FORA do registry entra no
-  eligible normalmente, so sem o desempate. Aditivo e deterministico.
-
-| Componente | Peso | Fonte |
-| --- | --- | --- |
-| `area` | titulo x2.0; descricao x0.0 | reusa `filters.area_score` (PRIMARY 3 / RELATED 2 / WEAK 1 no titulo). A area da descricao e **zerada** por calibracao no conjunto real: templates genericos (ex.: SAP) citam `data`/`sap`/`reporting` em vagas de Marketing e inflavam a area; o valor da descricao entra por skills e idioma. Fase 2: frases de PRODUTO com termos de area no titulo (`AREA_TITLE_PRODUCT_PATTERNS`: "SAP Analytics Cloud", "Analytics Cloud") sao **mascaradas** antes da deteccao — o termo e do nome do produto, nao da funcao ("Working Student ... Communications / Media Production in SAP Analytics Cloud" nao e vaga de Analytics). Lista curta e fixa, calibrada no caso real; a frase mais especifica vem primeiro (senao sobraria o "sap" fraco pontuando) |
-| `skills` | +0.75 por competencia (descricao) | Inventory Management, Supplier Relationships/Management, Process Automation, System Integration, Python, APIs, Cloud, Reporting, Continuous Improvement |
-| `language` | ingles +1.5, alemao +0.5 | detectados no titulo+descricao (`english`/`englisch`; `german`/`deutsch` como palavra — "Deutschland" nao conta) |
-| `type` | +1.0 | marcador forte de tipo no TITULO (Praktikum, Werkstudent, Internship, iXp... — reusa `filters.STUDENT_TYPE_PATTERNS`; Trainee/JMP NAO sao marcadores: os programas de `filters.PROGRAM_EXCLUSION_PATTERNS` nao chegam ao eligible) |
-| `location` | DE explicito +1.0; Berlin +0.5 | ISO alpha-2 via `filters.infer_country_iso`; remoto neutro |
-| `penalties` | senior/director/head/principal -3.0; manager -1.0; FULL_TIME -0.5 | senioridade e "manager" SO valem sem marcador forte de tipo no titulo (Praktikum/Werkstudent/Internship no titulo protegem; JMP/Trainee nao protegem — nao sao marcadores); FULL_TIME e suave (Werkstudent/Praktikum vêm marcados FULL_TIME no conjunto e nao zeram) |
-
-Materials score = `materials + adjacent + context + type + location + penalties`
-(componentes proprios, independentes do principal — ver
-`materials_ranking.py` para a lista completa de termos):
-
-| Componente | Peso | Fonte |
-| --- | --- | --- |
-| `materials` (nucleo) | titulo +2.5 por termo unico; descricao corrobora no maximo +1.0 | termo unico no titulo: materials engineering/science/testing, materialwissenschaft/-technik, werkstoff, metallurgy, metals, steel, aluminium, alloys, polymer, plastics, kunststoff, composites, ceramics, corrosion, surface engineering, coatings/beschichtung, failure analysis, NDT... (compostos DE por prefixo; NUNCA "material" solto — "Materialwirtschaft"/"Materialfluss" sao compras/logistica) |
-| `adjacent` (industrial) | titulo +1.25 por termo unico; descricao +0.5 (1x) | manufacturing/Fertigung, production/Produktion, process engineering/Verfahrenstechnik, mechanical/Maschinenbau, battery/Batterie, semiconductor, chemistry/Chemie, additive manufacturing, anlagenbau, laboratory/Labor, laser, presswerk, catalysts, welding |
-| `context` (quality/R&D) | titulo +0.75 por termo; descricao +0.5 (1x); **so com >=1 termo de nucleo OU adjacente no TITULO** | Quality/Qualität, R&D/research/Forschung, development/Entwicklung, testing/Versuch/Prüfung — "Qualiti Engineer de banco" nao vira vaga de materiais (gate) |
-| `type` | +1.0 | marcador forte de tipo no TITULO (mesma regra do principal) |
-| `location` | DE +1.0; Berlin +0.5 | ISO via `infer_country_iso`; remoto neutro |
-| `penalties` | compras/SCM -1.5; logistica/vendas/financas/RH/juridico/software/admin -1.0 (por CATEGORIA) | SOMENTE no titulo (boilerplate "MS Office"/Einkauf em descricoes nao penaliza); nucleo vence a penalidade ("Einkauf Aluminium" pontua a materia, mas abaixo de vaga tecnica real) |
-
-Sinais NEGATIVOS (evitam falsos positivos): "student"/"engineering"/
-"internship"/"manufacturing" SOZINHOS nao dao relevancia alta (nao sao termos
-do nucleo); termos de negocio no titulo penalizam; palavra solta "material"
-nunca conta. O ranking materials NAO altera a elegibilidade: responde apenas
-"entre as vagas ja elegiveis, quais sao mais relevantes para Materials?".
-
-Sem descricao (parte das vagas em que o ATS nao expoe descricao), age-se com
-graca: skills/idioma contribuem 0 e o score vem do titulo. Metrica do
-snapshot de 31/08 (historico; 236 eligible; pipeline dedup 2.0 = 232, medido por
-`scripts/test_ranking.py`):
-scores `min 1.0 | mediana 6.0 | max 16.75` (257 eligible, run 14/09 — historico).
-No run 18/09 (476 eligible): scores `min 1.0 | mediana 6.25 | max 17.5`.
-Ver `scripts/test_ranking.py` (suite sintetica com `FIXTURE` fixa, desacoplada
-do snapshot desde o P2 #16 — 03/09; bloco real roda como invariantes de
-formato/observabilidade; suite local 23/23 TUDO OK — 23 do CI + o probe manual
-`scripts/manifest_probe.py`, que nao faz parte da suite do CI).
-
-**Medicao do ranking (P2.5, 11/09/2026)**: benchmark versionado com **59 vagas
-reais rotuladas manualmente** (`benchmarks/ranking_benchmark_v1.json`).
-Resultado: universo 260 eligible com **96,5% das vagas empatadas**, concordancia
-ordinal 82,5% (tau +0,65 — o ranking tem sinal real), mas **67% das vagas
-empatadas da amostra em grupos com qualidade humana diferente** → decisao
-**Caso C (baixa resolucao real)**: calibracao justificada, redesign/embeddings/ML
-sem evidencia. Metodologia, metricas e hipoteses de calibracao (H1 descricao
-ausente, H2 language, H3 desempate): `docs/ranking_benchmark.md`. Relatorio
-reproduzivel: `.venv/bin/python scripts/ranking_benchmark.py`; reproduzir o
-benchmark em snapshot novo: `scripts/make_ranking_benchmark.py refresh`.
-
-### PT-BR na interface (Fase 5, 19/09)
-
-A pagina publica ganhou uma **camada estruturada em PT-BR** — para entender a
-vaga (o que e, tipo de contrato, onde fica, a area e POR QUE recebeu aquela
-posicao) sem depender de ingles/alemao. Regras da fase (decisao do dono):
-
-- **NAO ha traducao integral automatica** das descricoes: sem LLM, sem API de
-  traducao, sem servico externo, sem peso no refresh diario. A descricao
-  permanece original, etiquetada `Original`.
-- **Titulo**: traducao DETERMINISTICA por glossario (`src/internship_finder/
-  ptbr.py`), exibida como campo separado `PT-BR`; o titulo original continua
-  SEMPRE visivel, com tag `Original (EN/DE)` quando o idioma e detectado, e e
-  o link que abre o anuncio na fonte. Titulo sem termos traduziveis → so o
-  original.
-- **Campos em PT-BR**: tipo do anuncio (`FULL_TIME` → "Período integral
-  (FULL_TIME)"), pais (`de` → "Alemanha"), modalidade quando o registro traz
-  (`remoto`), além dos rotulos ja PT-BR (local, desde, candidaturas ate).
-- **"por que esta vaga?"**: cada componente REAL do `score_breakdown` (ou
-  `materials_breakdown`) do perfil ativo vira uma linha com rotulo PT-BR,
-  valor real e um detalhe do que a componente mede; componentes NEGATIVAS
-  (penalidades reais) sao separadas em "o que reduziu a nota". Os valores
-  sao os do calculo real — nenhum numero novo e criado (e o ranking nao e
-  recalculado).
-- **Perfis**: os explicadores mudam conforme o perfil ativo (principal vs
-  Materials Engineering) e nunca se misturam.
-- **Pontes/seguranca**: palavras-ponte (im/in/for/und/and) so em minusculas e
-  so entre segmentos traduzidos; nomes de produto ("SAP Analytics Cloud") e
-  o sufixo alemao `*in`/`/in` sao protegidos de traducao errada.
-
-**Como adicionar termos ao glossario** (unica manutencao necessaria):
-editar `GLOSSARY` em `src/internship_finder/ptbr.py` com uma entrada
-`(regex, frase_pt, rotulo_pt)`. Regras: frases compostas ANTES das genericas
-("Supply Chain Management" antes de "Supply Chain"); `frase_pt=None`
-preserva o match como esta (protecao de nomes proprios); termos profissionais
-internacionais podem manter o original entre parenteses ("Compras
-(Procurement)"). Sem entrada, o termo permanece no original (comportamento
-seguro, sem quebra). Detalhes e limitacoes:
-`docs/relatorio_fase5_ptbr.md` + `scripts/test_ptbr.py`.
-
-### Candidate Fit + Application Intelligence + mobile (Fase 6, 20/09)
-
-A pagina passou a responder tambem **"esta vaga e viavel para candidatura, e
-urgente e ha obstaculos?"** — com conceitos mantidos SEPARADOS do score de
-relevancia (o score continua sendo so relevancia; sinais de candidatura nunca
-entram nele):
-
-- **Idioma**: ingles mencionado no anuncio (+1,5) e sinal compativel; alemao e
-  avaliado pela EXIGENCIA detectada no TEXTO do anuncio (nunca pelo idioma em
-  que foi escrito): exigido −2,0 / preferido −0,5 / menção difusa ou sem
-  menção → neutro. Classificador em `src/internship_finder/app_intel.py`
-  (`german_level`) — frases reais, negacao explicita, CEFR, "von Vorteil".
-- **Work authorization**: estados por evidencia explicita no anuncio
-  (suporte/requer existente/sem sponsorship/nao mencionado/incerto) — nunca
-  inferido de multinacional ou localizacao.
-- **Deadline**: primeira classe, nunca inventado; o valor SuccessFactors
-  (`g:expiration_date` = feed +30d) e mostrado como **validade do anuncio na
-  fonte**, NAO como prazo de candidatura (nao entra em urgencia nem em "vagas
-  expirando"). Urgencia so com deadline confirmado do empregador.
-- **Por vaga**: chips visiveis (deadline/idioma/visto/readiness), bloco
-  "sinais de candidatura e possiveis problemas" (fit, work auth, deadline,
-  problemas objetivos, quality flags, readiness, freshness first/last seen via
-  `--db-join` do SQLite).
-- **Evidência da página oficial (Fase D2, 28/09)**: por vaga, quando
-  verificada pelo estágio Fase D, os fatos aparecem nos detalhes da vaga:
-  "página oficial verificada em <data>", "validThrough do JobPosting
-  (página oficial): <data>" (validade da PÁGINA — nunca confundida com o
-  prazo de candidatura do empregador) e "local confirmado pela página
-  oficial". Vagas cuja página retornou 404 na verificação ganham o chip
-  "🔗 página não encontrada na verificação". Nada disso entra em score,
-  urgência, filtro ou elegibilidade.
-- **"Como este ranking funciona"**: secao acima da lista com os PESOS REAIS
-  lidos das constantes de `ranking.py`/`materials_ranking.py` (nada
-  duplicado) e as regras (idioma, deadline SF, work auth, gates do perfil).
-- **Filtros novos** (painel recolhivel com contador): vagas expirando
-  (≤2/≤7/≤14 dias), work authorization, idioma, Top 30, quality flags.
-- **Mobile**: <760px a tabela vira card por vaga, topo compacto, busca em
-  largura total — sem scroll horizontal.
-- `--ref-date` fixa a data de urgencia (determinismo em testes);
-  `--db-join` junta first_seen/last_seen do `jobs.db` para freshness.
-
-Relatorio oficial: `docs/relatorio_fase6_candidate_fit.md`. Testes:
-`scripts/test_app_intel.py` (novo), `test_interface` (node 34 casos +
-`test_fase6_features`), `test_ranking`, `test_digest`.
-
-### Company & Location Intelligence (Fase 7, 20/09)
-
-Terceira camada, SEPARADA de Job Fit (score) e Candidate Fit (Fase 6):
-**Opportunity Intelligence** — informação verificável sobre empresa,
-benefícios, carreira, Internship→Full-time, turnover, localização, custo de
-vida e salário, para desempate informado entre vagas. NUNCA entra no score e
-nenhum "Company Score" é calculado.
-
-- **Dados de empresa/custo de vida**: arquivos curados versionados
-  (`company_intel/company_intelligence.json` + `company_intel/location_intel.json`)
-  — cada campo com fonte (URL) + qualidade (`primary`/`secondary`/`aggregated`)
-  + data de verificação (`checked`) + período. Estrutura reutilizável por
-  empresa (a MESMA entrada atende todas as vagas da empresa). Ausência de
-  campo → a página mostra `Not mentioned`/`Not available` (nunca inventa).
-- **Política de visto (empresa, item 11 da auditoria)**: estado curado em
-  5 estados (`explicit_support` / `explicit_no_support` /
-  `candidate_must_have_authorization` / `unclear` / `not_verified`) com
-  fonte oficial — declarações CONDICIONAIS ("may sponsor", "for eligible
-  roles", "coverage varies") viram `unclear` com a citação preservada;
-  ausência de evidência → `Não verificado` (nunca promovido). É da
-  EMPRESA, distinta do work authorization da VAGA (detector textual do
-  anúncio) — nunca um deriva do outro e nenhum entra no score. Seção
-  "Política de visto (empresa)" no bloco recolhível, com fonte (URL +
-  verificado em) quando existir.
-- **Do anúncio (evidência, nunca estimativa)**: salário citado ("Gehalt:
-  2.117 €/Monat"; 18 vagas no run 20/09), work mode
-  (hybrid/remote/on_site/not_mentioned), duração em meses, cidade/região da
-  string real (endereço com CEP → cidade; "Germany" não vira cidade).
-- **Por vaga (recolhível, mobile-friendly)**: seções Empresa / Benefícios /
-  Carreira / Internship→Full-time (estados Explicitly supported · Evidence
-  available · Not mentioned · Unknown — nunca probabilidade) / Política de
-  visto (empresa) / Localização (cidade, região, país, work mode, custo de
-  vida contexto) / Salário / Turnover (fato com fonte e período, sem
-  avaliação) / Fontes.
-- **Compare opportunities**: marque 2–4 vagas e veja uma tabela de fatores
-  (fit, candidatura, vaga, empresa, localização) — dados com fonte, sem
-  vencedor automático.
-- **Resiliência**: zero rede em tempo de render; arquivo curado ausente/
-  corrompido → camada vira `Not available` e a página/ranking continuam.
-- Flags da CLI: `--company-intel`, `--location-intel` (defaults
-  `company_intel/*.json`).
-
-Relatório oficial: `docs/relatorio_fase7_company_location_intel.md`. Testes:
-`scripts/test_opportunity_intel.py` (novo, 29º), `test_interface`,
-`test_publish_pages` (gate de segurança).
-
-### Decision Support + Application Tracking (Fase 8, 22/09)
-
-Quarta camada: **estado pessoal** — o que EU faço com as vagas. Status,
-prioridade pessoal, notas, candidaturas, feedback e histórico, no banco
-SQLite PRIVADO `data/personal/jobs_personal.db` (dentro de `data/`, que é
-gitignored — nunca versionado, nunca publicado no GitHub Pages; o
-publicador sobe apenas `index.html` e o gate `check_public_safe` bloqueia
-menções a `jobs.db`/caminhos privados).
-
-- **Status (§1)**: `new → interesting/review → applied → interview →
-  offer/rejected`, mais `withdrawn` e `ignored`. Shortlist = interesting /
-  review / applied / interview / offer.
-- **Prioridade pessoal ≠ ranking (§17)**: `high/normal/low` marcada por
-  você; NÃO afeta o score e não é sobrescrita por ele (uma vaga score 14
-  pode ser prioridade alta — a decisão é sua).
-- **Application tracking (§7)**: data de candidatura, resposta, entrevista
-  e contato — o mínimo para não perder o controle; não é um CRM.
-- **Histórico (§10)**: eventos append-only (`marked`, `status_changed`,
-  `applied_at`, `note`, `removed_from_ranking`, `ats_gone`,
-  `feedback_liked`/`feedback_ignored`, ...) — quando a vaga foi marcada,
-  aplicada, mudou de status, saiu do ranking ou desapareceu do ATS.
-- **Expiração (§19)**: vaga que sai do ranking/ATS NÃO é apagada — ganha
-  evento `removed_from_ranking`/`ats_gone` (idempotente) e mantém
-  status/histórico (aplicada não desaparece). No `export`, vaga fora do
-  ranking atual aparece como `No longer active`.
-- **Feedback (§11/§12)**: por que gostei/ignorei (motivos livres). É
-  collect-only: NUNCA altera pesos/score automaticamente. O diagnóstico
-  `ranking-feedback` mostra Top 30 vs fora — dados, sem julgamento.
-- **Métricas descritivas (§14)** e **opportunity funnel (§15)**:
-  contagens, taxa applied/(interesting+review), tempo médio
-  descoberta→candidatura (via `first_seen` do jobs.db) — sem previsões.
-- **Telegram (§9)**: o digest diário ganha `⚠️ Application reminders`
-  (shortlist com deadline EMPLOYER ≤ 3 dias — validade de feed
-  SuccessFactors NUNCA conta, regra Fase 6) e `📌 N aplicações aguardando
-  resposta`. Notas pessoais completas nunca são enviadas. Banco ausente/
-  corrompido → seções somem silenciosamente (o run segue).
-- **Interface pública (§21, limitação documentada)**: GitHub Pages é
-  estático/público — status/notas pessoais NÃO são persistidos no browser
-  nem publicados. Cada vaga mostra um hint com o comando
-  `personal_tracker.py mark <id>` (o `Job.id` canônico aparece no
-  `data-job-id` da linha). Comparação continua sendo o Compare da Fase 7
-  (reuso, sem duplicação).
-- **Identidade (§20)**: tudo pendurado no `Job.id` canônico
-  (`<company>|<source>:<external_id>`), a mesma PK do `jobs.db` — nenhum
-  identificador paralelo.
-- **Export (§23)**: `export --csv data/personal/shortlist.csv` (title,
-  company, location, score, profile, status, application_date, deadline,
-  personal_priority) — nunca vai para o Pages.
-
-```bash
-# uso diário (no VPS, dentro do repo):
-.venv/bin/python scripts/personal_tracker.py mark "<job_id>" --status interesting --note "..."
-.venv/bin/python scripts/personal_tracker.py applied "<job_id>" --date 2026-09-22 --contact LinkedIn
-.venv/bin/python scripts/personal_tracker.py list --shortlist
-.venv/bin/python scripts/personal_tracker.py sync-ranking   # roda sozinho no refresh diario
-.venv/bin/python scripts/personal_tracker.py metrics | funnel | ranking-feedback | export
-```
-
-Relatório oficial: `docs/relatorio_fase8_decision_tracking.md`. Testes:
-`scripts/test_personal_tracker.py` (novo, 30º — cobre os 20 itens do §25).
-
-### Application Tracker no dia a dia (F14, 07/10)
-
-Camada de USO diário sobre o banco da Fase 8 — zero schema novo, zero
-banco novo. Três peças: badge na página, métricas semanais e lembrete
-de follow-up no digest.
-
-- **Badge "já aplicou" na página**: o render público lê o banco
-  pessoal (READ-ONLY, `--tracker-db`, default
-  `data/personal/jobs_personal.db`) e marca o card com o ícone do
-  status atual: ✅ applied · 📞 interview · 🎉 offer · ❌ rejected ·
-  🚫 withdrawn. Discreto, sem notas/contatos (nada privado no HTML —
-  só o ícone + `title` fixo; o gate `check_public_safe` segue no
-  publicador). Banco ausente/vazio/vaga não marcada = sem badge, sem
-  erro.
-- **Métricas semanais** (`weekly`): candidaturas da semana, respostas,
-  entrevistas e taxa de resposta (respostas/candidaturas da janela de 7
-  dias, calculadas dos `job_events` existentes; 0 candidaturas = 0%
-  gracioso). Comando manual — rode quando quiser o retrato da semana
-  (nada automático no digest; decisão documentada: o digest diário já
-  é denso e a janela semanal não muda dentro do dia).
-- **⏰ Follow-up no digest**: candidaturas com status `applied` há mais
-  de N dias (default 10, configurável) sem evento posterior (resposta,
-  entrevista, nota, contato...) aparecem na seção "⏰ Follow-up" do
-  digest diário, cap 5 linhas + contagem. Sem pendentes = seção
-  ausente. No compact do Telegram colapsa ao header com contagem
-  (padrão F13), antes do Top 5.
-
-Rotina diária pós-candidatura (fluxo F8+F14):
-
-```bash
-# 1. aplicou hoje (ou --date YYYY-MM-DD para retroativo):
-.venv/bin/python scripts/personal_tracker.py applied "<job_id>" --date 2026-10-07
-#    (equivalente: mark "<job_id>" --status applied --date 2026-10-07)
-
-# 2. resposta chega -> registra E tira a vaga do follow-up:
-.venv/bin/python scripts/personal_tracker.py applied "<job_id>" --response 2026-10-15
-.venv/bin/python scripts/personal_tracker.py mark "<job_id>" --status interview   # ou rejected
-
-# 3. retrato da semana (candidaturas/respostas/taxa):
-.venv/bin/python scripts/personal_tracker.py weekly
-
-# 4. o digest cuida do resto: ⏰ Follow-up lembra as candidaturas
-#    paradas há >10 dias (nenhuma ação sua).
-```
-
-O badge aparece sozinho na página do dia seguinte (o render cruza os
-IDs do top com o `job_status`). Testes: `scripts/test_f14.py` (59ª
-suíte do CI).
-
-### Enrichment LLM (camada opcional — Fases 1–3, 24–26/09)
-
-Camada isolada que extrai dados estruturados da **página oficial da vaga**
-(GLM-5.3-Flash via API NVIDIA, evidência literal ≤200 chars por campo).
-A Fase 3 **integrou os dados aos produtos** — ranking HTML, Candidate Fit e
-Telegram Daily Digest — sempre como **contexto de apresentação**: nunca
-decide elegibilidade, nunca altera score, nunca reordena, nunca exclui
-vaga. No HTML, cada vaga analisada ganha um bloco recolhível `🔎 Análise
-da página oficial (LLM)` (salário, modalidade, local, idiomas, matrícula,
-os 8 conceitos de work authorization SEPARADOS, deadline do empregador,
-evidências citadas da página) e linhas extras no Candidate Fit (ex.:
-cidadania UE como alerta); o Telegram ganha a seção compacta
-`🔎 Enrichment` (até 5 vagas, 1 linha cada). Tudo funciona 100% sem
-enrichment (vagas sem análise simplesmente não mostram o bloco) e nenhum
-dado privado do tracker é exposto. Documento autoritativo:
-`docs/enrichment.md`.
-
-### Fase E — LLM Enrichment Spike (ISOLADA, sem integração)
-
-Spike controlada que mede quanto conhecimento novo um LLM extrai de
-texto JÁ COLETADO quando os detectores determinísticos não resolvem
-(WA-gap, teasers, condicionais). Pacote isolado `spike_e/` + CLI
-`scripts/spike_e_run.py` (`--plan`/`--run`/`--analyze`) + testes offline
-`scripts/test_spike_e.py`; artefatos FORA do repo (dados de vagas).
-NENHUMA integração: nada entra no ranking/eligibility/dedup, nenhum
-campo canônico muda — o resultado é evidência-candidata comparada ao
-determinístico (relations agree/llm_adds_information/conflict), com
-revisão manual. Documento autoritativo: `docs/spike_e.md`.
-
-## Runbook
-
-### Como adicionar empresas
-
-Toda empresa-alvo entra pela base do `ats-scrapers` (match exato — o CLI
-ignora com aviso qualquer nome que nao bata na base, para nao pegar empresa
-parecida errada). Passos:
-
-1. **Verifique o tenant exato, o ATS e o slug/URL** (baixa o manifest ~1–2 min):
-   ```bash
-   .venv/bin/python scripts/verify_companies.py "ZF,Bayer,BASF"
-   ```
-   Mostra, por empresa: tenant (`ats:slug`), o slug efetivo e se ha scraper
-   registrado para o ATS. **Cuidado com falso positivo**: o match por token
-   pode achar empresa parecida (ex.: `BMW` → `join_com:bmw-kuehnert`, que NAO
-   e a BMW AG) — confira o nome retornado antes de incluir.
-
-2. **Atencao a ATS que exigem a URL como slug**: `successfactors`, `workday`,
-   `taleo` e `icims` — o slug da base (`jobs`) nao e usavel sozinho; o
-   collector ja troca pelo `company.url` automaticamente (ex.: ZF →
-   `https://jobs.zf.com`, BASF → `https://basf.jobs`, Zalando →
-   `https://zalando.wd3.myworkdayjobs.com/zalandositewd`).
-
-3. **Teste o status real do tenant** (alguns existem na base mas estao
-   inativos/devolvem 0 vagas — ex.: Siemens/teamtailor → erro, Mercedes-Benz
-   → NONE (sem match exato na base)):
-   ```bash
-   .venv/bin/python scripts/verify_companies.py "ZF,Bayer" --fetch --timeout 60
-   ```
-   Reporta por tenant: `OK` com N vagas / `FAIL` (inativo) / `SKIP` (sem
-   scraper) / `NONE` (sem match). So inclua na lista final empresas com `OK`.
-   A tabela de verificacao em `docs/empresas_verificacao.md` e **historica** —
-   revalidar o estado real dos tenants com `scripts/verify_companies.py`.
-
-### Como rodar
-
-**Coleta** (grava o bruto em `data/jobs.json` e ja aplica a cascata, gravando
-as eligible em `data/eligible_jobs.json` + `.csv`; a lista de empresas vem do
-registry — ver "Registry de empresas"):
-```bash
-.venv/bin/internship-finder --registry --timeout 60
-# subconjunto, na ordem informada:
-.venv/bin/internship-finder --registry --companies "Bosch,SAP" --timeout 60
-```
-**Filtro** (re-aplica a cascata sobre o bruto ja coletado, sem rede):
-```bash
-.venv/bin/internship-finder --country de          # Alemanha (default)
-.venv/bin/internship-finder --country europe      # Europa inteira
-.venv/bin/internship-finder --no-area             # qualquer area, desde que estudante
-.venv/bin/internship-finder --no-rank             # sem ranking (ordem original)
-```
-Saida: contagens em cascata (`total → tipo estudante → area-alvo → pais`),
-linha de dedup, **TOP 20 ranqueado por perfil** com score + breakdown, e os
-arquivos gravados (`data/eligible_jobs.json`/`.csv` com campo `score`).
-> Validacao/saidas gravam em `data/` por default (local, gitignored); para nao
-> depender de `data/`, use `--output PATH`/`--filter-output PATH`/`--metrics PATH`.
-
-**Interface** (P3 #25 08/09 + Fase 3 18/09) — leitura amigavel das vagas
-ranqueadas, sem servidor:
-```bash
-.venv/bin/python scripts/interface.py                # HTML em /tmp/interface.html (top 25 por score)
-.venv/bin/python scripts/interface.py --top 50 --company sap --keyword student --output -
-.venv/bin/python scripts/interface.py --db data/jobs.db   # SQLite (sem score: ordena por last_seen)
-```
-Pagina HTML auto-contida (CSS/JS inline, zero dependencia nova). **Fase 3**:
-na publicacao (GitHub Pages) a pagina mostra **todas as vagas elegiveis** com
-resumo no topo (total/empresas/score max/Top 30/atualizacao), **filtros
-client-side** (texto sobre titulo+empresa+local; selects de empresa/local/tipo;
-score minimo; pais quando houver mais de um valor) e **ordenacao client-side**
-(score desc padrao; posicao/empresa/titulo/local/data) — JS vanilla embutido,
-sem backend; cada vaga tem o badge "Top 30" (posicoes 1-30), o bloco
-"por que este score" com os componentes reais do `score_breakdown` e link
-direto (titulo + botao "abrir"). Filtros `--company`/`--keyword`/`--country`
-seguem funcionando na geracao (mesmos 3 eixos); o ranking/score nunca e
-recomputado pela interface. Testes: `scripts/test_interface.py` (inclui a
-execucao do nucleo JS em node e um bloco real com `data/eligible_jobs.json`).
-
-## Modelo `Job` (canonico, pydantic)
-
-`id, source, title, company, location, country, remote, url, description,
-internship, posted_at, collected_at, application_deadline, external_id,
-employment_type, country_iso, raw`.
-
-- `source` e `ats:slug` do TENANT (origem tecnica; ex.:
-  `smartrecruiters:BoschGroup`). O mesmo tenant pode ser compartilhado por
-  varias empresas (ex.: `successfactors:jobs` cobre SAP/ZF/Kaufland/...;
-  `phenom:nan` cobre DHL/Allianz/Merck/...) — `source` NAO identifica a
-  empresa (P1.1).
-- `id` = `<company>|<source>:<external_id>` (ou `<company>|<source>:<hash da
-  URL>` sem `external_id`) — identidade escopada por empresa + tenant ATS:
-  duas empresas no MESMO tenant com o MESMO `external_id` produzem ids
-  diferentes, estaveis e deterministicos.
-- `application_deadline` (`datetime|None`) e preenchido pelo adapter **quando o
-  ATS expoe a data explicitamente**; permanece `None` caso contrario e **nunca**
-  e inferido de `posted_at` (regra do dono).
-- `country_iso` tem FONTE UNICA: o adapter usa `filters.infer_country_iso`
-  (ISO alpha-2 valido via `COUNTRY_CODES`; fallback `country_iso` -> `country`
-  -> tokens da location). Nenhuma heuristica de tail no adapter — Fase 3; como
-  fallback pos-`infer_country_iso`, o `geocoding.py` (opcional, flag OFF) pode
-  resolver cidade → pais.
-- `internship` e preenchido pelo adapter via heuristica (`filters.py`, termos
-  EN/PT/DE: intern, internship, working student, Werkstudent, Praktikum,
-  iXp...). Graduate/absolvent NAO entram (perfil e de estudante atual);
-  `PART_TIME` sozinho nao indica vaga de estudante; os programas de trainee
-  (Graduate Trainee, Management Trainee, Junior Managers Program/JMP) sao
-  EXCLUIDOS mesmo com `employment_type` "trainee" (regra do dono,
-  pos-auditoria — `filters.PROGRAM_EXCLUSION_PATTERNS`).
-- `raw` guarda os campos extras do ATS (sem duplicar a `description`). Os campos estruturados do `ats-scrapers` que chegam nele (`department`, `employment_type`, `is_remote`, `apply_url`, `requisition_id`, `global_id`, `commitment`) são expostos por `internship_finder.structured_fields` (Fase B) como evidência complementar — display (`apply_url` como botão "candidatar-se", `department` como "área") e métricas de conflito; NENHUM entra em score/elegibilidade/dedup (`docs/architecture.md`).
-
-### Saida (JSON/CSV) — contrato P3 #20/ACH-18
-
-`save_outputs` grava sempre um par no mesmo caminho de base (`--output
-data/jobs.json` -> `data/jobs.csv`): o **JSON e a fonte completa** (todos os
-campos do Job, incluindo `description`, `raw` e `score_breakdown`); o **CSV e
-a visao tabular** com as 16 colunas de `CSV_COLUMNS` (`id, title, company,
-location, country, country_iso, remote, url, source, external_id,
-employment_type, internship, posted_at, application_deadline, collected_at,
-score`) — `description`/`raw`/`score_breakdown` ficam de fora de proposito
-(texto grande/aninhado). Medido 05/09: jobs.csv com 38.038/38.038 linhas do
-jobs.json (0 ids divergentes); a coluna `remote` foi adicionada em 06/09
-(antes ausente em 100% das linhas). **Ambos** (JSON e CSV) sao escritos com
-substituicao atomica (temporario no mesmo diretorio + `os.replace`, ver
-`_write_atomic` em cli.py): falha na geracao preserva o arquivo final
-anterior intacto, sem temporarios residuais.
-
-## Estrutura
-
-```
-src/internship_finder/
-├── models/         # Job e Company (pydantic, canonicos)
-├── collectors/     # CompanyCollector (match exato), ats_scraper (fetch c/ timeout)
-├── adapters/       # AtsJobAdapter: normaliza schema de cada ATS para Job
-├── resolver/       # CompanyResolver (fachada sobre o matching exato)
-├── storage/        # sqlite_store: historico por vaga (first_seen/last_seen/active/archived)
-├── filters.py      # filtros de utilidade: is_student_role, area-alvo, pais, cascata
-├── countries.py    # pais/localizacao: ISO codes, nomes, infer_country_iso, spec (extraido de filters.py, P2 #12)
-├── dedup.py        # deduplicacao: chaves por confiabilidade (id/external_id, URL, c+title+loc)
-├── ranking.py      # ranking por perfil: score_job (score + breakdown) e rank_jobs
-├── metrics.py      # metricas de execucao em JSONL (por tenant + resumo do run)
-├── errors.py       # codigos de erro estruturados (CollectionError + classificador)
-├── health.py       # relatorio de health por tenant/ATS sobre o JSONL + alertas
-├── geocoding.py    # fallback de pais por cidade (cache-first; flag OFF por default)
-├── registry.py     # CompanyRegistry: fonte unica das 101 empresas de coleta (SEED, P2 #13)
-└── cli.py          # entry point `internship-finder` (filtro default + coleta)
-scripts/collect_jobs.py   # atalho p/ rodar sem instalar
-scripts/refresh_daily.py  # refresh diario + alertas Telegram (rotacao -> coleta -> health -> alerta)
-scripts/verify_companies.py  # runbook de empresas (match exato + fetch)
-scripts/coverage.py       # cobertura: funil + empresas/ATS/paises (offline)
-scripts/interface.py      # interface simples: top vagas ranqueadas + filtros (HTML stdlib; P3 #25)
-scripts/test_*.py         # suite standalone ([OK]/[FAIL]; exit 0 = TUDO OK) — test_refresh = refresh diario
-requirements-lock.txt      # snapshot do ambiente (pip freeze; fora do CI; deps = pyproject.toml)
-```
-
-> **Regra de isolamento (auditoria 23/09)**: testes/validacoes NUNCA escrevem
-> em `data/` de producao. Todo `cli.main` em modo coleta passa `--metrics`
-> explicito (tempdir) — o default `data/collection_metrics.jsonl` e RELATIVO
-> AO CWD e, rodado do repo root, contaminava o JSONL real com fixtures
-> ("Acme"). O teste `test_audit_fixes.py` guarda essa regra com sentinel
-> byte-identical (a suite roda de cwd com `data/` presente e o JSONL de
-> producao nao pode mudar) e grepa o repo por `cli.main` collect-mode sem
-> `--metrics`.
-
-## Status / Roadmap
-
-Os numeros e o plano de execucao sao mantidos no **`MASTER_PLAN.md`** (fonte de
-verdade do plano: ranking P0–P4 com status ✅/⏳) e no **`PROJECT_STATUS.md`**
-(estado medido atual). `docs/roadmap.md` ficou como historico do MVP. CI:
-GitHub Actions (`.github/workflows/ci.yml`) roda a suite standalone
-(`scripts/test_*.py`) em runner limpo — exit 0 = TUDO OK. Licença: MIT
-(`LICENSE`); políticas de segurança em `SECURITY.md`.
-
-## Notas
-
-- O schema de cada ATS e diferente (`url` vs `slug`, `title` vs `name`,
-  `location` vs `locations`/`city`...); **nada e assumido universal** — o adapter
-  resolve por cadeias de fallback e preserva campos extras em `raw`.
-- SuccessFactors/Workday/Taleo/iCIMS exigem a **URL completa de careers como
-  slug** (o slug da base, ex.: `jobs` p/ SAP/ZF, nao e usavel sozinho) — tratado
-  automaticamente (`URL_SLUG_ATS`).
-- Comportamento defensivo: timeout por scraper (subprocesso), erro registrado,
-  segue para as proximas empresas.
+[MIT](LICENSE) © 2026 Vinícius Rios
