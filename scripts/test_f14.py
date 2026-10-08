@@ -648,11 +648,13 @@ def test_privacy_and_regression() -> None:
     text = src.read_text(encoding="utf-8")
     check("publish_pages repassa --tracker-db ao minimal_page",
           '"--tracker-db", "data/personal/jobs_personal.db"' in text)
-    # ci.yml: test_f14 no array (59ª suíte)
+    # ci.yml: test_f14 no array (59ª suíte; F15: o array cresce — o check
+    # é de PRESENÇA, não de posição: fases futuras entram depois da F14).
     ci = (Path(__file__).resolve().parent.parent
           / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    import re as _re
     check("ci.yml contém test_f14 no array da suíte",
-          "test_f13 test_f14)" in ci or " test_f14)" in ci)
+          _re.search(r"tests=\([^)]*\btest_f14\b", ci) is not None)
     shutil.rmtree(base)
 
 

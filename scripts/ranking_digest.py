@@ -545,7 +545,8 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def format_top5(jobs: list[dict], *, max_len: int | None = None) -> str:
+def format_top5(jobs: list[dict], *, max_len: int | None = None,
+                quality_map: dict[str, dict] | None = None) -> str:
     """Top-5 do dia em 1 linha compacta por vaga (F6; função PURA).
 
     Formato por linha (spec §3.4): ``N. título — empresa — score —
@@ -558,12 +559,36 @@ def format_top5(jobs: list[dict], *, max_len: int | None = None) -> str:
     - ``max_len`` (default: limite do Telegram) -> truncagem SEGURA no
       limite de mensagem, cortando linhas inteiras (nunca no meio de uma
       linha) e avisando quantas ficaram de fora.
+
+    F15: ``quality_map`` = mapa normalizado de employer_quality (default
+    ``None`` = saída byte a byte a pré-F15). Empresa mapeada (com score
+    Kununu OU prêmio GPTW — entrada "unavailable" não conta) ganha um ⭐
+    DEPOIS do nome (2 chars; o corte de 24 do nome continua valendo
+    ANTES do marcador — linha inteira segue sendo a unidade do
+    format_top5, nunca link cortado). Empresa sem entrada = linha
+    idêntica a hoje (regressão zero).
     """
     if max_len is None:
         from refresh_daily import TELEGRAM_MAX_LEN  # lazy (evita ciclo de import)
         max_len = TELEGRAM_MAX_LEN
     if not jobs:
         return "🙂 Nenhuma vaga elegível hoje — ranking vazio."
+    # F15 — lookup exato por empresa (match _norm; silêncio gracioso).
+    # Mapeada = entrada COM score OU prêmio (spec §3: "quando mapeada";
+    # entrada "unavailable" não tem sinal para oferecer — sem ⭐).
+    starred: set[str] = set()
+    if quality_map:
+        try:
+            from internship_finder import employer_quality
+            from internship_finder.opportunity_intel import _norm
+            for job in jobs[:DIGEST_TOP5]:
+                entry = quality_map.get(
+                    _norm(str(job.get("company") or "")))
+                if (employer_quality._score_of(entry) is not None
+                        or employer_quality.has_gptw(entry)):
+                    starred.add(str(job.get("id") or ""))
+        except Exception:  # noqa: BLE001 — marcador é best-effort
+            starred = set()
     lines: list[str] = []
     for pos, job in enumerate(list(jobs)[:DIGEST_TOP5], 1):
         url = _apply_url_of(job) or "—"
@@ -571,9 +596,13 @@ def format_top5(jobs: list[dict], *, max_len: int | None = None) -> str:
         # o canal secundario LU/NL/FI/BE sem quebrar o formato da linha.
         iso = str(job.get("country_iso") or "").strip().lower()
         flag = _TOP5_FLAGS.get(iso, "")
+        # F15: ⭐ após o nome da empresa quando o mapa de qualidade a
+        # registra com score >= 4,0 OU prêmio GPTW (sinal INFORMATIVO —
+        # o ranking não muda). Sem mapa/sem entrada = sem marcador.
+        star = "⭐" if quality_map and str(job.get("id") or "") in starred else ""
         lines.append(
             f"{pos}. {flag}{_clip(job.get('title'), TOP5_TITLE_LIMIT)} — "
-            f"{_clip(job.get('company'), 24)} — "
+            f"{_clip(job.get('company'), 24)}{star} — "
             f"{_score_text(job.get('score'))} — "
             f"{url}"  # F12.5: URL inteira, NUNCA clipada (link quebrado = 404)
         )
@@ -1139,6 +1168,7 @@ def digest_sections(
     top: int = DIGEST_TOP,
     enrichment_path: str | Path | None = None,
     watchlist_path: str | Path | None = None,
+    employer_quality_path: str | Path | None = None,
 ) -> list[str] | None:
     """Secoes do digest do Telegram; ``None`` quando nao ha ranking atual.
 
@@ -1153,6 +1183,13 @@ def digest_sections(
     o de antes). A secao de radar reusa o MESMO diff de IDs da secao 🆕
     (``new_since_previous``): vaga nova em empresa da watchlist = evento,
     independente de score/posicao. Best-effort: falha nunca derruba o digest.
+
+    F15: ``employer_quality_path`` = ``config/employer_quality.json``
+    (default ``None`` = mapa desligado — Top 5 byte a byte o de antes).
+    Quando o mapa existe, o ⚡ Top 5 ganha ⭐ após o nome da empresa
+    mapeada com score Kununu >= 4,0 OU prêmio GPTW (2 chars; sinal
+    INFORMATIVO — o ranking não muda). Best-effort: mapa ausente/
+    corrompido -> sem marcador, nunca derruba o digest.
     """
     current = load_ranking(current_path)
     if not current:
@@ -1231,8 +1268,18 @@ def digest_sections(
     # F6 — Top 5 com apply_url (1 linha/vaga): logo após o "Top 5 atual"
     # (resumo visual). A lista vem do ranking em ordem oficial; a função é
     # pura e best-effort (nunca derruba o digest).
+    # F15 — mapa de qualidade do empregador (uma leitura; best-effort:
+    # ausente/corrompido -> None -> Top 5 sem marcador, byte a byte antes).
+    quality_map: dict[str, dict] | None = None
+    if employer_quality_path is not None:
+        try:
+            from internship_finder import employer_quality
+            quality_map = employer_quality.load_employer_quality(
+                employer_quality_path) or None
+        except Exception:  # noqa: BLE001 — marcador nunca derruba digest
+            quality_map = None
     try:
-        top5_text = format_top5(current)
+        top5_text = format_top5(current, quality_map=quality_map)
         if top5_text:
             lines.append("")
             lines.append(TOP5_SECTION_HEADER)
