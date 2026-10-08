@@ -1019,6 +1019,9 @@ def _run_dry_run(retention_days: int = DEFAULT_RETENTION_DAYS) -> int:
             # F13: watchlist do tempdir do dry-run (nao existe — radar off;
             # em producao o caminho e o do checkout real).
             watchlist_path=base / "config" / "company_watchlist.json",
+            # F15: mapa de qualidade do tempdir do dry-run (nao existe —
+            # Top 5 sem ⭐; em producao o caminho e o do checkout real).
+            employer_quality_path=base / "config" / "employer_quality.json",
         )
         print("digest montado:",
               "sim" if digest else "nao (sem ranking atual)", 
@@ -1372,6 +1375,10 @@ def main(argv: list[str] | None = None) -> int:
                 # (config/company_watchlist.json; ausente = radar off, o
                 # digest sai byte a byte igual ao de antes).
                 watchlist_path=root / "config" / "company_watchlist.json",
+                # F15 — mapa de qualidade do empregador: versionado no repo
+                # (config/employer_quality.json; ausente = Top 5 sem ⭐,
+                # o digest sai byte a byte igual ao de antes).
+                employer_quality_path=root / "config" / "employer_quality.json",
             )
         except Exception as exc:  # noqa: BLE001 — digest e best-effort
             log.warning("digest do ranking nao montado (run segue normal): %s", exc)

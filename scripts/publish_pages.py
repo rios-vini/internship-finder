@@ -224,6 +224,15 @@ def render_ranking_html(
     badge "já aplicou" nos cards. O banco é lido READ-ONLY e é
     gitignored — nada dele é publicado; best-effort: ausente/ilegível
     -> nenhum badge, a pagina nunca quebra.
+
+    F15: ``--employer-quality config/employer_quality.json`` (default
+    do minimal_page; explicito aqui para fixar o contrato) habilita o
+    badge ⭐/🏆 de qualidade do empregador nos cards + a seção estática
+    "⭐ Ponto ótimo" (cruzamento volume × qualidade × visa_friendly
+    derivado NO BUILD; a seção só entra se a página couber no cap de
+    150KB). O mapa é versionado no repo (config/) — nunca data/; o
+    pipeline NÃO consulta Kununu/GPTW (mapa é curadoria manual).
+    Best-effort: ausente/ilegível -> sem badge/seção, nunca quebra.
     """
     script = root / "scripts" / "minimal_page.py"
     if not script.exists():
@@ -237,6 +246,7 @@ def render_ranking_html(
         "--translation-cache", "data/translation_cache.json",
         "--watchlist", "config/company_watchlist.json",
         "--tracker-db", "data/personal/jobs_personal.db",
+        "--employer-quality", "config/employer_quality.json",
     ]
     if dead_link_ids:
         dead_tmp = output_path.parent / ".dead_ids.txt"

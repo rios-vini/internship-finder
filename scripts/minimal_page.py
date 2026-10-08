@@ -285,6 +285,36 @@ def personal_status_map(db_path: Path | str | None) -> dict:
     return {str(r[0]): str(r[1]) for r in rows}
 
 
+# ---------------------------------------------------------------------------
+# F15 — badge de qualidade do empregador (Kununu/GPTW) no card.
+# MESMO padrão do company_intel da F5 (match exato via mapa normalizado);
+# empresa sem entrada = sem badge, sem erro. O badge INFORMA (não reordena
+# nada): pesoss do ranking intocados por design. Coexiste com o badge ✅
+# da F14 (status pessoal) e com o 🛂 visa_friendly quando todos aplicam.
+# ---------------------------------------------------------------------------
+
+def employer_quality_badge(entry: dict | None) -> str:
+    """Span HTML do badge ⭐/🏆 de qualidade (F15 §2); '' quando não há.
+
+    ``entry`` = saída de ``employer_quality.quality_for``. Texto curto
+    (spec: "⭐ 4,2 · Kununu" / "🏆 GPTW 2026") — SEM title: o texto é
+    auto-explicativo e o orçamento de bytes do card é apertado (a
+    página é minimalista por design da F6; 89 badges reais custariam
+    +6,4 KB só em títulos). Best-effort: falha de import devolve ''
+    (a página nunca quebra).
+    """
+    if not entry:
+        return ""
+    try:
+        from internship_finder import employer_quality
+        text = employer_quality.badge_text(entry)
+    except Exception:  # noqa: BLE001 — view best-effort
+        return ""
+    if not text:
+        return ""
+    return f' <span class="eq">{_esc(text)}</span>'
+
+
 # F12 T1 — linha EN abaixo do título: deterministica e OFFLINE (dicionario
 # display DE->EN em ``display_translate.title_en``; sem rede, sem LLM). O
 # título DE NUNCA e substituido — a linha EN so entra quando a traducao
@@ -447,7 +477,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           de_level: str, age: str, dead: bool = False,
           is_new: bool = False, score_override=None,
           en_title_html: str = "", snippet_is_en: bool = False,
-          personal_status: str | None = None) -> str:
+          personal_status: str | None = None,
+          quality_entry: dict | None = None) -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -462,6 +493,10 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     F14: ``personal_status`` = status do tracker pessoal (None/'' =
     sem badge — vaga não marcada). O badge é APENAS o ícone curto
     (✅/📞/❌/…) com title fixo; nenhum dado privado no HTML.
+
+    F15: ``quality_entry`` = entrada do mapa de qualidade do empregador
+    (Kununu/GPTW; None = sem badge, silêncio gracioso). O badge ⭐/🏆
+    COEXISTE com o ✅ da F14 e o 🛂 da F5 — são sinais independentes.
     """
     vf = ' <span class="vf" title="Empresa com política de visto (visa_policy: explicit_support ou unclear)">🛂</span>' if visa else ""
     if de_level == "required":
@@ -471,6 +506,7 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     if is_new:
         vf += ' <span class="newb">🆕</span>'
     vf += personal_status_badge(personal_status)
+    vf += employer_quality_badge(quality_entry)
     title = _esc(job.get("title") or "(sem título)")
     inner = f'<a class="t" href="{_esc(job_href)}" target="_blank" rel="noopener">{title}</a>{vf}' if job_href else f'<span class="t">{title}</span>{vf}'
     meta_bits = [
@@ -536,6 +572,9 @@ a.t:hover{text-decoration:underline}
 .dead{font-size:.72rem;color:#d98282}
 .newb{font-size:.72rem}
 .pt{font-size:.72rem}
+.eq{font-size:.72rem;color:#e8d9a0}
+.spot{margin:2px 0 0;padding:0 0 0 18px;color:#c8d3dd;font-size:.8rem}
+.spot li{margin:2px 0}
 .age{font-size:.78rem;color:#9aa7b4}
 .m{color:#9aa7b4;font-size:.82rem;margin-top:2px}
 .m .sal{color:#e8cf8a;font-weight:600}
@@ -568,7 +607,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     rank_start: int = 1, score_key: str = "score",
                     with_snippet: bool = True,
                     translation_cache: dict | None = None,
-                    personal_statuses: dict | None = None) -> list[str]:
+                    personal_statuses: dict | None = None,
+                    quality_map: dict | None = None) -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -581,6 +621,10 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     snippet da descricao usar a traducao EN em cache quando existir —
     marcada como tradução ("EN · "). Best-effort: sem entrada, snippet
     DE como hoje. A linha EN do título é independente (offline).
+
+    F15: ``quality_map`` = mapa normalizado do employer_quality (None =
+    sem badge em nenhum card, comportamento pré-F15). Lookup exato por
+    empresa com cache por vaga (mesma mecânica do company_intel_map).
     """
     rows: list[str] = []
     new_ids = new_ids or set()
@@ -599,6 +643,15 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                 except Exception:  # noqa: BLE001 — view best-effort
                     entry = None
                 company_entry_cache[jid] = entry
+        # F15 — entrada de qualidade do empregador (match exato; silêncio
+        # gracioso: mapa ausente/empresa não mapeada = None = sem badge).
+        q_entry = None
+        if quality_map is not None:
+            try:
+                from internship_finder import employer_quality
+                q_entry = employer_quality.quality_for(job, quality_map)
+            except Exception:  # noqa: BLE001 — view best-effort
+                q_entry = None
         visa = _visa_friendly(job, entry)
         try:
             from internship_finder import opportunity_intel
@@ -625,6 +678,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                             if score_key != "score" else None),
             en_title_html=_title_en_line(job),
             personal_status=personal_statuses.get(jid),
+            quality_entry=q_entry,
         ))
     return rows
 
@@ -643,6 +697,8 @@ def render_minimal_html(
     translation_cache: dict | None = None,
     watchlist_events: list[dict] | None = None,
     tracker_db: Path | str | None = None,
+    quality_map: dict | None = None,
+    sweet_spot_rows: list[dict] | None = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
 
@@ -676,6 +732,14 @@ def render_minimal_html(
     notas/contatos. Banco ausente/corrompido = nenhum badge, nenhum
     erro (best-effort; ``personal_status_map``).
 
+    F15: ``quality_map`` = mapa normalizado de employer_quality (None =
+    sem badge ⭐/🏆, página idêntica à pré-F15). ``sweet_spot_rows`` =
+    saída de ``employer_quality.sweet_spot_companies`` (cruzamento
+    volume × qualidade × visa_friendly derivado NO BUILD; None/[] =
+    seção "⭐ Ponto ótimo" ausente). O cap de 150KB permanece o limite
+    duro: se a seção não couber, o chamador pode omiti-la (pendência
+    documentada — nunca estourar o cap).
+
     Size-aware (contrato da docstring desde a F6, agora real): com
     ``with_snippets=True`` o render e' montado com snippets; o chamador
     ``render_size_aware`` remonta sem snippets (campo DECORATIVO) quando
@@ -698,6 +762,7 @@ def render_minimal_html(
         dead_ids=dead_ids, ref=ref, company_entry_cache=entry_cache,
         with_snippet=with_snippets, translation_cache=translation_cache,
         personal_statuses=p_statuses,
+        quality_map=quality_map,
     ))
     n_vf = sum(1 for j in shown if _visa_friendly(
         j, entry_cache.get(str(j.get("id") or ""))))
@@ -719,6 +784,7 @@ def render_minimal_html(
             score_key="score", with_snippet=with_snippets,
             translation_cache=translation_cache,
             personal_statuses=p_statuses,
+            quality_map=quality_map,
         ))
         new_section = (
             f'<h2>🆕 Novas desde ontem — {len(new_ids)} nova(s){extra}</h2>'
@@ -742,12 +808,49 @@ def render_minimal_html(
             score_key="score", with_snippet=with_snippets,
             translation_cache=translation_cache,
             personal_statuses=p_statuses,
+            quality_map=quality_map,
         ))
         watch_section = (
             f'<h2>🎯 Empresas-alvo — {len(wl_cards_jobs)} nova(s) nas '
             f'empresas que você acompanha</h2>'
             f'{wl_cards}'
         )
+
+    # Seção ⭐ Ponto ótimo (F15 §4) — cruzamento volume × qualidade ×
+    # visa_friendly derivado NO BUILD (zero HTTP; dados locais + mapas
+    # curados versionados). Estática: 1 linha por empresa, sem cards —
+    # lista as "empresas grandes com boa qualidade de trabalho" (a
+    # pergunta do dono que o ranking não responde). Formatação direta
+    # dos rows (pura; mesma forma do sweet_spot_lines do módulo).
+    sweet_section = ""
+    if sweet_spot_rows:
+        lines = []
+        for r in sweet_spot_rows:
+            if r.get("gptw_award") and r.get("kununu_score") is None:
+                quality = f"🏆 GPTW {int(r['gptw_award'])}"
+            elif r.get("gptw_award"):
+                quality = (f"⭐ {r['kununu_score']:.1f}".replace(".", ",")
+                           + f" · 🏆 GPTW {int(r['gptw_award'])}")
+            elif r.get("kununu_score") is not None:
+                quality = f"⭐ {r['kununu_score']:.1f}".replace(".", ",") + " · Kununu"
+            else:
+                continue
+            n = r["eligible"]
+            lines.append(
+                f"{r['company']} · {quality} · "
+                f"{n} vaga{'s' if n != 1 else ''} eligible")
+        if lines:
+            sweet_section = (
+                '<h2>⭐ Ponto ótimo — empresas grandes com boa qualidade '
+                'de trabalho e 🛂</h2>'
+                '<p class="p2">Cruzamento (derivado no build, sem consulta '
+                'externa): volume de vagas elegíveis × qualidade do '
+                'empregador (Kununu ≥ 4,0 ou prêmio Great Place to Work) '
+                '× política de visto. Mapa curado em '
+                'config/employer_quality.json.</p>'
+                + '<ul class="spot">' + "".join(
+                    f"<li>{_esc(l)}</li>" for l in lines) + "</ul>"
+            )
 
     # Seção Materials — perfil alternativo, ranking proprio (digest ja
     # usa o MESMO rank_materials_jobs); top 10 por materials_score.
@@ -811,6 +914,7 @@ def render_minimal_html(
 {new_section}
 {watch_section}
 {materials_section}
+{sweet_section}
 <p class="f">{_esc(footer_note)}</p>
 {glossary}
 </main>
@@ -833,6 +937,8 @@ def render_size_aware(
     translation_cache: dict | None = None,
     watchlist_events: list[dict] | None = None,
     tracker_db: Path | str | None = None,
+    quality_map: dict | None = None,
+    sweet_spot_rows: list[dict] | None = None,
 ) -> str:
     """``render_minimal_html`` com degradacao progressiva de tamanho (F11).
 
@@ -851,6 +957,11 @@ def render_size_aware(
 
     F14: ``tracker_db`` repassado as duas montagens (o badge "já
     aplicou" tambem sobrevive — nao e campo decorativo).
+
+    F15: ``quality_map``/``sweet_spot_rows`` repassados as duas montagens
+    (o badge ⭐/🏆 e a seção Ponto ótimo NÃO são decorativos). Cap duro
+    de ``PAGE_HARD_CAP_BYTES`` permanece inalterado: o TESTE continua
+    validando o cap, e a seção ponto ótimo só entra se couber.
     """
     html = render_minimal_html(
         jobs, total_eligible=total_eligible, generated_at=generated_at,
@@ -860,6 +971,7 @@ def render_size_aware(
         translation_cache=translation_cache,
         watchlist_events=watchlist_events,
         tracker_db=tracker_db,
+        quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
     )
     if len(html.encode("utf-8")) > PAGE_TARGET_BYTES:
         html = render_minimal_html(
@@ -870,6 +982,7 @@ def render_size_aware(
             translation_cache=translation_cache,
             watchlist_events=watchlist_events,
             tracker_db=tracker_db,
+            quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
         )
     return html
 
@@ -903,6 +1016,7 @@ def render_minimal_html_from_file(
     translation_cache_path: Path | str | None = None,
     watchlist_path: Path | str | None = None,
     tracker_db: Path | str | None = None,
+    employer_quality_path: Path | str | None = None,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
 
@@ -924,12 +1038,39 @@ def render_minimal_html_from_file(
     F14: ``tracker_db`` = banco pessoal (default None = sem badge);
     lido READ-ONLY por ``personal_status_map`` — ausente/corrompido =
     nenhum badge, nunca erro. NUNCA criado pelo render.
+
+    F15: ``employer_quality_path`` = ``config/employer_quality.json``
+    (default None = sem badge ⭐/🏆 e sem seção Ponto ótimo — página
+    byte a byte a pré-F15). O mapa e lido UMA vez; o cruzamento "ponto
+    ótimo" (volume × qualidade × visa_friendly) e derivado AQUI, no
+    build, com ZERO HTTP (dados locais + mapas curados versionados).
+    Best-effort: mapa ausente/corrompido -> sem badge/secao, nunca erro.
+    A seção só é montada se couber no cap duro de ``PAGE_HARD_CAP_BYTES``
+    (medida ANTES de devolver; se não couber, é omitida e o tamanho medido
+    segue no log do chamador — nunca estoura o cap).
     """
     with path.open(encoding="utf-8") as fh:
         jobs = json.load(fh)
     if not isinstance(jobs, list):
         raise ValueError(f"formato inesperado em {path}: esperado lista de vagas")
     generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+
+    # F15 — mapa de qualidade do empregador + cruzamento ponto ótimo
+    # (derivado NO BUILD; zero HTTP — só o dataset local e os arquivos
+    # curados versionados). Best-effort total: falha = sem F15.
+    quality_map: dict | None = None
+    sweet_spot_rows: list[dict] | None = None
+    if employer_quality_path is not None:
+        try:
+            from internship_finder import employer_quality
+            quality_map = employer_quality.load_employer_quality(
+                employer_quality_path)
+            if quality_map:
+                sweet_spot_rows = employer_quality.sweet_spot_companies(
+                    jobs, quality_map, company_intel_map)
+        except Exception:  # noqa: BLE001 — F15 é best-effort, nunca erro
+            quality_map = None
+            sweet_spot_rows = None
 
     translation_cache: dict = {}
     if translation_cache_path:
@@ -970,14 +1111,37 @@ def render_minimal_html_from_file(
         except Exception:  # noqa: BLE001 — secao opcional nunca derruba
             materials = None
 
-    return render_size_aware(
+    html = render_size_aware(
         jobs, total_eligible=len(jobs), generated_at=generated,
         top=top, company_intel_map=company_intel_map,
         new_since_ids=new_ids, dead_link_ids=dead_link_ids,
         materials=materials, translation_cache=translation_cache,
         watchlist_events=watchlist_events,
         tracker_db=tracker_db,
+        quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
     )
+    # F15 §4 — a seção Ponto ótimo só permanece se a página COM ela
+    # couber no cap duro (150KB); a MEDIÇÃO é no render FINAL (com todas
+    # as seções do dia — 🆕/🎯/🧪 — contextos reais). Estourou: remonta
+    # uma vez sem a seção (o badge ⭐ nos cards PERMANECE) e reporta a
+    # pendência com o tamanho medido. Nunca estoura o cap por causa
+    # da seção.
+    if sweet_spot_rows and len(html.encode("utf-8")) > PAGE_HARD_CAP_BYTES:
+        size_with = len(html.encode("utf-8"))
+        html = render_size_aware(
+            jobs, total_eligible=len(jobs), generated_at=generated,
+            top=top, company_intel_map=company_intel_map,
+            new_since_ids=new_ids, dead_link_ids=dead_link_ids,
+            materials=materials, translation_cache=translation_cache,
+            watchlist_events=watchlist_events,
+            tracker_db=tracker_db,
+            quality_map=quality_map, sweet_spot_rows=None,
+        )
+        print(f"pages: seção ⭐ Ponto ótimo OMITIDA — página com ela "
+              f"({size_with} bytes) estoura o cap de {PAGE_HARD_CAP_BYTES} "
+              f"bytes; publicada sem a seção "
+              f"({len(html.encode('utf-8'))} bytes)")
+    return html
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1037,6 +1201,12 @@ def main(argv: list[str] | None = None) -> int:
                              "modo read-only p/ o badge 'já aplicou'; "
                              "default data/personal/jobs_personal.db do "
                              "repo; '' desliga o badge)")
+    parser.add_argument("--employer-quality", default="config/employer_quality.json",
+                        metavar="PATH",
+                        help="mapa curado de qualidade do empregador "
+                             "(F15; default config/employer_quality.json "
+                             "do repo; '' desliga badge ⭐/🏆 e a seção "
+                             "Ponto ótimo)")
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -1067,12 +1237,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     watchlist_path = Path(args.watchlist) if args.watchlist else None
     tracker_db = Path(args.tracker_db) if args.tracker_db else None
+    employer_quality_path = (
+        Path(args.employer_quality) if args.employer_quality else None
+    )
     page = render_minimal_html_from_file(
         Path(args.input), top=args.top, company_intel_map=company_intel_map,
         archive_root=archive_root, dead_link_ids=dead_ids,
         translation_cache_path=translation_cache_path,
         watchlist_path=watchlist_path,
         tracker_db=tracker_db,
+        employer_quality_path=employer_quality_path,
     )
     if args.output == "-":
         sys.stdout.write(page)
