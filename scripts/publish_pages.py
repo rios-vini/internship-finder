@@ -187,6 +187,7 @@ def ensure_deploy_clone(
 def render_ranking_html(
     root: Path, output_path: Path, *, top: int = PUBLIC_TOP, timeout: float = 300.0,
     dead_link_ids: set[str] | None = None,
+    inapplicable_ids: set[str] | None = None,
 ) -> str:
     """Gera o HTML do ranking publico (F6: pagina MÍNIMA mobile-first).
 
@@ -254,6 +255,14 @@ def render_ranking_html(
         dead_tmp.write_text("\n".join(sorted(dead_link_ids)) + "\n",
                             encoding="utf-8")
         cmd += ["--dead-list", str(dead_tmp)]
+    if inapplicable_ids:
+        # F20 — ids demovidos pela re-avaliacao pós-hidratacao: mesmo
+        # mecanismo do dead-list (arquivo temporario, um id por linha).
+        ia_tmp = output_path.parent / ".inapplicable_ids.txt"
+        ia_tmp.parent.mkdir(parents=True, exist_ok=True)
+        ia_tmp.write_text("\n".join(sorted(inapplicable_ids)) + "\n",
+                          encoding="utf-8")
+        cmd += ["--inapplicable-list", str(ia_tmp)]
     env = {**os.environ, "PYTHONPATH": str(root / "src")}
     try:
         proc = subprocess.run(
@@ -264,6 +273,8 @@ def render_ranking_html(
     finally:
         if dead_link_ids:
             (output_path.parent / ".dead_ids.txt").unlink(missing_ok=True)
+        if inapplicable_ids:
+            (output_path.parent / ".inapplicable_ids.txt").unlink(missing_ok=True)
     if proc.returncode != 0:
         raise RuntimeError(
             f"minimal_page.py falhou (exit {proc.returncode}): "
@@ -329,6 +340,7 @@ def publish_ranking(
     top: int = PUBLIC_TOP,
     log=None,
     dead_link_ids: set[str] | None = None,
+    inapplicable_ids: set[str] | None = None,
 ) -> bool:
     """Publica o ranking do run em GitHub Pages.
 
@@ -342,6 +354,11 @@ def publish_ranking(
     F11: ``dead_link_ids`` (ids 404/410 do estagio de vitalidade) sao
     repassados ao render — as mortas ganham badge e descem do topo
     exibido. Default ``None`` = comportamento F6 (sem marcas).
+
+    F20: ``inapplicable_ids`` (ids demovidos pela re-avaliacao pós-
+    hidratacao) repassados ao render — descem do topo com badge PROPRIO
+    "🚫 inaplicável" (NUNCA o "🔗 morta"; a URL esta viva). Default
+    ``None`` = sem marcas.
     """
     if not publication_allowed(exit_code, eligible):
         _log(log, "pages: publicacao pulada (exit=%d eligible=%d — dataset "
@@ -351,7 +368,8 @@ def publish_ranking(
     ensure_deploy_clone(deploy_dir, origin_url, root=root, log=log)
     with tempfile.TemporaryDirectory(prefix="if_pages_") as td:
         html = render_ranking_html(
-            root, Path(td) / INDEX_NAME, top=top, dead_link_ids=dead_link_ids)
+            root, Path(td) / INDEX_NAME, top=top, dead_link_ids=dead_link_ids,
+            inapplicable_ids=inapplicable_ids)
         return publish_html(html, deploy_dir, run_id=run_id, log=log)
 
 

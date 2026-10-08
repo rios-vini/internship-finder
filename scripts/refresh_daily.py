@@ -104,6 +104,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -119,7 +120,7 @@ from internship_finder.storage.sqlite_backup import (  # backup do jobs.db (P3)
 import minimal_page  # F6: render da pagina publica (cap 2/empresa F11)
 import publish_pages  # publicacao do ranking em GitHub Pages (Fase 1)
 import ranking_digest  # digest do ranking no Telegram (Fase 2)
-import url_liveness  # F11: vitalidade de URL do top exibido (404/410)
+import url_liveness  # F11: vitalidade de URL do top exibido (404/410); F20: soft-dead + hidratacao
 
 log = logging.getLogger("refresh_daily")
 
@@ -185,6 +186,20 @@ DEFAULT_ENRICHMENT_MAX_SECS = 1800
 # flock preso ate 14:54, 0/21 extracoes) com retorno zero. Padrao do
 # projeto: mesma mecanica da flag INTERNSHIP_FINDER_GEOCODING (geocoding.py).
 ENRICHMENT_ENV_FLAG = "INTERNSHIP_FINDER_ENRICHMENT"
+
+# ---------------------------------------------------------------------------
+# F20 — higiene do topo: liveness v2 (soft-dead) + hidratacao de descricao.
+# O MESMO passe GET sequencial serve aos dois (mesmas URLs). Bounded ao
+# top exibido, timeout curto e delay sequencial herdados do url_liveness.
+# ---------------------------------------------------------------------------
+# Hidratacao: descricao curta = < HYDRATION_SHORT_LIMIT chars (spec: ex. 500).
+HYDRATION_SHORT_LIMIT = 500
+# Provenance honesta da descricao hidratada (spec F20 item 3).
+HYDRATION_SOURCE = "hydrated_topn"
+
+# Marcador de inaplicabilidade revelada pela hidratacao (spec F20 item 3:
+# a vaga NAO sai do JSON — so desce do top exibido, como o dead_link).
+HYDRATION_INAPPLICABLE_FLAG = "hydration_inapplicable"
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
@@ -1056,6 +1071,31 @@ def _archive_run_info(archive_dir: Path, summary: dict, alert_count: int,
         log.warning("run_info.json nao gravado: %s", exc)
 
 
+def _reassess_hydrated_applicability(job: dict) -> str | None:
+    """F20 item 3 — re-avalia a aplicabilidade da vaga com a descricao
+    hidratada, REUSANDO as funcoes puras da F18 (german_level /
+    requires_master). Devolve o motivo de inaplicabilidade
+    ("german_required"/"master_required") ou None (aplicavel).
+
+    So olha titulo + descricao HIDRATADA (o texto que a hidratacao
+    revelou — o ponto do estagio). Falha de import = None (nunca derruba;
+    a vaga fica como estava).
+    """
+    try:
+        from internship_finder.app_intel import german_level
+        from internship_finder.filters import requires_master
+        title = str(job.get("title") or "")
+        description = str(job.get("description") or "")
+        gl = german_level(f"{title} {description}")
+        if gl is not None and gl.level == "required":
+            return "german_required"
+        if requires_master(title, description):
+            return "master_required"
+    except Exception:  # noqa: BLE001 — re-avaliacao nunca derruba o estagio
+        return None
+    return None
+
+
 def _sync_personal_ranking(root: Path, data_dir: Path) -> None:
     """Fase 8 — sync-ranking diario do banco pessoal (best-effort).
 
@@ -1308,15 +1348,23 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("disco: filesystem de %s com %d%% de uso (>= %d%%)",
                     data_dir, disk_pct, DISK_WARN_PCT)
 
-    # F11 — vitalidade de URL do top exibido (ANTES de publicar; best-effort
-    # TOTAL: qualquer falha vira log e o publish segue SEM mortas marcadas —
-    # o pipeline NUNCA derruba por causa do check). So 404/410 = morta
-    # (desce do top exibido; a proxima sobe); 403/429/timeout = bloqueio de
-    # bot/rede, ignora. Falha total de rede: nenhuma marca (sem evidencia).
-    # Roda apenas quando ha publicacao (o check existe para servir a pagina
-    # publicada; sem --pages-dir nao ha o que proteger) e o corte e o MESMO
-    # da pagina: company-cap 2/empresa sobre o topo.
+    # F11/F20 — vitalidade de URL do top exibido (ANTES de publicar;
+    # best-effort TOTAL: qualquer falha vira log e o publish segue SEM
+    # mortas marcadas — o pipeline NUNCA derruba por causa do check).
+    # F11: 404/410 = morta (desce do top exibido; a proxima sobe).
+    # F20: soft-dead (marcador de corpo / redirect-para-homepage / shell
+    # SPA) tem a MESMA semantica; o MESMO passe GET hidrata a descricao
+    # das vagas vivas com texto curto (< HYDRATION_SHORT_LIMIT) e a
+    # re-avaliacao F18 (german_level/requires_master) sobre a descricao
+    # hidratada pode demover a vaga do top exibido (marcador honesto
+    # hydration_inapplicable — fica no JSON). A hidratacao NUNCA
+    # re-adiciona vaga removida pela F18 — so demove o que ela revelou.
+    # 403/429/timeout = bloqueio de bot/rede, ignora. Falha total de rede:
+    # nenhuma marca. Roda apenas quando ha publicacao (o check existe
+    # para servir a pagina publicada) e o corte e o MESMO da pagina.
     dead_ids: set[str] = set()
+    inapplicable_ids: set[str] = set()
+    hydration_stats: dict = {}
     pages_dir = Path(args.pages_dir).expanduser() if args.pages_dir else None
     if pages_dir is not None:
         try:
@@ -1325,11 +1373,70 @@ def main(argv: list[str] | None = None) -> int:
             ) if (data_dir / "eligible_jobs.json").exists() else []
             top_shown = minimal_page.apply_company_cap(ranking)
             if top_shown:
-                dead_ids = url_liveness.check_liveness(top_shown, log=log)
-                if dead_ids:
-                    log.info("liveness: %d vaga(s) do top com URL morta "
-                             "(404/410) — descem do topo exibido",
-                             len(dead_ids))
+                t0 = time.monotonic()
+                result = url_liveness.check_liveness(
+                    top_shown, log=log, return_details=True,
+                    short_description_limit=HYDRATION_SHORT_LIMIT,
+                )
+                # Compat graciosa de API: retorno set (mock/terceiro) =
+                # apenas ids mortos, sem hidratacao — o estagio NUNCA
+                # derruba por causa de um formato inesperado.
+                if isinstance(result, set):
+                    dead_ids, hydrated_bodies, hydration_stats = result, {}, {}
+                else:
+                    dead_ids, hydrated_bodies, hydration_stats = result
+                # Hidratacao: aplica a descricao completa nas vagas vivas
+                # (provenance honesta; descricao original NUNCA piora) e
+                # re-avalia aplicabilidade com as regras da F18.
+                inapplicable_ids: set[str] = set()
+                hydrated_jobs = 0
+                for job in top_shown:
+                    jid = str(job.get("id") or "")
+                    new_desc = hydrated_bodies.get(jid)
+                    if new_desc:
+                        job["description"] = new_desc
+                        job["description_source"] = HYDRATION_SOURCE
+                        job["description_hydrated_at"] = utcnow_iso()
+                        hydrated_jobs += 1
+                        reason = _reassess_hydrated_applicability(job)
+                        if reason:
+                            job[HYDRATION_INAPPLICABLE_FLAG] = reason
+                            inapplicable_ids.add(jid)
+                            log.info(
+                                "hidratacao: %s revelou %s — desce do "
+                                "top exibido (fica no JSON)", jid, reason)
+                if hydrated_jobs:
+                    # Persiste a hidratacao no eligible_jobs.json (o
+                    # publish renderiza por subprocesso que LE o arquivo).
+                    # Escrita atomica reusando a funcao do CLI; a rotacao
+                    # deste run ja preservou o snapshot anterior no
+                    # archive. O CSV nao muda (description fora do contrato
+                    # ACH-18 por design). Best-effort: falha de escrita
+                    # NUNCA derruba o run (a pagina publica simplesmente
+                    # fica com as descricoes originais).
+                    try:
+                        from internship_finder.cli import _write_json_atomic
+                        _write_json_atomic(ranking, data_dir / "eligible_jobs.json")
+                        log.info("hidratacao: %d descricao(oes) persistida(s) "
+                                 "em %s", hydrated_jobs,
+                                 data_dir / "eligible_jobs.json")
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("hidratacao nao persistida (pagina segue "
+                                    "com descricoes originais): %s: %s",
+                                    type(exc).__name__, exc)
+                # Demotion exibida: mortas + inaplicaveis-apos-hidratacao
+                # saem do top (mesma mecanica do dead_link). O publish
+                # recebe os DOIS conjuntos — badge "🔗 morta" SO para as
+                # mortas (URL realmente morta); as inaplicaveis ganham
+                # badge proprio "🚫 inaplicável" no render (URL viva,
+                # aplicabilidade revelada pela descricao completa).
+                excluded_ids = dead_ids | inapplicable_ids
+                if excluded_ids:
+                    log.info("liveness: %d vaga(s) do top marcadas "
+                             "(mortas+inaplicaveis) — descem do topo "
+                             "exibido", len(excluded_ids))
+                log.info("estagio F20 (vitalidade+hidratacao): %.1fs, "
+                         "stats=%s", time.monotonic() - t0, hydration_stats)
         except Exception as exc:  # noqa: BLE001 — vitalidade nunca derruba o run
             log.warning("estagio de vitalidade falhou (publish segue sem "
                         "marcas): %s: %s", type(exc).__name__, exc)
@@ -1345,6 +1452,8 @@ def main(argv: list[str] | None = None) -> int:
                 eligible=summary.get("eligible") or 0,
                 run_id=summary.get("run_id") or utcnow_iso(),
                 dead_link_ids=dead_ids,
+                **({"inapplicable_ids": inapplicable_ids}
+                   if inapplicable_ids else {}),
             )
             if changed:
                 log.info("ranking publicado em GitHub Pages (branch gh-pages)")
