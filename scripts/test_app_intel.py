@@ -67,7 +67,12 @@ def test_german_level() -> None:
         ("Praktikum in Deutschland (m/w/d)", "none"),
         ("Gute Kommunikationsfähigkeiten in deutscher und englischer Sprache",
          "required"),
-        ("Languages: German and English", "preferred"),
+        # F18 (regra pair→required): par de idiomas SEM soft grudado é
+        # requisito de comunicação nas duas línguas ("Du sprichst Deutsch
+        # und Englisch", "auf Deutsch und Englisch" — FNs Vodafone/
+        # Deloitte). Par COM soft grudado continua preferred (Airbus
+        # "German desirable").
+        ("Languages: German and English", "required"),
         ("verhandlungssichere Deutschkenntnisse (ab Level C1)", "required"),
         ("Keine Deutschkenntnisse erforderlich", "plus"),
         ("Deutschkenntnisse sind erforderlich, Englischkenntnisse von Vorteil",

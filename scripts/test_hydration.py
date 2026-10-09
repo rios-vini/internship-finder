@@ -57,7 +57,9 @@ def make_job(**overrides) -> dict:
     base = {
         "id": "TestCo|smartrecruiters:TestCo:1",
         "source": "smartrecruiters:TestCo",
-        "title": "Werkstudent Supply Chain",
+        # F18: título HÍBRIDO (Werkstudent + Praktikum) — o puro sairia no
+        # hard exclude de aplicabilidade; este bloco testa a HIDRATAÇÃO.
+        "title": "Werkstudent / Praktikum Supply Chain",
         "company": "TestCo",
         "url": "https://jobs.smartrecruiters.com/TestCo/1",
         "description": None,

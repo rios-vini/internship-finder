@@ -231,6 +231,40 @@ def has_german_mention(text: str | None) -> bool:
     return any(rx.search(text) for rx in _GERMAN_TOKEN_RE)
 
 
+# F18 — qualificador de intensidade GRUDADO na mesma menção (janela tight
+# ±25, SEM atravessar vírgula/ponto-e-vírgula — "Business fluent in
+# English, German desirable" tem o "fluent" do INGLÊS e o "desirable" do
+# alemão; a barreira de pontuação impede o cruzamento). "Sehr gute
+# Deutsch-", "fließend in Deutsch", "very good German" ligam a exigência
+# ao token: um soft solto EM OUTRA cláusula da janela ±45 ("von Vorteil"
+# sobre a Power Platform a 12 chars, caso MTU) NÃO pode rebaixar.
+_GLUE_SAFE_MID = r"[\w\s&()-]{0,20}"
+_GLUED_INTENSITY_RE = re.compile(
+    r"\b((sehr\s+)?(gute[rsn]?|guten|exzellente[rsn]?|"
+    r"ausgezeichnete[rsn]?|fundierte[rsn]?|umfassende[rsn]?|"
+    r"sicher(e|er|es|en)?|solide[rsn]?|excellent|very good|good|"
+    r"advanced|strong|fluent|flie(ss|ß)end|verhandlungssicher\w*))\s+"
+    + _GLUE_SAFE_MID +
+    r"\b(deutsch\w*|german)\b",
+    re.IGNORECASE,
+)
+
+# F18 — soft GRUDADO DEPOIS da menção (±25, sem cruzar vírgula/parêntese):
+# "German being a big plus", "German is a plus", "Deutschkenntnisse sind
+# ein Plus". Soft que se ANEXA à própria menção qualifica a língua em si —
+# vence a intensidade vizinha (Flink3 "Fluent English with German being
+# a big plus" é preferido, não exigido). O soft ANTES da menção
+# ("von Vorteil. Sehr gute Deutsch...") não se anexa: cláusula anterior.
+_SOFT_AFTER_RE = re.compile(
+    r"\b(deutsch\w*|german)\b[\w\s&-]{0,25}\b"
+    r"(plus|preferred|desirable|an asset|a plus|von vorteil|"
+    r"wünschenswert|wunschenswert|bevorzugt|idealerweise|"
+    r"nice to have|good to have|gerne gesehen|ein plus|advantage|"
+    r"beneficial)\b",
+    re.IGNORECASE,
+)
+
+
 def german_level(text: str | None) -> GermanLevel | None:
     """Nivel de exigencia de alemao no titulo+descricao; None = sem mencao.
 
@@ -239,6 +273,27 @@ def german_level(text: str | None) -> GermanLevel | None:
     de mencao, a janela +-45 chars e avaliada; o primeiro qualificador que
     casar define a classe daquela mencao; o SINAL MAIS FORTE de todas as
     mencoes vence (required > preferred > plus).
+
+    F18 — precedencia CORRIGIDA dos falsos negativos medidos 07/10
+    (MTU x2, Vodafone, TRUMPF, Deloitte x2 — todos "required" real
+    classificados "preferred"):
+
+    1. Intensidade GRUDADA na menção (janela tight ±25, sem cruzar
+       vírgula) => required (``qual``). Vence qualquer soft solto na
+       janela larga: o short-circuit antigo do tight-soft rebaixava
+       "Sehr gute Deutsch- und Englischkenntnisse" porque um "von
+       Vorteil" vizinho (de OUTRO requisito) caia na janela ±25.
+    2. Soft GRUDADO na menção (tight ±25) => preferred (``soft``) —
+       inalterado (Airbus "German desirable" continua preferred).
+    3. Par de idiomas SEM soft grudado (tight ±25) => required
+       (``pair``): "Du sprichst Deutsch und Englisch fließend" e
+       "auf Deutsch und Englisch" são exigências de comunicação nas
+       duas línguas. Par COM soft grudado => preferred (regra 2).
+       Mudança DELIBERADA da regra F18: par sem marcador é requisito
+       (caso "Languages: German and English" — lista informativa —
+       sobe para required; falso positivo aceito em troca de matar
+       os FNs de par real do dataset).
+    4. Verbo de exigência requerido ordem inversa / direta: inalterado.
     """
     if not text:
         return None
@@ -258,41 +313,61 @@ def german_level(text: str | None) -> GermanLevel | None:
     )
     for m in tokens:
         win = text[max(0, m.start() - 45): min(len(text), m.end() + 45)]
+        tight_win = text[max(0, m.start() - 25): min(len(text), m.end() + 25)]
         local, reason = "plus", "bare"
-        # Palavra branda GRUDADA a mencao (+-25 chars) qualifica a lingua em
-        # si ("German is a plus. English required" -> preferido: a exigencia
-        # forte e do ingles, nao do alemao).
-        tight = _TIGHT_SOFT_RE.search(
-            text[max(0, m.start() - 25): min(len(text), m.end() + 25)]
-        )
-        if tight:
+        # F18 ordem de precedência por menção:
+        #   (a) soft grudado DEPOIS do token => a própria menção é
+        #       "preferida" (Flink3 "German being a big plus");
+        #   (b) negação na janela => plus (loop de qualificadores);
+        #   (c) intensidade grudada (sem cruzar vírgula) => required;
+        #   (d) soft grudado antes (tight ±25) => preferred;
+        #   (e) qualificadores da janela ±45 (verbos, par, etc.).
+        # O (a) vem primeiro: soft anexado à menção vence intensidade
+        # vizinha — mas só o soft DEPOIS; soft de cláusula ANTERIOR não
+        # se anexa (caso MTU: "von Vorteil" é de outro requisito).
+        if _SOFT_AFTER_RE.search(tight_win):
             local, reason = "preferred", "soft"
+        elif _GLUED_INTENSITY_RE.search(tight_win):
+            # F18: intensidade grudada na menção (sem cruzar vírgula) => a
+            # menção é um requisito; soft solto na janela larga não rebaixa.
+            local, reason = "required", "qual"
         else:
-            soft_in_win = any(
-                rx.search(win) for rx, kind in _GERMAN_QUALS_RE if kind == "soft"
-            )
-            for qrx, kind in _GERMAN_QUALS_RE:
-                if not qrx.search(win):
-                    continue
-                if kind == "negated":
-                    local, reason = "plus", "negated"
-                    break
-                if kind == "verb_rev" and soft_in_win:
-                    continue  # a exigencia provavelmente e do ingles
-                if kind == "verb_rev":
-                    # "fließend in Deutsch"/"fluency in German" — verbo de
-                    # exigencia na ordem inversa, SEM palavra branda na
-                    # janela: e requisito do alemao (o fall-through anterior
-                    # deixava esses casos em plus/bare — FN medido no run
-                    # 22/09: STIHL "Fließend in Deutsch & Englisch").
-                    local, reason = "required", kind
-                    break
-                if kind in ("verb", "verb_direct", "verb_explicit",
-                            "pair_strong", "qual"):
-                    local, reason = "required", kind
-                    break
-                if kind in ("soft", "pair", "basic"):
-                    local, reason = "preferred", kind
+            # Palavra branda GRUDADA a mencao (+-25 chars) qualifica a
+            # lingua em si ("German is a plus. English required" ->
+            # preferido: a exigencia forte e do ingles, nao do alemao).
+            tight = _TIGHT_SOFT_RE.search(tight_win)
+            if tight:
+                local, reason = "preferred", "soft"
+            else:
+                soft_in_win = any(
+                    rx.search(win) for rx, kind in _GERMAN_QUALS_RE
+                    if kind == "soft"
+                )
+                for qrx, kind in _GERMAN_QUALS_RE:
+                    if not qrx.search(win):
+                        continue
+                    if kind == "negated":
+                        local, reason = "plus", "negated"
+                        break
+                    if kind == "verb_rev" and soft_in_win:
+                        continue  # a exigencia provavelmente e do ingles
+                    if kind == "verb_rev":
+                        # "fließend in Deutsch"/"fluency in German" — verbo
+                        # de exigencia na ordem inversa, SEM palavra branda
+                        # na janela: requisito do alemao (STIHL "Fließend in
+                        # Deutsch & Englisch", FN do run 22/09).
+                        local, reason = "required", kind
+                        break
+                    if kind in ("verb", "verb_direct", "verb_explicit",
+                                "pair_strong", "qual"):
+                        local, reason = "required", kind
+                        break
+                    if kind in ("soft", "pair", "basic"):
+                        # F18: par sem soft grudado => required (regra 3).
+                        if kind == "pair":
+                            local, reason = "required", "pair"
+                        else:
+                            local, reason = "preferred", kind
         if _LEVEL_PRIO[local] > _LEVEL_PRIO[best_level]:
             best_level, best_reason = local, reason
     return GermanLevel(level=best_level, reason=best_reason)

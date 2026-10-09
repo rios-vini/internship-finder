@@ -60,6 +60,7 @@ Regras de negocio (dono):
 from __future__ import annotations
 
 import re
+from collections import Counter
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -382,8 +383,217 @@ from internship_finder.countries import (
 
 
 # ---------------------------------------------------------------------------
-# Cascata de filtros (uso do CLI)
+# F18 — Aplicabilidade ao perfil do dono (hard exclude na camada eligible)
 # ---------------------------------------------------------------------------
+#
+# Perfil (decisão do dono 07/10): aluno de GRADUAÇÃO (bachelor, Eng.
+# Materiais UFSCar 2022–2027), brasileiro, alemão A1–A2, precisa de visto.
+# Vagas INAPLICÁVEIS por definição:
+#   - alemão EXIGIDO (german_level == required — classificador F18 corrigido);
+#   - empresa exige autorização de trabalho PRÉVIA
+#     (visa_policy == candidate_must_have_authorization; não-mencionadas e
+#     unclear FICAM — unclear é a aposta do projeto);
+#   - TESE (Abschlussarbeit/Thesis no título) — não é estágio;
+#   - Werkstudent PURO (sem intern/praktikum no título) — exige matrícula em
+#     universidade ALEMÃ; híbridos "Werkstudent ... Praktikum" FICAM;
+#   - mestrado exigido (requires_master).
+# A exclusão é na camada eligible (aqui, na cascata) — a coleta bruta
+# (jobs.db/dataset) NÃO muda; remover o estágio reverte o comportamento.
+
+# Motivos de exclusão, na ordem de atribuição first-match (contagem por
+# motivo nunca soma mais de 1 por vaga).
+APPLICABILITY_EXCLUSION_REASONS = (
+    "german_required",
+    "visa_blocked",
+    "thesis_title",
+    "werkstudent_puro",
+    "master_required",
+)
+
+# Tese por TÍTULO (case-insensitive). "Abschlussarbeit" cobre as teses DE
+# sem grau no nome (Bachelorarbeit/Masterarbeit têm os compostos próprios,
+# mas caem aqui também); "thesis" cobre EN (Bachelor's/Master's Thesis,
+# Thesis Internship). Deliberadamente NÃO inclui "arbeit" solto nem
+# "studienarbeit" sem "arbeit"... na real: "studienarbeit" TEM "arbeit",
+# mas o pattern pede o composto explícito — sem FP.
+_THESIS_TITLE_RE = re.compile(r"abschlussarbeit|thesis", re.IGNORECASE)
+
+# Werkstudent PURO por título: menciona werkstudent/working student E NÃO
+# menciona intern/internship/praktikant/praktikum (híbridos FICAM —
+# "Werkstudent ... Praktikum" contém estágio e o dono se qualifica).
+_WS_TITLE_RE = re.compile(r"werkstudent|working student", re.IGNORECASE)
+_WS_HYBRID_RE = re.compile(r"intern|internship|praktikant|praktikum", re.IGNORECASE)
+
+
+def is_thesis_title(title: str | None) -> bool:
+    """Título é de tese acadêmica (Abschlussarbeit/Thesis)?"""
+    return bool(_THESIS_TITLE_RE.search(title or ""))
+
+
+def is_werkstudent_puro_title(title: str | None) -> bool:
+    """Título é Werkstudent PURO (sem híbrido de estágio)?"""
+    t = title or ""
+    return bool(_WS_TITLE_RE.search(t)) and not bool(_WS_HYBRID_RE.search(t))
+
+
+# requires_master — a vaga exige/é mestrado (título OU descrição).
+#
+# Título: tese/estudo de mestrado por definição (Masterarbeit, Master's
+# Thesis, Master Thesis, Masterstudium, Masterstudent).
+#
+# Descrição: exigência do GRAU. Word-boundary + whitelist de falsos
+# positivos ("master data", "masterclass", "master plan"...): o pattern
+# nega cada FP conhecido com lookbehind/lookahead ANTES de casar o
+# "master" genérico. "Bachelor's or Master's" NÃO é exigência de mestrado
+# (perfil bachelor se qualifica). "Abschlussarbeit" isolado NÃO é sinal
+# (pode ser tese de bachelor — a exclusão de tese é por TÍTULO).
+_MASTER_TITLE_RE = re.compile(
+    r"\bmaster(arbeit|'?s?\s?thesis|studium|student)\b", re.IGNORECASE
+)
+
+# FPs que NUNCA são grau de mestrado (verificados por teste). O lookbehind
+# lista os prefixos compostos; "master's degree" etc. vêm do corpo central.
+_MASTER_FP_PREFIX = (
+    r"(?<!master\s)(?<!master-)"  # bloqueia o PRÓPRIO "master x" já casado
+)
+# Padrões legítimos de exigência (EN+DE). Cada alternativa exige contexto
+# de GRAU/PROGRAMA/ESTUDO — nunca "master data/schedule/plan/class/key/
+# bedroom/ceremonies/postmaster/webmaster/gamesmaster/quartermaster/
+# masterful/masterpiece" (todos com word-boundary e verificados).
+_MASTER_DEGREE_RES = [
+    # grau explícito
+    re.compile(
+        r"\bmaster'?s?\s+(degree|diploma|abschluss|programme|program|"
+        r"course)\b|\bmaster\s?abschluss\b|\bmasterabschluss\w*\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bm\.?sc\.?\b|\bm\.?eng\.?\b", re.IGNORECASE),
+    # estado de aluno/estudo de mestrado
+    re.compile(
+        r"\b(studying towards|enrolled in|pursuing|currently enrolled in)\s+a?\s*"
+        r"(master'?s?\s+(program|programme|degree|course|studies)?|"
+        r"masterstudium)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bmaster'?s?\s+student\b|\bmasterstudent\w*\b|"
+        r"\byou are a master'?s?\s+student\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bcompleted master'?s?\b|\bmaster'?s?\s+(completed|degree)\b|"
+        r"\bholds? a master'?s?\b|\bmaster'?s?\s+level\b",
+        re.IGNORECASE,
+    ),
+]
+# FP guard: termos que parecem master mas NÃO são grau. Casam ANTES dos
+# legítimos e NEUTRALIZAM o trecho (função corta o texto nos FPs).
+_MASTER_FP_RE = re.compile(
+    r"\bmaster\s+(data|schedule|plan|key|bedroom|file|records?|management|"
+    r"template|record|builder|sample|list|sheet|transaction|table|index|"
+    r"node|page|view|query|report|dashboard|model|pipeline|server|"
+    r"database|system|source|target|view|form|code|script|test|ticket|"
+    r"order|invoice|vendor|customer|material|product|item|article|"
+    r"number|id|data set|dataset| cleanse|governance|maintenance|"
+    r"masterclass|master class)\b"
+    r"|\b(masterclass|masterful|masterpiece|postmaster|webmaster|"
+    r"gamesmaster|quartermaster|master of ceremonies|master key|"
+    r"master bedroom|master data|master schedule|master plan)\b",
+    re.IGNORECASE,
+)
+
+
+def requires_master(title: str | None, description: str | None) -> bool:
+    """A vaga exige (ou é) mestrado? Função pura, case-insensitive, EN+DE.
+
+    ``True`` SOMENTE quando há evidência de exigência/ser de mestrado:
+
+    - Título com Masterarbeit / Master's Thesis / Master Thesis /
+      Masterstudium / Masterstudent → True (tese/estudo de mestrado);
+    - Descrição exigindo o grau ("Master's degree", "M.Sc.", "Master
+      abschluss", "completed master", "master's program", "you are a
+      Master student", "studying towards a Master", "Currently enrolled
+      in a Master's program" — caso real SAP iXp 1444205833) → True;
+    - "Bachelor's or Master's" / "(Bachelor/Master)" / "Bachelor; Master"
+      → False (não é exigência de mestrado — bachelor se qualifica);
+    - "Abschlussarbeit" isolado na descrição → False (ambíguo);
+    - FPs ("master data", "master schedule", "masterclass", "master key",
+      "master bedroom", "postmaster", "webmaster", "gamesmaster",
+      "quartermaster", "masterful", "masterpiece", "Master of
+      Ceremonies") → False (word-boundary + guard).
+    """
+    t = (title or "")
+    if _MASTER_TITLE_RE.search(t):
+        return True
+    d = (description or "")
+    if not d:
+        return False
+    # Título sem sinal: analisa a descrição removendo os trechos FP
+    # (substitui por espaço para não colar palavras vizinhas).
+    cleaned = _MASTER_FP_RE.sub(" ", d)
+    # "Bachelor's or Master's"/"Bachelor or Master" não exige mestrado:
+    # neutraliza o "Master" dessas construções ANTES dos padrões legítimos.
+    cleaned = re.sub(
+        r"\bbachelor'?s?\s*(or|/|;|,|und|and)?\s*master'?s?\b",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return any(rx.search(cleaned) for rx in _MASTER_DEGREE_RES)
+
+
+def applicability_exclusion_reason(
+    job: dict, *, intel_map: dict[str, dict] | None = None
+) -> str | None:
+    """Motivo de inaplicabilidade da vaga ao perfil do dono; None = aplicável.
+
+    Ordem de atribuição FIRST-MATCH (a mesma vaga nunca conta 2 motivos):
+    ``german_required`` → ``visa_blocked`` → ``thesis_title`` →
+    ``werkstudent_puro`` → ``master_required``.
+
+    - ``german_required``: ``app_intel.german_level(título+descrição)`` ==
+      ``required`` (classificador F18 — o dataset não carrega o nível; a
+      exclusão chama a MESMA função pura do render/digest).
+    - ``visa_blocked``: Company Intelligence da empresa com
+      ``visa_policy`` == ``candidate_must_have_authorization`` (match
+      exato via ``opportunity_intel``). Não-mentionadas e ``unclear``
+      FICAM (unclear é a aposta do projeto). Sem ``intel_map`` o critério
+      não aplica (função pura — nunca lê arquivos).
+    - ``thesis_title``: ``abschlussarbeit|thesis`` no título.
+    - ``werkstudent_puro``: título com ``werkstudent|working student`` SEM
+      ``intern|internship|praktikant|praktikum`` (híbridos ficam).
+    - ``master_required``: ``requires_master(título, descrição)``.
+    """
+    from internship_finder.app_intel import german_level
+
+    title = str(job.get("title") or "")
+    description = job.get("description")
+    text = f"{title} {description or ''}"
+
+    gl = german_level(text)
+    if gl is not None and gl.level == "required":
+        return "german_required"
+
+    if intel_map:
+        from internship_finder.opportunity_intel import (
+            company_intel_for,
+            visa_policy_state,
+        )
+
+        entry = company_intel_for(job, intel_map)
+        if visa_policy_state(entry) == "candidate_must_have_authorization":
+            return "visa_blocked"
+
+    if is_thesis_title(title):
+        return "thesis_title"
+
+    if is_werkstudent_puro_title(title):
+        return "werkstudent_puro"
+
+    if requires_master(title, description):
+        return "master_required"
+
+    return None
 
 
 def select_eligible(
@@ -392,14 +602,32 @@ def select_eligible(
     student: bool = True,
     area: bool = True,
     country: str = "de",
+    applicability: bool = True,
+    intel_map: dict[str, dict] | None = None,
 ) -> tuple[list[dict], dict[str, int]]:
     """Aplica os filtros de utilidade em cascata: tipo -> area -> pais.
 
-    Retorna ``(selecionados, contagens)`` com o total acumulado a cada etapa:
-    ``{"total", "tipo", "area", "pais"}`` (as contagens refletem o que cada
-    etapa manteve). ``jobs`` sao dicts (o que o CLI le do JSON) — sem
-    dependencia do modelo ``Job``. Filtro desligado mantem a contagem da etapa
-    anterior (ex.: ``country="all"`` -> ``pais == area``).
+    F18 — novo estágio final ``aplicabilidade`` (default ON): remove da
+    saída eligible as vagas INAPLICÁVEIS ao perfil do dono (alemão exigido,
+    empresa que exige autorização prévia, tese por título, Werkstudent
+    puro por título, mestrado exigido). Contagem first-match por motivo em
+    ``counts["aplicabilidade_excluidas_*"]``; ``counts["aplicabilidade"]``
+    é o total mantido. ``applicability=False`` desliga (reversibilidade —
+    comportamento idêntico ao pré-F18).
+
+    ``intel_map`` (opcional) é o mapa de Company Intelligence
+    (``opportunity_intel.load_company_intel``). Quando fornecido, o motivo
+    ``visa_blocked`` exclui empresas com ``visa_policy`` ==
+    ``candidate_must_have_authorization`` (não-mentionadas e unclear
+    FICAM). Quando ``None``, o critério de visto NÃO aplica (a função é
+    pura — nunca lê arquivos; o pipeline do CLI injeta o mapa).
+
+    Retorna ``(selecionados, contagens)`` com o total acumulado a cada
+    etapa: ``{"total", "tipo", "area", "pais", "aplicabilidade"}``
+    (as contagens refletem o que cada etapa manteve). ``jobs`` sao dicts
+    (o que o CLI le do JSON) — sem dependencia do modelo ``Job``. Filtro
+    desligado mantem a contagem da etapa anterior (ex.: ``country="all"``
+    -> ``pais == area``).
     """
     spec = parse_country_spec(country)
     counts: dict[str, int] = {"total": len(jobs)}
@@ -438,4 +666,17 @@ def select_eligible(
                 enriched.append({**j, "country_iso": iso, "country": iso})
         step = enriched
     counts["pais"] = len(step)
+    if applicability:
+        kept: list[dict] = []
+        excluded: Counter[str] = Counter()
+        for j in step:
+            reason = applicability_exclusion_reason(j, intel_map=intel_map)
+            if reason is None:
+                kept.append(j)
+            else:
+                excluded[reason] += 1
+        step = kept
+        for reason in APPLICABILITY_EXCLUSION_REASONS:
+            counts[f"aplicabilidade_excluidas_{reason}"] = int(excluded[reason])
+    counts["aplicabilidade"] = len(step)
     return step, counts

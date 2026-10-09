@@ -36,12 +36,15 @@ class RegistryEntry(BaseModel):
     enabled: bool = True  # false desabilita a empresa sem removê-la do registry
 
 
-# --- Seed: 101 empresas operacionais (12 da validação inicial + 27 da
+# --- Seed: 110 empresas operacionais (12 da validação inicial + 27 da
 # --- expansão E2 + 25 da expansão internacional P3 #23: 8 DE + 17 NL/CH/AT
 # --- + 17 da expansão de cobertura 15/09/2026 + 6 da auditoria 16/09/2026
 # --- + 9 da auditoria próxima fronteira 17/09/2026 + 5 da última onda de
 # --- cobertura 18/09/2026: Sungrow EMEA, AutoScout24, Huawei Research Center
-# --- Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH).
+# --- Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH
+# --- + 9 da onda de fontes F16 08/10/2026: Brenntag, ALTANA Job Portal,
+# --- Atlas Copco Group, SKF, Decathlon Digital EN, DSV, Heidelberg Materials,
+# --- Sandvik, Rhenus).
 # --- Nomes canônicos = consulta real do ``--companies``
 # --- (README.md + docs/empresas_verificacao.md + docs/relatorio_expansao.md +
 # --- docs da auditoria de cobertura 15/09 + auditoria próxima onda 16/09).
@@ -222,6 +225,38 @@ SEED = [
     RegistryEntry(name="Huawei Research Center Germany", ats="teamtailor", tenant="teamtailor:huaweiresearchcentergermanyaustria"),
     RegistryEntry(name="EAT HAPPY GROUP", ats="teamtailor", tenant="teamtailor:eathappygroup"),
     RegistryEntry(name="VDI Technologiezentrum GmbH", ats="softgarden", tenant="softgarden:vdijobs"),
+    # --- 9 da onda de fontes F16 (2026-10-08, bucket B do gap analysis de
+    # --- grandes empregadores; validadas AO VIVO com fetch real read-only
+    # --- via scripts/verify_companies.py --fetch: nome EXATO do manifest +
+    # --- >0 vagas + leitura de títulos/company para excluir homônimo) ---
+    # Nomes canônicos = nomes EXATOS do manifest companies.csv (a resolução
+    # pelo nome comercial falha: "ALTANA" resolve bamboohr/greenhouse de
+    # homônimas; "Atlas Copco" sem match — o nome do manifest é
+    # "Atlas Copco Group"; "Decathlon Digital" não existe — o board EN é
+    # "Decathlon Digital EN"; "Rhenus" resolve o tenant adp do manifest, que
+    # o scraper rejeita — o board VIVO é workday rhe/R1111 sob o nome
+    # "Rhe (R1111)"; "Sandvik" tem 7 sub-boards workday, o principal é
+    # "Sandvik (Sandvik Jobs)"; Heidelberg Materials aparece como
+    # "Heidelbergmaterials" no workday global + jazzhr US — o global cobre
+    # o grupo; DSV vive sob o título de página "Work for DSV and forward
+    # your career | DSV" com tenant genérico successfactors:jobs (jobs.dsv.com
+    # desambigua por URL — mesmo padrão STIHL/BMW AG), identidade confirmada
+    # pelos títulos (Ausbildung Lichtenau/Burgstadt DE) e company=dsvas.
+    # Falhas do bucket B ficaram FORA (pendências documentadas no relatório
+    # da fase): Deutsche Bank (smartrecruiters EMPTY), Munich Re (bamboohr =
+    # subsidiária Dublin + scraper quebrado), Symrise (join.com 422 ATS-wide),
+    # Honeywell/Nokia (oracle precisa URL completa — fora de URL_SLUG_ATS,
+    # precedente SMA; boards smartrecruiters EMPTY), Unilever TMICC (workday
+    # permission denied S22).
+    RegistryEntry(name="Brenntag", ats="workday", tenant="workday:brenntag/brenntag_jobs"),
+    RegistryEntry(name="ALTANA Job Portal", ats="successfactors", tenant="successfactors:altanamana"),
+    RegistryEntry(name="Atlas Copco Group", ats="successfactors", tenant="successfactors:atlascopcoP"),
+    RegistryEntry(name="SKF", ats="successfactors", tenant="successfactors:career"),
+    RegistryEntry(name="Decathlon Digital EN", ats="greenhouse", tenant="greenhouse:decathlontechnologyen"),
+    RegistryEntry(name="Work for DSV and forward your career | DSV", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Heidelbergmaterials", ats="workday", tenant="workday:heidelbergmaterials/global_hm_career_site"),
+    RegistryEntry(name="Sandvik (Sandvik Jobs)", ats="workday", tenant="workday:sandvik/sandvik-jobs"),
+    RegistryEntry(name="Rhe (R1111)", ats="workday", tenant="workday:rhe/R1111"),
 ]
 
 
