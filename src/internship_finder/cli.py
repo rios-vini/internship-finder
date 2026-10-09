@@ -62,7 +62,11 @@ from internship_finder.research_sources import (
     RESEARCH_BUDGET_SECONDS,
     collect_research_sources,
 )
-from internship_finder.dedup import deduplicate
+from internship_finder.dedup import (
+    KEY_MS_WILDCARD,
+    deduplicate,
+    deduplicate_ms_wildcard,
+)
 from internship_finder.mirror_dedup import KEY_MIRRORS_DE_EN, deduplicate_mirrors_de_en
 from internship_finder.filters import parse_country_spec, select_eligible
 from internship_finder.health import build_health_report
@@ -294,12 +298,20 @@ def print_dedup_report(dedup_stats: dict[str, int]) -> None:
     total = sum(dedup_stats.values())
     if not total:
         return
+    # F23 — sub-estagio wildcard "mehrere Standorte": so aparece quando
+    # removeu algo (aditivo; 0 = linha identica a de antes da F23).
+    ms_line = (
+        f", {dedup_stats.get(KEY_MS_WILDCARD, 0)} por wildcard mehrere Standorte"
+        if dedup_stats.get(KEY_MS_WILDCARD)
+        else ""
+    )
     print(
         f"dedup: removidas {total} "
         f"({dedup_stats.get('external_id', 0)} por external_id, "
         f"{dedup_stats.get('url', 0)} por URL, "
         f"{dedup_stats.get('company+title+location', 0)} por company+title+location, "
-        f"{dedup_stats.get(KEY_MIRRORS_DE_EN, 0)} por mirrors DE/EN (requisition_id))"
+        f"{dedup_stats.get(KEY_MIRRORS_DE_EN, 0)} por mirrors DE/EN (requisition_id)"
+        f"{ms_line})"
     )
 
 
@@ -394,6 +406,15 @@ def run_filter_pipeline(
     dedup_stats: dict[str, int] = {}
     if dedup:
         selected, dedup_stats, _ = deduplicate(selected)
+        # F23 — sub-estagio wildcard "mehrere Standorte" (Deloitte): mesma
+        # vaga publicada como SF "mehrere Standorte, DE" e BA cidade concreta.
+        # DIRECIONAL (so wildcard x concreto, mesma empresa-alias, mesmo
+        # titulo DE/EN) e REVERSIVEL como o mirror (``--no-dedup`` desliga
+        # tudo). Stats somam no mesmo relatorio do estagio pai.
+        selected, ms_stats, _ = deduplicate_ms_wildcard(selected)
+        if ms_stats:
+            for k, v in ms_stats.items():
+                dedup_stats[k] = dedup_stats.get(k, 0) + v
     if dedup and mirror_dedup:
         # Fase C: sub-estagio de mirrors DE/EN (requisition_id + titulo
         # normalizado como guardrail linguistico). Roda DENTRO do estagio

@@ -39,6 +39,18 @@ de cidade (Munich/Munchen). Titulos com conteudo fora do dicionario minimo
 dicionario e deliberadamente minimo para nao gerar falsos positivos — um
 token divergente impede a fusao (trade-off documentado no relatorio F5).
 
+F23 (sub-estagio pos-chaves): o wildcard Deloitte. O dataset real tem a
+MESMA vaga publicada duas vezes — "Deloitte GmbH
+Wirtschaftspruefungsgesellschaft" (SuccessFactors) com location "mehrere
+Standorte, DE" e "Deloitte GmbH" (Bundesagentur) com a cidade concreta
+(ex.: Berlin) — mesmo titulo, empresas com nomes legais diferentes,
+locations diferentes. Nenhuma das 5 chaves classicas casa (ids/URLs
+distintos por fonte; empresa e location divergem nos tiers 3/4). A F23
+fecha esse par EXATAMENTE — ve ``deduplicate_ms_wildcard`` — sem tocar a
+semantica de nenhum tier existente: e um sub-estagio DIRECIONAL que roda
+DEPOIS do ``deduplicate`` classico, so casa wildcard x concreto (nunca 2
+concretos, nunca 2 wildcards), e so dentro da mesma empresa-alias.
+
 Regra do "vencedor" quando duas versoes da mesma vaga existem (deterministica):
 1. a que tem ``description`` preenchida; 2. senao a que tem ``employment_type``;
 3. senao a que veio primeiro na lista de entrada. As demais sao removidas.
@@ -569,3 +581,163 @@ def deduplicate(
         stats[label] += 1
 
     return out, dict(stats), removed
+
+
+# ---------------------------------------------------------------------------
+# F23 — Sub-estagio wildcard "mehrere Standorte" (Deloitte; pos-chaves)
+# ---------------------------------------------------------------------------
+
+# Label usada no relatorio do CLI e no retorno do sub-estagio (ADITIVA ao
+# ``KEY_LABELS``: o estagio classico nao emite essa label — so o sub-estagio).
+KEY_MS_WILDCARD = "mehrere_standorte_wildcard"
+
+# O wildcard do dataset real (medido 09/10): a location SF da Deloitte GmbH
+# Wirtschaftspruefungsgesellschaft e LITERALMENTE "mehrere Standorte, DE"
+# (67/67 vagas no dataset de hoje; nenhuma outra forma, nenhuma outra
+# empresa). A comparacao e pela CHAVE DE CIDADE do tier DE/EN (depois de
+# casefold + strip de acentos + strip do sufixo ISO-2 ", de"): "mehrere
+# Standorte, DE" -> "mehrere standorte".
+MS_WILDCARD_LOCATION = "mehrere standorte"
+
+# Alias cirurgico de EMPRESA (P1.1 preservado via normalizacao, nao via
+# sufixo legal-form generico): os DOIS nomes legais reais do dataset
+# convergem para a MESMA chave de empresa do sub-estagio. Apenas este par
+# entra (deliberadamente NAO ha regra geral de sufixo "GmbH"/"AG"/...
+# — alias exato, full-string, casefold).
+MS_COMPANY_ALIASES: dict[str, str] = {
+    "deloitte gmbh wirtschaftsprufungsgesellschaft": "deloitte gmbh",
+}
+
+
+def _ms_company_key(company: str | None) -> str:
+    """Chave de empresa do sub-estagio F23 (strip + casefold + acentos + alias).
+
+    Acentos sao removidos ANTES do alias (mesma disciplina do resto do
+    modulo): a chave do dict e ASCII ("wirtschaftspruefungsgesellschaft") e
+    o nome real do dataset carrega "Wirtschaftspruefungsgesellschaft" com
+    umlaut — sem o strip, "ue" nunca casa com "u\u0308" (bug pego no smoke
+    test F23).
+    """
+    c = _strip_accents((company or "").strip().casefold())
+    return MS_COMPANY_ALIASES.get(c, c)
+
+
+def _is_ms_wildcard(job: dict[str, Any]) -> bool:
+    """Vaga e um wildcard "mehrere Standorte"? (F23; chave de cidade tier DE/EN)."""
+    return _de_en_location_key(job.get("location")) == MS_WILDCARD_LOCATION
+
+
+def deduplicate_ms_wildcard(
+    jobs: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int], list[tuple[dict[str, Any], dict[str, Any], str]]]:
+    """Sub-estagio F23: funde wildcard "mehrere Standorte" x concreto da mesma empresa.
+
+    Contexto medido (dataset 09/10): a Deloitte publica a mesma vaga duas
+    vezes — SuccessFactors ("Deloitte GmbH Wirtschaftspruefungsgesellschaft",
+    location "mehrere Standorte, DE") e Bundesagentur ("Deloitte GmbH",
+    cidade concreta, ex. "10719 Berlin, Berlin, Deutschland"). Nenhuma das 5
+    chaves classicas casa: ids/URLs divergem por fonte e empresa+location
+    divergem nos tiers 3/4. Este sub-estagio fecha EXATAMENTE esse par.
+
+    Regra DIRECIONAL (anti-FP por construcao):
+    - a chave de casamento e (empresa-alias F23, titulo DE/EN) — a MESMA
+      que o tier 4 usa para titulo, so que SEM o componente de cidade;
+    - so um LADO pode ser wildcard: um wildcard casa com UM concreto por
+      titulo+empresa, e vice-versa. Dois concretos (Berlin x Dusseldorf —
+      vagas reais distintas) NUNCA casam entre si; dois wildcards NUNCA
+      casam entre si (a regra exige os dois lados do par);
+    - o lado CONCRETO vence o wildcard no ``_prefer`` estendido
+      (``_prefer_ms``: location especifica > generica) — a vaga que fica na
+      saida e a com a cidade real.
+
+    Comportamento em grupos multiplos (medidos no raw 09/10): a chave usa
+    FILAS por (empresa, titulo) — no grupo 2x2 (2 wildcards Praktikant/
+    Werkstudent + 2 concretos Berlin/Stuttgart) cada wildcard casa com um
+    concreto DISTINTO e as 4 vagas viram 2 sem perder nenhuma cidade real.
+    Como os titulos Praktikant/Werkstudent colapsam na mesma chave DE/EN, o
+    pareamento exato (Praktikant->Berlin-Praktikant) nao e distinguivel sem
+    quebrar a equivalencia de tipo — o pareamento segue a ordem
+    deterministica da lista de entrada (FIFO).
+
+    Idempotente por construcao: apos o sub-estagio nao sobra nenhum par
+    (wildcard, concreto) com a mesma chave — re-rodar e no-op. Retorna o
+    mesmo contrato de ``deduplicate`` (lista, stats, removidas).
+    """
+    stats: Counter[str] = Counter()
+    removed: list[tuple[dict[str, Any], dict[str, Any], str]] = []
+    out: list[dict[str, Any]] = []
+
+    # Filas do sub-estagio por chave (empresa-alias, titulo DE/EN): posicoes
+    # na saida dos wildcards/concretos AINDA SEM par. Uso de FILA (nao de
+    # slot unico) fecha o caso 2x2 medido no raw (titulo com 2 wildcards
+    # Praktikant/Werkstudent e 2 concretos Berlin/Stuttgart): cada wildcard
+    # casa com um concreto DISTINTO — 4 viram 2 sem perder nenhuma vaga
+    # real. Fusoes substituem IN PLACE (posicoes nunca mudam), entao os
+    # indices permanecem validos.
+    wildcard_q: dict[tuple[str, str], list[int]] = {}
+    concrete_q: dict[tuple[str, str], list[int]] = {}
+
+    def _merge(pos: int, newcomer: dict[str, Any]) -> None:
+        resident = out[pos]
+        if _prefer_ms(newcomer, resident):
+            out[pos] = newcomer
+            removed.append((newcomer, resident, KEY_MS_WILDCARD))
+        else:
+            removed.append((resident, newcomer, KEY_MS_WILDCARD))
+        stats[KEY_MS_WILDCARD] += 1
+
+    for job in jobs:
+        company = _ms_company_key(job.get("company"))
+        title = _de_en_title_key(job.get("title"))
+        loc = _de_en_location_key(job.get("location"))
+        if not company or not title or not loc:
+            # Sem empresa/titulo/local para a chave do sub-estagio: atravessa
+            # intocado (o estagio classico ja cuidou das fusoes fortes).
+            out.append(job)
+            continue
+        is_wc = loc == MS_WILDCARD_LOCATION
+
+        key = (company, title)
+
+        if is_wc:
+            # wildcard: casa com o primeiro concreto ainda sem par (se houver)
+            queue = concrete_q.get(key)
+            if queue:
+                pos = queue.pop(0)
+                if not queue:
+                    del concrete_q[key]
+                _merge(pos, job)
+                continue
+            wildcard_q.setdefault(key, []).append(len(out))
+            out.append(job)
+            continue
+
+        # lado concreto: casa com o primeiro wildcard ainda sem par (se houver)
+        queue = wildcard_q.get(key)
+        if queue:
+            pos = queue.pop(0)
+            if not queue:
+                del wildcard_q[key]
+            _merge(pos, job)
+            continue
+        concrete_q.setdefault(key, []).append(len(out))
+        out.append(job)
+
+    return out, dict(stats), removed
+
+
+def _prefer_ms(candidate: dict[str, Any], current: dict[str, Any]) -> bool:
+    """Vencedor do sub-estagio F23: concreto vence wildcard; empate segue ``_prefer``.
+
+    O criterio F23 (determinacao previa do prompt): a location ESPECIFICA
+    (cidade concreta) e melhor que a generica ("mehrere Standorte") — a
+    vaga que fica na saida carrega a cidade real. Quando ambos os lados
+    sao da mesma natureza (nao deveria ocorrer: o casamento e sempre
+    wildcard x concreto), segue o ``_prefer`` classico (description >
+    employment_type > frescor > ordem de chegada).
+    """
+    cand_wc = _is_ms_wildcard(candidate)
+    curr_wc = _is_ms_wildcard(current)
+    if cand_wc != curr_wc:
+        return not cand_wc  # concreto vence wildcard
+    return _prefer(candidate, current)
