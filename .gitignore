@@ -24,3 +24,5 @@ reports/*
 .mypy_cache/
 # macOS
 .DS_Store
+# F21: snippets de probe ao vivo (workspace local das fontes Tier 1)
+probes/
