@@ -58,6 +58,10 @@ from internship_finder.direct_fetch import (
     DIRECT_FETCH_BUDGET_SECONDS,
     collect_direct_fetch,
 )
+from internship_finder.research_sources import (
+    RESEARCH_BUDGET_SECONDS,
+    collect_research_sources,
+)
 from internship_finder.dedup import deduplicate
 from internship_finder.mirror_dedup import KEY_MIRRORS_DE_EN, deduplicate_mirrors_de_en
 from internship_finder.filters import parse_country_spec, select_eligible
@@ -738,6 +742,62 @@ def _run_direct_fetch_stage(
     return jobs, record
 
 
+def _research_sources_record(run_id: str, summary: dict) -> dict:
+    """Registro de metricas do estagio research_sources (linha ``type:
+    research_sources`` do JSONL, F21).
+
+    Um registro por run com o status GERAL (ok/partial/failed/
+    skipped_disabled — cada fonte tem seu sub-status em ``sources``) e as
+    contagens por fonte (rows vistas, jobs criados, duration, error).
+    Gravado MESMO em falha (degradacao graciosa e DADO: o run segue; exit
+    code NAO muda — mesma regra dos estagios dataset F3/direct_fetch F4).
+    """
+    return {
+        "type": "research_sources",
+        "run_id": run_id,
+        "timestamp": utcnow_iso(),
+        "source": summary.get("source", "research_sources"),
+        "status": summary.get("status"),
+        "jobs": summary.get("jobs", 0),
+        "duration": summary.get("duration"),
+        "skipped_budget": summary.get("skipped_budget", 0),
+        "disabled": summary.get("disabled", []),
+        "sources": summary.get("sources", {}),
+    }
+
+
+def _run_research_sources_stage(
+    run_id: str,
+    budget_secs: float,
+) -> tuple[list[Job], dict | None]:
+    """Estagio research_sources (F21): best-effort TOTAL — nunca levanta o run.
+
+    Falha de UMA fonte = ``status: partial`` (as outras seguem); falha de
+    TODAS as executadas = ``status: failed`` — em qualquer caso o run
+    continua com os jobs das outras entradas e o exit code NAO muda
+    (mesma regra dos estagios dataset F3/direct_fetch F4).
+    """
+    try:
+        jobs, summary = collect_research_sources(budget_seconds=budget_secs)
+    except Exception as exc:  # noqa: BLE001 - research_sources nunca derruba o run
+        log.error("estagio research_sources falhou (%s); run segue sem fontes de pesquisa", exc)
+        return [], _research_sources_record(run_id, {
+            "source": "research_sources", "status": "failed", "jobs": 0,
+            "duration": 0.0, "skipped_budget": 0, "disabled": [],
+            "sources": {}, "error": f"{type(exc).__name__}: {exc}",
+        })
+    record = _research_sources_record(run_id, summary)
+    status = summary.get("status")
+    if status in ("failed", "partial"):
+        log.warning("estagio research_sources terminou %s (ver registro research_sources no JSONL)", status)
+    else:
+        log.info(
+            "estagio research_sources: %d jobs (%.1fs)",
+            summary.get("jobs", 0), summary.get("duration") or 0.0,
+        )
+    return jobs, record
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Coleta vagas por empresa e/ou filtra vagas candidataveis "
@@ -863,6 +923,19 @@ def main(argv: list[str] | None = None) -> int:
         "direct_fetch (default 200). O cap e a medida principal de rate "
         "limit: 1 fetch/dia por fonte, paginacao sequencial, timeout "
         "curto por request.",
+    )
+    parser.add_argument(
+        "--research-sources",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="F21: coleta TAMBEM das fontes de pesquisa Tier 1 (Max Planck "
+        "RSS, TU Berlin, Leibniz + APIs keyless Arbeitnow/RemoteOK/"
+        "freehire), sequencial, 1 fetch/dia por fonte, timeout 30s por "
+        "request. Default: LIGADO no modo --registry, DESLIGADO no "
+        "--companies explicito; --no-research-sources desliga. Fonte "
+        "individual desliga sem deploy via INTERNSHIP_FINDER_RESEARCH_"
+        "SOURCES_OFF (CSV de nomes). Falha de fonte NUNCA derruba o run "
+        "(registro type: research_sources com status failed/partial).",
     )
     parser.add_argument(
         "--student",
@@ -1057,6 +1130,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         direct_fetch_record: dict | None = None
         direct_fetch_jobs: list[Job] = []
+        # F21: mesmo default dos outros estagios — LIGADO no --registry
+        # (as 6 fontes de pesquisa Tier 1 entram no funil ANTES do dedup,
+        # mesmo ponto do sf_dataset/direct_fetch), DESLIGADO no
+        # --companies explícito. --no-research-sources reverte.
+        research_sources_enabled = (
+            args.research_sources if args.research_sources is not None else bool(args.registry)
+        )
+        research_sources_record: dict | None = None
+        research_sources_jobs: list[Job] = []
         # Unidades de coleta confiavel (P1.2): (company, source, jobs) de
         # tenants que terminaram em OK/EMPTY. Tenants que falharam
         # (timeout/error/not_found/skipped) NAO entram — a ausencia deles no
@@ -1139,6 +1221,23 @@ def main(argv: list[str] | None = None) -> int:
                     f"eures {rec.get('eures', {}).get('jobs', 0)}, "
                     f"{rec.get('duration')}s) ==="
                 )
+        # F21: estagio research_sources APOS o direct_fetch (mesma
+        # concatenacao). Best-effort: falha de fonte nunca derruba o run
+        # nem muda exit codes — vira registro ``type: research_sources``
+        # com status failed/partial e o run segue com o que houver.
+        if research_sources_enabled:
+            research_sources_jobs, research_sources_record = _run_research_sources_stage(
+                run_id,
+                RESEARCH_BUDGET_SECONDS,
+            )
+            all_jobs = all_jobs + research_sources_jobs
+            total = len(all_jobs)
+            if research_sources_jobs:
+                rec = research_sources_record or {}
+                print(
+                    f"\n=== RESEARCH SOURCES F21: +{len(research_sources_jobs)} jobs "
+                    f"({rec.get('duration')}s) ==="
+                )
         print(f"\n=== TOTAL: {total} vagas ===")
         # Falhas reais de coleta (timeout/erro/nao encontrada) tornam a coleta
         # parcialmente degradada; EMPTY (tenant respondeu com 0 vagas) e
@@ -1178,6 +1277,8 @@ def main(argv: list[str] | None = None) -> int:
                 records.append(dataset_record)
             if direct_fetch_record is not None:
                 records.append(direct_fetch_record)
+            if research_sources_record is not None:
+                records.append(research_sources_record)
             write_metrics(metrics_path, records)
             log.error("nenhuma vaga coletada; verifique as empresas e o pacote ats-scrapers")
             return 1
@@ -1217,6 +1318,8 @@ def main(argv: list[str] | None = None) -> int:
             records.append(dataset_record)
         if direct_fetch_record is not None:
             records.append(direct_fetch_record)
+        if research_sources_record is not None:
+            records.append(research_sources_record)
         write_metrics(metrics_path, records)
         pipeline_rc = run_filter_pipeline(
             all_jobs,
