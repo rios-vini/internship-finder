@@ -22,23 +22,28 @@ Regras (spec F11, item 3 + F20, item 2):
   (caso Infineon). Marcada = MESMA semantica do 404/410 (desce do top).
 - **403/429/timeout/DNS = bloqueio de bot ou rede**: ignora, nao marca
   nada (marcar por 403 derrubaria vagas vivas de sites com bot-wall).
-- **Falha total do estagio** (rede fora: nenhuma resposta HTTP recebida):
+- **Falha total do estágio** (rede fora: nenhuma resposta HTTP recebida):
   log + devolve conjunto VAZIO — o pipeline nunca derruba por causa do
-  check e nunca marca mortas sem evidencia.
-- **Deadline defensivo**: estourou, devolve o que ja foi confirmado
+  check e nunca marca mortas sem evidência.
+- **Deadline defensivo**: estourou, devolve o que já foi confirmado
   (mortas observadas com resposta HTTP real) e loga.
 
-F20 — o check passa a GET (os marcadores soft-dead vivem no CORPO; HEAD nao
+F20 — o check passa a GET (os marcadores soft-dead vivem no CORPO; HEAD não
 tem corpo). Mesmo custo de timeout curto (~5s), delay sequencial e UA
 honesto; o passe continua bounded ao top exibido (o chamador corta).
 
-Hidratacao (F20, item 3): o MESMO passe HTTP devolve, para as vagas do
-top-N com descricao curta, a descricao completa extraida da pagina
-(parser honesto: JSON-LD jobPosting description -> meta og:description ->
-heuristica de corpo; SEM LLM). Falha de fetch/parse = a descricao
-original permanece (nunca piora). A re-avaliacao de aplicabilidade
-(german_level/requires_master da F18) roda no chamador sobre a descricao
-hidratada — ver ``refresh_daily``.
+Hidratação (F20, item 3): o MESMO passe HTTP devolve, para as vagas do
+top-N com descrição curta, a descrição completa extraída da página.
+Falha de fetch/parse = a descrição original permanece (nunca piora). A
+re-avaliação de aplicabilidade (german_level/requires_master da F18) roda
+no chamador sobre a descrição hidratada — ver ``refresh_daily``.
+
+F22 (09/10) — hidratação JSON-LD-ONLY: ``parse_job_description`` aceita
+SOMENTE JSON-LD schema.org JobPosting (campo ``description``). Os caminhos
+``og:description``/``description`` SAÍRAM da hidratação (pendência §5.3 da
+F20): boards como KPMG/Thales servem meta GENÉRICA do board que passava no
+gate de qualidade (>= 120 chars) e era inútil como descrição da vaga. O
+gate (>= 120 chars) passa a valer também para o JSON-LD extraído.
 """
 
 from __future__ import annotations
@@ -99,29 +104,17 @@ SPA_SHELL_TITLE_RE = re.compile(
     re.IGNORECASE,
 )
 
-_META_TAG_RE = re.compile(r"<meta[^>]*>", re.IGNORECASE)
-
-
-def _meta_content(html: str, key: str) -> str | None:
-    """Content de uma meta tag por name/property (tolerante à ordem dos
-    atributos — 'content' pode vir antes de 'name'). ``None`` = sem tag.
-    """
-    for m in _META_TAG_RE.finditer(html):
-        tag = m.group(0)
-        if not re.search(rf'(?:property|name)\s*=\s*["\']{re.escape(key)}["\']',
-                         tag, re.IGNORECASE):
-            continue
-        c = re.search(r'content\s*=\s*["\']([^"\']*)["\']', tag, re.IGNORECASE)
-        if c:
-            return c.group(1)
-    return None
-
-
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _JSON_LD_JOB_RE = re.compile(
     r'<script[^>]+application/ld\+json[^>]*>(.*?)</script>',
     re.IGNORECASE | re.DOTALL,
 )
+
+# F22 — gate de qualidade: descrição extraída precisa ter pelo menos
+# este número de caracteres para valer como descrição da vaga (o mesmo
+# gate que valia para og/meta na F20; agora vale para o JSON-LD). Metas
+# genéricas de board e snippets curtos morrem aqui.
+_DESCRIPTION_MIN_CHARS = 120
 
 
 def _soft_dead_in_body(body_text: str) -> str | None:
@@ -177,51 +170,69 @@ def _final_path_is_homepage(final_url: str, original_url: str) -> bool:
     return False
 
 
-def parse_job_description(html: str) -> str | None:
-    """Descricao completa da vaga a partir do HTML da pagina (F20; pura).
-
-    Parser simples e honesto, SEM LLM — em ordem de confiabilidade:
-
-    1. JSON-LD ``jobPosting.description`` (schema.org; padrao dos boards);
-    2. meta ``og:description`` (boards modernos);
-    3. meta ``description``.
-
-    Devolve ``None`` quando nada e extraiivel (o chamador mantem a
-    descricao original — nunca piora). O texto e normalizado (tags
-    stripadas, espacos colapsados) e truncado em 16KB (descricao de vaga
-    real e < 16KB; protege o JSON de pagas-por-byte gigantes).
+def _iter_jsonld_jobpostings(html: str):
+    """Percorre os blocos JSON-LD (objeto | array | @graph) e devolve os
+    objetos com ``@type`` contendo ``JobPosting``. Pura (o parse é do
+    chamador); segue a mesma convenção do ``official_page`` (Fase D).
     """
-    if not html:
-        return None
-    # 1. JSON-LD
-    import html as _html_mod
     import json as _json
     for m in _JSON_LD_JOB_RE.finditer(html):
         try:
             data = _json.loads(m.group(1).strip())
         except (ValueError, TypeError):
             continue
-        candidates = data if isinstance(data, list) else [data]
-        for obj in candidates:
+        stack = data if isinstance(data, list) else [data]
+        while stack:
+            obj = stack.pop()
+            if isinstance(obj, list):
+                stack.extend(obj)
+                continue
             if not isinstance(obj, dict):
                 continue
             node = obj.get("@type", "")
             types = node if isinstance(node, list) else [node]
-            if not any("JobPosting" in str(t) for t in types):
-                continue
-            desc = obj.get("description")
-            if isinstance(desc, str) and desc.strip():
-                return _clean_description(desc)
-    # 2. og:description / 3. meta description — janela de 96KB (Thales
-    # real: og:description na pos 67.694; job pages modernos colocam as
-    # metas depois de bundles de CSS/JS) e parser tolerante à ordem dos
-    # atributos (content antes de name).
-    for key, min_len in (("og:description", 120), ("description", 120)):
-        raw = _meta_content(html[:96_768], key)
-        if raw:
-            text = _html_mod.unescape(raw).strip()
-            if len(text) >= min_len:
-                return _clean_description(text)
+            if any("JobPosting" in str(t) for t in types):
+                yield obj
+            # @graph: JobPosting pode vir empacotado dentro dele (padrão
+            # de boards modernos) — desce um nível (json.loads produz
+            # árvore, sem ciclos: a pilha sempre drena).
+            graph = obj.get("@graph")
+            if isinstance(graph, list):
+                stack.extend(g for g in graph if isinstance(g, (dict, list)))
+
+
+def parse_job_description(html: str) -> str | None:
+    """Descrição completa da vaga a partir do HTML da página (F20; pura).
+
+    F22 — JSON-LD-ONLY: a única fonte aceita é o JSON-LD schema.org
+    ``JobPosting.description`` (a fonte real da vaga; pendência §5.3 da
+    F20 — og:description e meta description saíram da hidratação porque
+    boards servem meta GENÉRICA do board que passava no gate e era inútil
+    como descrição da vaga). SEM LLM.
+
+    Gates (o chamador só hidrata quando o resultado é maior que a
+    descrição original — nunca piora):
+
+    - JSON-LD presente e parseável, com ``@type`` JobPosting (objeto,
+      array ou ``@graph``);
+    - campo ``description`` string não-vazia;
+    - texto limpo com **>= 120 chars** (metas genéricas de board e
+      snippets curtos não são descrição de vaga).
+
+    Devolve ``None`` quando nada é extraível (o chamador mantém a
+    descrição original). O texto é normalizado (tags stripadas, espaços
+    colapsados) e truncado em 16KB (descrição de vaga real é < 16KB;
+    protege o JSON de pagas-por-byte gigantes).
+    """
+    if not html:
+        return None
+    for obj in _iter_jsonld_jobpostings(html):
+        desc = obj.get("description")
+        if not isinstance(desc, str):
+            continue
+        cleaned = _clean_description(desc)
+        if len(cleaned) >= _DESCRIPTION_MIN_CHARS:
+            return cleaned
     return None
 
 
@@ -303,10 +314,11 @@ def check_liveness_v2(
       redirect-para-homepage / shell SPA). Mesma semantica F11: desce do
       top exibido; o JSON/CSV ficam intactos.
     - ``bodies``: para vagas VIVAS com descricao curta (< ``short_description_limit``
-      chars) e corpo parseavel, a descricao completa extraida (JSON-LD ->
-      og:description -> meta description). Vagas mortas nao hidratam (o
-      corpo e de anuncio encerrado); fetch/parse falho = ausencia do mapa
-      (a descricao original permanece — nunca piora).
+      chars) e corpo parseavel, a descricao completa extraida (F22: SOMENTE
+      JSON-LD JobPosting — og/meta genericos de board nao hidratam mais).
+      Vagas mortas nao hidratam (o corpo e de anuncio encerrado);
+      fetch/parse falho = ausencia do mapa (a descricao original permanece
+      — nunca piora).
     - ``stats``: contadores do passe (attempts/http_responses/net_errors/
       soft_dead/{marker,redirect,shell}/hydrated/hydration_failed/
       duration_s) para o log e o relatorio da fase.

@@ -345,6 +345,12 @@ def test_hydration() -> None:
         + json.dumps({"@type": "JobPosting", "description": jsonld_desc})
         + "</script></head><body>...</body></html>"
     ).encode("utf-8")
+    # F22 (09/10): a hidratação é JSON-LD-ONLY — og:description e meta
+    # description SAÍRAM do caminho de hidratação (pendência §5.3 da F20:
+    # KPMG/Thales servem meta GENÉRICA do board que passava no gate >= 120
+    # chars e era inútil como descrição da vaga). O job "og" desta fixture
+    # passou a NÃO hidratar — atualização legítima documentada no relatório
+    # da F22; a regressão específica (KPMG/Thales reais) vive no test_f22.
     og_page = (
         b"<html><head><title>Job</title>"
         b'<meta property="og:description" content="' + b"x" * 400 + b'">'
@@ -379,11 +385,12 @@ def test_hydration() -> None:
     check("fetch falha → original mantida (sem hidratação)",
           "fail" not in hydrated and "fail" not in dead)
     check("descrição longa (>= 500) NÃO hidrata", "long" not in hydrated)
-    check("og:description também hidrata", "og" in hydrated)
+    check("F22: og:description NÃO hidrata mais (JSON-LD-only)",
+          "og" not in hydrated)
     check("página viva sem metas parseáveis → sem hidratação",
           "noparse" not in hydrated)
-    check("stats: hydrated=2, short_candidates=3 (fail=timeout não é candidato)",
-          stats["hydrated"] == 2 and stats["short_candidates"] == 3)
+    check("stats: hydrated=1 (só JSON-LD), short_candidates=3 (fail=timeout não é candidato)",
+          stats["hydrated"] == 1 and stats["short_candidates"] == 3)
 
     # re-avaliação F18: hidratada revela alemão required → demovida
     job = {"id": "short", "title": "Praktikum Data Science",
