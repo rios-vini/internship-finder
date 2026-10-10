@@ -1,6 +1,6 @@
 # internship-finder
 
-**A production pipeline that streams ~5 million job postings every day, deduplicates them across 65 ATS platforms, and publishes a ranked, visa-aware shortlist of internships and working-student jobs in Germany.**
+**A production pipeline that streams ~5 million job postings every day, deduplicates them across 15 ATS platforms, and publishes a ranked, visa-aware shortlist of internships and working-student jobs in Germany.**
 
 [![CI](https://github.com/rios-vini/internship-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/rios-vini/internship-finder/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -42,7 +42,7 @@ has done so in production since September 2026:
 ```mermaid
 flowchart LR
     DS["ats-scrapers hosted dataset<br/>~5.1M postings · 63 per-ATS slices<br/>refreshed daily ~05:00 UTC"] -->|"streaming prefilter"| F
-    RG["curated registry<br/>101 companies · 65 ATS platforms"] -->|"per-company fetch"| F
+    RG["curated registry<br/>110 companies · 15 ATS platforms"] -->|"per-company fetch"| F
     F["eligibility filters<br/>student type + target area + country"] --> D
     D["dedup<br/>3 keys + DE/EN mirror collapse"] --> R
     R["deterministic ranking<br/>2 profiles · score breakdown"] --> P
@@ -53,7 +53,7 @@ flowchart LR
 
 - **Sources** — a hosted dataset of ~5.1M job postings (streamed slice by
   slice, never fully materialized) plus per-company collection from a
-  curated registry of 101 companies across 65 ATS platforms.
+  curated registry of 110 companies across 15 ATS platforms.
 - **Filters** — student-type roles (*Praktikum*, *Werkstudent*, internship,
   working student) in Supply Chain / Procurement / BI / Analytics, plus a
   secondary Materials Engineering profile with its own independent
@@ -65,7 +65,7 @@ flowchart LR
   platforms and languages.
 - **Ranking** — deterministic, reproducible scoring (no ML) with a full
   per-component breakdown; ties broken by score → title → company → id.
-- **Visa signal** — a 🛂 badge marks the 36 companies with a curated,
+- **Visa signal** — a 🛂 badge marks the 68 companies with a curated,
   sourced visa policy; it is a company-level signal and never enters the
   relevance score.
 - **Outputs** — GitHub Pages (top 100 with search and filters), a Telegram
@@ -77,12 +77,12 @@ flowchart LR
 | | |
 |---|---|
 | **~5.1M** | job postings streamed daily from the upstream dataset |
-| **2,428** | eligible jobs in a typical daily run (Oct 2026) → top 100 published |
-| **101 / 65** | curated companies / ATS platforms in the registry |
+| **771** | eligible jobs in the latest daily run (2026-10-10) → top 100 published |
+| **110 / 15** | curated companies / ATS platforms in the registry |
 | **5** | target countries (DE primary + LU, NL, FI, BE) |
-| **59** | CI test suites, all green on every push |
+| **67** | CI test suites, all green on every push |
 | **+0.65** | Kendall tau vs. a 59-job human-labeled ranking benchmark |
-| **67** | commits — every feature PR merged with CI green twice on the exact merge SHA |
+| **175** | commits — every feature PR merged with CI green twice on the exact merge SHA |
 
 ## Engineering decisions worth noticing
 
@@ -114,7 +114,7 @@ flowchart LR
 ## Tech stack
 
 **Python 3.12+** · pydantic (canonical `Job` model) · sqlite3 ·
-requests / BeautifulSoup · GitHub Actions (59 suites on a clean runner) ·
+requests / BeautifulSoup · GitHub Actions (67 suites on a clean runner) ·
 GitHub Pages · Telegram Bot API · Oracle Linux VPS + cron
 
 ## Quickstart
@@ -133,7 +133,7 @@ Collect from the curated registry — the same command the daily cron runs:
 
 ## Testing
 
-59 standalone test suites run on every push (clean runner, Python 3.12,
+67 standalone test suites run on every push (clean runner, Python 3.12,
 no network, no local data). Each one prints `[OK]`/`[FAIL]` and exits
 non-zero on failure:
 
