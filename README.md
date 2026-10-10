@@ -151,7 +151,6 @@ python scripts/test_dedup.py
 - **[docs/historico/](docs/historico/)** — the full project history:
   phase reports, audits, and decision logs from every stage of the build
   (PT-BR).
-  (PT-BR).
 
 ## License
 
