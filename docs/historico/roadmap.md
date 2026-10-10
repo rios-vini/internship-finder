@@ -1,8 +1,9 @@
 # Roadmap (histórico)
 
 > ⚠️ **Este documento está obsoleto** (época do MVP) e ficou apenas como
-> histórico. A fonte de verdade do plano é o **`MASTER_PLAN.md`** (ranking
-> P0–P4 com status ✅/⏳); o estado medido atual está em **`PROJECT_STATUS.md`**.
+> histórico. A fonte de verdade do plano é o **`docs/historico/MASTER_PLAN.md`**
+> (ranking P0–P4 com status ✅/⏳); o estado medido atual está em
+> **`docs/historico/PROJECT_STATUS.md`**.
 
 Este era o plano do MVP. O que ele previa **já foi entregue** e evoluiu muito
 além disso (deadline canônico, hardening, SQLite, CI, observabilidade, erros

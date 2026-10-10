@@ -33,17 +33,17 @@ Requer Python **>= 3.12** (testado em 3.12; vale para 3.13/3.14).
 
 ### Dependencias do projeto vs snapshot do ambiente
 
-Dois arquivos na raiz com papeis diferentes (nao confundir):
+Dois arquivos com papeis diferentes (nao confundir):
 
 - **`pyproject.toml`** — a fonte de verdade das dependencias do projeto
   (declaradas + restricoes de versao). A instalacao padrao (`pip install -e .`,
   acima) e o CI resolvem as dependencias a partir dele.
-- **`requirements-lock.txt`** — snapshot congelado do ambiente resolvido
-  (`pip freeze` do venv), para reproducao exata do ambiente quando necessario.
-  Nao e um lock declarativo moderno (uv.lock/poetry.lock), nao e a fonte primaria
-  das dependencias e nao e usado pelo CI nem pela instalacao padrao. Regenerar na
-  raiz do repo com `.venv/bin/python -m pip freeze > requirements-lock.txt`
-  (o cabecalho do arquivo documenta isso).
+- **`docs/historico/requirements-lock.txt`** — snapshot congelado do ambiente
+  resolvido (`pip freeze` do venv), mantido no historico para reproducao exata
+  do ambiente de 2026-09-12 quando necessario. Nao e um lock declarativo
+  moderno (uv.lock/poetry.lock), nao e a fonte primaria das dependencias e
+  nao e usado pelo CI nem pela instalacao padrao. Para gerar um snapshot
+  novo: `.venv/bin/python -m pip freeze > requirements-lock.txt`.
 
 ## Como rodar
 
@@ -243,8 +243,8 @@ em producao; o `.db` NAO e rotacionado — e acumulativo e vive em `data/`,
 gitignored); o archive e limpo automaticamente apos cada rotacao
 (`--retention-days N`, default 14, 0 = desliga); uso de disco acima de 80%
 entra como `⚠️ Disco: N% usado` na mensagem; o subprocesso da coleta herda o
-ambiente do chamador. Novo arquivo `requirements-lock.txt` na raiz (snapshot de
-reproducibilidade via pip freeze, fora do CI).
+ambiente do chamador. Snapshot de reproducibilidade via pip freeze
+(`requirements-lock.txt`; hoje em `docs/historico/`, fora do CI).
 
 **Credenciais** (`.env` na raiz — gitignored): `TELEGRAM_BOT_TOKEN` e
 `TELEGRAM_CHAT_ID`. Sem token no `.env` o script loga aviso e NAO envia
@@ -594,8 +594,8 @@ Deutschland" vs "Marketing Germany") NAO sao fundidos — exigiria dicionario
 de traducao/fuzzy, fora do escopo do MVP. No snapshot de 31/08 (historico):
 eligible 258 -> 236 (22 removidas, todas pela chave 3; 0 por external_id/URL).
 Com o dedup 2.0 (P2 #14) o pipeline produzia **232** (4 duplicatas TRUE a mais —
-pares EN/DE do mesmo cargo; ver `MASTER_PLAN.md` #14). No run 18/09:
-507 -> 476 eligible (31 removidas).
+pares EN/DE do mesmo cargo; ver `docs/historico/MASTER_PLAN.md` #14). No run
+18/09: 507 -> 476 eligible (31 removidas).
 
 #### Mirrors DE/EN por requisition_id (Fase C)
 
@@ -1171,7 +1171,7 @@ scripts/verify_companies.py  # runbook de empresas (match exato + fetch)
 scripts/coverage.py       # cobertura: funil + empresas/ATS/paises (offline)
 scripts/interface.py      # interface simples: top vagas ranqueadas + filtros (HTML stdlib; P3 #25)
 scripts/test_*.py         # suite standalone ([OK]/[FAIL]; exit 0 = TUDO OK) — test_refresh = refresh diario
-requirements-lock.txt      # snapshot do ambiente (pip freeze; fora do CI; deps = pyproject.toml)
+docs/historico/requirements-lock.txt  # snapshot do ambiente (pip freeze; fora do CI; deps = pyproject.toml)
 ```
 
 > **Regra de isolamento (auditoria 23/09)**: testes/validacoes NUNCA escrevem
@@ -1185,9 +1185,10 @@ requirements-lock.txt      # snapshot do ambiente (pip freeze; fora do CI; deps 
 
 ## Status / Roadmap
 
-Os numeros e o plano de execucao sao mantidos no **`MASTER_PLAN.md`** (fonte de
-verdade do plano: ranking P0–P4 com status ✅/⏳) e no **`PROJECT_STATUS.md`**
-(estado medido atual). `docs/roadmap.md` ficou como historico do MVP. CI:
+Os numeros e o plano de execucao sao mantidos no
+**`docs/historico/MASTER_PLAN.md`** (fonte de verdade do plano: ranking P0–P4
+com status ✅/⏳) e no **`docs/historico/PROJECT_STATUS.md`** (estado medido
+atual). `docs/historico/roadmap.md` ficou como historico do MVP. CI:
 GitHub Actions (`.github/workflows/ci.yml`) roda a suite standalone
 (`scripts/test_*.py`) em runner limpo — exit 0 = TUDO OK. Licença: MIT
 (`LICENSE`); políticas de segurança em `SECURITY.md`.
