@@ -1,5 +1,11 @@
 # Project Status
 
+> ⚠️ **Documento congelado na Fase F7 (2026-10-03).** O projeto avançou até a
+> Fase F24 (2026-10-10) — as fases F8–F24 estão documentadas nos commit
+> messages e nos relatórios de fase em `docs/historico/`. Este arquivo
+> permanece como registro histórico do estado medido até a F7; não o trate
+> como estado atual do projeto.
+
 Last updated: 2026-10-03 (Fase F7 — expansão multi-países LU+NL+FI+BE com visa_policy por país; branch `feature/f7-multi-country`, PR aberto; suíte local 51/51)
 
 ## Current state

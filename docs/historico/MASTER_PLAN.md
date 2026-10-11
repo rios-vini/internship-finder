@@ -1,5 +1,11 @@
 # MASTER_PLAN — Internship Finder (fonte de verdade única)
 
+> ⚠️ **Documento congelado na Fase F7 (2026-10-03).** O projeto avançou até a
+> Fase F24 (2026-10-10) — as fases F8–F24 estão documentadas nos commit
+> messages e nos relatórios de fase em `docs/historico/`. Este arquivo
+> permanece como registro histórico do plano até a F7; não o trate como
+> estado atual do projeto.
+
 **Versão:** 2026-09-19 · **Status:** unificado a partir de (1) roadmap original Hermes,
 (2) auditoria OpenHands (ACH-01..21), (3) consolidações das sessões 27–30/08,
 (4) **verificação direta no código/git em 31/08**; Seção 1 re-verificada em 07/09

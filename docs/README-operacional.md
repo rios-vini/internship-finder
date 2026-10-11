@@ -132,7 +132,7 @@ secundario no output.
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
 mesma cascata, gravando o resultado em `data/eligible_jobs.json`. A lista de
 empresas nao e mais colado no comando: vem do **registry** (fonte de verdade
-das 101 empresas em codigo — ver "Registry de empresas" abaixo):
+das 110 empresas em codigo — ver "Registry de empresas" abaixo):
 
 ```bash
 .venv/bin/internship-finder --registry --timeout 60
@@ -144,11 +144,13 @@ python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 
 ### Registry de empresas
 
-As 101 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
+As 110 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
 E2 + 25 da expansao 08/09 — P3 #23, Otto removida em 15/09 — + 17 da expansao
 de cobertura 15/09 + 6 da auditoria 16/09 + 9 da auditoria próxima fronteira
 17/09 + 5 da última onda de cobertura 18/09: Sungrow EMEA, AutoScout24, Huawei
-Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH — ver
+Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH + 9 da
+onda de fontes F16 08/10: Brenntag, ALTANA, Atlas Copco, SKF, Decathlon
+Digital, DSV, Heidelberg Materials, Sandvik, Rhe — ver
 `docs/` e MASTER_PLAN #23 e o
 Log de mudanças) vivem em **codigo**, no `SEED` de
 `src/internship_finder/registry.py` — a
@@ -177,7 +179,7 @@ compatibilidade, mas a lista oficial e o registry.
   83 consistent, 15 multi (declarado presente com cobertura extra) e
   3 dynamic (None declarado, resolucao pela base).
 - Seed e modelo: `src/internship_finder/registry.py` (pydantic, `SEED` com as
-  101 entradas operacionais); testes em `scripts/test_registry.py`.
+  110 entradas operacionais); testes em `scripts/test_registry.py`.
 
 ### Daily refresh (P2 #17)
 
@@ -450,14 +452,16 @@ timeout proprio (`--timeout 60`).
 
 - **Avaliada** = empresa que passou pela verificacao do runbook
   (`docs/empresas_verificacao.md`): match exato na base do `ats-scrapers` e
-  teste do tenant/ATS. Apos as expansoes de 15/09, 16/09, 17/09 e 18/09, sao **101 empresas**
+  teste do tenant/ATS. Apos as expansoes de 15/09, 16/09, 17/09 e 18/09 e a
+  onda de fontes F16 (08/10), sao **110 empresas**
   operacionais na coleta (12 da validacao inicial + 27 novas + 25 da expansao
   08/09, Otto removida 15/09 + 17 de cobertura 15/09 + 6 da auditoria 16/09
   + 9 da auditoria próxima fronteira 17/09: Picnic, cbs Corporate Business
   Solutions, AIXTRON SE, Holzland Becker, CarOnSale, CURRENTA GRUPPE, Miebach
   Consulting, Engelhart, audibene/hear.com + 5 da onda final 18/09: Sungrow
   EMEA, AutoScout24, Huawei Research Center Germany, EAT HAPPY GROUP, VDI
-  Technologiezentrum GmbH).
+  Technologiezentrum GmbH + 9 da onda F16 08/10: Brenntag, ALTANA, Atlas
+  Copco, SKF, Decathlon Digital, DSV, Heidelberg Materials, Sandvik, Rhe).
 - **Operacional** = retorna vagas no fetch real (tenant ativo, ATS com
   scraper): **39** no snapshot 07/09 (**pré-expansão #23** — 35 tenants com
   dados em `data/jobs.json`; a Bosch conta 2x no campo `company` — tenants
@@ -517,7 +521,7 @@ deterministico — `.venv/bin/python scripts/coverage.py`):
 | --- | --- |
 | Funil: raw → tipo → area → pais (DE) | 72.866 → 6.635 → 1.411 → 507 (run cron 18/09, 101 empresas) |
 | eligible (pos-dedup) → ranked | 507 → 476 (31 removidas na dedup, company+title+location; run 18/09) |
-| Empresas com eligible / tenants (source) | 65 / 50 (bruto run 18/09: 114 nomes de empresa / 92 tenants com dados; registry: 101; fontes ok no run: 115) |
+| Empresas com eligible / tenants (source) | 65 / 50 (bruto run 18/09: 114 nomes de empresa / 92 tenants com dados; registry: 110; fontes ok no run: 115) |
 | Top empresas (eligible) | BMW AG 81, SAP 74, BoschGroup 48, Volkswagen AG 23, teampicnic 20, Fraunhofer-Gesellschaft 19, Knorr-Bremse 15, Liebherr-International S.A. 13, BASF SE 13, STIHL 12, ... (65 empresas no total; run 18/09) |
 | Contribuicao das maiores | top1 17,0% (BMW AG 81/476) | top3 42,6% | top5 51,7% |
 | Top ATS (eligible) | successfactors 296, smartrecruiters 54, greenhouse 33, phenom 24, workday 16, recruitee 14, eightfold 12, cornerstone 10, softgarden 6, ashby 4, personio 4, teamtailor 3 |
@@ -1163,7 +1167,7 @@ src/internship_finder/
 ├── errors.py       # codigos de erro estruturados (CollectionError + classificador)
 ├── health.py       # relatorio de health por tenant/ATS sobre o JSONL + alertas
 ├── geocoding.py    # fallback de pais por cidade (cache-first; flag OFF por default)
-├── registry.py     # CompanyRegistry: fonte unica das 101 empresas de coleta (SEED, P2 #13)
+├── registry.py     # CompanyRegistry: fonte unica das 110 empresas de coleta (SEED, P2 #13)
 └── cli.py          # entry point `internship-finder` (filtro default + coleta)
 scripts/collect_jobs.py   # atalho p/ rodar sem instalar
 scripts/refresh_daily.py  # refresh diario + alertas Telegram (rotacao -> coleta -> health -> alerta)
@@ -1185,11 +1189,13 @@ docs/historico/requirements-lock.txt  # snapshot do ambiente (pip freeze; fora d
 
 ## Status / Roadmap
 
-Os numeros e o plano de execucao sao mantidos no
-**`docs/historico/MASTER_PLAN.md`** (fonte de verdade do plano: ranking P0–P4
-com status ✅/⏳) e no **`docs/historico/PROJECT_STATUS.md`** (estado medido
-atual). `docs/historico/roadmap.md` ficou como historico do MVP. CI:
-GitHub Actions (`.github/workflows/ci.yml`) roda a suite standalone
+Os numeros e o plano de execucao estao registrados no
+**`docs/historico/MASTER_PLAN.md`** (plano P0–P4 com status ✅/⏳ — congelado
+na Fase F7, 03/10) e no **`docs/historico/PROJECT_STATUS.md`** (estado medido
+— congelado na Fase F7, 03/10). As fases F8–F24 (04/10–10/10) estao
+documentadas nos commit messages e nos relatorios de fase em
+`docs/historico/`. `docs/historico/roadmap.md` ficou como historico do MVP.
+CI: GitHub Actions (`.github/workflows/ci.yml`) roda a suite standalone
 (`scripts/test_*.py`) em runner limpo — exit 0 = TUDO OK. Licença: MIT
 (`LICENSE`); políticas de segurança em `SECURITY.md`.
 

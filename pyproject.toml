@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "internship-finder"
 version = "0.1.0"
-description = "Buscador de estagios (internship / working student / Praktikum / Werkstudent) orientado a empresas, foco em Supply Chain, Procurement, BI, Analytics e Automacao (prioridade Alemanha)."
+description = "Company-oriented internship finder (internship / working student / Praktikum / Werkstudent) focused on Supply Chain, Procurement, BI, Analytics and Automation (Germany-first)."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

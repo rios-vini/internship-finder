@@ -82,7 +82,7 @@ flowchart LR
 | **5** | target countries (DE primary + LU, NL, FI, BE) |
 | **67** | CI test suites, all green on every push |
 | **+0.65** | Kendall tau vs. a 59-job human-labeled ranking benchmark |
-| **175** | commits — every feature PR merged with CI green twice on the exact merge SHA |
+| **82** | commits — every feature PR merged with CI green twice on the exact merge SHA |
 
 ## Engineering decisions worth noticing
 
