@@ -29,6 +29,13 @@ Fontes (todas com probe ao vivo 09/10, 200 OK; tempos no relatorio):
 6. ``freehire``     — API keyless https://freehire.me/api/v1/jobs (feeds ATS
                       normalizados; paginacao por ``offset`` — ``page`` e
                       ``ignored_params`` no meta, fato medido 09/10).
+7. ``bme``          — BME JobSource jobsource.bme.de (F31): listagem Drupal
+                      SERVER-RENDERED (20/pag x 8 pag, probe 13/10) + detail
+                      com JSON-LD JobPosting. Gate anti-bot resolvido SEM
+                      browser: 302 botchallenge.html carrega ?token=<hex> e o
+                      JS do desafio apenas copia o token p/ o cookie
+                      ``bot_verified`` — o adapter faz o echo (protocolo do
+                      proprio site), UA honesto, Crawl-delay 10 (robots).
 
 Regras da fase (spec §0/§2):
 
@@ -62,6 +69,7 @@ import logging
 import os
 import re
 import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
@@ -81,7 +89,7 @@ _USER_AGENT = "internship-finder-liveness/1.1 (daily public-source fetch; contac
 # Timeout por REQUEST (listagem e cada detail). Spec §0.7: 30s.
 RESEARCH_HTTP_TIMEOUT = 30.0
 
-# Teto TOTAL do estagio (6 fontes), checado ENTRE fontes. A soma medida dos
+# Teto TOTAL do estagio (7 fontes desde a F31), checado ENTRE fontes. A soma medida dos
 # fetchs vivos (09/10) e ~45s; o teto e folga para dias lentos (criterio de
 # pronto: soma < 5 min).
 RESEARCH_BUDGET_SECONDS = 300.0
@@ -111,6 +119,7 @@ SOURCE_LEIBNIZ = "leibniz"
 SOURCE_ARBEITNOW = "arbeitnow"
 SOURCE_REMOTEOK = "remoteok"
 SOURCE_FREEHIRE = "freehire"
+SOURCE_BME = "bme"
 
 # Empresas institucionais canonicas (fato do portal, nao deducao por slug):
 # os jobs pertencem a SOCIEDADE/universidade; institutos individuais (MPG
@@ -118,11 +127,42 @@ SOURCE_FREEHIRE = "freehire"
 MPG_COMPANY = "Max Planck Society"
 TUM_BERLIN_COMPANY = "Technische Universität Berlin"
 LEIBNIZ_COMPANY = "Leibniz Association"
+# Fallback institucional do portal (item da listagem SEM organizacao — a
+# regra do projeto: preferir None/fallback honesto a fabricar dado).
+BME_COMPANY = "BME JobSource"
 
 # Env var para desligar fontes SEM deploy (spec §2.3: flag de configuracao
 # por fonte, default ON). CSV de nomes canonicos; item desconhecido e
 # ignorado com log (nunca crash).
 RESEARCH_SOURCES_OFF_ENV = "INTERNSHIP_FINDER_RESEARCH_SOURCES_OFF"
+
+# --- BME JobSource (F31) -----------------------------------------------------
+# robots.txt (probe 13/10, salvo no relatorio da fase): Drupal padrao, sem
+# Disallow para /jobs, /job/<slug> nem /sites/...; `User-agent: *` com
+# `Crawl-delay: 10`. E a unidade de espera ENTRE requests HTTP AO DOMINIO
+# (nao e sugestao — e a regra do robots, listagem e details igual).
+BME_CRAWL_DELAY_SECONDS = 10.0
+# Gate anti-bot (botchallenge.html): SEM cookie -> 302 para o desafio cuja
+# URL carrega ?token=<32-hex> NO HEADER ``Location`` (probe 13/10,
+# h_detail.txt: ``location: ...botchallenge.html?token=6c0cb...``). O JS do
+# desafio apenas COPIA o token do query para o cookie ``bot_verified``
+# (1 ano); o servidor valida o VALOR (cookie aleatorio -> 302 de novo,
+# jobs_randcookie.html). O adapter reproduz o protocolo ensinado pelo
+# PROPRIO SITE com urllib: (1) request sem redirect automatico; (2) se 302
+# para botchallenge, extrai o token do Location e devolve no cookie
+# ``bot_verified`` (echo); (3) refaz o request com o cookie. SEM browser,
+# SEM JS — o desafio e um cookie-echo. UA honesto, 1 challenge por run e
+# Crawl-delay 10 (robots).
+BME_GATE_COOKIE_NAME = "bot_verified"
+BME_GATE_PATH_RE = re.compile(r"[?&]token=([0-9a-f]{16,64})")
+BME_GATE_HOST_RE = re.compile(r"https?://jobsource\.bme\.de")
+BME_LIST_URL = "https://jobsource.bme.de/jobs"
+BME_DETAIL_URL = "https://jobsource.bme.de/job/{job_id}"
+# Vagas por pagina (probe 13/10: 20/pag x 8 pag ~ 160 vagas no sitemap).
+BME_MAX_PAGES = 8
+# Details por run (JSON-LD JobPosting: description, datePosted, validThrough,
+# jobLocation). 10/rodada — o prefilter por titulo da listagem ja escolhe.
+BME_MAX_DETAILS = 10
 
 
 # ---------------------------------------------------------------------------
@@ -848,7 +888,332 @@ def fetch_freehire(
 
 
 # ---------------------------------------------------------------------------
-# Estagio F21: sequencia das 6 fontes com budget + kill switch por env var
+# 7. BME JobSource (F31) — listagem Drupal server-rendered + detail JSON-LD
+# ---------------------------------------------------------------------------
+
+# Item da listagem (probe 13/10): <article> por vaga com anchor
+# ``recruiter-job-link`` (href absoluto .../job/<slug>) cujo ``title`` e o
+# titulo da vaga; data ``DD.MM.YYYY``; empresa em
+# ``recruiter-company-profile-job-organization``; cidade em
+# ``<div class="location"><span>``. URIs relativas (``about=``/``typeof=``)
+# existem no markup — so a anchor absoluta e consumida.
+_BME_ITEM_RE = re.compile(
+    r'<a\s+href="(https://jobsource\.bme\.de/job/([^"]+))"\s+'
+    r'class="recruiter-job-link"\s+title="([^"]*)"', re.DOTALL
+)
+_BME_DATE_RE = re.compile(r'class="date">\s*([0-9]{2}\.[0-9]{2}\.[0-9]{4})')
+_BME_ORG_RE = re.compile(
+    r'recruiter-company-profile-job-organization">\s*(.*?)\s*</span>', re.DOTALL
+)
+_BME_LOC_RE = re.compile(r'<div class="location">\s*<span>(.*?)</span>', re.DOTALL)
+_BME_PAGER_RE = re.compile(r'href="(?:https://jobsource\.bme\.de)?/jobs\?page=([0-9]+)"')
+_BME_JSONLD_RE = re.compile(
+    r'<script[^>]*type="application/ld\+json"[^>]*>\s*(.*?)\s*</script>', re.DOTALL
+)
+
+
+def parse_bme_date(value: str) -> datetime | None:
+    """Data da listagem BME (``DD.MM.YYYY``) -> ``datetime`` (None se invalida)."""
+    m = re.match(r"([0-9]{2})\.([0-9]{2})\.([0-9]{4})", str(value or "").strip())
+    if not m:
+        return None
+    try:
+        return datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    except ValueError:
+        return None
+
+
+def parse_bme_listing(html_text: str) -> list[dict[str, str]]:
+    """Listagem BME -> ``[{job_id, url, title, company, location, date_str}]``.
+
+    Bloco ``<article>`` a ``</article>`` (um por vaga); anchor
+    ``recruiter-job-link`` com href absoluto. Dedup por slug (offsets da
+    paginacao podem repetir). Sem match -> ``[]`` (pagina vazia/lambda).
+    """
+    items: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for art in re.findall(r"<article\b.*?</article>", html_text, re.DOTALL):
+        m = _BME_ITEM_RE.search(art)
+        if not m:
+            continue
+        url, job_id, title = m.group(1), m.group(2), m.group(3)
+        if job_id in seen:
+            continue
+        seen.add(job_id)
+        org = _BME_ORG_RE.search(art)
+        loc = _BME_LOC_RE.search(art)
+        dt = _BME_DATE_RE.search(art)
+        items.append({
+            "job_id": job_id,
+            "url": url,
+            "title": _html_to_text(title) or title.strip(),
+            "company": (_html_to_text(org.group(1)) if org else None)
+            or BME_COMPANY,
+            "location": _html_to_text(loc.group(1)) if loc else None,
+            "date_str": dt.group(1) if dt else "",
+        })
+    return items
+
+
+def parse_bme_pager(html_text: str) -> list[int]:
+    """Numeros de pagina do pager (``/jobs?page=N``), ordem do documento."""
+    return sorted({int(n) for n in _BME_PAGER_RE.findall(html_text)})
+
+
+def parse_bme_detail(
+    html_text: str, fallback_title: str | None = None,
+) -> dict[str, Any] | None:
+    """Detail BME -> campos do JSON-LD ``JobPosting`` (ou None se ausente).
+
+    3 blocos ld+json (WebSite/Organization/JobPosting) — o JobPosting e
+    escolhido por ``@type``. Campos: title, description (HTML -> texto),
+    jobLocation (``localidade, regiao, pais``), datePosted, validThrough,
+    employmentType[0], hiringOrganization.name.
+    """
+    import json
+
+    for m in _BME_JSONLD_RE.finditer(html_text):
+        try:
+            data = json.loads(m.group(1))
+        except ValueError:
+            continue
+        if not isinstance(data, dict) or data.get("@type") != "JobPosting":
+            continue
+
+        address = None
+        locality = region = country = None
+        locations = data.get("jobLocation")
+        if isinstance(locations, list) and locations:
+            addr = (locations[0] or {}).get("address") or {}
+            if isinstance(addr, dict):
+                locality = _clean(addr.get("addressLocality"))
+                region = _clean(addr.get("addressRegion"))
+                country = _clean(addr.get("addressCountry"))
+                parts = [p for p in (locality, region, country) if p]
+                address = ", ".join(parts) or None
+
+        employment_type = None
+        et = data.get("employmentType")
+        if isinstance(et, list) and et:
+            employment_type = str(et[0]).strip() or None
+        elif isinstance(et, str) and et.strip():
+            employment_type = et.strip()
+
+        org_name = None
+        org = data.get("hiringOrganization")
+        if isinstance(org, dict):
+            org_name = _clean(org.get("name"))
+
+        return {
+            "title": _clean(data.get("title")) or fallback_title,
+            "description": _html_to_text(data.get("description")),
+            "location": address,
+            "country_name": country,
+            "employment_type": employment_type,
+            "date_posted": _parse_dt(data.get("datePosted")),
+            "valid_through": _parse_dt(data.get("validThrough")),
+            "company": org_name,
+        }
+    return None
+
+
+def _bme_sleep(seconds: float, sleep: Callable[[float], None]) -> None:
+    """Espera do Crawl-delay — ``sleep`` injetavel (testes passam no-op)."""
+    if seconds > 0:
+        sleep(seconds)
+
+
+class _BmeNoRedirect(urllib.request.HTTPRedirectHandler):
+    """Nao segue 302: o token do challenge vem no ``Location`` (probe 13/10).
+
+    urllib segue redirects por default; seguindo, o body final e a pagina
+    ``Bot Check`` SEM ``?token=`` literal (o token viaja no header). Sem
+    seguir, o 302 expoe ``Location: botchallenge.html?token=...`` — o
+    mesmo dado que o JS do site copiaria para o cookie ``bot_verified``.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
+        return None
+
+
+def _bme_opener() -> urllib.request.OpenerDirector:
+    """Opener SEM redirect (o adapter decide o que fazer com cada 302)."""
+    return urllib.request.build_opener(_BmeNoRedirect)
+
+
+def _bme_extract_gate_token(location: str | None) -> str | None:
+    """``Location: .../botchallenge.html?token=<hex>`` -> token (ou None)."""
+    if not location or "botchallenge" not in location:
+        return None
+    m = BME_GATE_PATH_RE.search(location)
+    return m.group(1) if m else None
+
+
+def fetch_bme(
+    *,
+    max_pages: int = BME_MAX_PAGES,
+    max_details: int = BME_MAX_DETAILS,
+    crawl_delay: float = BME_CRAWL_DELAY_SECONDS,
+    timeout: float = RESEARCH_HTTP_TIMEOUT,
+    opener: Callable[[urllib.request.Request], Any] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    list_url: str = BME_LIST_URL,
+    detail_url_template: str = BME_DETAIL_URL,
+) -> tuple[list[Job], dict[str, Any]]:
+    """BME JobSource -> ``(jobs, stats)``.
+
+    Protocolo do gate (probe 13/10, evidencia no relatorio da fase): request
+    SEM redirect -> 302 com ``Location: botchallenge.html?token=<hex>`` ->
+    Crawl-delay -> request com ``Cookie: bot_verified=<token>`` (ECHO do
+    token — o JS do desafio apenas copia o query para o cookie; o servidor
+    valida o VALOR: cookie aleatorio devolve 302, probe 07:41). SEM browser,
+    SEM JS. Listagem paginada (``?page=N``); Crawl-delay 10s ANTES de cada
+    request ao dominio (robots — listagem e details).
+    Details: cap ``max_details`` escolhendo PRIMEIRO os intern-candidates
+    da listagem (prefilter barato por titulo da F3 — o prefilter ESCOLHE
+    quais details buscar, NUNCA descarta vaga); TODA a listagem e
+    materializada (portal institucional, padrao TU Berlin/Leibniz — o
+    funil de tipo resolve; regra da card: NAO filtrar na fonte). Vaga
+    sem detail preservada (sem description) — fail-soft TU Berlin.
+    """
+    stats: dict[str, Any] = {
+        "source": SOURCE_BME, "status": "ok", "rows_seen": 0, "pages": 0,
+        "challenge": None, "jobs": 0, "details_ok": 0, "details_failed": 0,
+        "error": None,
+    }
+
+    def get(url: str, *, cookie: str | None = None) -> tuple[str | None, str | None]:
+        """GET sem redirect; devolve ``(body, location_do_302)`` (fail-soft).
+
+        Crawl-delay ANTES de cada request ao dominio (robots Crawl-delay: 10
+        — o gate conta como request: 2 GETs = 2 esperas). Com ``opener``
+        injetavel (testes), um HTTPError 302 propagado carrega o Location.
+        """
+        _bme_sleep(crawl_delay, sleep)
+        req = urllib.request.Request(
+            url, headers={
+                "User-Agent": _USER_AGENT,
+                **({"Cookie": cookie} if cookie else {}),
+            },
+        )
+        try:
+            if opener is not None:
+                return str(opener(req)), None
+            resp = _bme_opener().open(req, timeout=timeout)
+            return resp.read().decode("utf-8", "replace"), None
+        except urllib.error.HTTPError as exc:
+            if 300 <= exc.code < 400:
+                # Opener sem redirect: o 302 chega como HTTPError com headers.
+                return None, exc.headers.get("Location")
+            log.warning("research_sources: GET %s falhou: %s", url.split("?")[0], exc)
+            return None, None
+        except Exception as exc:  # noqa: BLE001 - fail-soft
+            log.warning("research_sources: GET %s falhou: %s", url.split("?")[0], exc)
+            return None, None
+
+    # 1) Listagem p1 + challenge->cookie (echo do token do Location).
+    body, location = get(list_url)
+    cookie: str | None = None
+    if body is None:
+        token = _bme_extract_gate_token(location)
+        if token is None:
+            stats["status"] = "failed"
+            stats["error"] = "listagem falhou (sem challenge utilizavel)"
+            return [], stats
+        stats["challenge"] = True
+        cookie = f"{BME_GATE_COOKIE_NAME}={token}"
+        body, location = get(list_url, cookie=cookie)
+        if body is None:
+            stats["status"] = "failed"
+            stats["error"] = "listagem falhou apos challenge"
+            return [], stats
+    listing = parse_bme_listing(body)
+    pages = parse_bme_pager(body)
+
+    # 2) Paginas seguintes (mesmo cookie; fail-soft por pagina). Pager
+    #    numerado 1..N = SEGUNDA..(N+1)-esima pagina fisica (probe 13/10:
+    #    ``next`` aponta ?page=1; p1 = URL base). Cap: no maximo
+    #    ``max_pages`` paginas fisicas -> pager 1..max_pages-1.
+    pending = [p for p in pages if 1 <= p <= max_pages - 1]
+    seen_ids = {it["job_id"] for it in listing}
+    for page in pending:
+        text, _ = get(f"{list_url}?page={page}", cookie=cookie)
+        if text is None:
+            continue
+        for item in parse_bme_listing(text):
+            if item["job_id"] not in seen_ids:
+                seen_ids.add(item["job_id"])
+                listing.append(item)
+    stats["rows_seen"] = len(listing)
+    stats["pages"] = 1 + len(pending)
+    if not listing:
+        stats["status"] = "failed"
+        stats["error"] = "nenhuma vaga na listagem"
+        return [], stats
+
+    # 3) Materializa TODA a listagem (portal institucional — mesmo padrao
+    #    TU Berlin/Leibniz; o funil de tipo resolve o resto; regra da card:
+    #    NAO filtrar na fonte). Details: cap ``max_details`` escolhendo
+    #    PRIMEIRO os intern-candidates (prefilter barato por titulo da
+    #    F3) — o prefilter ESCOLHE details, NUNCA descarta vaga; vagas
+    #    sem detail entram SEM description (fail-soft TU Berlin).
+    #    404/lambda page -> sem JSON-LD -> None (nao derruba).
+    intern_first = sorted(
+        listing,
+        key=lambda it: not row_is_intern_candidate(it["title"]),
+    )
+    detail_targets = {it["job_id"] for it in intern_first[:max_details]}
+    jobs: list[Job] = []
+    for entry in listing:
+        if entry["job_id"] in detail_targets:
+            detail_body, _ = get(detail_url_template.format(job_id=entry["job_id"]), cookie=cookie)
+            detail = (
+                parse_bme_detail(detail_body, fallback_title=entry["title"])
+                if detail_body is not None else None
+            )
+            if detail is not None:
+                stats["details_ok"] += 1
+            else:
+                stats["details_failed"] += 1
+        else:
+            detail = None
+
+        title = (detail or {}).get("title") or entry["title"]
+        description = (detail or {}).get("description")
+        location = (detail or {}).get("location") or entry.get("location")
+        employment_type = (detail or {}).get("employment_type")
+        posted_at = (detail or {}).get("date_posted") or parse_bme_date(entry.get("date_str", ""))
+        deadline = (detail or {}).get("valid_through")
+        # ISO: jobLocation.addressCountry ("DE") do detail; fallback "de"
+        # (portal do BME, associacao ALEMANA — institucional DE).
+        iso = infer_country_iso(location=location, country_iso="de")
+        company = (detail or {}).get("company") or entry["company"]
+        job = Job(
+            id=f"{company}|{SOURCE_BME}:{entry['job_id']}",
+            source=SOURCE_BME,
+            title=title,
+            company=company,
+            location=location,
+            country=iso,
+            url=entry["url"],
+            description=description,
+            internship=is_student_role(title, description, employment_type),
+            posted_at=posted_at,
+            collected_at=datetime.now(UTC),
+            external_id=entry["job_id"],
+            employment_type=employment_type,
+            application_deadline=deadline,
+            country_iso=iso,
+            raw=None,
+        )
+        jobs.append(job)
+
+    stats["jobs"] = len(jobs)
+    return jobs, stats
+
+
+# ---------------------------------------------------------------------------
+# Estagio F21: sequencia das 7 fontes (6 originais + bme F31) com budget + kill switch por env var
 # ---------------------------------------------------------------------------
 
 # Ordem fixa (deterministica): portais institucionais primeiro (relevancia
@@ -860,6 +1225,10 @@ RESEARCH_SOURCE_ORDER: tuple[tuple[str, Callable[..., tuple[list[Job], dict[str,
     (SOURCE_ARBEITNOW, fetch_arbeitnow),
     (SOURCE_REMOTEOK, fetch_remoteok),
     (SOURCE_FREEHIRE, fetch_freehire),
+    # F31: BME por ultimo — Crawl-delay 10 faz a fonte a mais custosa do
+    # estagio (~18 requests x 10s); fontes existentes NAO passam fome no
+    # budget (skipped_budget cai no bme primeiro, se estourar).
+    (SOURCE_BME, fetch_bme),
 )
 
 
@@ -869,7 +1238,7 @@ def disabled_research_sources(
     """Nomes de fontes desligadas via env var (kill switch sem deploy).
 
     ``INTERNSHIP_FINDER_RESEARCH_SOURCES_OFF``: CSV de nomes canonicos
-    (``mpg_rss,tu_berlin,leibniz,arbeitnow,remoteok,freehire``), case
+    (``mpg_rss,tu_berlin,leibniz,arbeitnow,remoteok,freehire,bme``), case
     insensitive, whitespace tolerante. Item desconhecido gera log de aviso
     (visivel) e e ignorado — nunca crasha o run. Sem a var (ou vazia):
     conjunto vazio = todas as fontes ligadas (default ON, spec §2.3).
@@ -900,7 +1269,7 @@ def collect_research_sources(
     env: dict[str, str] | None = None,
     fetchers: dict[str, Callable[..., tuple[list[Job], dict[str, Any]]]] | None = None,
 ) -> tuple[list[Job], dict[str, Any]]:
-    """Estagio F21: 6 fontes de pesquisa sequenciais; ``(jobs, summary)``.
+    """Estagio F21: 7 fontes de pesquisa sequenciais (6 originais + bme F31); ``(jobs, summary)``.
 
     - Cada fonte e independente e best-effort (fail-soft): falha vira
       registro com ``status: failed`` e o run segue — o exit code nunca
