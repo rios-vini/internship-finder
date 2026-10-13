@@ -150,11 +150,23 @@ jobs:
           # na SEED, evidências re-datadas) + fixture offline do monitor das
           # issues upstream #295–#298 (open, 0 comments, repo sem push desde
           # 24/09; companies.csv do manifest segue snapshot 23/08).
+          # F30 (13/10): test_f30.py entra na suíte (68º script) — fontes
+          # keyless nicho: Amazon search.json (prefilter client-side DE+
+          # estágio, alpha-3 DEU->de), Jobmensa sitemap (robots anuncia o
+          # .gz; prefilter por slug), ABSOLVENTA canal materialwirtschaft
+          # (positions[]=praktikum+werkstudent server-side, plataforma uno)
+          # e Praktikum.info (mesma DB da ABSOLVENTA — default OFF com
+          # evidência). Defaults honestos: jobmensa (zero-yield estrutural:
+          # 187 kept -> 0 eligible, 100% Werkstudent puro) e praktikum_info
+          # (dupla contagem) DESLIGADAS via F30_DEFAULT_OFF_SOURCES; env
+          # CSV continua o kill switch. Fail-soft, id estável, dedup
+          # cross-fonte, 100% offline (fixtures verbatim dos probes 13/10).
           # F23 (09/10): test_f23.py entra na suíte (66º script) — dedup
           # tier-4 cirúrgico: sub-estágio wildcard "mehrere Standorte"
           # (Deloitte SF×BA, alias exato, direcional, idempotente) +
           # pendência Enovos documentada com evidência (colisão de URL da
           # spec não existe; slug-only teria FP SICK/Action).
+<<<<<<< ours
           # F25 (13/10): test_f25.py entra na suíte (68º script) —
           # reavaliação de aplicabilidade do backlog hidratado: TODA vaga
           # description_source=="hydration" sem marcador passa pela MESMA
@@ -177,6 +189,9 @@ jobs:
           # do visto no digest (data derivada de constantes) e frases
           # jurídicas LITERAIS no rodapé da página.
           tests=(test_atomic_outputs test_filters test_collect_flags test_coverage test_hardening test_countries test_application_deadline test_app_intel test_opportunity_intel test_audit2_quality test_visa_policy test_hydration test_dedup test_mirror_dedup test_official_page test_official_evidence test_ranking test_geocoding test_sqlite test_db_backup test_validation test_errors test_health test_interface test_publish_pages test_lifecycle test_registry test_registry_consistency test_refresh test_digest test_zero_return test_identity test_ranking_benchmark test_materials_ranking test_ptbr test_personal_tracker test_audit_fixes test_enrichment test_enrichment_present test_structured_fields test_spike_e test_fasef test_faseg test_fasei test_fasej test_f1 test_f3 test_f4 test_f5 test_f6 test_f61 test_f7 test_f9 test_f10 test_f11 test_f12 test_f125 test_f13 test_f14 test_f15 test_f16 test_f18 test_f20 test_f21 test_f22 test_f23 test_f24 test_f25 test_f29 test_f31)
+=======
+          tests=(test_atomic_outputs test_filters test_collect_flags test_coverage test_hardening test_countries test_application_deadline test_app_intel test_opportunity_intel test_audit2_quality test_visa_policy test_hydration test_dedup test_mirror_dedup test_official_page test_official_evidence test_ranking test_geocoding test_sqlite test_db_backup test_validation test_errors test_health test_interface test_publish_pages test_lifecycle test_registry test_registry_consistency test_refresh test_digest test_zero_return test_identity test_ranking_benchmark test_materials_ranking test_ptbr test_personal_tracker test_audit_fixes test_enrichment test_enrichment_present test_structured_fields test_spike_e test_fasef test_faseg test_fasei test_fasej test_f1 test_f3 test_f4 test_f5 test_f6 test_f61 test_f7 test_f9 test_f10 test_f11 test_f12 test_f125 test_f13 test_f14 test_f15 test_f16 test_f18 test_f20 test_f21 test_f22 test_f23 test_f24 test_f30)
+>>>>>>> theirs
           status=0
           for t in "${tests[@]}"; do
             echo "==================== $t ===================="

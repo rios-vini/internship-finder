@@ -386,16 +386,23 @@ def _fetcher_dead(**kw):
 
 def test_stage_fail_soft() -> None:
     print("== E. Fail-soft do estagio ==")
+    # F30: o estagio tem 10 fontes; jobmensa/praktikum_info sao default-OFF
+    # (F30_DEFAULT_OFF_SOURCES) e NAO executam; amazon_jobs/absolventa
+    # entram nos cenarios com fetcher FAKE (a suite e zero-HTTP — sem
+    # cobertura no dict o estagio chamaria o fetcher REAL).
     fetchers = {"mpg_rss": _fetcher_ok(2), "tu_berlin": _fetcher_dead,
                 "leibniz": _fetcher_ok(1), "arbeitnow": _fetcher_dead,
                 "remoteok": _fetcher_ok(1), "freehire": _fetcher_ok(1),
-                "bme": _fetcher_ok(3)}
+                "bme": _fetcher_ok(3),
+                "amazon_jobs": _fetcher_ok(1), "absolventa": _fetcher_ok(1)}
     jobs, summary = rs.collect_research_sources(fetchers=fetchers, env={})
     check("E1. fonte morta -> status failed NO summary; outras entregam",
           summary["sources"]["tu_berlin"]["status"] == "failed"
           and summary["sources"]["arbeitnow"]["status"] == "failed"
           and summary["sources"]["bme"]["status"] == "ok"
-          and len(jobs) == 8 and summary["status"] == "partial",
+          and summary["sources"]["amazon_jobs"]["status"] == "ok"
+          and summary["sources"]["jobmensa"]["status"] == "skipped_disabled"
+          and len(jobs) == 10 and summary["status"] == "partial",
           f"jobs={len(jobs)} status={summary['status']}")
     fetchers_dead = {n: _fetcher_dead for n, _ in rs.RESEARCH_SOURCE_ORDER}
     jobs2, summary2 = rs.collect_research_sources(fetchers=fetchers_dead, env={})
@@ -416,11 +423,12 @@ def test_stage_fail_soft() -> None:
         fetchers={n: fetcher_slow for n, _ in rs.RESEARCH_SOURCE_ORDER}, env={})
     skipped = sum(1 for s in summary3["sources"].values()
                   if s["status"] == "skipped_budget")
-    # clock fake: t0=0; cada fetch avanca 200s. Fonte 1 roda (0<250),
-    # fonte 2 roda (200<250), fonte 3+ estoura (400>250) -> 5 skipped
-    # (7 fontes desde a F31; eram 4 com 6).
+    # clock fake: t0=0; cada fetch avanca 200s. 9 fontes executaveis (11 -
+    # jobmensa/praktikum_info default-OFF pulam ANTES do budget): fonte 1
+    # roda (0<250), fonte 2 roda (200<250), fonte 3+ estoura (400>250)
+    # -> 7 skipped.
     check("E4. budget estourado -> fontes seguintes skipped_budget",
-          skipped == 5 and summary3["skipped_budget"] == 5
+          skipped == 7 and summary3["skipped_budget"] == 7
           and len(jobs3) == 2, f"skipped={skipped} jobs={len(jobs3)}")
 
 
@@ -435,23 +443,31 @@ def test_kill_switch() -> None:
         fetchers=fetchers,
         env={rs.RESEARCH_SOURCES_OFF_ENV: "arbeitnow, remoteok"},
     )
+    # F30: jobmensa/praktikum_info sao default-OFF (F30_DEFAULT_OFF_SOURCES)
+    # e juntam-se ao disabled do env; as 8 executaveis menos arbeitnow/
+    # remoteok = 6 jobs.
     check("F1. env desliga arbeitnow+remoteok (skipped_disabled); resto roda",
           summary["sources"]["arbeitnow"]["status"] == "skipped_disabled"
           and summary["sources"]["remoteok"]["status"] == "skipped_disabled"
           and summary["sources"]["mpg_rss"]["status"] == "ok"
-          and len(jobs) == 5 and sorted(summary["disabled"]) == ["arbeitnow", "remoteok"],
+          and len(jobs) == 7
+          and sorted(summary["disabled"]) ==
+          ["arbeitnow", "jobmensa", "praktikum_info", "remoteok"],
           f"jobs={len(jobs)} disabled={summary['disabled']}")
     jobs2, summary2 = rs.collect_research_sources(
         fetchers=fetchers, env={rs.RESEARCH_SOURCES_OFF_ENV: "nao_existe,mpg_rss"},
     )
     check("F2. nome desconhecido ignorado; mpg desligada",
           summary2["sources"]["mpg_rss"]["status"] == "skipped_disabled"
-          and len(jobs2) == 6, f"jobs={len(jobs2)}")
+          and len(jobs2) == 8, f"jobs={len(jobs2)}")
     jobs3, summary3 = rs.collect_research_sources(fetchers=fetchers, env={})
-    check("F3. sem env var -> 7 fontes executam (default ON; +bme F31)",
-          len(summary3["sources"]) == 7
-          and all(s["status"] == "ok" for s in summary3["sources"].values())
-          and len(jobs3) == 7, f"jobs={len(jobs3)}")
+    # F3 (re-datado F30+F31): 11 fontes registradas; 9 executam (jobmensa e
+    # praktikum_info sao default-OFF com evidencia — ver test_f30 E3).
+    check("F3. sem env var -> 9 fontes executam (11 registradas, 2 default-OFF)",
+          len(summary3["sources"]) == 11
+          and sum(1 for s in summary3["sources"].values() if s["status"] == "ok") == 9
+          and sum(1 for s in summary3["sources"].values() if s["status"] == "skipped_disabled") == 2
+          and len(jobs3) == 9, f"jobs={len(jobs3)}")
 
 
 # ---------------------------------------------------------------------------
@@ -637,6 +653,10 @@ def test_zero_http() -> None:
         rs.fetch_arbeitnow(opener=dead_opener)
         rs.fetch_remoteok(opener=dead_opener)
         rs.fetch_freehire(opener=dead_opener)
+        rs.fetch_amazon_jobs(opener=dead_opener)
+        rs.fetch_jobmensa(opener=dead_opener)
+        rs.fetch_absolventa(opener=dead_opener)
+        rs.fetch_praktikum_info(opener=dead_opener)
         rs.collect_research_sources(
             fetchers={n: (lambda **kw: (_fetcher_dead(**kw) and None) or ([], {"source": n, "status": "failed", "jobs": 0}))
                       for n, _ in rs.RESEARCH_SOURCE_ORDER},
