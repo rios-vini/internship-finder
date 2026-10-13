@@ -132,7 +132,7 @@ secundario no output.
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
 mesma cascata, gravando o resultado em `data/eligible_jobs.json`. A lista de
 empresas nao e mais colado no comando: vem do **registry** (fonte de verdade
-das 110 empresas em codigo — ver "Registry de empresas" abaixo):
+das 127 empresas em codigo — ver "Registry de empresas" abaixo):
 
 ```bash
 .venv/bin/internship-finder --registry --timeout 60
@@ -144,7 +144,7 @@ python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 
 ### Registry de empresas
 
-As 110 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
+As 127 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
 E2 + 25 da expansao 08/09 — P3 #23, Otto removida em 15/09 — + 17 da expansao
 de cobertura 15/09 + 6 da auditoria 16/09 + 9 da auditoria próxima fronteira
 17/09 + 5 da última onda de cobertura 18/09: Sungrow EMEA, AutoScout24, Huawei
@@ -179,7 +179,7 @@ compatibilidade, mas a lista oficial e o registry.
   83 consistent, 15 multi (declarado presente com cobertura extra) e
   3 dynamic (None declarado, resolucao pela base).
 - Seed e modelo: `src/internship_finder/registry.py` (pydantic, `SEED` com as
-  110 entradas operacionais); testes em `scripts/test_registry.py`.
+  127 entradas operacionais); testes em `scripts/test_registry.py`.
 
 ### Daily refresh (P2 #17)
 
@@ -453,7 +453,8 @@ timeout proprio (`--timeout 60`).
 - **Avaliada** = empresa que passou pela verificacao do runbook
   (`docs/empresas_verificacao.md`): match exato na base do `ats-scrapers` e
   teste do tenant/ATS. Apos as expansoes de 15/09, 16/09, 17/09 e 18/09 e a
-  onda de fontes F16 (08/10), sao **110 empresas**
+  onda de fontes F16 (08/10) e a onda F32 Hidden Champions (13/10), sao
+  **127 empresas**
   operacionais na coleta (12 da validacao inicial + 27 novas + 25 da expansao
   08/09, Otto removida 15/09 + 17 de cobertura 15/09 + 6 da auditoria 16/09
   + 9 da auditoria próxima fronteira 17/09: Picnic, cbs Corporate Business
@@ -461,7 +462,11 @@ timeout proprio (`--timeout 60`).
   Consulting, Engelhart, audibene/hear.com + 5 da onda final 18/09: Sungrow
   EMEA, AutoScout24, Huawei Research Center Germany, EAT HAPPY GROUP, VDI
   Technologiezentrum GmbH + 9 da onda F16 08/10: Brenntag, ALTANA, Atlas
-  Copco, SKF, Decathlon Digital, DSV, Heidelberg Materials, Sandvik, Rhe).
+  Copco, SKF, Decathlon Digital, DSV, Heidelberg Materials, Sandvik, Rhe
+  + 16 da onda F32 13/10: Blickle, Bundesdruckerei, Delo, EBM-Papst,
+  ElringKlinger, Freudenberg, Karlstorz, KAESER Careers, Koerber Group,
+  Multivac, Ottobock, Mapal, LEMKEN, Grammer, Leoni, Walter, Rational — ver
+  docs/f32_hidden_champions.md).
 - **Operacional** = retorna vagas no fetch real (tenant ativo, ATS com
   scraper): **39** no snapshot 07/09 (**pré-expansão #23** — 35 tenants com
   dados em `data/jobs.json`; a Bosch conta 2x no campo `company` — tenants
@@ -1167,7 +1172,7 @@ src/internship_finder/
 ├── errors.py       # codigos de erro estruturados (CollectionError + classificador)
 ├── health.py       # relatorio de health por tenant/ATS sobre o JSONL + alertas
 ├── geocoding.py    # fallback de pais por cidade (cache-first; flag OFF por default)
-├── registry.py     # CompanyRegistry: fonte unica das 110 empresas de coleta (SEED, P2 #13)
+├── registry.py     # CompanyRegistry: fonte unica das 127 empresas de coleta (SEED, P2 #13)
 └── cli.py          # entry point `internship-finder` (filtro default + coleta)
 scripts/collect_jobs.py   # atalho p/ rodar sem instalar
 scripts/refresh_daily.py  # refresh diario + alertas Telegram (rotacao -> coleta -> health -> alerta)

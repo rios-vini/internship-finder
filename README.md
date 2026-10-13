@@ -42,7 +42,7 @@ has done so in production since September 2026:
 ```mermaid
 flowchart LR
     DS["ats-scrapers hosted dataset<br/>~5.1M postings · 63 per-ATS slices<br/>refreshed daily ~05:00 UTC"] -->|"streaming prefilter"| F
-    RG["curated registry<br/>110 companies · 15 ATS platforms"] -->|"per-company fetch"| F
+    RG["curated registry<br/>127 companies · 15 ATS platforms"] -->|"per-company fetch"| F
     F["eligibility filters<br/>student type + target area + country"] --> D
     D["dedup<br/>3 keys + DE/EN mirror collapse"] --> R
     R["deterministic ranking<br/>2 profiles · score breakdown"] --> P
@@ -53,7 +53,7 @@ flowchart LR
 
 - **Sources** — a hosted dataset of ~5.1M job postings (streamed slice by
   slice, never fully materialized) plus per-company collection from a
-  curated registry of 110 companies across 15 ATS platforms.
+  curated registry of 127 companies across 15 ATS platforms.
 - **Filters** — student-type roles (*Praktikum*, *Werkstudent*, internship,
   working student) in Supply Chain / Procurement / BI / Analytics, plus a
   secondary Materials Engineering profile with its own independent
@@ -78,7 +78,7 @@ flowchart LR
 |---|---|
 | **~5.1M** | job postings streamed daily from the upstream dataset |
 | **771** | eligible jobs in the latest daily run (2026-10-10) → top 100 published |
-| **110 / 15** | curated companies / ATS platforms in the registry |
+| **127 / 15** | curated companies / ATS platforms in the registry |
 | **5** | target countries (DE primary + LU, NL, FI, BE) |
 | **67** | CI test suites, all green on every push |
 | **+0.65** | Kendall tau vs. a 59-job human-labeled ranking benchmark |

@@ -6,18 +6,19 @@ Cobre as tarefas da fase sem rede e sem ``data/`` de produção:
   existe no SEED como ``RegistryEntry`` com os campos esperados (name str
   não-vazia, ats str não-vazio, tenant ``ats:slug`` não-vazio) e
   ``enabled=True``.
-- **T2 Nenhum tenant vazio**: TODAS as entradas do SEED (110) têm
+- **T2 Nenhum tenant vazio**: TODAS as entradas do SEED têm
   ``tenant`` preenchido no formato ``<ats>:<slug>`` (self-consistente com
   o ats declarado) — a onda F16 não introduziu entradas sem tenant.
 - **T3 Nenhum nome duplicado**: nomes do SEED são únicos (o dict do
   CompanyRegistry colidiria silenciosamente; guarda explícita).
-- **T4 Contagem do SEED**: ``len(SEED) == 110`` (101 da F15 + 9 da F16) e
-  a lista de nomes bate com a canônica de 110 do test_registry.
+- **T4 Contagem do SEED**: ``len(SEED) == SEED_COUNT`` (paramétrico
+  desde a F32; 110 pré-F32 = 101 da F15 + 9 da F16) e
+  a lista de nomes bate com a canônica do test_registry.
 - **T5 Isolamento das pendências**: as 6 empresas do bucket B que FICARAM
   FORA (Deutsche Bank, Munich Re, Symrise, Honeywell, Nokia, Unilever
   TMICC) NÃO estão no SEED — regra da fase: empresa sem validação ao vivo
   (0 vagas/tenant ambíguo/infra não suporta) nunca entra.
-- **T6 Integridade das vizinhas**: as 101 entradas pré-F16 continuam
+- **T6 Integridade das vizinhas**: as entradas pré-F16 continuam
   presentes e intactas (nome + ats + tenant byte a byte) — a onda só
   acrescenta, nunca modifica.
 
@@ -80,7 +81,10 @@ F16_PENDENCIES = [
     "Unilever TMICC",
 ]
 
-SEED_COUNT = 110  # 101 pré-F16 + 9 da onda F16
+# Paramétrico desde a F32 (13/10/2026): contagens absolutas em 1 constante;
+# o contrato da F16 (onda só acrescenta, nenhuma entrada alterada) e
+# verificado pelos checks T4c/T6 abaixo com contagens RELATIVAS.
+SEED_COUNT = 127  # 110 pré-F32 + 17 Hidden Champions (docs/f32_hidden_champions.md)
 
 
 def main() -> int:
@@ -121,9 +125,9 @@ def main() -> int:
     check("T3b. registry.get resolve 1:1 (dict sem colisao)", len(by_name) == len(SEED))
 
     section("T4. contagem da SEED")
-    check("T4a. len(SEED) == 110", len(SEED) == SEED_COUNT, f"n={len(SEED)}")
+    check("T4a. len(SEED) == SEED_COUNT", len(SEED) == SEED_COUNT, f"n={len(SEED)}")
     check("T4b. registry.entries idem", len(reg.entries) == SEED_COUNT, f"n={len(reg.entries)}")
-    check("T4c. 101 pré-F16 + 9 F16", len(SEED) - len(F16_ENTRIES) == 101)
+    check("T4c. pré-F16 = SEED_COUNT - 9 F16", len(SEED) - len(F16_ENTRIES) == SEED_COUNT - 9)
 
     section("T5. pendências do bucket B FORA do SEED")
     seed_names_lower = {n.casefold() for n in names}
@@ -133,7 +137,7 @@ def main() -> int:
     section("T6. entradas pré-F16 intactas (a onda só acrescenta)")
     f16_names = {n.casefold() for n in F16_ENTRIES}
     pre = [e for e in SEED if e.name.casefold() not in f16_names]
-    check("T6a. 101 entradas pré-F16 preservadas", len(pre) == 101, f"n={len(pre)}")
+    check("T6a. entradas pré-F16 preservadas", len(pre) == SEED_COUNT - 9, f"n={len(pre)}")
     # entradas históricas sabidas e estáveis (amostra de guardiãs de cada onda)
     guards = {
         "Bosch": ("smartrecruiters", "smartrecruiters:BoschGroup"),

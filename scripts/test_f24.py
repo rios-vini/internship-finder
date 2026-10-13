@@ -12,7 +12,8 @@ fixture OFFLINE e estável (sem rede, sem ``data/``):
   destravou nenhuma (mesma conclusão da F16, dados novos).
 - **T2 Nenhuma pendência no SEED**: as 6 continuam FORA do SEED (regra
   F16: só entra quem passa em TODOS os critérios ao vivo).
-- **T3 Contagem inalterada**: ``len(SEED) == 110`` (a F24 não adicionou
+- **T3 Contagem inalterada**: ``len(SEED) == SEED_COUNT`` (paramétrico
+  desde a F32; a F24 não adicionou
   nem removeu entradas; verificação de que "0 entradas é resultado
   válido" foi o desfecho desta fase).
 - **T4 Monitor upstream (fixture)**: as 4 issues #295–#298 estavam OPEN,
@@ -170,7 +171,9 @@ UPSTREAM_COMMITS_SINCE_2026_10_01 = 0
 # companies.csv (fonte dos nomes canônicos) inalterado desde 23/08/2026.
 MANIFEST_COMPANIES_CSV_LAST_MODIFIED = "2026-08-23"
 
-SEED_COUNT = 110  # 101 pré-F16 + 9 da F16 — F24 não alterou
+# Paramétrico desde a F32 (13/10/2026): a propriedade testada pela F24
+# é 'a F24 não alterou o SEED' — o número absoluto vive em 1 constante.
+SEED_COUNT = 127  # 110 pré-F32 + 17 Hidden Champions (docs/f32_hidden_champions.md)
 
 
 def main() -> int:
@@ -201,7 +204,7 @@ def main() -> int:
           and "Unilever (TMICC)".casefold() not in names_lower)
 
     section("T3. contagem da SEED inalterada pela F24")
-    check("T3a. len(SEED) == 110", len(SEED) == SEED_COUNT, f"n={len(SEED)}")
+    check("T3a. len(SEED) == SEED_COUNT", len(SEED) == SEED_COUNT, f"n={len(SEED)}")
     check("T3b. registry.entries idem", len(reg.entries) == SEED_COUNT, f"n={len(reg.entries)}")
     check("T3c. 9 entradas F16 preservadas",
           sum(1 for n in ["Brenntag", "ALTANA Job Portal", "Atlas Copco Group", "SKF",
