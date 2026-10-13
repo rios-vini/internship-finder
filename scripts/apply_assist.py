@@ -47,6 +47,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from internship_finder.enrichment import llm  # noqa: E402
 
+# F34 (13/10): orcamento de tokens PROPRIO para as chamadas de escrita — o
+# MAX_TOKENS=8000 do llm.py e o contrato historico do enrichment (spike E),
+# mas o FLASH queima ~7k tokens em reasoning_content em tarefas de escrita
+# longa (carta/briefing com perfil+JD): 8000 -> finish_reason=length,
+# content=None (medido 13/10 no exemplo real, 2x). 16000 -> stop com folga
+# (content ~2k chars, reasoning ~7k). Ferramenta sob demanda, 1 vaga por vez:
+# o dobro do orcamento e o custo de fazer a feature funcionar de verdade.
+APPLY_ASSIST_MAX_TOKENS = 16000
+# Timeout por chamada (medido 13/10: reasoning do FLASH em prompt grande
+# excede os 290s do contrato enrichment; 600s cobre com folga).
+APPLY_ASSIST_TIMEOUT_S = 600.0
+# F34 (13/10, causa-raiz final): o thinking budget do FLASH no endpoint
+# NIM e controlado por reasoning_effort (low/high/max, DEFAULT max — docs
+# NIM z-ai-glm-5.3-flash). Com max, o modelo "pensa" ~300s e o GATEWAY
+# corta com http_504 (medido 302s, 3x). Com low: MESMA carta em 23s
+# (content 2.8k chars, reasoning 226). Escrita de rascunho nao precisa de
+# thinking profundo — low e o orçamento certo para carta/briefing.
+APPLY_ASSIST_REASONING = "low"
+
 # ---------------------------------------------------------------------------
 # Constantes da fase
 # ---------------------------------------------------------------------------
@@ -550,7 +569,9 @@ def run_cover_letter(
         "{profile_text}", profile_text
     )
     parsed, _usage, _latency, attempts, error = llm.extract(
-        key, prompt, transport=transport, backoff=backoff, sleep=sleep
+        key, prompt, transport=transport, backoff=backoff, sleep=sleep,
+        max_tokens=APPLY_ASSIST_MAX_TOKENS, timeout_s=APPLY_ASSIST_TIMEOUT_S,
+        reasoning_effort=APPLY_ASSIST_REASONING,
     )
     if parsed is None:
         raise SystemExit(
@@ -581,7 +602,9 @@ def run_interview_briefing(
         "{profile_text}", profile_text
     )
     parsed, _usage, _latency, attempts, error = llm.extract(
-        key, prompt, transport=transport, backoff=backoff, sleep=sleep
+        key, prompt, transport=transport, backoff=backoff, sleep=sleep,
+        max_tokens=APPLY_ASSIST_MAX_TOKENS, timeout_s=APPLY_ASSIST_TIMEOUT_S,
+        reasoning_effort=APPLY_ASSIST_REASONING,
     )
     if parsed is None:
         raise SystemExit(

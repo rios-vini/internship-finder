@@ -130,6 +130,9 @@ def extract(
     transport: Transport | None = None,
     backoff: tuple[float, ...] = DEFAULT_BACKOFF_S,
     sleep: Callable[[float], None] = time.sleep,
+    max_tokens: int | None = None,
+    timeout_s: float | None = None,
+    reasoning_effort: str | None = None,
 ) -> tuple[dict | None, dict | None, float | None, int, str | None]:
     """POST /chat/completions com ate 3 tentativas.
 
@@ -139,15 +142,36 @@ def extract(
       a key nunca aparece); erros nao-retryaveis param na 1a tentativa.
 
     ``backoff`` e injetavel (testes usam (0, 0)); ``sleep`` idem.
+    ``max_tokens``: ``None`` = MAX_TOKENS default do modulo (8000, contrato
+    historico do enrichment); callers de prompts GRANDES (apply-assist F34)
+    podem passar orcamento proprio — o glm-5.3-flash queima ~7k tokens em
+    reasoning_content antes de escrever o content (medido 13/10: carta com
+    max_tokens=8000 -> finish_reason=length/content=None; 16000 -> stop com
+    folga), entao 8000 e insuficiente para tarefas de escrita longa.
+    ``timeout_s``: ``None`` = LLM_TIMEOUT_S (290s, contrato do enrichment
+    spike: 16-290s/vaga); prompts grandes com orcamento maior tambem
+    demoram MAIS (reasoning proporcional) — apply-assist usa 600s.
+    ``reasoning_effort``: ``None`` = NAO envia o parametro (comportamento
+    do endpoint NIM: default "max" — thinking budget maximo; contrato
+    historico do enrichment). Callers de escrita (apply-assist F34) passam
+    "low": medido 13/10 no endpoint NVIDIA NIM (docs.api.nvidia.com/nim
+    z-ai-glm-5-3-flash), o thinking budget e controlado por
+    ``reasoning_effort`` (low/high/max, default max) — com max, o FLASH
+    queima o tempo no reasoning ate o GATEWAY cortar em ~300s (http_504,
+    medido 302s com prompt real de 9.3k chars); com "low" a MESMA carta
+    completa em 23s (content 2.8k chars, reasoning 226 chars).
     """
     transport = transport or RequestsTransport()
     headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
     payload = {
         "model": model,
         "temperature": TEMPERATURE,
-        "max_tokens": MAX_TOKENS,
+        "max_tokens": max_tokens if max_tokens is not None else MAX_TOKENS,
         "messages": [{"role": "user", "content": prompt}],
     }
+    if reasoning_effort is not None:
+        payload["reasoning_effort"] = reasoning_effort
+    call_timeout = timeout_s if timeout_s is not None else LLM_TIMEOUT_S
     parsed: dict | None = None
     usage: dict | None = None
     latency: float | None = None
@@ -162,7 +186,7 @@ def extract(
         start = time.monotonic()
         try:
             status, text = transport.post(
-                CHAT_COMPLETIONS_URL, headers, payload, LLM_TIMEOUT_S
+                CHAT_COMPLETIONS_URL, headers, payload, call_timeout
             )
         except requests.RequestException as exc:
             latency = round(time.monotonic() - start, 2)
