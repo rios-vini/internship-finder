@@ -169,25 +169,111 @@ GAP_ALLOWLIST: tuple[str, ...] = ("German Language",)
 # prompt) o glm-5.3-flash quebra NO MESMO sintoma do glm-5.3 pesado — TODO
 # o max_tokens queima em reasoning_content e o content volta VAZIO
 # (A/B: perfil 20.7k chars → 0 chars; perfil 1.5k chars → 2.1k chars de
-# JSON válido). Solução: o CLI envia ao LLM um RESUMO ESTRUTURADO dos
-# FATOS (§1–§9 do PERFIL), não o arquivo integral. O resumo é DETERMINÍSTICO
-# (sem LLM na própria sumarização) e conservador: preserva números, notas
-# honestas e placeholders; corta §10 (restrições — o perfil diz "não deve
-# aparecer em documento de candidatura") e §11 (checklist/meta). O arquivo
-# original NUNCA é modificado; keyword_gap continua lendo o texto integral.
+# JSON válido). RE-MEDIDO no exemplo real 13/10 com perfil 32.1k chars:
+# resumo de 9.0k chars TAMBÉM queima (empty_content ×3) — o gatilho é o
+# TAMANHO DO CONTEXTO levando a raciocínio longo, não só o arquivo
+# integral. Orçamento seguro empírico: perfil ≤ 6.5k chars no prompt.
+#
+# Solução: o CLI envia ao LLM um RESUMO ESTRUTURADO dos FATOS (§1–§9 do
+# PERFIL), não o arquivo integral. O resumo é DETERMINÍSTICO (sem LLM na
+# própria sumarização) e conservador:
+# - corta §10 (restrições — o perfil diz "não deve aparecer em documento
+#   de candidatura") e §11 (checklist/meta);
+# - prioridade de seção: P0 contato/objetivo/disponibilidade/visto (inteiros
+#   na medida do possível), P1 experiência/skills/idiomas, P2 educação,
+#   P3 projetos (bullets factuais, orçamento residual);
+# - dentro da seção: só linhas factuais (headers, bullets, tabelas,
+#   subtítulos **bold**); prosa meta/estilo é descartada;
+# - orçamento global 6.500 chars, aplicado em ordem de prioridade — seções
+#   P0/P1 nunca saem, P3 (projetos) absorve o corte.
+# O arquivo original NUNCA é modificado; keyword_gap continua lendo o texto
+# integral (evidência canônica sobre o texto completo).
 # ---------------------------------------------------------------------------
 
-def summarize_profile_for_llm(profile_text: str) -> str:
+# Prioridade/foco das seções §1–§9 no resumo para CADA chamada LLM:
+# a carta e o briefing precisam de coisas DIFERENTES do perfil.
+#   letter   → quem é/contato (§1), objetivo (§2), experiência (§4),
+#              skills (§6), idiomas honestos (§7), disponibilidade (§8),
+#              visto (§9). Educação (§3) e projetos (§5) ficam FORA:
+#              §5 é o mais gordo (9,1k chars) e a carta cita números, não
+#              descreve processo; §3 cabe em 1 linha se precisar.
+#   briefing → o contrário: perguntas técnicas pedem educação (§3) e
+#              projetos com números (§5) para apontar QUAL experiência
+#              usar; contato (§1) sobra pouco.
+LETTER_SECTIONS: tuple[int, ...] = (1, 2, 4, 6, 7, 8, 9)
+BRIEFING_SECTIONS: tuple[int, ...] = (2, 3, 4, 5, 6, 7, 8, 9)
+
+# Cota máxima por seção (chars) dentro do orçamento global — evita que
+# uma seção gorda (§9 visto com bullets de 600-1.3k chars, §5 projetos
+# 9.1k) coma o espaço das críticas (§7 idiomas, §8 disponibilidade).
+# Calibrado para a carta (soma das cotas §1+2+4+6+7+8+9 = 4.750 ≤
+# PROFILE_BUDGET). Seções fora do mapa: sem cota própria.
+SECTION_QUOTA: dict[int, int] = {
+    1: 400,    # contato — essenciais do cabeçalho
+    2: 400,    # objetivo
+    3: 1800,   # educação no briefing — TCC + iniciação
+    4: 1200,   # experiência — bullets-chave
+    5: 1600,   # projetos no briefing — só bullets com números
+    6: 700,    # skills — títulos **bold** + linhas curtas
+    7: 800,    # idiomas honestos
+    8: 850,    # disponibilidade — quase inteiro
+    9: 1000,   # visto — enquadramento §16e + essenciais
+}
+
+# Orçamento total do resumo (chars) POR CHAMADA. Medido 13/10 no exemplo
+# real: resumo de 9.0k chars queimava o max_tokens do FLASH em reasoning
+# (empty_content ×3); ~6.6k (perfil 1.5k + JD 3.8k + template) passou.
+# 5.000 de perfil + JD 1.5k (carta) ≈ 9.2k de prompt (~2.8k tokens) —
+# abaixo da mediana de produção (4.1k tokens) que roda todo dia.
+PROFILE_BUDGET = 5000
+
+
+def _fact_lines(body: str) -> list[str]:
+    """Linhas factuais de uma seção: headers, bullets, tabelas, quotes
+    curtos e subtítulos bold; descarta prosa meta/estilo longa."""
+    keep: list[str] = []
+    for ln in body.splitlines():
+        ls = ln.strip()
+        if (
+            ls.startswith("#")
+            or ls.startswith("-")
+            or ls.startswith("|")
+            or ls.startswith(">")
+            or ls.startswith("**")
+            or not ls
+        ):
+            keep.append(ln)
+    return keep
+
+
+def _trim_to_budget(head: str, lines: list[str], budget: int) -> str:
+    """Junta head + linhas até o orçamento; marca corte visível."""
+    size = len(head) + 1
+    keep: list[str] = []
+    for ln in lines:
+        if size + len(ln) > budget:
+            keep.append("  [… trimmed for prompt budget]")
+            break
+        keep.append(ln)
+        size += len(ln) + 1
+    return "\n".join([head] + keep)
+
+
+def summarize_profile_for_llm(
+    profile_text: str, apply_sections: tuple[int, ...] = LETTER_SECTIONS
+) -> str:
     """Resume o PERFIL-CANDIDATO.md em fatos estruturados para o prompt.
 
     Determinístico (sem LLM na própria sumarização) e conservador:
     - corta §10 (restrições: o próprio perfil manda NÃO usá-las em
       documentos de candidatura) e §11 (checklist/meta);
-    - preserva §1–§4 e §6–§9 INTEGROS (contato, educação, experiência,
-      skills, idiomas, disponibilidade, visto — é o que a carta precisa);
-    - em §5 (Projetos), mantém cada subseção mas poda parágrafos de
-      processo/estilo: só bullets e linhas com conteúdo factual, no
-      orçamento por subseção.
+    - mantém SÓ as seções pedidas em ``sections`` (foco por chamada:
+      ``LETTER_SECTIONS`` para a carta, ``BRIEFING_SECTIONS`` para o
+      briefing) como linhas factuais, dentro do orçamento global
+      (``PROFILE_BUDGET``) aplicado NA ORDEM dos números de seção;
+    - orçamento aplicado em ordem: seções de número menor (quem é,
+      objetivo, experiência) entram primeiro e inteiras na medida do
+      possível; as últimas absorvem o corte.
     Se o perfil já for curto (<= 6.000 chars), passa integral.
     """
     text = (profile_text or "").strip()
@@ -198,77 +284,53 @@ def summarize_profile_for_llm(profile_text: str) -> str:
     m = re.search(r"^## 10\.", text, flags=re.M)
     if m:
         text = text[: m.start()]
-    # 2) remove o cabeçalho meta (bloco > antes de §1) — nota de uso.
+    # 2) começa em §1 (descarta cabeçalho meta/nota de uso antes).
     m = re.search(r"^## 1\.", text, flags=re.M)
     if m:
         text = text[m.start():]
 
-    # 3) divide por seção e aplica o orçamento por PRIORIDADE. Ordem
-    #    garantida para o LLM: §1–§4 (quem é), §6–§9 (skills, idiomas,
-    #    disponibilidade, visto) INTEGROS — é o mínimo que a carta precisa.
-    #    §5 (Projetos, o mais gordo: 9,4k chars com notas de processo) é
-    #    reconstruído com bullets factuais no orçamento que sobrar.
-    sections: dict[str, str] = {}
-    order: list[str] = []
-    heads = list(re.finditer(r"^## \d+\..*$", text, flags=re.M))
+    # 3) divide por seção (UMA passada por número — headers duplicados
+    #    no arquivo não duplicam conteúdo), guardando os fatos SEM o
+    #    header (o header é re-adicionado uma única vez por seção).
+    facts_by_num: dict[int, list[str]] = {}
+    heads = list(re.finditer(r"^## (\d+)\..*$", text, flags=re.M))
     for idx, h in enumerate(heads):
-        start = h.start()
+        num = int(h.group(1))
+        if num in facts_by_num:  # primeira ocorrência vence
+            continue
         end = heads[idx + 1].start() if idx + 1 < len(heads) else len(text)
-        sections[h.group(0)] = text[start:end].rstrip()
-        order.append(h.group(0))
+        facts_by_num[num] = _fact_lines(text[h.end():end])
 
-    def _bullet_lines(body: str) -> list[str]:
-        """Linhas factuais de uma seção: headers, bullets, tabelas, quotes
-        curtos; descarta prosa meta/estilo longa."""
-        keep: list[str] = []
-        for ln in body.splitlines():
-            ls = ln.strip()
-            if (
-                ls.startswith("#")
-                or ls.startswith("-")
-                or ls.startswith("|")
-                or ls.startswith(">")
-                or not ls
-                or ls.startswith("**")  # subtítulos de skills
-            ):
-                keep.append(ln)
-        return keep
-
-    def _join_head_body(head: str, lines: list[str], budget: int) -> str:
-        size = len(head) + 1
-        keep: list[str] = []
-        for ln in lines:
-            if size + len(ln) > budget:
-                keep.append("  [… trimmed for prompt budget]")
-                break
-            keep.append(ln)
-            size += len(ln) + 1
-        return "\n".join([head] + keep)
-
-    TOTAL_BUDGET = 7800  # chars de perfil no prompt (~2,6k tokens) —
-    # medido 13/10: 1,5k chars de prompt → reasoning 5,9k + JSON 2,1k OK;
-    # 21,5k chars → reasoning 8k + content VAZIO. Folga para a JD.
-
+    # 4) orçamento global aplicado na ordem pedida, com COTA por seção
+    #    (SECTION_QUOTA): seções críticas (idiomas, disponibilidade,
+    #    visto) nunca são despejadas por uma seção gorda; a cota corta
+    #    dentro da seção (transparência via marca de trim) e o global
+    #    corta as últimas da lista.
     out_parts: list[str] = []
     used = 0
-    for head in order:
-        body = sections[head]
-        if head.startswith("## 5."):
-            # §5: bullets factuais apenas, orçamento residual (mín. 1.500)
-            remaining = max(1500, TOTAL_BUDGET - used)
-            trimmed = _join_head_body(head, _bullet_lines(body), remaining)
-        else:
-            # §1–§4, §6–§9: linhas factuais (poda leve de prosa meta), SEM
-            # quebra de seção — todas as seções entram.
-            remaining = max(700, TOTAL_BUDGET - used)
-            trimmed = _join_head_body(head, _bullet_lines(body), remaining)
-        out_parts.append(trimmed)
-        used += len(trimmed)
+    trimmed_any = False
+    for num in sorted(apply_sections):
+        if num not in facts_by_num:
+            continue
+        head = f"## {num}."
+        remaining = PROFILE_BUDGET - used
+        quota = SECTION_QUOTA.get(num)
+        if quota is not None:
+            remaining = min(remaining, quota)
+        if remaining <= len(head) + 40:  # sem espaço útil — corta aqui
+            trimmed_any = True
+            break
+        part = _trim_to_budget(head, facts_by_num[num], remaining)
+        if "[… trimmed for prompt budget]" in part:
+            trimmed_any = True
+        out_parts.append(part)
+        used += len(part) + 1
+
     result = "\n\n".join(out_parts)
 
-    # 4) aviso explícito se o orçamento apertou (dono vê no rascunho que o
-    #    prompt foi podado — transparência, não corte silencioso).
-    if "[… trimmed for prompt budget]" in result:
+    # 5) aviso explícito se o orçamento apertou (dono vê no rascunho que
+    #    o prompt foi podado — transparência, não corte silencioso).
+    if trimmed_any:
         result += (
             "\n\n[Sections trimmed for prompt budget — the owner's full "
             "profile is the source of truth; expand manually if needed]"
@@ -276,8 +338,21 @@ def summarize_profile_for_llm(profile_text: str) -> str:
     return result
 
 
-def _job_text(job: dict) -> str:
-    """Texto da vaga para o LLM: título + empresa + local + descrição."""
+# JD máxima enviada ao LLM (chars), POR CHAMADA: a carta precisa do
+# gist da vaga (1.500 — tarefas iniciais), o briefing precisa das
+# exigências (3.500). O corte evita inflar o reasoning do FLASH
+# (empty_content medido com prompt gordo, 13/10).
+LETTER_JD_LIMIT = 1500
+BRIEFING_JD_LIMIT = 3500
+
+
+def _job_text(job: dict, jd_limit: int = BRIEFING_JD_LIMIT) -> str:
+    """Texto da vaga para o LLM: título + empresa + local + descrição
+    (limitada a jd_limit chars — o começo da JD concentra tarefas
+    e requisitos)."""
+    desc = str(job.get("description") or "")
+    if len(desc) > jd_limit:
+        desc = desc[:jd_limit] + "\n[… description trimmed for prompt budget]"
     parts = [
         f"Title: {job.get('title') or ''}",
         f"Company: {job.get('company') or ''}",
@@ -285,7 +360,7 @@ def _job_text(job: dict) -> str:
         f"URL: {job.get('url') or ''}",
         "",
         "Job description:",
-        str(job.get("description") or ""),
+        desc,
     ]
     return "\n".join(parts)
 
@@ -471,7 +546,7 @@ def run_cover_letter(
     lang_name = "German (Deutsch)" if lang == "de" else "English"
     prompt = COVER_LETTER_PROMPT.replace("{lang_name}", lang_name).replace(
         "{anti_rules}", ANTI_FABRICATION_RULES
-    ).replace("{job_text}", _job_text(job)).replace(
+    ).replace("{job_text}", _job_text(job, LETTER_JD_LIMIT)).replace(
         "{profile_text}", profile_text
     )
     parsed, _usage, _latency, attempts, error = llm.extract(
@@ -502,7 +577,7 @@ def run_interview_briefing(
     """Chamada LLM 2: interview briefing (JSON estrito validado)."""
     prompt = INTERVIEW_PROMPT.replace(
         "{anti_rules}", ANTI_FABRICATION_RULES
-    ).replace("{job_text}", _job_text(job)).replace(
+    ).replace("{job_text}", _job_text(job, BRIEFING_JD_LIMIT)).replace(
         "{profile_text}", profile_text
     )
     parsed, _usage, _latency, attempts, error = llm.extract(
@@ -646,11 +721,13 @@ def main(argv: list[str] | None = None) -> int:
             "gerar os rascunhos (nada parcial silencioso)."
         )
 
-    # Resumo determinístico dos FATOS (§1–§9) para o prompt — ver docstring
-    # de summarize_profile_for_llm: perfil integral (~9.8k tokens) queima o
+    # Resumo determinístico dos FATOS para o prompt — ver docstring de
+    # summarize_profile_for_llm: perfil integral (~9.8k tokens) queima o
     # max_tokens do FLASH em reasoning e devolve content VAZIO (medido
-    # 13/10). keyword_gap continua lendo o texto integral.
-    profile_for_llm = summarize_profile_for_llm(profile_text)
+    # 13/10). Foco POR CHAMADA: a carta quer contato/experiência/visto;
+    # o briefing quer educação/projetos. keyword_gap lê o texto integral.
+    letter_profile = summarize_profile_for_llm(profile_text, apply_sections=LETTER_SECTIONS)
+    briefing_profile = summarize_profile_for_llm(profile_text, apply_sections=BRIEFING_SECTIONS)
 
     out_dir = Path(args.output).expanduser() / args.job_id
 
@@ -660,10 +737,10 @@ def main(argv: list[str] | None = None) -> int:
     # terem sucesso.
     keyword_gap_md = build_keyword_gap(job, profile_text)
 
-    # (2) cover letter — chamada LLM 1 (com o resumo, não o integral).
-    letter = run_cover_letter(key, job, profile_for_llm, args.lang)
-    # (3) interview briefing — chamada LLM 2 (idem).
-    questions = run_interview_briefing(key, job, profile_for_llm)
+    # (2) cover letter — chamada LLM 1 (com o resumo em foco carta).
+    letter = run_cover_letter(key, job, letter_profile, args.lang)
+    # (3) interview briefing — chamada LLM 2 (resumo em foco briefing).
+    questions = run_interview_briefing(key, job, briefing_profile)
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
