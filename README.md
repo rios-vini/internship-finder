@@ -1,6 +1,10 @@
 # internship-finder
 
-**A production pipeline that streams ~5 million job postings every day, deduplicates them across 15 ATS platforms, and publishes a ranked, visa-aware shortlist of internships and working-student jobs in Germany.**
+**A production data pipeline that streams ~5.1 million job postings every
+day, deduplicates them across sources and languages, and publishes a
+ranked, visa-aware shortlist of internships and working-student jobs in
+Germany — rebuilt and re-ranked every morning at 09:00 UTC since
+September 2026.**
 
 [![CI](https://github.com/rios-vini/internship-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/rios-vini/internship-finder/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -10,126 +14,197 @@
 **→ Live ranking, refreshed every morning at 09:00 UTC:
 [rios-vini.github.io/internship-finder](https://rios-vini.github.io/internship-finder/)**
 
-![Live ranking — top 100 of the day, dark mode, visa-friendly badges](docs/img/hero.png)
+![Live ranking — top of the day, dark mode, visa-friendly badges](docs/img/hero.png)
 
 ---
 
-## Why I built this
+## The problem
 
-I'm a Materials Engineering student at UFSCar (Brazil) with a mandatory
-internship coming in 2027 — and a plan to relocate to Germany with my
-family.
-
-When I started searching, I found a fragmented landscape: internships in
-Germany are posted as *Praktikum* and *Werkstudent* roles scattered across
-dozens of ATS platforms (Workday, SuccessFactors, SmartRecruiters, EURES,
-…), many only in German, with no unified view, no fit ranking, and no
-signal for which employers actually support visas.
+One person, one profile: a Materials Engineering student from Brazil
+looking for a **procurement / supply chain internship in Germany** for
+early 2027. Germany posts these roles as *Praktikum* and *Werkstudent*
+scattered across dozens of ATS platforms (Workday, SuccessFactors,
+SmartRecruiters, EURES, the Bundesagentur für Arbeit, and more), often
+German-only, duplicated across platforms and languages, with no signal
+for which employers actually hire non-EU candidates.
 
 Job boards show you everything. I needed the opposite: a short, ranked,
-deduplicated list of the few postings that fit my profile — waiting for me
-every morning. So I built the funnel I couldn't find.
+deduplicated list of the few postings that fit one specific profile,
+waiting for me every morning. So I built the funnel I couldn't find.
 
-Built solo, with AI pair-programming held to a human-grade engineering
-bar: every change ships with tests, benchmarks, and byte-identical A/B
-proof (see below).
+## Yesterday's funnel (run 2026-10-12, 09:00 UTC)
+
+Real numbers from the production run — nothing staged for the README:
+
+```text
+126,842  postings collected (all sources)
+   ↓
+  3,094  pass the eligibility filters
+         (student-type roles · target areas · target countries)
+   ↓
+  -2,104  excluded by applicability rules
+          (1,195 German-required · 744 pure Werkstudent · 68 visa-blocked
+           · 56 master-required · 41 thesis titles)
+   ↓
+    990  applicable postings
+   ↓
+   -207  duplicates removed
+         (4 dedup keys + DE/EN mirror collapse)
+   ↓
+    783  eligible → ranked by 2 independent profiles → top 100 published
+```
+
+```mermaid
+flowchart LR
+    DS["ats-scrapers hosted dataset<br/>~5.1M postings · 63 per-ATS slices<br/>refreshed daily ~05:00 UTC"] -->|"streaming prefilter<br/>(never fully materialized)"| F
+    RG["curated registry<br/>127 companies · 15 ATS platforms"] -->|"per-company fetch"| BA["Bundesagentur API + EURES<br/>direct fetch, Praktikum filter"]
+    RS["research sources<br/>MPG · TU Berlin · Leibniz · job boards"] -->|"RSS / HTML / API"| F
+    BA --> F
+    F["eligibility filters<br/>student type + target area + country"] --> A
+    A["applicability exclusions<br/>German-required · visa-blocked ·<br/>thesis · master-only"] --> D
+    D["dedup · 4 keys<br/>+ DE/EN mirror collapse"] --> H
+    H["selective description hydration<br/>(only postings missing text)"] --> R
+    R["deterministic ranking<br/>2 profiles · score breakdown"] --> P
+    P --> GH["GitHub Pages<br/>top 100 · filters · visa badge"]
+    P --> TG["Telegram digest<br/>top 5 · what's new · follow-ups"]
+    P --> TR["personal application tracker<br/>applied badge · weekly metrics"]
+    P --> CO["company radar<br/>🎯 alerts when target companies post"]
+    P --> JS["JSON + CSV<br/>full eligible set"]
+```
 
 ## How it works
 
 A cron job on an Oracle Linux VPS runs the full pipeline once a day and
-has done so in production since September 2026:
+has done so in production since September 2026.
 
-```mermaid
-flowchart LR
-    DS["ats-scrapers hosted dataset<br/>~5.1M postings · 63 per-ATS slices<br/>refreshed daily ~05:00 UTC"] -->|"streaming prefilter"| F
-    RG["curated registry<br/>127 companies · 15 ATS platforms"] -->|"per-company fetch"| F
-    F["eligibility filters<br/>student type + target area + country"] --> D
-    D["dedup<br/>3 keys + DE/EN mirror collapse"] --> R
-    R["deterministic ranking<br/>2 profiles · score breakdown"] --> P
-    P --> GH["GitHub Pages<br/>top 100 · filters · visa badge"]
-    P --> TG["Telegram digest<br/>top 5 · new postings · follow-ups"]
-    P --> JS["JSON + CSV<br/>full eligible set"]
-```
+**Sources.** Three ingestion paths feed one normalized stream:
 
-- **Sources** — a hosted dataset of ~5.1M job postings (streamed slice by
-  slice, never fully materialized) plus per-company collection from a
-  curated registry of 127 companies across 15 ATS platforms.
-- **Filters** — student-type roles (*Praktikum*, *Werkstudent*, internship,
-  working student) in Supply Chain / Procurement / BI / Analytics, plus a
-  secondary Materials Engineering profile with its own independent
-  ranking over the same eligible set.
-- **Countries** — Germany (primary, ~85% of volume) + Luxembourg,
-  Netherlands, Finland, Belgium.
-- **Dedup** — three independent keys (URL, id, normalized title+company)
-  plus DE/EN mirror detection collapse the same posting repeated across
-  platforms and languages.
-- **Ranking** — deterministic, reproducible scoring (no ML) with a full
-  per-component breakdown; ties broken by score → title → company → id.
-- **Visa signal** — a 🛂 badge marks the 68 companies with a curated,
-  sourced visa policy; it is a company-level signal and never enters the
-  relevance score.
-- **Outputs** — GitHub Pages (top 100 with search and filters), a Telegram
-  digest (top 5, what's new, application-tracker follow-up reminders),
-  and the full JSON/CSV set.
+- **Hosted dataset** — ~5.1M postings from the upstream
+  [`ats-scrapers`](https://github.com/kalil0321/ats-scrapers) dataset
+  (63 per-ATS slices, refreshed daily ~05:00 UTC), consumed by a
+  **streaming line-by-line prefilter** — a slice is never fully
+  materialized in memory or on disk beyond the active CSV.
+- **Curated registry** — 127 companies across 15 ATS platforms, fetched
+  per company, plus direct daily samples from the **Bundesagentur für
+  Arbeit API** (facet code 34 = Praktikum/Trainee) and **EURES**
+  (Praktikum keyword, description included by the search API).
+- **Research sources** — Max Planck Society, TU Berlin, Leibniz
+  association, plus keyless job boards.
 
-## By the numbers
+**Eligibility.** Student-type roles (*Praktikum*, *Werkstudent*,
+internship, working student) in Supply Chain / Procurement / BI /
+Analytics, in Germany (primary, ~74% of the current eligible volume)
+plus Luxembourg, Netherlands, Finland and Belgium. **Applicability** then removes
+postings that are technically eligible but not applicable to one
+specific candidate (German-required, visa-blocked, thesis titles,
+master-only, pure Werkstudent) — each exclusion reason is counted and
+logged, never silently dropped.
 
-| | |
-|---|---|
-| **~5.1M** | job postings streamed daily from the upstream dataset |
-| **771** | eligible jobs in the latest daily run (2026-10-10) → top 100 published |
-| **127 / 15** | curated companies / ATS platforms in the registry |
-| **5** | target countries (DE primary + LU, NL, FI, BE) |
-| **67** | CI test suites, all green on every push |
-| **+0.65** | Kendall tau vs. a 59-job human-labeled ranking benchmark |
-| **82** | commits — every feature PR merged with CI green twice on the exact merge SHA |
+**Dedup.** Four independent keys (canonical URL with tracking params
+stripped, platform id, normalized title+company, DE/EN translation of
+title+city) plus a **mirror collapse** keyed on requisition id: the same
+internship posted in German and English on two platforms becomes one row. The
+registry's wildcard "mehrere Standorte" postings are collapsed against
+their concrete-city twins.
 
-## Engineering decisions worth noticing
+**Selective hydration.** Postings that arrive without a description get
+one, fetched individually from the ATS (detail endpoints verified for
+workday, smartrecruiters, eightfold and personio; the mirrored BA/EURES
+and the wildcards "mehrere Standorte" feed the DE/EN collapse) — on the
+2026-10-12 run: 241 candidates, 162 fetched, description coverage
+542/783 → 704/783 (90%). Best-effort and budget-capped; a failure per
+posting never affects the run.
 
-- **Dedup that survives the real world.** The same internship shows up on
-  three platforms in two languages. Three independent dedup keys plus
-  DE/EN mirror detection collapse them to one row — measured, not
-  assumed.
-- **Deterministic ranking, benchmarked against humans.** No ML, no hidden
-  state: every score is reproducible and ships with a per-component
-  breakdown. Before trusting it, I labeled 59 real postings by hand and
-  measured ordinal agreement (Kendall tau +0.65); the benchmark is
-  versioned in-repo and re-runnable.
-- **A/B byte-identical before every merge.** Each feature PR proves that
-  unchanged paths produce byte-identical outputs, and CI must pass twice
-  on the exact merge SHA. Production data is never touched by
-  experiments.
+**Ranking.** Deterministic, reproducible scoring (no ML) over the same
+eligible set, with a full per-component breakdown; ties broken by score
+→ title → company → id. Two independent profiles rank it: the primary
+**Procurement / Supply Chain** view and a secondary **Materials
+Engineering** view. Before any weight change, the ranking is measured
+against a versioned benchmark: 59 real postings labeled by hand, ordinal
+agreement **Kendall tau +0.651** (`docs/ranking_benchmark.md`,
+`benchmarks/ranking_benchmark_v1.json`).
+
+**Outputs.** GitHub Pages (top 100 with client-side search, filters and
+a 🛂 visa-friendly badge), a Telegram daily digest (top 5, what's new,
+tracker follow-up reminders), a personal application tracker (applied
+badge, weekly funnel metrics), a company radar (🎯 alerts when watched
+companies post), and the full JSON/CSV set.
+
+## Engineering principles
+
+- **Deterministic-first.** Re-running the pipeline on the same input
+  produces byte-identical output (verified by sha256 on every A/B).
+  Ranking is pure scoring, no ML, no hidden state.
+- **LLM informs, never decides.** The one LLM component (field
+  enrichment with textual evidence) is a kill-switched, budget-capped
+  stage that proposes fields with quotes from the posting; eligibility,
+  ranking and publication are 100% deterministic and never read LLM
+  output. In production it runs with the env gate OFF by default.
+- **A/B before every merge.** Each feature PR proves that unchanged
+  paths produce byte-identical outputs on the same input, and CI must
+  pass twice on the exact merge SHA. Production data is never touched
+  by experiments.
+- **Benchmark before touching weights.** The ranking benchmark is
+  versioned in-repo, re-runnable, and must be measured before and after
+  any scoring change.
+- **Kill switches everywhere.** Every optional stage is default-OFF or
+  flag-reversible: `--no-dedup`, `--no-mirror-dedup`,
+  `--no-hydrate-descriptions`, `--no-applicability`, `--official-page`
+  (off), LLM enrichment (env-gated, off). Dead components get their
+  default flipped off rather than deleted — measured decision, with the
+  reasoning in the docs.
 - **One gate to production.** The public page goes through a single
   publication gate: secret scanning (zero matches for tokens and server
   paths), atomic writes, and a failure mode that keeps yesterday's site
   online.
-- **SQLite with a lifecycle.** Single-writer discipline, archive rotation
-  before every run (rollback = copy back), and a backup suite in CI.
-- **Kill switches for every optional stage.** LLM enrichment, deadline
-  hydration, official-page verification — each default-OFF, each tested.
+- **SQLite with a lifecycle.** Single-writer discipline, archive
+  rotation before every run (rollback = copy back), and a backup suite
+  in CI.
 - **Upstream contributions.** Fixes found while building this went back
   to [`ats-scrapers`](https://github.com/kalil0321/ats-scrapers), the
   library this project builds on.
 
+## By the numbers
+
+All figures from the run of **2026-10-12** unless marked otherwise;
+sources are files in this repo.
+
+| | |
+|---|---|
+| **~5.1M** | job postings streamed daily from the upstream dataset (`docs/historico/f3_sf_dataset.md`) |
+| **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
+| **127 / 15** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
+| **5** | target countries: Germany (primary) + LU, NL, FI, BE |
+| **67** | CI test suites, all green on every push (`.github/workflows/ci.yml`) |
+| **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
+| **175** | commits, one feature PR per change (git log, first-parent) |
+
 ## Tech stack
 
-**Python 3.12+** · pydantic (canonical `Job` model) · sqlite3 ·
-requests / BeautifulSoup · GitHub Actions (67 suites on a clean runner) ·
-GitHub Pages · Telegram Bot API · Oracle Linux VPS + cron
+**Python 3.12+** stdlib-heavy · pydantic (canonical `Job` model) ·
+sqlite3 · requests / BeautifulSoup · GitHub Actions (67 suites on a
+clean runner, no network, no local data) · GitHub Pages · Telegram Bot
+API · Oracle Linux VPS + cron. Zero frontend framework — the page is a
+single self-contained HTML with vanilla JS.
 
 ## Quickstart
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 .venv/bin/pip install -e .
-.venv/bin/internship-finder        # filter + rank from data/jobs.json
+.venv/bin/internship-finder            # filter + rank from data/jobs.json
 ```
 
-Collect from the curated registry — the same command the daily cron runs:
+Collect from the curated registry — the same command the daily cron
+runs:
 
 ```bash
 .venv/bin/internship-finder --registry --country de,lu,nl,fi,be
 ```
+
+Every stage above is a flag: `--no-dedup`, `--no-hydrate-descriptions`,
+`--no-applicability`, `--official-page`, `--direct-fetch`,
+`--research-sources`. Run any subset, measure, compare.
 
 ## Testing
 
@@ -141,16 +216,49 @@ non-zero on failure:
 python scripts/test_dedup.py
 ```
 
+The ranking benchmark is re-runnable offline:
+
+```bash
+.venv/bin/python scripts/ranking_benchmark.py
+```
+
 ## Documentation
 
 - **[docs/README-operacional.md](docs/README-operacional.md)** — the full
   operational documentation: setup, cron, runbook, coverage tables, and
   the daily-refresh workflow (PT-BR, the repo's working language).
-- **[docs/](docs/)** — architecture, benchmark, and design notes behind
-  the pipeline.
+- **[docs/architecture.md](docs/architecture.md)** — the pipeline behind
+  this README, stage by stage.
+- **[docs/ranking_benchmark.md](docs/ranking_benchmark.md)** — the
+  ranking benchmark: labels, methodology, tau, and how to re-run it.
+- **[docs/](docs/)** — enrichment and design notes.
 - **[docs/historico/](docs/historico/)** — the full project history:
   phase reports, audits, and decision logs from every stage of the build
   (PT-BR).
+
+## Disclaimer
+
+Personal, single-user project: the funnel is tuned to one candidate
+profile by design, production data lives in a gitignored `data/`
+directory (nothing versioned), and the "latest run" numbers in this
+README are snapshots of the day they were written — the live site always
+shows the current one.
+
+---
+
+## Resumo (PT-BR)
+
+Pipeline pessoal de dados, em produção desde setembro de 2026: coleta
+~5,1M de vagas por dia (dataset upstream + registry de 127 empresas +
+APIs da Bundesagentur/EURES + fontes de pesquisa), filtra estágios
+*Praktikum*/*Werkstudent* em procurement/supply chain na Alemanha (+ LU,
+NL, FI, BE), remove inaplicáveis para um perfil específico, deduplica
+com 4 chaves + colapso de espelhos DE/EN, hidrata descriptions
+seletivamente e ranqueia com 2 perfis determinísticos — medidos contra
+benchmark rotulado à mão (tau +0,651). Produtos: página pública diária
+(GitHub Pages), digest no Telegram, tracker pessoal de candidaturas e
+radar de empresas-alvo. Documentação operacional completa (PT-BR) em
+`docs/README-operacional.md`.
 
 ## License
 
