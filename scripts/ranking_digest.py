@@ -92,6 +92,33 @@ TOP5_SECTION_HEADER = f"{TOP5_SECTION_PREFIX} (candidatura direta)"
 # Telegram; DE = vazio — default visual, 0 chars no caso dominante).
 _TOP5_FLAGS = {"lu": "🇱🇺 ", "nl": "🇳🇱 ", "fi": "🇫🇮 ", "be": "🇧🇪 "}
 
+# F29 — countdown do visto §16e no digest (item 6: 1 linha estática ANTES
+# do top-5). A DATA é DERIVADA DE CONSTANTES (alvo jan/2027 + lead de visto
+# de 6–8 semanas após a oferta, pesquisa 12/10), nunca hardcoded no texto:
+# mudar o alvo aqui muda a linha em todo lugar (o teste trava a derivação).
+#   VISA_TARGET_START: mês de início pretendido do estágio;
+#   VISA_LEAD_DAYS: dias de lead entre oferta e início (visto + mudança).
+VISA_TARGET_START = (2027, 1, 1)   # alvo: início do estágio em jan/2027
+VISA_LEAD_DAYS = 47                # ~6,5 semanas (meio da faixa 6–8 sem)
+VISA_COUNTDOWN_PREFIX = "📅 Visto §16e:"
+
+
+def visa_countdown_line() -> str:
+    """F29 item 6: linha estática do countdown do visto para o digest.
+
+    '📅 Visto §16e: oferta necessária até ~15/11/2026 p/ início jan/2027'
+    — a data-limite = início alvo menos o lead de visto (constantes
+    acima; o texto NÃO carrega data hardcoded). Pura e offline.
+    """
+    from datetime import date, timedelta
+    start = date(*VISA_TARGET_START)
+    deadline = start - timedelta(days=VISA_LEAD_DAYS)
+    month_names = {1: "jan", 2: "fev", 3: "mar", 4: "abr", 5: "mai", 6: "jun",
+                   7: "jul", 8: "ago", 9: "set", 10: "out", 11: "nov", 12: "dez"}
+    target_txt = f"{month_names[start.month]}/{start.year}"
+    return (f"{VISA_COUNTDOWN_PREFIX} oferta necessária até "
+            f"~{deadline.strftime('%d/%m/%Y')} p/ início {target_txt}")
+
 # Spec de pais do filtro (espelha o default de ``cli.py --country``; o teste
 # test_digest confere os dois — se o CLI mudar o default, o teste falha).
 DEFAULT_COUNTRY_SPEC = "de"
@@ -1199,6 +1226,7 @@ def digest_sections(
     watchlist_path: str | Path | None = None,
     employer_quality_path: str | Path | None = None,
     excluded_ids: set[str] | None = None,
+    visa_countdown: bool = True,
 ) -> list[str] | None:
     """Secoes do digest do Telegram; ``None`` quando nao ha ranking atual.
 
@@ -1228,6 +1256,10 @@ def digest_sections(
     resumo e ⚡ com apply_url) cortam esses ids — MESMA semântica F20 da
     página: a vaga seguinte sobe; o JSON/CSV ficam intocados. Default
     ``None`` = sem exclusões (comportamento pré-F25, regressão zero).
+
+    F29: ``visa_countdown`` = linha estática do countdown do visto §16e
+    ANTES do ⚡ Top 5 (default ``True``; ``False`` = digest byte a byte
+    o de antes — usado pelo teste de presença/ausência).
     """
     current = load_ranking(current_path)
     if not current:
@@ -1317,6 +1349,16 @@ def digest_sections(
                 employer_quality_path) or None
         except Exception:  # noqa: BLE001 — marcador nunca derruba digest
             quality_map = None
+    # F29 (item 6) — countdown do visto §16e: 1 linha estática ANTES do
+    # Top 5 (a data vem das constantes do módulo, nunca do texto). Pura e
+    # best-effort: falha nunca derruba o digest. ``visa_countdown=False``
+    # = comportamento pré-F29 (regressão zero para chamadores legados).
+    if visa_countdown:
+        try:
+            lines.append("")
+            lines.append(visa_countdown_line())
+        except Exception:  # noqa: BLE001 — linha nova nunca derruba digest
+            pass
     try:
         top5_text = format_top5(current, quality_map=quality_map,
                                 excluded_ids=excluded)
