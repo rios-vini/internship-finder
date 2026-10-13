@@ -1096,6 +1096,48 @@ def _reassess_hydrated_applicability(job: dict) -> str | None:
     return None
 
 
+def _reassess_backlog_applicability(ranking: list) -> dict:
+    """F25 — re-avalia a aplicabilidade do BACKLOG inteiro de vagas
+    hidratadas, REUSANDO a mesma re-avaliacao da F20
+    (``_reassess_hydrated_applicability`` -> detetores puros da F18).
+
+    Fecha o buraco do estagio Fase A: ``hydrate_descriptions`` roda DEPOIS
+    de ``filters.select_eligible`` e nunca re-avalia — vagas cuja descricao
+    hidratada revela german/master required ficavam no backlog sem marcador
+    (medição 12/10: 126 de 783 no eligible real, 16,1%, incluindo o topo do
+    ranking). Candidatos deste passe: TODAS as vagas com
+    ``description_source == "hydration"`` (a provenance da Fase A, gravada
+    por ``internship_finder.hydration.hydrate_descriptions``) que AINDA NAO
+    tem ``hydration_inapplicable`` — ja-flagadas nunca re-flagam
+    (idempotente). Vagas NAO-hidratadas NUNCA sao tocadas: sem a descricao
+    completa o detetor e executado sobre evidencia parcial e o F18 ja
+    cuidou do feed.
+
+    Mutacao in place (mesma lista, mesma ordem, nenhum outro campo); a
+    persistencia atomica e responsabilidade do chamador (mecanica
+    ``_write_json_atomic`` existente). Devolve os counts do passe::
+    ``{"reassessed": N, "newly_flagged": M, "by_reason": {...}}``.
+    """
+    reassessed = 0
+    newly_flagged = 0
+    by_reason: dict[str, int] = {}
+    for job in ranking:
+        if not isinstance(job, dict):
+            continue
+        if job.get("description_source") != "hydration":
+            continue
+        if job.get(HYDRATION_INAPPLICABLE_FLAG):
+            continue
+        reassessed += 1
+        reason = _reassess_hydrated_applicability(job)
+        if reason:
+            job[HYDRATION_INAPPLICABLE_FLAG] = reason
+            newly_flagged += 1
+            by_reason[reason] = by_reason.get(reason, 0) + 1
+    return {"reassessed": reassessed, "newly_flagged": newly_flagged,
+            "by_reason": by_reason}
+
+
 def _sync_personal_ranking(root: Path, data_dir: Path) -> None:
     """Fase 8 — sync-ranking diario do banco pessoal (best-effort).
 
@@ -1441,6 +1483,74 @@ def main(argv: list[str] | None = None) -> int:
             log.warning("estagio de vitalidade falhou (publish segue sem "
                         "marcas): %s: %s", type(exc).__name__, exc)
 
+    # F25 — reavaliacao de aplicabilidade do BACKLOG hidratado: TODA vaga
+    # com description_source=="hydration" que ainda nao tem o marcador
+    # passa pela MESMA re-avaliacao da F20 (_reassess_hydrated_applicability
+    # -> detetores puros da F18). Fecha o buraco do estagio Fase A
+    # (hydrate_descriptions roda DEPOIS do select_eligible e nunca
+    # re-avalia; medição 12/10: 126/783 hidratadas german-required sem
+    # marcador, incluindo o topo do ranking). O passe e local (zero rede),
+    # muta in place (mesma ordem, nenhum outro campo) e persiste com a
+    # escrita atomica existente; as flagadas descem das superfícies
+    # exibidas (MESMA semântica F20: ficam no JSON). Idempotente: vaga
+    # ja marcada NUNCA e re-flagada. Best-effort TOTAL: falha vira log e o
+    # run segue com o exit da coleta.
+    backlog_stats: dict = {}
+    backlog_inapplicable_ids: set[str] = set()
+    try:
+        ranking = json.loads(
+            (data_dir / "eligible_jobs.json").read_text(encoding="utf-8")
+        ) if (data_dir / "eligible_jobs.json").exists() else []
+        backlog_stats = _reassess_backlog_applicability(ranking)
+        if backlog_stats["newly_flagged"]:
+            try:
+                from internship_finder.cli import _write_json_atomic
+                _write_json_atomic(ranking, data_dir / "eligible_jobs.json")
+            except Exception as exc:  # noqa: BLE001 — persistencia best-effort
+                log.warning("F25: flags do backlog nao persistidas (JSON "
+                            "segue sem os marcadores): %s: %s",
+                            type(exc).__name__, exc)
+            log.info("F25 backlog: %d hidratada(s) reavaliada(s), %d "
+                     "nova(s) inaplicavel(is) %s — descem do topo exibido "
+                     "(ficam no JSON)",
+                     backlog_stats["reassessed"],
+                     backlog_stats["newly_flagged"],
+                     backlog_stats["by_reason"])
+        else:
+            log.info("F25 backlog: %d hidratada(s) reavaliada(s), nenhuma "
+                     "nova inaplicavel", backlog_stats["reassessed"])
+        # Semantica F20: flag => demovida das superficies exibidas. TODO
+        # flag no JSON conta (nova OU herdada de run anterior no mesmo
+        # arquivo — ex. re-run sem re-coleta), nao so as deste passe: a
+        # colecao reescreve o JSON a cada run (o modelo Job nao carrega o
+        # campo), mas um re-run do refresh sobre o mesmo JSON precisa
+        # continuar demovendo as ja marcadas.
+        backlog_inapplicable_ids = {
+            str(j.get("id") or "")
+            for j in ranking
+            if isinstance(j, dict) and j.get(HYDRATION_INAPPLICABLE_FLAG)
+        } - {""}
+        try:
+            from internship_finder.metrics import write_metrics
+            write_metrics(metrics_path, [{
+                "type": "hydration_reassessment",
+                "run_id": summary.get("run_id") or utcnow_iso(),
+                "timestamp": utcnow_iso(),
+                **backlog_stats,
+            }])
+        except Exception as exc:  # noqa: BLE001 — metrica e best-effort
+            log.warning("F25: registro de metricas do backlog nao gravado: "
+                        "%s: %s", type(exc).__name__, exc)
+    except Exception as exc:  # noqa: BLE001 — F25 nunca derruba o run
+        log.warning("F25: reavaliacao do backlog falhou (run segue sem as "
+                    "marcas do backlog): %s: %s", type(exc).__name__, exc)
+
+    # F25 — as inaplicáveis do backlog hidratado descem das superfícies
+    # exibidas JUNTO com as do liveness (MESMA semântica F20: o publish
+    # recebe o conjunto unificado de inaplicáveis; mortas seguem separadas
+    # p/ o badge "🔗 morta" nunca mentir sobre uma vaga viva).
+    inapplicable_ids = inapplicable_ids | backlog_inapplicable_ids
+
     # Fase 1 — publicacao do ranking em GitHub Pages (apos a coleta e o health;
     # nunca derruba o run: falha vira publish_error, reportada no Telegram).
     publish_error: str | None = None
@@ -1488,6 +1598,11 @@ def main(argv: list[str] | None = None) -> int:
                 # (config/employer_quality.json; ausente = Top 5 sem ⭐,
                 # o digest sai byte a byte igual ao de antes).
                 employer_quality_path=root / "config" / "employer_quality.json",
+                # F25 — os DOIS Top 5 cortam as demovidas das superfícies
+                # exibidas (mortas do liveness + inaplicáveis pós-hidratação,
+                # backlog incluído): a vaga seguinte sobe, mesma semântica
+                # da página. O JSON/CSV ficam intocados.
+                excluded_ids=dead_ids | inapplicable_ids,
             )
         except Exception as exc:  # noqa: BLE001 — digest e best-effort
             log.warning("digest do ranking nao montado (run segue normal): %s", exc)

@@ -506,11 +506,25 @@ def _novas_section(
     return lines
 
 
-def _top5_section(current: list[dict]) -> list[str]:
+def _top5_section(current: list[dict],
+                  excluded_ids: set[str] | None = None) -> list[str]:
+    """🏆 Top 5 atual (seção resumo do digest).
+
+    F25: ``excluded_ids`` = ids demovidos das superfícies exibidas
+    (mesma semântica F20 da página — mortas/inaplicáveis descem do top
+    e a vaga seguinte sobe). Default ``None`` = sem exclusões (regressão
+    zero para chamadores legados).
+    """
     lines = ["🏆 Top 5 atual"]
     if not current:
         return lines + ["— ranking vazio"]
-    for pos, job in top_positions(current, DIGEST_TOP5):
+    excluded = {str(i) for i in (excluded_ids or set())}
+    shown = ([j for j in current
+              if str(j.get("id") or "") not in excluded]
+             if excluded else current)
+    if not shown:
+        return lines + ["— todas as vagas do topo foram demovidas (ver ranking)"]
+    for pos, job in top_positions(shown, DIGEST_TOP5):
         lines.append(
             f"{pos}. {_short_title(job)} — "
             f"{job.get('company') or '—'} ({_score_text(job.get('score'))})"
@@ -546,7 +560,8 @@ def _clip(text: str, limit: int) -> str:
 
 
 def format_top5(jobs: list[dict], *, max_len: int | None = None,
-                quality_map: dict[str, dict] | None = None) -> str:
+                quality_map: dict[str, dict] | None = None,
+                excluded_ids: set[str] | None = None) -> str:
     """Top-5 do dia em 1 linha compacta por vaga (F6; função PURA).
 
     Formato por linha (spec §3.4): ``N. título — empresa — score —
@@ -567,12 +582,26 @@ def format_top5(jobs: list[dict], *, max_len: int | None = None,
     ANTES do marcador — linha inteira segue sendo a unidade do
     format_top5, nunca link cortado). Empresa sem entrada = linha
     idêntica a hoje (regressão zero).
+
+    F25: ``excluded_ids`` = ids demovidos das superfícies exibidas
+    (liveness mortas + inaplicáveis pós-hidratação, incluindo o backlog
+    da F25). MESMA semântica da página F20: descem do Top 5 e a vaga
+    seguinte sobe — ficam no JSON. Default ``None`` = sem exclusões
+    (comportamento pré-F25, regressão zero para chamadores legados).
     """
     if max_len is None:
         from refresh_daily import TELEGRAM_MAX_LEN  # lazy (evita ciclo de import)
         max_len = TELEGRAM_MAX_LEN
     if not jobs:
         return "🙂 Nenhuma vaga elegível hoje — ranking vazio."
+    # F25 — corte ANTES da enumeração: as demovidas saem do Top 5 e a
+    # vaga seguinte sobe (mesma mecânica do `alive` da página F20).
+    excluded = {str(i) for i in (excluded_ids or set())}
+    if excluded:
+        jobs = [j for j in jobs
+                if str(j.get("id") or "") not in excluded]
+    if not jobs:
+        return "🙂 Nenhuma vaga elegível hoje após exclusões do topo (ver ranking)."
     # F15 — lookup exato por empresa (match _norm; silêncio gracioso).
     # Mapeada = entrada COM score OU prêmio (spec §3: "quando mapeada";
     # entrada "unavailable" não tem sinal para oferecer — sem ⭐).
@@ -1169,6 +1198,7 @@ def digest_sections(
     enrichment_path: str | Path | None = None,
     watchlist_path: str | Path | None = None,
     employer_quality_path: str | Path | None = None,
+    excluded_ids: set[str] | None = None,
 ) -> list[str] | None:
     """Secoes do digest do Telegram; ``None`` quando nao ha ranking atual.
 
@@ -1190,11 +1220,20 @@ def digest_sections(
     mapeada com score Kununu >= 4,0 OU prêmio GPTW (2 chars; sinal
     INFORMATIVO — o ranking não muda). Best-effort: mapa ausente/
     corrompido -> sem marcador, nunca derruba o digest.
+
+    F25: ``excluded_ids`` = ids demovidos das superfícies exibidas pelo
+    refresh (vagas mortas do liveness + inaplicáveis pós-hidratação,
+    incluindo o backlog hidratado reavaliado por
+    ``_reassess_backlog_applicability``). Os DOIS Top 5 do digest (🏆
+    resumo e ⚡ com apply_url) cortam esses ids — MESMA semântica F20 da
+    página: a vaga seguinte sobe; o JSON/CSV ficam intocados. Default
+    ``None`` = sem exclusões (comportamento pré-F25, regressão zero).
     """
     current = load_ranking(current_path)
     if not current:
         return None
     previous = load_ranking(previous_path)
+    excluded = {str(i) for i in (excluded_ids or set())}
 
     lines: list[str] = [""]
     lines.extend(profile_lines(country_spec))
@@ -1214,13 +1253,13 @@ def digest_sections(
             "de novas vagas começa no próximo run."
         )
         lines.append("")
-        lines.extend(_top5_section(current))
+        lines.extend(_top5_section(current, excluded_ids=excluded))
     else:
         novas = new_top_entries(current, previous, top=top)
         lines.append("")
         lines.extend(_novas_section(novas, country_spec))
         lines.append("")
-        lines.extend(_top5_section(current))
+        lines.extend(_top5_section(current, excluded_ids=excluded))
         changes = ranking_changes(current, previous, top=top)
         lines.append("")
         lines.extend(_changes_section(changes, {j.get("id") for _, j in novas}))
@@ -1279,7 +1318,8 @@ def digest_sections(
         except Exception:  # noqa: BLE001 — marcador nunca derruba digest
             quality_map = None
     try:
-        top5_text = format_top5(current, quality_map=quality_map)
+        top5_text = format_top5(current, quality_map=quality_map,
+                                excluded_ids=excluded)
         if top5_text:
             lines.append("")
             lines.append(TOP5_SECTION_HEADER)
