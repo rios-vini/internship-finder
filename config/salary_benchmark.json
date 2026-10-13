@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "phase": "F29",
+    "checked": "2026-10-12",
+    "note": "Benchmark salarial curado MANUAL — ESTIMATIVA DE MERCADO, nunca dado. Valores de partida da pesquisa web de 12/10/2026 (subagente research 3 do brainstorm). O pipeline NUNCA consulta estas fontes (zero HTTP no build; a estimativa é derivada do TÍTULO da vaga, offline). REGRA INVIOLÁVEL (orquestrador): a estimativa JAMAIS funde com o salário detectado no anúncio (opportunity_intel.job_salary) — campo SEPARADO, SEMPRE rotulado 'estimativa de mercado', exibido SÓ quando o anúncio não cita salário. Camada INFORMATIVA de display: nada entra em score/eligibility/filters/ranking.",
+    "sources_note": "Pflichtpraktikum Ø ~€1.021/mês e freiwilliges Ø ~€1.507/mês: praktikum.info (corroborado azubiyo.de). Werkstudent: kununu Ø ~€2.400/mês FTE (28.700–28.800 €/ano, ~23k dados) e Indeed Bayern Ø 17,46 €/h (~3.1k) — faixa de mercado 14–17 €/h. Mindestlohn 2026: €13,90/h (jan/2026; 12,82 €/h em 2025, 14,60 €/h previsto 2027)."
+  },
+  "categories": {
+    "pflichtpraktikum": {
+      "text": "€1.021/mês",
+      "source_name": "praktikum.info",
+      "source_url": "https://www.praktikum.info/karrieremagazin/gehalt/mindestlohn-praktikum",
+      "checked": "2026-10-12",
+      "note": "Média mensal de remuneração em Pflichtpraktikum; corroboração: https://www.azubiyo.de/azubi-wissen/gehalt-pflichtpraktikum. Pflichtpraktikum é isento do Mindestlohn — valores €400–900/mês são legais e comuns."
+    },
+    "praktikum": {
+      "text": "€1.507/mês",
+      "source_name": "praktikum.info",
+      "source_url": "https://www.praktikum.info/karrieremagazin/gehalt/mindestlohn-praktikum",
+      "checked": "2026-10-12",
+      "note": "Média mensal de freiwilliges Praktikum (sem marcador Pflicht no título). Grandes konzerne: Ø €1.100–1.300/mês; voluntário >3 meses tem direito ao Mindestlohn 2026 (€13,90/h)."
+    },
+    "werkstudent": {
+      "text": "14–17 €/h",
+      "source_name": "kununu/Indeed",
+      "source_url": "https://news.kununu.com/gehalt-als-werkstudent-in",
+      "checked": "2026-10-12",
+      "note": "Faixa horária de mercado: kununu Ø ~€2.400/mês FTE (https://www.kununu.com/de/gehalt/werkstudent-in-19397); Indeed Bayern Ø 17,46 €/h (https://de.indeed.com/career/werkstudent/salaries/Bayern). Em 15–20h/sem típicas: €800–1.400/mês reais."
+    },
+    "mindestlohn_2026": {
+      "text": "€13,90/h",
+      "source_name": "meinpraktikum.de/absolventa.de",
+      "source_url": "https://www.meinpraktikum.de/ratgeber/mindestlohn/praktikum/faq",
+      "checked": "2026-10-12",
+      "note": "Mindestlohn geral 2026 (jan/2026). Piso referencial para freiwilliges Praktikum >3 meses; Pflichtpraktikum é isento. Corroboração: https://www.absolventa.de/karriereguide/arbeitsrecht/mindestlohn-praktikum."
+    }
+  }
+}

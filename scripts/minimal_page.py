@@ -429,6 +429,154 @@ def _age_days_text(job: dict, ref: datetime) -> str:
     return f"há {days}d"
 
 
+# F29 — limiar de destaque discreto para vagas antigas (item 3: ">45 dias com
+# destaque discreto"). Idade segue no MESMO badge "há Nd" da F11; a partir do
+# limiar o texto vira "postada há N dias" (mais explícito) com classe própria.
+AGE_STALE_DAYS = 45
+
+
+def age_badge_text(job: dict, ref: datetime) -> str:
+    """F29 item 3: 'postada há N dias' no card; mais explícita após 45 dias.
+
+    F11 compat: ``_age_days_text`` continua devolvendo "há Nd" (testes
+    F11 travam esse contrato); este wrapper da F29 usa a forma nominal
+    "postada há N dias" — antes do limiar é o atalho "há Nd" (economia de
+    bytes no card), depois do limiar o texto completo + destaque discreto
+    fica a cargo do chamador (classe ``age-stale``; o item 4c do card
+    manda NÃO criar sinal extra: >90 dias já é coberto por ESTE badge).
+    """
+    dt = _parse_posted_at(job.get("posted_at"))
+    if dt is None:
+        return ""
+    days = (ref - dt).days
+    if days < 0:
+        return ""
+    if days == 0:
+        return "há <1d"
+    if days > AGE_STALE_DAYS:
+        return f"postada há {days} dias"
+    return f"há {days}d"
+
+
+def age_is_stale(job: dict, ref: datetime) -> bool:
+    """>45 dias desde posted_at (F29 item 3; destaque discreto no card)."""
+    dt = _parse_posted_at(job.get("posted_at"))
+    if dt is None:
+        return False
+    days = (ref - dt).days
+    return days > AGE_STALE_DAYS
+
+
+# F29 item 2 — teto de duração do §16e (AufenthG §16e Abs. 2): 6 meses.
+# O texto exibido é FRASE JURÍDICA LITERAL (não redigir variação).
+SECTION16E_MAX_MONTHS = 6
+DURATION_FLAG_TEXT = "duração N meses — acima do teto §16e (6 meses)"
+
+
+def duration_flag_text(job: dict) -> str:
+    """F29 item 2: duração citada > 6 meses excede o teto do §16e.
+
+    Usa ``opportunity_intel.job_duration`` (detector existente — meses
+    citados no anúncio; NUNCA derivado de datas). ``min`` da faixa é o que
+    decide: "6–12 Monate" começa DENTRO do teto (a vaga pode terminar em
+    6 — sinal honesto é não flagar); "7 Monate" ou mais = flag. Sem
+    duração citada = sem flag (silêncio; a maioria dos anúncios não cita).
+    INFORMATIVO: badge no card, nunca exclusão.
+    """
+    try:
+        from internship_finder import opportunity_intel
+        dur = opportunity_intel.job_duration(job)
+    except Exception:  # noqa: BLE001 — display best-effort
+        return ""
+    if not dur:
+        return ""
+    months = int(dur.get("min") or 0)
+    if months <= SECTION16E_MAX_MONTHS:
+        return ""
+    return DURATION_FLAG_TEXT.replace("N", str(months))
+
+
+# F29 item 4a — red-flag determinística: anúncio exige matrícula ativa em
+# universidade alemã. Padrões DE/EN conforme o card; match em título +
+# descrição, case-insensitive. INFORMATIVO (badge), nunca exclusão.
+_ENROLLMENT_PATTERNS = (
+    "einschreibung an einer deutschen hochschule",
+    "studium an einer deutschen hochschule",
+    "einschreibung an einer universität",
+    "studium an einer universität in deutschland",
+    "enrolled at a german university",
+    "enrollment at a german university",
+    "matriculated at a german university",
+)
+ENROLLMENT_FLAG_TEXT = "exige matrícula em universidade alemã"
+
+
+def enrollment_flag(job: dict) -> str:
+    """F29 item 4a: badge quando o anúncio exige matrícula em Hochschule DE.
+
+    O dono é aluno de universidade BRASILEIRA — a exigência de
+    Einschreibung/Studium an einer deutschen Hochschule (ou enrolled at a
+    German university) é incompatível com o perfil e o anúncio raramente
+    declara isso no título; por isso o texto varre título E descrição.
+    """
+    text = " ".join(
+        str(x or "") for x in (job.get("title"), job.get("description")))
+    if not text.strip():
+        return ""
+    low = text.casefold()
+    for pattern in _ENROLLMENT_PATTERNS:
+        if pattern in low:
+            return ENROLLMENT_FLAG_TEXT
+    return ""
+
+
+# F29 item 4b — red-flag honesta: remuneração não citada no anúncio.
+SALARY_UNSPECIFIED_TEXT = "remuneração não citada"
+
+
+def salary_unspecified_flag(job: dict) -> str:
+    """F29 item 4b: badge quando o anúncio NÃO cita salário.
+
+    Honesto e sem acusação: apenas informa que o anúncio não declara
+    remuneração (a norma alemã para Pflichtpraktikum não obriga). Quando
+    ``job_salary`` detecta um valor, NENHUM badge (a estimativa F29 pode
+    aparecer como linha própria — campos separados, nunca fundidos).
+    """
+    try:
+        from internship_finder import opportunity_intel
+        if opportunity_intel.job_salary(job) is not None:
+            return ""
+    except Exception:  # noqa: BLE001 — display best-effort
+        return ""
+    return SALARY_UNSPECIFIED_TEXT
+
+
+# F29 item 7 — frases jurídicas LITERAIS do §16e (definidas UMA vez; o
+# teste faz assert de substring contra ESTES textos; em qualquer
+# superfície que as exiba — NÃO redigir variações).
+LEGAL_DURATION_PHRASE = "§16e: duração máxima 6 meses (AufenthG §16e Abs. 2)."
+LEGAL_ZUSTIMMUNG_PHRASE = (
+    "Praktikum sob §16e NÃO exige Zustimmung da Bundesagentur für Arbeit "
+    "(BeschV §15 Nr. 1) — confirmar procedimento atualizado com "
+    "consulado/Ausländerbehörde."
+)
+
+
+def _legal_footer_html() -> str:
+    """F29 item 7: rodapé com as frases jurídicas LITERAIS do §16e.
+
+    Estáticas, offline, sempre presentes na página pública (a estimativa
+    de duração e o countdown do visto vivem nelas).
+    """
+    return (
+        '<p class="legal">ℹ️ '
+        + _esc(LEGAL_DURATION_PHRASE)
+        + " "
+        + _esc(LEGAL_ZUSTIMMUNG_PHRASE)
+        + "</p>"
+    )
+
+
 def radar_budget_sort_key(job: dict) -> tuple:
     """Prioridade do orcamento 🎯 (F20; pura, deterministica).
 
@@ -526,7 +674,11 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           en_title_html: str = "", snippet_is_en: bool = False,
           personal_status: str | None = None,
           quality_entry: dict | None = None,
-          inapplicable: bool = False) -> str:
+          inapplicable: bool = False,
+          salary_estimate: str = "",
+          age_stale: bool = False,
+          duration_flag: str = "",
+          enrollment_red_flag: str = "") -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -545,6 +697,15 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     F15: ``quality_entry`` = entrada do mapa de qualidade do empregador
     (Kununu/GPTW; None = sem badge, silêncio gracioso). O badge ⭐/🏆
     COEXISTE com o ✅ da F14 e o 🛂 da F5 — são sinais independentes.
+
+    F29 (sinais de candidatura, INFORMATIVOS — nunca exclusão):
+    ``salary_estimate`` = linha "estimativa de mercado: ~X (fonte, data)"
+    do benchmark curado, CAMPO SEPARADO do ``salary`` detectado (quando o
+    anúncio cita salário, o chamador passa '' — nunca ambos no card);
+    ``age_stale`` = classe discreta para >45 dias; ``duration_flag`` =
+    "duração N meses — acima do teto §16e (6 meses)" quando citada >6;
+    ``enrollment_red_flag`` = badge "exige matrícula em universidade
+    alemã" (padrões DE/EN no título/descrição).
     """
     vf = ' <span class="vf" title="Empresa com política de visto (visa_policy: explicit_support ou unclear)">🛂</span>' if visa else ""
     if de_level == "required":
@@ -555,6 +716,13 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         vf += ' <span class="dead" title="A descrição completa da vaga (hidratada do site) revelou requisito de alemão ou mestrado — vaga inaplicável ao perfil; sai do top">🚫 inaplicável</span>'
     if is_new:
         vf += ' <span class="newb">🆕</span>'
+    if duration_flag:
+        vf += (f' <span class="dur" title="Duração citada no anúncio '
+               f'excede o máximo do visto §16e">⏳ {_esc(duration_flag)}</span>')
+    if enrollment_red_flag:
+        vf += (f' <span class="flag" title="Anúncio exige matrícula '
+               f'ativa em universidade alemã (padrão DE/EN no texto)">'
+               f'⚠️ {_esc(enrollment_red_flag)}</span>')
     vf += personal_status_badge(personal_status)
     vf += employer_quality_badge(quality_entry)
     title = _esc(job.get("title") or "(sem título)")
@@ -565,8 +733,15 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     ]
     if salary:
         meta_bits.append(f'<b class="sal">{_esc(salary)}</b>')
+    elif salary_estimate:
+        # F29: estimativa SEMPRE rotulada; campo SEPARADO do salário
+        # detectado (nunca ambos — o elif garante na raiz).
+        meta_bits.append(f'<span class="est">{_esc(salary_estimate)}</span>')
+    elif salary_unspecified_flag(job):
+        meta_bits.append(f'<span class="nsal">{_esc(SALARY_UNSPECIFIED_TEXT)}</span>')
     if age:
-        meta_bits.append(f'<span class="age">{_esc(age)}</span>')
+        age_cls = "age age-stale" if age_stale else "age"
+        meta_bits.append(f'<span class="{age_cls}">{_esc(age)}</span>')
     meta = ' · '.join(meta_bits)
     score = _fmt_score(score_override if score_override is not None
                       else job.get("score"))
@@ -628,6 +803,12 @@ a.t:hover{text-decoration:underline}
 .spot{margin:2px 0 0;padding:0 0 0 18px;color:#c8d3dd;font-size:.8rem}
 .spot li{margin:2px 0}
 .age{font-size:.78rem;color:#9aa7b4}
+.age-stale{color:#d9a05b}
+.est{font-size:.78rem;color:#9fb3c8}
+.nsal{font-size:.78rem;color:#7d8a97}
+.dur{font-size:.72rem;color:#e8b08a}
+.flag{font-size:.72rem;color:#d9a05b}
+.legal{color:#7d8a97;font-size:.72rem;margin:8px 0 0;line-height:1.5}
 .m{color:#9aa7b4;font-size:.82rem;margin-top:2px}
 .m .sal{color:#e8cf8a;font-weight:600}
 .d{color:#8b98a5;font-size:.8rem;margin:5px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -661,7 +842,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     translation_cache: dict | None = None,
                     personal_statuses: dict | None = None,
                     quality_map: dict | None = None,
-                    inapplicable_ids: set[str] | None = None) -> list[str]:
+                    inapplicable_ids: set[str] | None = None,
+                    salary_benchmark_map: dict | None = None) -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -675,13 +857,21 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     marcada como tradução ("EN · "). Best-effort: sem entrada, snippet
     DE como hoje. A linha EN do título é independente (offline).
 
-    F15: ``quality_map`` = mapa normalizado do employer_quality (None =
+    F15: ``quality_map`` = mapa normalizado do employer_quality (None = 
     sem badge em nenhum card, comportamento pré-F15). Lookup exato por
     empresa com cache por vaga (mesma mecânica do company_intel_map).
 
     F20: ``inapplicable_ids`` = ids demovidos pela re-avaliação pós-
     hidratação (F18 sobre a descrição completa). O badge "🚫 inaplicável"
     é honesto (NUNCA o "🔗 morta" — a URL está viva).
+
+    F29: ``salary_benchmark_map`` = benchmark salarial curado (None =
+    sem estimativa — página igual à pré-F29). Por vaga, deriva (tudo
+    determinístico, offline): estimativa rotulada quando o anúncio não
+    cita salário E a categoria é derivável do título; badge de idade
+    ">45 dias" com classe própria; flag de duração >6 meses (§16e) e
+    red-flag de matrícula em universidade alemã. INFORMATIVO: nenhum
+    sinal altera score/ordem/ids — só o card.
     """
     rows: list[str] = []
     new_ids = new_ids or set()
@@ -716,6 +906,17 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             salary = _fmt_salary(opportunity_intel.job_salary(job))
         except Exception:  # noqa: BLE001
             salary = ""
+        # F29 — estimativa de mercado: CAMPO SEPARADO do salário detectado.
+        # salary_estimate_for_job já devolve '' quando job_salary existe
+        # (contrato: nunca ambos no card); benchmark ausente = ''.
+        salary_est = ""
+        if salary_benchmark_map is not None:
+            try:
+                from internship_finder import salary_benchmark
+                salary_est = salary_benchmark.salary_estimate_for_job(
+                    job, salary_benchmark_map)
+            except Exception:  # noqa: BLE001 — display best-effort
+                salary_est = ""
         job_href = _safe_url(job.get("url"))
         raw = job.get("raw") if isinstance(job.get("raw"), dict) else {}
         # Botão honesto: "candidatar-se" SOMENTE com raw.apply_url real;
@@ -730,7 +931,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             i, job, visa=visa, salary=salary,
             snippet=snippet, snippet_is_en=snippet_is_en,
             apply_href=apply_href, job_href=job_href,
-            de_level=_german_level_attr(job), age=_age_days_text(job, ref),
+            de_level=_german_level_attr(job),
+            age=age_badge_text(job, ref), age_stale=age_is_stale(job, ref),
             dead=jid in dead_ids, is_new=jid in new_ids,
             score_override=(job.get(score_key)
                             if score_key != "score" else None),
@@ -738,6 +940,9 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             personal_status=personal_statuses.get(jid),
             quality_entry=q_entry,
             inapplicable=jid in inapplicable_ids,
+            salary_estimate=salary_est,
+            duration_flag=duration_flag_text(job),
+            enrollment_red_flag=enrollment_flag(job),
         ))
     return rows
 
@@ -760,6 +965,7 @@ def render_minimal_html(
     sweet_spot_rows: list[dict] | None = None,
     radar_limit: int | None = None,
     inapplicable_ids: set[str] | None = None,
+    salary_benchmark_map: dict | None = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
 
@@ -802,10 +1008,17 @@ def render_minimal_html(
     F15: ``quality_map`` = mapa normalizado de employer_quality (None =
     sem badge ⭐/🏆, página idêntica à pré-F15). ``sweet_spot_rows`` =
     saída de ``employer_quality.sweet_spot_companies`` (cruzamento
-    volume × qualidade × visa_friendly derivado NO BUILD; None/[] =
+    volume × qualidade × visa_friendly derivado NO BUILD; None/[] = 
     seção "⭐ Ponto ótimo" ausente). O cap de 150KB permanece o limite
     duro: se a seção não couber, o chamador pode omiti-la (pendência
     documentada — nunca estourar o cap).
+
+    F29 (sinais de candidatura — INFORMATIVOS): ``salary_benchmark_map``
+    = benchmark curado (None = sinais salariais ausentes, página igual
+    pré-F29). Estimativa de mercado ROTULADA (campo separado do salário
+    detectado), badge de idade >45d, flag duração §16e e red-flags
+    determinísticas por card + rodapé com as frases jurídicas LITERAIS.
+    Nada disto altera score/ordem/ids.
 
     Size-aware (contrato da docstring desde a F6, agora real): com
     ``with_snippets=True`` o render e' montado com snippets; o chamador
@@ -837,6 +1050,7 @@ def render_minimal_html(
         personal_statuses=p_statuses,
         quality_map=quality_map,
         inapplicable_ids=inapplicable,
+        salary_benchmark_map=salary_benchmark_map,
     ))
     n_vf = sum(1 for j in shown if _visa_friendly(
         j, entry_cache.get(str(j.get("id") or ""))))
@@ -859,6 +1073,7 @@ def render_minimal_html(
             translation_cache=translation_cache,
             personal_statuses=p_statuses,
             quality_map=quality_map,
+            salary_benchmark_map=salary_benchmark_map,
         ))
         new_section = (
             f'<h2>🆕 Novas desde ontem — {len(new_ids)} nova(s){extra}</h2>'
@@ -893,6 +1108,7 @@ def render_minimal_html(
             translation_cache=translation_cache,
             personal_statuses=p_statuses,
             quality_map=quality_map,
+            salary_benchmark_map=salary_benchmark_map,
         ))
         total_line = f'{len(watchlist_events)} nova(s) nas empresas que você acompanha'
         if radar_omitted:
@@ -953,6 +1169,7 @@ def render_minimal_html(
             translation_cache=translation_cache,
             personal_statuses=p_statuses,
             inapplicable_ids=inapplicable,
+            salary_benchmark_map=salary_benchmark_map,
         ))
         materials_section = (
             '<h2>🧪 Materials Engineering — top 10 (perfil alternativo)</h2>'
@@ -1006,6 +1223,7 @@ def render_minimal_html(
 {materials_section}
 {sweet_section}
 <p class="f">{_esc(footer_note)}</p>
+{_legal_footer_html()}
 {glossary}
 </main>
 <script>{_JS}</script>
@@ -1030,6 +1248,7 @@ def render_size_aware(
     quality_map: dict | None = None,
     sweet_spot_rows: list[dict] | None = None,
     inapplicable_ids: set[str] | None = None,
+    salary_benchmark_map: dict | None = None,
 ) -> str:
     """``render_minimal_html`` com degradacao progressiva de tamanho (F11+F20).
 
@@ -1061,6 +1280,10 @@ def render_size_aware(
 
     F15: ``quality_map``/``sweet_spot_rows`` repassados as montagens (o
     badge ⭐/🏆 e a seção Ponto ótimo NÃO são decorativos).
+
+    F29: ``salary_benchmark_map`` repassado as montagens (estimativa
+    rotulada, badges de idade/duração/red-flags e rodapé jurídico NÃO
+    são decorativos — sobrevivem à remontagem).
     """
     html = render_minimal_html(
         jobs, total_eligible=total_eligible, generated_at=generated_at,
@@ -1072,6 +1295,7 @@ def render_size_aware(
         tracker_db=tracker_db,
         quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
         inapplicable_ids=inapplicable_ids,
+        salary_benchmark_map=salary_benchmark_map,
     )
     if len(html.encode("utf-8")) > PAGE_TARGET_BYTES:
         html = render_minimal_html(
@@ -1084,6 +1308,7 @@ def render_size_aware(
             tracker_db=tracker_db,
             quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
             inapplicable_ids=inapplicable_ids,
+            salary_benchmark_map=salary_benchmark_map,
         )
     # F20 (item 4) — orçamento 🎯: só quando a montagem mais enxuta AINDA
     # estoura o cap duro. A 🎯 é aparada (top RADAR_TOP_N por prioridade)
@@ -1102,6 +1327,7 @@ def render_size_aware(
             quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
             radar_limit=RADAR_TOP_N,
             inapplicable_ids=inapplicable_ids,
+            salary_benchmark_map=salary_benchmark_map,
         )
         print(f"pages: orçamento 🎯 ativo — seção aparada p/ top-{RADAR_TOP_N} "
               f"de {len(watchlist_events)} eventos; página agora "
@@ -1141,6 +1367,7 @@ def render_minimal_html_from_file(
     tracker_db: Path | str | None = None,
     employer_quality_path: Path | str | None = None,
     inapplicable_ids: set[str] | None = None,
+    salary_benchmark_path: Path | str | None = None,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
 
@@ -1160,7 +1387,7 @@ def render_minimal_html_from_file(
     qualquer -> secao 🎯 omitida, nunca erro.
 
     F14: ``tracker_db`` = banco pessoal (default None = sem badge);
-    lido READ-ONLY por ``personal_status_map`` — ausente/corrompido =
+    lido READ-ONLY por ``personal_status_map`` — ausente/corrompido = 
     nenhum badge, nunca erro. NUNCA criado pelo render.
 
     F15: ``employer_quality_path`` = ``config/employer_quality.json``
@@ -1172,6 +1399,13 @@ def render_minimal_html_from_file(
     A seção só é montada se couber no cap duro de ``PAGE_HARD_CAP_BYTES``
     (medida ANTES de devolver; se não couber, é omitida e o tamanho medido
     segue no log do chamador — nunca estoura o cap).
+
+    F29: ``salary_benchmark_path`` = ``config/salary_benchmark.json``
+    (default None = sem estimativa de mercado e sinais dependentes do
+    benchmark — página byte a byte a pré-F29). Loader tolerante:
+    ausente/corrompido -> mapa vazio -> sem estimativa em qualquer card,
+    nunca erro. Os sinais independentes do benchmark (idade, duração
+    §16e, red-flags, rodapé jurídico) permanecem.
     """
     with path.open(encoding="utf-8") as fh:
         jobs = json.load(fh)
@@ -1195,6 +1429,18 @@ def render_minimal_html_from_file(
         except Exception:  # noqa: BLE001 — F15 é best-effort, nunca erro
             quality_map = None
             sweet_spot_rows = None
+
+    # F29 — benchmark salarial curado (ESTIMATIVA DE MERCADO, rotulada,
+    # campo separado do salário detectado). Loader tolerante: ausente/
+    # corrompido -> {} -> sem estimativa, nunca erro.
+    salary_benchmark_map: dict | None = None
+    if salary_benchmark_path is not None:
+        try:
+            from internship_finder import salary_benchmark
+            salary_benchmark_map = salary_benchmark.load_salary_benchmark(
+                salary_benchmark_path)
+        except Exception:  # noqa: BLE001 — F29 é best-effort, nunca erro
+            salary_benchmark_map = None
 
     translation_cache: dict = {}
     if translation_cache_path:
@@ -1244,6 +1490,7 @@ def render_minimal_html_from_file(
         tracker_db=tracker_db,
         quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
         inapplicable_ids=inapplicable_ids,
+        salary_benchmark_map=salary_benchmark_map,
     )
     # F15 §4 — a seção Ponto ótimo só permanece se a página COM ela
     # couber no cap duro (150KB); a MEDIÇÃO é no render FINAL (com todas
@@ -1262,6 +1509,7 @@ def render_minimal_html_from_file(
             tracker_db=tracker_db,
             quality_map=quality_map, sweet_spot_rows=None,
             inapplicable_ids=inapplicable_ids,
+            salary_benchmark_map=salary_benchmark_map,
         )
         print(f"pages: seção ⭐ Ponto ótimo OMITIDA — página com ela "
               f"({size_with} bytes) estoura o cap de {PAGE_HARD_CAP_BYTES} "
@@ -1337,6 +1585,11 @@ def main(argv: list[str] | None = None) -> int:
                              "(F15; default config/employer_quality.json "
                              "do repo; '' desliga badge ⭐/🏆 e a seção "
                              "Ponto ótimo)")
+    parser.add_argument("--salary-benchmark", default="config/salary_benchmark.json",
+                        metavar="PATH",
+                        help="benchmark salarial curado (F29; default "
+                             "config/salary_benchmark.json do repo; '' "
+                             "desliga a estimativa de mercado rotulada)")
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -1377,6 +1630,9 @@ def main(argv: list[str] | None = None) -> int:
     employer_quality_path = (
         Path(args.employer_quality) if args.employer_quality else None
     )
+    salary_benchmark_path = (
+        Path(args.salary_benchmark) if args.salary_benchmark else None
+    )
     page = render_minimal_html_from_file(
         Path(args.input), top=args.top, company_intel_map=company_intel_map,
         archive_root=archive_root, dead_link_ids=dead_ids,
@@ -1385,6 +1641,7 @@ def main(argv: list[str] | None = None) -> int:
         tracker_db=tracker_db,
         employer_quality_path=employer_quality_path,
         inapplicable_ids=inapplicable_ids,
+        salary_benchmark_path=salary_benchmark_path,
     )
     if args.output == "-":
         sys.stdout.write(page)

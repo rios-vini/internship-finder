@@ -234,6 +234,14 @@ def render_ranking_html(
     150KB). O mapa é versionado no repo (config/) — nunca data/; o
     pipeline NÃO consulta Kununu/GPTW (mapa é curadoria manual).
     Best-effort: ausente/ilegível -> sem badge/seção, nunca quebra.
+
+    F29: ``--salary-benchmark config/salary_benchmark.json`` (default
+    do minimal_page; explicito aqui para fixar o contrato) habilita a
+    ESTIMATIVA DE MERCADO rotulada nos cards (campo separado do salário
+    detectado; só quando o anúncio não cita valor), junto dos demais
+    sinais de candidatura (idade, duração §16e, red-flags, rodapé
+    jurídico). Benchmark versionado no repo (config/); loader tolerante:
+    ausente/ilegível -> sem estimativa, nunca quebra.
     """
     script = root / "scripts" / "minimal_page.py"
     if not script.exists():
@@ -248,6 +256,7 @@ def render_ranking_html(
         "--watchlist", "config/company_watchlist.json",
         "--tracker-db", "data/personal/jobs_personal.db",
         "--employer-quality", "config/employer_quality.json",
+        "--salary-benchmark", "config/salary_benchmark.json",
     ]
     if dead_link_ids:
         dead_tmp = output_path.parent / ".dead_ids.txt"
