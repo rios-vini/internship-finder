@@ -296,12 +296,50 @@ def test_real_benchmark() -> None:
           f"mixed={t['mixed_groups']}")
 
 
+def test_real_benchmark_v2() -> None:
+    print("== benchmark v2 versionado (F27) ==")
+    v2_file = ROOT / "benchmarks" / "ranking_benchmark_v2.json"
+    if not v2_file.exists():
+        print("  [SKIP] benchmarks/ranking_benchmark_v2.json ausente")
+        return
+    data = json.loads(v2_file.read_text(encoding="utf-8"))
+    errs = validate_benchmark(data)
+    check("v2 valido (0 erros de schema; breakdown de 7 componentes aceito)",
+          errs == [], str(errs[:3]))
+    records = load_benchmark(data)
+    check("90 vagas rotuladas", len(records) == 90, f"n={len(records)}")
+    check("toda vaga tem country (estratos de pais)", all(r.get("country") for r in records))
+    check("toda vaga tem stratum (amostra auditavel)", all(r.get("stratum") for r in records))
+    check("toda vaga tem justificativa", all((r["justification"] or "").strip() for r in records))
+    check("as 5 labels presentes", set(r["label"] for r in records) >= set(LABELS_ORDER))
+    check("breakdown v2 tem registry em todas",
+          all("registry" in r["score_breakdown"] for r in records))
+    ok_sum = all(
+        abs(round(sum(r["score_breakdown"].values()), 2) - r["score"]) < 1e-9
+        for r in records
+    )
+    check("score == soma(breakdown de 7) em todas as 90", ok_sum)
+    # estratos de pais: DE e nao-DE rotulados separadamente (a pergunta (c) do F27)
+    de = [r for r in records if str(r.get("country")).lower() == "de"]
+    nde = [r for r in records if str(r.get("country")).lower() != "de"]
+    check("estratos DE e nao-DE nao vazios", len(de) >= 30 and len(nde) >= 15,
+          f"DE={len(de)} nao-DE={len(nde)}")
+    # perfis de componente cobrem o registry (v2)
+    prof = component_profiles(records)
+    check("perfis de componente incluem registry", "registry" in prof)
+    # mesmo arquivo de amostra: empates mistos continuam (tese persiste no v2)
+    t = tie_analysis(records)
+    check("v2 tem grupos de empate mistos", t["mixed_groups"] >= 8,
+          f"mixed={t['mixed_groups']}")
+
+
 def main() -> int:
     test_validation()
     test_metrics()
     test_determinism()
     test_refresh_flow()
     test_real_benchmark()
+    test_real_benchmark_v2()
     print()
     if FAILURES:
         print(f"FALHAS: {len(FAILURES)} -> {FAILURES}")

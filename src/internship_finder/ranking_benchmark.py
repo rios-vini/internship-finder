@@ -59,6 +59,21 @@ LABEL_DISPLAY: dict[str, str] = {
 
 BREAKDOWN_KEYS: tuple[str, ...] = ("area", "skills", "language", "type", "location", "penalties")
 
+# F3 adicionou o componente ``registry`` ao breakdown do ranking (lista de
+# interesse, +1.0). Benchmarks pós-F3 (v2, F27) carregam 7 componentes; o v1
+# (11/09, pre-F3) carrega 6. A validação aceita os DOIS formatos —
+# registro velho permanece válido por construção (o arquivo versionado não
+# é retroativamente reescrito); componentes desconhecidos continuam erro.
+BREAKDOWN_KEYS_V2: tuple[str, ...] = BREAKDOWN_KEYS + ("registry",)
+
+
+def _breakdown_key_set(breakdown: dict[str, Any]) -> set[str] | None:
+    """Conjunto válido para o breakdown: v1 (6) ou v2 (6+registry)."""
+    keys = set(breakdown)
+    if keys == set(BREAKDOWN_KEYS) or keys == set(BREAKDOWN_KEYS_V2):
+        return keys
+    return None
+
 # Chave de ordenacao oficial do ranking (ranking.py rank_jobs).
 def sort_key(job: dict[str, Any]) -> tuple[Any, ...]:
     return (
@@ -113,8 +128,8 @@ def validate_benchmark(data: dict[str, Any]) -> list[str]:
         if not isinstance(breakdown, dict):
             errors.append(f"{prefix}: score_breakdown ausente/nao-dict")
         else:
-            if set(breakdown) != set(BREAKDOWN_KEYS):
-                errors.append(f"{prefix}: breakdown {sorted(breakdown)!r} != {sorted(BREAKDOWN_KEYS)!r}")
+            if _breakdown_key_set(breakdown) is None:
+                errors.append(f"{prefix}: breakdown {sorted(breakdown)!r} != v1 {sorted(BREAKDOWN_KEYS)!r} ou v2 {sorted(BREAKDOWN_KEYS_V2)!r}")
             try:
                 if abs(round(sum(float(v) for v in breakdown.values()), 2) - round(float(job["score"]), 2)) > 1e-9:
                     errors.append(
@@ -332,14 +347,23 @@ def component_profiles(records: list[dict[str, Any]]) -> dict[str, Any]:
     semelhante entre ``otima`` e ``falso_positivo`` nao e discriminativo no
     nivel humano; um com gradiente monotono acompanha a qualidade. Medida
     descritiva (nao e uma nova formula — o benchmark nao altera o ranking).
+
+    F27/v2: o conjunto de componentes segue os DADOS (uniao dos breakdowns
+    presentes) — registros v1 tem 6 componentes, v2 pos-F3 tem ``registry``.
     """
-    comps: dict[str, dict[str, list[float]]] = {c: {} for c in BREAKDOWN_KEYS}
+    present: list[str] = list(BREAKDOWN_KEYS)
+    for j in records:
+        for c in (j.get("score_breakdown") or {}):
+            if c not in present:
+                present.append(c)
+    comps: dict[str, dict[str, list[float]]] = {c: {} for c in present}
     for j in records:
         b = j["score_breakdown"]
-        for c in BREAKDOWN_KEYS:
-            comps[c].setdefault(j["label"], []).append(float(b[c]))
+        for c in present:
+            if c in b:
+                comps[c].setdefault(j["label"], []).append(float(b[c]))
     out = {}
-    for c in BREAKDOWN_KEYS:
+    for c in present:
         rows = []
         for label in LABELS_ORDER:
             vals = comps[c].get(label, [])

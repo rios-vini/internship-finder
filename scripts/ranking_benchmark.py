@@ -1,11 +1,17 @@
 """Relatorio do benchmark do ranking (P2.5) — medicao, NAO calibracao.
 
-Le ``benchmarks/ranking_benchmark_v1.json`` (rotulos humanos versionados) e
-imprime um relatorio objetivo: distribuicao de scores (amostra + universo se
-``--snapshot`` apontar para o ``data/eligible_jobs.json`` vivo), qualidade vs
-posicao (score medio por rotulo + concordancia ordinal Kendall-like),
-analise de empates (mesmo score -> labels diferentes), perfis de componente
-do score_breakdown por rotulo e exemplos de falha (padroes, nao anedotas).
+Le o benchmark versionado (default: ``benchmarks/ranking_benchmark_v1.json``;
+F27: ``--benchmark benchmarks/ranking_benchmark_v2.json`` para o universo
+pos-F25) e imprime um relatorio objetivo: distribuicao de scores (amostra +
+universo se ``--snapshot`` apontar para o ``eligible_jobs.json`` vivo),
+qualidade vs posicao (score medio por rotulo + concordancia ordinal
+Kendall-like), analise de empates (mesmo score -> labels diferentes),
+perfis de componente do score_breakdown por rotulo e exemplos de falha
+(padroes, nao anedotas).
+
+F27 (v2): quando o benchmark tem o campo ``country``, o relatorio imprime
+TAMBM os estratos de pais (DE vs nao-DE: concordancia/tau/medias por
+separado) — a pergunta (c) do card F27.
 
 Deterministico sobre os mesmos arquivos (nenhum timestamp na saida). Nao
 altera nada — o ranking atual segue sendo a implementacao de referencia.
@@ -13,6 +19,7 @@ altera nada — o ranking atual segue sendo a implementacao de referencia.
 Uso:
     .venv/bin/python scripts/ranking_benchmark.py
     .venv/bin/python scripts/ranking_benchmark.py --benchmark benchmarks/ranking_benchmark_v1.json --snapshot data/eligible_jobs.json
+    .venv/bin/python scripts/ranking_benchmark.py --benchmark benchmarks/ranking_benchmark_v2.json --snapshot data/eligible_jobs.json
 """
 
 from __future__ import annotations
@@ -122,6 +129,39 @@ def report_components(records) -> None:
         print(f"{comp:<11}{row}   [{mono}]")
 
 
+def report_country_strata(records) -> None:
+    """F27 (v2): DE vs nao-DE rotulados separadamente (pergunta (c) do card).
+
+    So roda quando os registros carregam o campo ``country`` (v2); no v1
+    (260 vagas, todas DE) a secao nao se aplica e nao imprime nada.
+    Concordancia ordinal e calculada DENTRO de cada estrato — a pergunta e
+    se o ranking ordena igualmente bem os dois mundos, nao se ele os
+    compara entre si (scores nao sao comparaveis entre paises de qualquer
+    forma: location e composicao do funil diferem).
+    """
+    if not all(r.get("country") for r in records):
+        return
+    de = [r for r in records if str(r.get("country")).lower() == "de"]
+    nde = [r for r in records if str(r.get("country")).lower() != "de"]
+    if not de or not nde:
+        return
+    section("4b. Estratos de pais (DE vs nao-DE)")
+    for name, sub in (("DE", de), ("nao-DE", nde)):
+        c = pairwise_concordance(sub)
+        means = {m["label"]: m for m in mean_score_by_label(sub)}
+        top = means["otima"]["mean"]
+        fp = means["falso_positivo"]["mean"]
+        gap = (top - fp) if (top is not None and fp is not None) else None
+        print(f"  {name}: n={len(sub)} | concordancia {c['concordant_pct']}% "
+              f"(tau {c['tau']:+.3f}, {c['comparable_pairs']} pares) | "
+              f"media otima={fmt_score(top)} fp={fmt_score(fp)}"
+              + (f" | gap elite-FP={gap:.2f}" if gap is not None else ""))
+        dist = ", ".join(
+            f"{LABEL_DISPLAY[l]}={means[l]['n']}" for l in LABELS_ORDER if means[l]["n"]
+        )
+        print(f"    labels: {dist}")
+
+
 def report_failures(records) -> None:
     section("5. Exemplos representativos de falha")
     print("  5.1 inversoes (vaga PIOR acima de uma MELHOR):")
@@ -184,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
     report_quality(records)
     report_ties(records)
     report_components(records)
+    report_country_strata(records)
     report_failures(records)
     print()
     return 0
