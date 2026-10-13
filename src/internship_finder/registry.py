@@ -36,7 +36,7 @@ class RegistryEntry(BaseModel):
     enabled: bool = True  # false desabilita a empresa sem removê-la do registry
 
 
-# --- Seed: 110 empresas operacionais (12 da validação inicial + 27 da
+# --- Seed: 127 empresas operacionais (12 da validação inicial + 27 da
 # --- expansão E2 + 25 da expansão internacional P3 #23: 8 DE + 17 NL/CH/AT
 # --- + 17 da expansão de cobertura 15/09/2026 + 6 da auditoria 16/09/2026
 # --- + 9 da auditoria próxima fronteira 17/09/2026 + 5 da última onda de
@@ -44,7 +44,12 @@ class RegistryEntry(BaseModel):
 # --- Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH
 # --- + 9 da onda de fontes F16 08/10/2026: Brenntag, ALTANA Job Portal,
 # --- Atlas Copco Group, SKF, Decathlon Digital EN, DSV, Heidelberg Materials,
-# --- Sandvik, Rhenus).
+# --- Sandvik, Rhenus
+# --- + 17 da onda F32 Hidden Champions 13/10/2026: Blickle, Bundesdruckerei,
+# --- Delo, EBM-Papst, ElringKlinger, Freudenberg, Karlstorz, KAESER Careers,
+# --- Körber Group | Job Market, Jobs - Multivac, Ottobock Karriereportal,
+# --- Mapal Group, Jobs | LEMKEN The Agrovision Company, Grammer, Leoni,
+# --- Walter, Rational).
 # --- Nomes canônicos = consulta real do ``--companies``
 # --- (README.md + docs/empresas_verificacao.md + docs/relatorio_expansao.md +
 # --- docs da auditoria de cobertura 15/09 + auditoria próxima onda 16/09).
@@ -257,6 +262,47 @@ SEED = [
     RegistryEntry(name="Heidelbergmaterials", ats="workday", tenant="workday:heidelbergmaterials/global_hm_career_site"),
     RegistryEntry(name="Sandvik (Sandvik Jobs)", ats="workday", tenant="workday:sandvik/sandvik-jobs"),
     RegistryEntry(name="Rhe (R1111)", ats="workday", tenant="workday:rhe/R1111"),
+    # --- 17 da onda F32 Hidden Champions (2026-10-13, listas-semente
+    # --- estáticas karrierebibel.de Top 100 + kipode.de; validadas AO VIVO
+    # --- com fetch real read-only via scripts/verify_companies.py --fetch
+    # --- --limit 8 --timeout 30: match EXATO no manifest + scraper + vagas>0;
+    # --- metodologia, tabela aprovadas/rejeitadas com evidências e fontes em
+    # --- docs/f32_hidden_champions.md) ---
+    # Nomes canônicos = nome natural quando resolve EXATO no manifest
+    # (Blickle, Delo, Freudenberg...); nome EXATO do manifest quando o
+    # comercial não resolve (KAESER Careers, Körber Group | Job Market,
+    # Jobs - Multivac, Ottobock Karriereportal | Aktuelle Stellenangebote und,
+    # Mapal Group, Jobs | LEMKEN The Agrovision Company — boards
+    # successfactors cujo nome de página difere do comercial; Karlstorz —
+    # sem til no manifest). Vários tenants successfactors:jobs são
+    # desambiguados por URL (jobs.blickle.career / jobs.koerber.com /
+    # jobs.multivac.com / jobs.ottobock.com / jobs.mapal.com — mesmo padrão
+    # STIHL/BMW AG 16/09). Walter = Walter AG (Zell am Harmersbach/Tübingen
+    # nos títulos) sob o workday global da Sandvik (Sandvik comprou a Walter
+    # AG em 2023; board "walter-jobs" — mesmo padrão "Sandvik (Sandvik Jobs)"
+    # da F16). EBM-Papst resolve como "ebm-papst" (cornerstone, URL completa).
+    # Bundesdruckerei resolve como "Bundesdruckerei  GmbH" (softgarden).
+    # 8 empresas já presentes no SEED (Continental, Hella, KraussMaffei,
+    # Liebherr, Phoenix Contact, Sartorius, Stihl, Trumpf) confirmaram match
+    # ao vivo e foram ignoradas; 108 candidatas dedupadas -> tabela completa
+    # de rejeitadas com motivo no relatório da fase.
+    RegistryEntry(name="Blickle", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Bundesdruckerei", ats="softgarden", tenant="softgarden:bundesdruckerei"),
+    RegistryEntry(name="Delo", ats="workday", tenant="workday:delo/DELO-Jobs"),
+    RegistryEntry(name="EBM-Papst", ats="cornerstone", tenant="cornerstone:https://ebmpapst.csod.com/ux/ats/careersite/4/home?c=ebmpapst"),
+    RegistryEntry(name="ElringKlinger", ats="workday", tenant="workday:elringklinger/external"),
+    RegistryEntry(name="Freudenberg", ats="workday", tenant="workday:freudenberg/freudenberg-group"),
+    RegistryEntry(name="Karlstorz", ats="successfactors", tenant="successfactors:karlstor01"),
+    RegistryEntry(name="KAESER Careers", ats="successfactors", tenant="successfactors:KAESERP"),
+    RegistryEntry(name="Körber Group | Job Market", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Jobs - Multivac", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Ottobock Karriereportal | Aktuelle Stellenangebote und", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Mapal Group", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Jobs | LEMKEN The Agrovision Company", ats="successfactors", tenant="successfactors:lemkengmbh"),
+    RegistryEntry(name="Grammer", ats="cornerstone", tenant="cornerstone:grammer-performance-management"),
+    RegistryEntry(name="Leoni", ats="smartrecruiters", tenant="smartrecruiters:LEONI1"),
+    RegistryEntry(name="Walter", ats="workday", tenant="workday:sandvik/walter-jobs"),
+    RegistryEntry(name="Rational", ats="successfactors", tenant="successfactors:jobs"),
 ]
 
 

@@ -35,7 +35,7 @@ Empresa → find_company (match exato) → ATS → scraper (subprocesso + timeou
 | `errors.py` | `CollectionError` + codigos de erro estruturados (classificador para o payload da queue e `error_code` no JSONL) |
 | `health.py` | relatorio de health por serie `(source, company)` sobre o JSONL (queda brusca, erro recorrente, zero-return, regressao historica ok->error — auditoria 23/09) + alertas |
 | `geocoding.py` | fallback de pais por cidade (`INTERNSHIP_FINDER_GEOCODING`, cache-first; OFF por default; integrado no adapter depois de `infer_country_iso`) |
-| `registry.py` | `CompanyRegistry` — fonte única das 110 empresas de coleta em código (`SEED` + `enabled`; P2 #13; estado derivado do JSONL via `company_status`) |
+| `registry.py` | `CompanyRegistry` — fonte única das 127 empresas de coleta em código (`SEED` + `enabled`; P2 #13; estado derivado do JSONL via `company_status`) |
 | `storage/sqlite_store.py` | `SqliteStore` — historico por vaga (`first_seen`/`last_seen`/`active`/`archived`) via `sqlite3` stdlib; flag `--sqlite PATH` |
 | `cli.py` | entry point `internship-finder` (argparse) |
 
