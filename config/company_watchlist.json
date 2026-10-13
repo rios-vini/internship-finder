@@ -1,5 +1,5 @@
 {
-  "_comment": "F13 — Radar de empresas-alvo. Lista de strings EXATAS de 'company' como aparecem no dataset (não use nomes bonitos: 'BoschGroup', não 'Bosch'). O radar cruza as vagas NOVAS de ontem (diff de IDs da F11) com esta lista (match casefold por string exata) e alerta no digest 🎯. Editar = adicionar/remover strings da lista 'companies' e commitar. Arquivo ausente/corrompido/sem lista = radar desligado (seção 🎯 ausente, sem erro). Critério da seleção inicial (medição 2026-10-06, 2.416 eligible): empresas visa_friendly da curadoria F9/F10 (visa_policy unclear/explicit_support) priorizadas por volume de vagas elegíveis + nicho do dono (procurement/supply chain/data/materiais).",
+  "_comment": "F13 — Radar de empresas-alvo. Lista de strings EXATAS de 'company' como aparecem no dataset (não use nomes bonitos: 'BoschGroup', não 'Bosch'). O radar cruza as vagas NOVAS de ontem (diff de IDs da F11) com esta lista (match casefold por string exata) e alerta no digest 🎯. Editar = adicionar/remover strings da lista 'companies' e commitar. Arquivo ausente/corrompido/sem lista = radar desligado (seção 🎯 ausente, sem erro). Critério da seleção inicial (medição 2026-10-06, 2.416 eligible): empresas visa_friendly da curadoria F9/F10 (visa_policy unclear/explicit_support) priorizadas por volume de vagas elegíveis + nicho do dono (procurement/supply chain/data/materiais). Re-derivação F26 (medição 2026-10-12, 783 eligible, 316 empresas): onda ADITIVA com as 7 maiores ausentes do top-20 (BMW AG, Kraft Heinz, henkel, Levio, indiecampers, GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung, Exclusive Associates) + demais ausentes do top-30 com >=5 vagas (Amazon, Vanderlande, www.careers.philips.com, Google). Entradas existentes NUNCA removidas nesta onda (remoção = decisão do dono). Detalhes e motivação por empresa: docs/f26_watchlist.md.",
   "companies": [
     "BoschGroup",
     "Robert Bosch GmbH",
@@ -56,6 +56,17 @@
     "Voith GmbH & Co. KGaA",
     "Voith SE & Co. KG",
     "Marquardt Group",
-    "zeissgroup"
+    "zeissgroup",
+    "BMW AG",
+    "Kraft Heinz",
+    "henkel",
+    "Levio",
+    "indiecampers",
+    "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung",
+    "Exclusive Associates",
+    "Amazon",
+    "Vanderlande",
+    "www.careers.philips.com",
+    "Google"
   ]
 }
