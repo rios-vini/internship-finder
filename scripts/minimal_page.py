@@ -969,8 +969,15 @@ def render_minimal_html(
     radar_limit: int | None = None,
     inapplicable_ids: set[str] | None = None,
     salary_benchmark_map: dict | None = None,
+    now_ref: "datetime | None" = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
+
+    F36 (fix de bomba-relógio da F29): ``now_ref`` permite fixar o
+    instante de referência dos badges de idade ("postada há N dias") —
+    default None = ``datetime.now`` (produção inalterada). Testes
+    clock-dependent (test_f29 C1/C3b) passam o ref declarado em vez de
+    depender da data de execução.
 
     ``jobs``: lista JA ordenada pelo score do pipeline (ordem oficial). A
     pagina nao re-ranqueia nada — apenas enumera o topo. ``total_eligible``
@@ -1030,7 +1037,7 @@ def render_minimal_html(
     ``render_size_aware`` remonta sem snippets (campo DECORATIVO) quando
     o resultado estoura o alvo de bytes — nunca vagas a menos.
     """
-    ref = datetime.now(UTC)
+    ref = now_ref or datetime.now(UTC)
     dead_ids = set(dead_link_ids or set())
     # F20 — inaplicaveis-apos-hidratacao: saem do top exibido (mesma
     # mecanica do dead_link) mas NAO ganham o badge "🔗 morta" (a URL

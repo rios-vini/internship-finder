@@ -105,10 +105,17 @@ def _job(i: int, *, title="Praktikum Supply Chain", desc="", posted=None,
     return job
 
 
+# F36 (fix da bomba-relógio da F29): o ref declarado abaixo AGORA é
+# repassado ao render (param now_ref) — antes o teste só passava quando
+# executado NA data 2026-10-13 (o render usava datetime.now e os checks
+# C1/C3b quebravam em qualquer outro dia).
+FIXED_REF = datetime(2026, 10, 13, tzinfo=UTC)
+
+
 def _render(jobs, benchmark=None, **kw) -> str:
     return mp.render_minimal_html(
         jobs, total_eligible=len(jobs), generated_at="2026-10-13 09:00",
-        salary_benchmark_map=benchmark, **kw)
+        salary_benchmark_map=benchmark, now_ref=FIXED_REF, **kw)
 
 
 def group_a_loader() -> None:
