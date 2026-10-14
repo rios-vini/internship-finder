@@ -311,7 +311,14 @@ def test_publish_integration() -> None:
               main_list.count("<li class=") == 55)
         check("seção Materials presente (top 10, perfil alternativo)",
               "🧪 Materials Engineering" in html
-              and html.count("<li class=") == 55 + mp.MATERIALS_SECTION_TOP)
+              and html.count("<li class=") == 55 + mp.MATERIALS_SECTION_TOP
+              + html.count("Fora da Alemanha") * mp.EU_SECTION_TOP)
+        # F36: a seção EU non-DE (terceiro perfil) segue o mesmo padrão da
+        # Materials, mas SÓ renderiza quando há vagas no estrato não-DE —
+        # as 55 vagas deste fixture são todas DE, então a seção (corretamente)
+        # não existe; a presença/ausência é testada com estrato no test_f36.
+        check("seção EU non-DE ausente com universo 100% DE (honesto)",
+              "Fora da Alemanha" not in html)
         check("tamanho < 150 KB no cenario integrado", size < mp.PAGE_HARD_CAP_BYTES)
         check("tamanho <= 100 KB (alvo) no cenario integrado",
               size <= mp.PAGE_TARGET_BYTES)

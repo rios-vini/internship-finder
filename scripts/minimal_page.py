@@ -76,7 +76,7 @@ from urllib.parse import urlsplit
 
 __all__ = [
     "PAGE_TOP", "PAGE_TARGET_BYTES", "COMPANY_MAX_CARDS",
-    "NEW_SINCE_SECTION_TOP", "MATERIALS_SECTION_TOP",
+    "NEW_SINCE_SECTION_TOP", "MATERIALS_SECTION_TOP", "EU_SECTION_TOP",
     "GLOSSARY_TERMS",
     "render_minimal_html", "render_minimal_html_from_file",
     "apply_company_cap",
@@ -95,6 +95,8 @@ COMPANY_MAX_CARDS = 2
 # (spec F11 T4 opcional: top 10 por materials_score).
 NEW_SINCE_SECTION_TOP = 10
 MATERIALS_SECTION_TOP = 10
+# F36 — seção EU non-DE (terceiro perfil): top 10 por eu_score.
+EU_SECTION_TOP = 10
 
 # F20 — orcamento de bytes da secao 🎯 Empresas-alvo (item 4, dobra da
 # pendencia F15 — decisao do dono 08/10, opcao (a): ORCAMENTO, o cap de
@@ -957,6 +959,7 @@ def render_minimal_html(
     new_since_ids: set[str] | None = None,
     dead_link_ids: set[str] | None = None,
     materials: list[dict] | None = None,
+    eu: list[dict] | None = None,
     with_snippets: bool = True,
     translation_cache: dict | None = None,
     watchlist_events: list[dict] | None = None,
@@ -966,8 +969,15 @@ def render_minimal_html(
     radar_limit: int | None = None,
     inapplicable_ids: set[str] | None = None,
     salary_benchmark_map: dict | None = None,
+    now_ref: "datetime | None" = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
+
+    F36 (fix de bomba-relógio da F29): ``now_ref`` permite fixar o
+    instante de referência dos badges de idade ("postada há N dias") —
+    default None = ``datetime.now`` (produção inalterada). Testes
+    clock-dependent (test_f29 C1/C3b) passam o ref declarado em vez de
+    depender da data de execução.
 
     ``jobs``: lista JA ordenada pelo score do pipeline (ordem oficial). A
     pagina nao re-ranqueia nada — apenas enumera o topo. ``total_eligible``
@@ -980,11 +990,13 @@ def render_minimal_html(
     topo exibido). F20: ``inapplicable_ids`` = ids demovidos pela
     re-avaliacao POS-HIDRATACAO (german_level/requires_master da F18
     revelou inaplicabilidade na descricao hidratada) — descem do topo
-    exibido como o dead_link, com marcador PROPRIO e honesto ("saida do
-    top: alemão exigido/mestrado revelado pela descrição completa" —
-    NUNCA o badge "🔗 morta", que seria desinformativo: a vaga existe e
-    a URL está viva). ``materials`` = ranking materials JA computado e
-    cortado pelo chamador (secao opcional); None = sem secao.
+    topo exibido como o dead_link, com marcador PROPRIO e honesto ("saida do
+    top: alemão exigido/mestrado revelado pela descrição completa" — NUNCA
+    o badge "🔗 morta", que seria desinformativo: a vaga existe e a URL está
+    viva). ``materials`` = ranking materials JA computado e cortado pelo
+    chamador (secao opcional); None = sem secao. F36: ``eu`` = ranking EU
+    non-DE JA computado e cortado pelo chamador (mesmo padrao do materials);
+    None = sem secao.
 
     F12: ``translation_cache`` = cache de traducoes de descricao
     (``display_translate.load_translation_cache``; default None = sem
@@ -1025,7 +1037,7 @@ def render_minimal_html(
     ``render_size_aware`` remonta sem snippets (campo DECORATIVO) quando
     o resultado estoura o alvo de bytes — nunca vagas a menos.
     """
-    ref = datetime.now(UTC)
+    ref = now_ref or datetime.now(UTC)
     dead_ids = set(dead_link_ids or set())
     # F20 — inaplicaveis-apos-hidratacao: saem do top exibido (mesma
     # mecanica do dead_link) mas NAO ganham o badge "🔗 morta" (a URL
@@ -1179,6 +1191,29 @@ def render_minimal_html(
             + mat_cards
         )
 
+    # F36 — Seção EU non-DE: terceiro perfil (canal secundário F7), mesmo
+    # padrão da seção Materials; top 10 por eu_score.
+    eu_section = ""
+    if eu:
+        eu_cards = "\n".join(_cards_section(
+            eu, company_intel_map=company_intel_map,
+            new_ids=new_ids, dead_ids=dead_ids, ref=ref,
+            company_entry_cache=entry_cache, rank_start=1,
+            score_key="eu_score", with_snippet=with_snippets,
+            translation_cache=translation_cache,
+            personal_statuses=p_statuses,
+            inapplicable_ids=inapplicable,
+            salary_benchmark_map=salary_benchmark_map,
+        ))
+        eu_section = (
+            '<h2>🇪🇺 Fora da Alemanha — top 10 (perfil EU non-DE)</h2>'
+            '<p class="p2">Ranking próprio para o canal secundário '
+            '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
+            'estrato; ver docs/f36_non_de_profile.md). O score à esquerda '
+            'é o do perfil EU.</p>'
+            + eu_cards
+        )
+
     footer_note = (
         f"Top {len(shown)} de {total_eligible} vagas elegíveis · {n_vf} com 🛂 "
         "(empresa com política de visto) · ranking, JSON e CSV completos "
@@ -1221,6 +1256,7 @@ def render_minimal_html(
 {new_section}
 {watch_section}
 {materials_section}
+{eu_section}
 {sweet_section}
 <p class="f">{_esc(footer_note)}</p>
 {_legal_footer_html()}
@@ -1242,6 +1278,7 @@ def render_size_aware(
     new_since_ids: set[str] | None = None,
     dead_link_ids: set[str] | None = None,
     materials: list[dict] | None = None,
+    eu: list[dict] | None = None,
     translation_cache: dict | None = None,
     watchlist_events: list[dict] | None = None,
     tracker_db: Path | str | None = None,
@@ -1289,7 +1326,7 @@ def render_size_aware(
         jobs, total_eligible=total_eligible, generated_at=generated_at,
         top=top, company_intel_map=company_intel_map,
         new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
-        materials=materials, with_snippets=True,
+        materials=materials, eu=eu, with_snippets=True,
         translation_cache=translation_cache,
         watchlist_events=watchlist_events,
         tracker_db=tracker_db,
@@ -1302,7 +1339,7 @@ def render_size_aware(
             jobs, total_eligible=total_eligible, generated_at=generated_at,
             top=top, company_intel_map=company_intel_map,
             new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
-            materials=materials, with_snippets=False,
+            materials=materials, eu=eu, with_snippets=False,
             translation_cache=translation_cache,
             watchlist_events=watchlist_events,
             tracker_db=tracker_db,
@@ -1362,6 +1399,7 @@ def render_minimal_html_from_file(
     archive_root: Path | None = None,
     dead_link_ids: set[str] | None = None,
     include_materials: bool = True,
+    include_eu: bool = True,
     translation_cache_path: Path | str | None = None,
     watchlist_path: Path | str | None = None,
     tracker_db: Path | str | None = None,
@@ -1481,11 +1519,23 @@ def render_minimal_html_from_file(
         except Exception:  # noqa: BLE001 — secao opcional nunca derruba
             materials = None
 
+    # F36 — seção EU non-DE: terceiro perfil (canal secundário F7), mesmo
+    # padrão da seção Materials; top 10 por eu_score SOBRE O ESTRATO não-DE
+    # (a seção "Fora da Alemanha" só promete vagas fora da DE).
+    eu: list[dict] | None = None
+    if include_eu:
+        try:
+            from internship_finder.eu_ranking import rank_eu_stratum
+            eu = rank_eu_stratum(jobs)[:EU_SECTION_TOP]
+        except Exception:  # noqa: BLE001 — seção opcional nunca derruba
+            eu = None
+
     html = render_size_aware(
         jobs, total_eligible=len(jobs), generated_at=generated,
         top=top, company_intel_map=company_intel_map,
         new_since_ids=new_ids, dead_link_ids=dead_link_ids,
-        materials=materials, translation_cache=translation_cache,
+        materials=materials, eu=eu,
+        translation_cache=translation_cache,
         watchlist_events=watchlist_events,
         tracker_db=tracker_db,
         quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
@@ -1504,7 +1554,8 @@ def render_minimal_html_from_file(
             jobs, total_eligible=len(jobs), generated_at=generated,
             top=top, company_intel_map=company_intel_map,
             new_since_ids=new_ids, dead_link_ids=dead_link_ids,
-            materials=materials, translation_cache=translation_cache,
+            materials=materials, eu=eu,
+            translation_cache=translation_cache,
             watchlist_events=watchlist_events,
             tracker_db=tracker_db,
             quality_map=quality_map, sweet_spot_rows=None,
@@ -1590,6 +1641,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="benchmark salarial curado (F29; default "
                              "config/salary_benchmark.json do repo; '' "
                              "desliga a estimativa de mercado rotulada)")
+    parser.add_argument("--no-eu", dest="include_eu", action="store_false",
+                        help="desliga a seção EU non-DE (F36; ligada por "
+                             "default)")
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -1642,6 +1696,7 @@ def main(argv: list[str] | None = None) -> int:
         employer_quality_path=employer_quality_path,
         inapplicable_ids=inapplicable_ids,
         salary_benchmark_path=salary_benchmark_path,
+        include_eu=args.include_eu,
     )
     if args.output == "-":
         sys.stdout.write(page)

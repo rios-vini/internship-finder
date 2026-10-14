@@ -67,6 +67,9 @@ NEW_MAX_SHOWN = 15
 # Fase 4: Tetos da secao do perfil Materials (compacta — mesma mensagem).
 MATERIALS_TOP5 = 5
 MATERIALS_NEW_MAX = 5
+# F36: tetos da secao do perfil EU non-DE (mesmo formato compacto).
+EU_TOP5 = 5
+EU_NEW_MAX = 5
 
 # Fase 3 (enrichment): tetos da secao de dados da pagina oficial.
 ENRICH_TOP5 = 5
@@ -788,6 +791,49 @@ def materials_lines(current: list[dict], previous: list[dict]) -> list[str]:
     return lines
 
 
+def eu_lines(current: list[dict], previous: list[dict]) -> list[str]:
+    """Secao compacta do perfil EU non-DE (F36): Top 5 + novas no Top 30.
+
+    Mesmo padrao da secao Materials (Fase 4): o ranking e COMPUTADO aqui
+    (``rank_eu_jobs`` — funcao pura sobre as MESMAS vagas elegiveis;
+    score e posicoes PROPRIOS, independentes do business/materials).
+    Best-effort: lista vazia sem vagas; nunca derruba o digest.
+    """
+    if not current:
+        return []
+    from internship_finder.eu_ranking import rank_eu_stratum
+
+    # Display do perfil EU = estrato não-DE (a seção é o canal
+    # secundário "Fora da Alemanha" — só promete vagas fora da DE).
+    eu_cur = rank_eu_stratum(current)
+    lines = [
+        "🇪🇺 Perfil EU non-DE (ranking próprio, mesmas vagas elegíveis)"
+    ]
+    top5 = eu_cur[:EU_TOP5]
+    if not top5:
+        lines.append("— ranking EU vazio")
+        return lines
+    lines.append("Top 5:")
+    for pos, j in enumerate(top5, 1):
+        lines.append(
+            f"  {pos}. {_short_title(j)} — {j.get('company') or '—'} "
+            f"(eu {_score_text(j.get('eu_score'))})"
+        )
+    if previous:
+        novas = new_top_entries(eu_cur, previous, top=DIGEST_TOP)
+        if novas:
+            lines.append(f"🆕 Novas no Top 30 EU ({len(novas)}):")
+            for pos, j in novas[:EU_NEW_MAX]:
+                lines.append(
+                    f"  #{pos} — {_short_title(j)} — {j.get('company') or '—'}"
+                )
+            if len(novas) > EU_NEW_MAX:
+                lines.append(f"  (+{len(novas) - EU_NEW_MAX} outras)")
+        else:
+            lines.append("— nenhuma vaga nova no Top 30 EU")
+    return lines
+
+
 # ---------------------------------------------------------------------------
 # F11 — secoes do funil de aplicacao
 # ---------------------------------------------------------------------------
@@ -1302,6 +1348,15 @@ def digest_sections(
     if mat_lines:
         lines.append("")
         lines.extend(mat_lines)
+
+    # F36: secao compacta do perfil EU non-DE (mesmo padrao da Materials).
+    try:
+        eu_sec = eu_lines(current, previous)
+        if eu_sec:
+            lines.append("")
+            lines.extend(eu_sec)
+    except Exception:  # noqa: BLE001 — secao nova nunca derruba o digest
+        pass
 
     # F11 — secoes do funil de aplicacao (antes do link, best-effort):
     # 🆕 Novas desde ontem (diff de IDs contra o snapshot anterior — o
