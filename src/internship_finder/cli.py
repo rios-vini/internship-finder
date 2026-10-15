@@ -77,6 +77,9 @@ from internship_finder.official_page import (
     enrich_official_pages,
     print_official_page_report,
 )
+# F38 — now do freshness decay no pipeline (datetime aware-UTC explícito).
+from datetime import datetime, timezone
+
 from internship_finder.models.job import Job, normalize_job_dict
 from internship_finder.opportunity_intel import (
     company_intel_for,
@@ -467,7 +470,10 @@ def run_filter_pipeline(
     else:
         official_page_stats = None
     if rank:
-        selected = rank_jobs(selected)
+        # F38 — freshness decay: now explícito no pipeline de coleta (o
+        # score do dia reflete a idade das vagas NAQUELE run). Sem now
+        # (harnesses/benchmarks) o ranking é o histórico byte-identical.
+        selected = rank_jobs(selected, now=datetime.now(timezone.utc))
     # F5 — sinal visa_friendly (empresa): apos o ranking (aditivo; nunca
     # altera score/ordem), antes de gravar JSON/CSV. Best-effort.
     visa_friendly_count = _apply_visa_friendly(selected)

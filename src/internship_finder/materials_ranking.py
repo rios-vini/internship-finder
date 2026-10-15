@@ -56,7 +56,7 @@ import re
 from typing import Any
 
 from internship_finder.filters import STUDENT_TYPE_PATTERNS
-from internship_finder.ranking import Score
+from internship_finder.ranking import Score, _apply_decay
 
 # ---------------------------------------------------------------------------
 # Pesos (constantes de modulo — ajuste facil e documentado)
@@ -289,7 +289,7 @@ def _penalty_score(title: str) -> float:
     return penalty
 
 
-def materials_score_job(job: dict[str, Any] | Any) -> Score:
+def materials_score_job(job: dict[str, Any] | Any, *, now: Any = None) -> Score:
     """Score de relevancia para Materials Engineering (dict ou ``Job``).
 
     Funcao pura e deterministica. Componentes NOVOS — nunca toca
@@ -334,10 +334,16 @@ def materials_score_job(job: dict[str, Any] | Any) -> Score:
         "penalties": round(penalties, 2),
     }
     total = round(sum(breakdown.values()), 2)
+    # F38 — freshness decay: MESMA fórmula do perfil principal (meia-vida
+    # DECAY_HALF_LIFE_DAYS do ranking; sem posted_at fator 1.0 neutro). Com
+    # now=None (default) byte-identical ao histórico.
+    breakdown, total = _apply_decay(breakdown, total, d, now)
     return Score(total=total, breakdown=breakdown)
 
 
-def rank_materials_jobs(jobs: list[dict[str, Any]] | list[Any]) -> list[dict[str, Any]]:
+def rank_materials_jobs(
+    jobs: list[dict[str, Any]] | list[Any], *, now: Any = None
+) -> list[dict[str, Any]]:
     """Adiciona ``materials_score`` + ``materials_breakdown`` e ordena desc.
 
     Ranking INDEPENDENTE do perfil principal: mesma entrada (as vagas
@@ -349,7 +355,7 @@ def rank_materials_jobs(jobs: list[dict[str, Any]] | list[Any]) -> list[dict[str
     out: list[dict[str, Any]] = []
     for item in jobs:
         d = item.to_dict() if hasattr(item, "to_dict") else dict(item)
-        score = materials_score_job(d)
+        score = materials_score_job(d, now=now)
         d["materials_score"] = score.total
         d["materials_breakdown"] = score.breakdown
         out.append(d)

@@ -66,11 +66,23 @@ BREAKDOWN_KEYS: tuple[str, ...] = ("area", "skills", "language", "type", "locati
 # é retroativamente reescrito); componentes desconhecidos continuam erro.
 BREAKDOWN_KEYS_V2: tuple[str, ...] = BREAKDOWN_KEYS + ("registry",)
 
+# F38 adicionou ``decay`` (contribuição aditiva do freshness decay, meia-vida
+# 365d por posted_at) ao breakdown de perfis ranqueados COM ``now`` explícito
+# (pipeline de coleta). O invariante soma==score continua válido por
+# construção (``_apply_decay`` grava a contribuição, não o fator). Benchmarks
+# gerados de snapshots pós-F38 carregam 8 componentes; os velhos (sem decay)
+# continuam válidos — mesma política retroativa de F3.
+BREAKDOWN_KEYS_V3: tuple[str, ...] = BREAKDOWN_KEYS_V2 + ("decay",)
+
 
 def _breakdown_key_set(breakdown: dict[str, Any]) -> set[str] | None:
-    """Conjunto válido para o breakdown: v1 (6) ou v2 (6+registry)."""
+    """Conjunto válido para o breakdown: v1 (6), v2 (7) ou v3 (7+decay)."""
     keys = set(breakdown)
-    if keys == set(BREAKDOWN_KEYS) or keys == set(BREAKDOWN_KEYS_V2):
+    if (
+        keys == set(BREAKDOWN_KEYS)
+        or keys == set(BREAKDOWN_KEYS_V2)
+        or keys == set(BREAKDOWN_KEYS_V3)
+    ):
         return keys
     return None
 

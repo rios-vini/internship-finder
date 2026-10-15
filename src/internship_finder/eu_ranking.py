@@ -78,6 +78,7 @@ from internship_finder.filters import (
 )
 from internship_finder.ranking import (
     Score,
+    _apply_decay,
     _area_score,
     _language_score,
     _matches_any,
@@ -232,7 +233,7 @@ def _location_score(d: dict[str, Any]) -> float:
 # ---------------------------------------------------------------------------
 
 
-def eu_score_job(job: dict[str, Any] | Any) -> Score:
+def eu_score_job(job: dict[str, Any] | Any, *, now: Any = None) -> Score:
     """Score de relevância para o canal EU non-DE (dict ou ``Job``).
 
     Função pura e determinística. Componentes NOVOS — nunca toca
@@ -267,10 +268,16 @@ def eu_score_job(job: dict[str, Any] | Any) -> Score:
         "fn": round(fn, 2),
     }
     total = round(sum(breakdown.values()), 2)
+    # F38 — freshness decay: MESMA fórmula dos outros perfis (meia-vida
+    # DECAY_HALF_LIFE_DAYS do ranking; sem posted_at fator 1.0 neutro).
+    # Com now=None (default) byte-identical ao histórico.
+    breakdown, total = _apply_decay(breakdown, total, d, now)
     return Score(total=total, breakdown=breakdown)
 
 
-def rank_eu_jobs(jobs: list[dict[str, Any]] | list[Any]) -> list[dict[str, Any]]:
+def rank_eu_jobs(
+    jobs: list[dict[str, Any]] | list[Any], *, now: Any = None
+) -> list[dict[str, Any]]:
     """Adiciona ``eu_score`` + ``eu_breakdown`` e ordena desc.
 
     Ranking INDEPENDENTE dos perfis business/materials: mesma entrada
@@ -278,11 +285,14 @@ def rank_eu_jobs(jobs: list[dict[str, Any]] | list[Any]) -> list[dict[str, Any]]
     determinístico (score desc -> título casefold -> empresa -> id —
     mesmo critério dos outros dois perfis). Retorna NOVA lista; a entrada
     não é mutada e os scores dos outros perfis não são alterados.
+
+    F38: ``now`` (datetime aware) ativa o freshness decay (mesma meia-vida
+    dos 3 perfis); sem ``now`` byte-identical ao histórico.
     """
     out: list[dict[str, Any]] = []
     for item in jobs:
         d = item.to_dict() if hasattr(item, "to_dict") else dict(item)
-        score = eu_score_job(d)
+        score = eu_score_job(d, now=now)
         d["eu_score"] = score.total
         d["eu_breakdown"] = score.breakdown
         out.append(d)
@@ -313,7 +323,7 @@ def is_eu_stratum_job(job: dict[str, Any] | Any) -> bool:
 
 
 def rank_eu_stratum(
-    jobs: list[dict[str, Any]] | list[Any],
+    jobs: list[dict[str, Any]] | list[Any], *, now: Any = None
 ) -> list[dict[str, Any]]:
     """Ranking do perfil EU SOBRE O ESTRATO não-DE (display).
 
@@ -322,10 +332,12 @@ def rank_eu_stratum(
     função é o corte de EXIBIÇÃO da seção 🇪🇺: filtra o estrato
     (``is_eu_stratum_job``) e devolve o ranking próprio do subconjunto.
     Sem mutação da entrada; desempate idêntico ao ``rank_eu_jobs``.
+
+    F38: repassa ``now`` (freshness decay) ao ``rank_eu_jobs``.
     """
     stratum = [
         (item.to_dict() if hasattr(item, "to_dict") else dict(item))
         for item in jobs
         if is_eu_stratum_job(item)
     ]
-    return rank_eu_jobs(stratum)
+    return rank_eu_jobs(stratum, now=now)
