@@ -288,8 +288,8 @@ def test_consistency() -> None:
           all("praktikum" != p.strip(r"\b") for p in TYPE_EXCLUSION_PATTERNS))
     check("exclusao de tipo nao tem 'studium' solto",
           all("studium" != p.strip(r"\b") for p in TYPE_EXCLUSION_PATTERNS))
-    check("exclusao de tipo tem 20 padroes explicitos",
-          len(TYPE_EXCLUSION_PATTERNS) == 20)
+    check("exclusao de tipo tem 22 padroes explicitos (F37: +Aushilfe+Schnupper)",
+          len(TYPE_EXCLUSION_PATTERNS) == 22)
     check("exclusao EN de aprendizagem presente (apprentice)",
           any("apprentice" in p for p in TYPE_EXCLUSION_PATTERNS))
     # Pos-auditoria 15/09: SmVdP na exclusao, teses nos marcadores fortes e

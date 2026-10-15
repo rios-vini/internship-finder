@@ -71,7 +71,7 @@ from typing import Any
 # vencem as exclusoes de senioridade (ver ``is_student_role``). Cobre EN, DE,
 # PT-BR, FR, ES, IT, HU, PL, RU, CZ, TR.
 STUDENT_TYPE_PATTERNS = [
-    r"\binterns?\b",
+    r"\binterns?\b(?!\.)",  # F37: "intern." abreviação (internacional etc.) não é marcador
     r"\binternships?\b",
     r"\bworking student",  # "Working Student", "Working Students"
     r"\bstudent worker",
@@ -79,7 +79,14 @@ STUDENT_TYPE_PATTERNS = [
     r"\bindustrial internship",
     r"\bco[- ]?ops?\b",
     r"\bapprentices?\b",
-    r"\bplacements?\b",
+    # F37: "placement" SOZINHO não é marcador (FP Amazon #88 "Inbound &
+    # Inventory Placement Operations" — logística; MediaMarkt "advertising
+    # placements"). Só os COMPOSTOS UK de placement-estágio (inclui
+    # "Placement Analyst" — programa de banco tipo Citi Amsterdam, 6 meses,
+    # contra-caso real do universo 13/10).
+    r"\b(?:internship|industrial|sandwich|work)\s+placements?\b",
+    r"\bplacements?\s+(?:student|year|scheme|position|program|programme|analyst)s?\b",
+    r"\bplacement\s+(?:student|year|scheme|position|program|programme|analyst)s?\b",
     # Nota: graduate/absolvent NAO entram (perfil e de estudante atual, nao
     # recem-formado); "SAP Associate" (full-time para graduados) fica de fora.
     # Trainee generico NAO e marcador (regra do dono pos-auditoria); os
@@ -199,6 +206,17 @@ TYPE_EXCLUSION_PATTERNS = [
     r"\bschulpraktikant",
     r"praktikum f(ü|ue)r sch(ü|ue)ler",
     r"\bberufsorientierungspraktikum",
+    # F37 (14/10): Aushilfe = vaga de apoio temporária (Nebenjob/Minijob),
+    # não estágio universitário. FP GALERIA ×8 no 13/10: título "Aushilfe
+    # (w/m/d)" com desc "studentische Aushilfen ... Werkstudenten" — o
+    # marcador forte da DESC vazava; a exclusão de TÍTULO vence a desc
+    # (mesmo mecanismo das regras Trainee/Duales Studium existentes).
+    r"\baushilfe(n)?\b",
+    # F37 (14/10): Schnupperpraktikum = estágio de orientação ESCOLAR
+    # (pré-Azubi, aluno de ensino médio) — mesmo degrau do
+    # Schuelerpraktikum acima. Caso medido 13/10: Champignon
+    # "Schnupperpraktikum Kaufmann für Spedition und Logistik...".
+    r"\bschnupper\w*",
     # Servico voluntario (ano sabatico pos-escola, nao estagio): FSJ, BFD,
     # Freiwilliges Soziales/Oekologisches Jahr, Bundesfreiwilligendienst.
     r"\bfsj\b",
@@ -401,13 +419,22 @@ from internship_finder.countries import (
 # (jobs.db/dataset) NÃO muda; remover o estágio reverte o comportamento.
 
 # Motivos de exclusão, na ordem de atribuição first-match (contagem por
-# motivo nunca soma mais de 1 por vaga).
+# motivo nunca soma mais de 1 por vaga). F37 (14/10): 6 novos motivos de
+# hard-eligibility (decisão literal do dono — EXCLUSÃO, nunca score):
+# EU-citizenship, NL-enrolment, PhD, duração >6m por título, FULL_TIME
+# efetivo sem marcador de estágio. Tese estendida (Bachelorarbeit/
+# Masterarbeit puros) continua no motivo thesis_title existente.
 APPLICABILITY_EXCLUSION_REASONS = (
     "german_required",
     "visa_blocked",
     "thesis_title",
     "werkstudent_puro",
     "master_required",
+    "eu_citizenship_required",
+    "nl_enrolment_required",
+    "phd_position",
+    "duration_over_6m",
+    "full_time_permanent",
 )
 
 # Tese por TÍTULO (case-insensitive). "Abschlussarbeit" cobre as teses DE
@@ -434,6 +461,157 @@ def is_werkstudent_puro_title(title: str | None) -> bool:
     """Título é Werkstudent PURO (sem híbrido de estágio)?"""
     t = title or ""
     return bool(_WS_TITLE_RE.search(t)) and not bool(_WS_HYBRID_RE.search(t))
+
+
+# ---------------------------------------------------------------------------
+# F37 — Saneamento hard-eligibility (14/10): vagas que o dono NÃO PODE
+# aplicar saem do eligible (EXCLUSÃO — decisão literal do dono; nunca
+# rebaixamento de score). Detectores regex determinísticos sobre trechos
+# LITERAIS confirmados na revisão do gabarito 14/10 (referência
+# revisao-gabarito-2026-10-14.md). Cada constante nomeia o trecho real.
+# ---------------------------------------------------------------------------
+
+# (1) Cidadania EU exigida — o dono tem passaporte BR (visto §16e). Trechos
+# literais medidos no universo 13/10 (19 vagas: teampicnic R6 + Kraft Heinz
+# ×18). Word-boundary em todos; variantes ue/ü cobertas.
+_EU_CITIZENSHIP_RES = [
+    # teampicnic R6: "Staatsbürgerschaft eines EU-Mitgliedstaates"
+    re.compile(
+        r"staatsb(ü|ue)rgerschaft\s+eines\s+eu[- ]mitgliedstaates", re.IGNORECASE
+    ),
+    # Kraft Heinz R8: "EU working rights are required"
+    re.compile(r"\beu\s+working\s+rights\b", re.IGNORECASE),
+    # Kraft Heinz R8 (variante literal): "Either you have an EU Citizenship,
+    # or you are studying in the Netherlands"
+    re.compile(
+        r"either\s+you\s+have\s+an\s+eu\s+citizenship,\s+"
+        r"or\s+you\s+are\s+studying\s+in\s+the\s+netherlands",
+        re.IGNORECASE,
+    ),
+]
+
+# (2) Matrícula/residência NL obrigatória (sistema holandês HBO/WO) — o dono
+# é matriculado na UFSCar (BR). Trechos literais medidos (22 vagas 13/10:
+# Vanderlande ×5, Levio ×4, Frenckengroup ×3, Parfumado R12...).
+_NL_ENROLMENT_RES = [
+    # Vanderlande R31: "Mandatory enrolment to a Dutch Education System &
+    # resident of The Netherlands"
+    re.compile(
+        r"mandatory\s+enrolment\s+to\s+a\s+dutch\s+education\s+system", re.IGNORECASE
+    ),
+    # Parfumado R12: "enrolled in an HBO/WO programme" (sistema NL; "HBO"
+    # puro também aparece — word-boundary evita colisões)
+    re.compile(r"\bhbo\b|\bhbo/wo\b", re.IGNORECASE),
+]
+
+# (3) PhD/doctoral — perfil é aluno de graduação (bachelor). Casos medidos:
+# SAP "PhD Internship" (título), conxai "MS or PhD" (descrição). Só o
+# requisito EXPLÍCITO de PhD atual (não mestrado — master_required existe).
+_PHD_RES = [
+    re.compile(r"\bphd\b", re.IGNORECASE),
+    re.compile(r"\bdoctoral\b", re.IGNORECASE),
+    re.compile(r"\bdoktorand", re.IGNORECASE),
+]
+
+
+def _res_fire(res: list[re.Pattern], text: str) -> bool:
+    return any(rx.search(text) for rx in res)
+
+
+def requires_eu_citizenship(title: str, description: str | None) -> bool:
+    """A vaga exige cidadania UE / direitos de trabalho UE (F37)?"""
+    return _res_fire(_EU_CITIZENSHIP_RES, f"{title} {description or ''}")
+
+
+def requires_nl_enrolment(title: str, description: str | None) -> bool:
+    """A vaga exige matrícula/residência no sistema NL (F37)?"""
+    return _res_fire(_NL_ENROLMENT_RES, f"{title} {description or ''}")
+
+
+def requires_phd(title: str, description: str | None) -> bool:
+    """A vaga exige PhD/doctoral (F37)?"""
+    return _res_fire(_PHD_RES, f"{title} {description or ''}")
+
+
+# Tese por título — extensão F37: Bachelorarbeit/Masterarbeit (composição
+# com hífen/espaço) são teses PUAS no título, e a vaga NÃO é estágio.
+# Casos medidos 13/10: OTTOFUCHSKG "Bachelorarbeit Data Science" (FP #57),
+# Fraunhofer ×2 "Bachelorarbeit/Semesterarbeit: ...". O regex existente
+# (abschlussarbeit|thesis) não casa "bachelorarbeit" (o composto
+# "bachelorarbeit" contém "arbeit" mas o pattern exige "abschluss"|"thesis").
+# "Bachelorarbeit/Semesterarbeit" também não (mesma razão). Híbridos com
+# estágio no título FICAM (ex.: "Praktikum ... Bachelorarbeit" seria estágio
+# com tese — não medido no universo, mas a regra do título-puro preserva).
+_THESIS_TITLE_F37_RE = re.compile(
+    r"\b(bachelor|master)[- ]?arbeit\b", re.IGNORECASE
+)
+
+
+def is_thesis_title_strict(title: str | None) -> bool:
+    """Título é tese PUra (F37)? Cobertura estendida: Bachelorarbeit/
+    Masterarbeit (com hífen/espaço) além de Abschlussarbeit/Thesis."""
+    t = title or ""
+    return bool(_THESIS_TITLE_RE.search(t) or _THESIS_TITLE_F37_RE.search(t))
+
+
+# Duração por título > 6 meses (teto §16e): a vaga É longa por definição
+# do próprio título. Parser reusado da F29 (job_duration — mesma semântica
+# min>6 = flag, 6 exatos e faixa com piso <=6 = ok). TÍTULO-ONLY: a
+# descrição tem FPs de contexto medidos (14 casos >6m na desc, 5 deles
+# "graduated in the last 12 months"/"Reststudiendauer mind. 12 Monate" —
+# não são duração da vaga). Casos reais no título (13/10): ArcelorMittal
+# "IT Procurement Internship - 12 months" (#38), Deutsche Börse "for up to
+# 12 months".
+_DURATION_OVER6M_MONTHS = 6
+
+
+def duration_over_6m_title(title: str | None) -> bool:
+    """Título cita duração da vaga acima do teto §16e de 6 meses (F37)?
+
+    Usa o MESMO parser da F29 (``opportunity_intel.job_duration``) sobre o
+    TÍTULO apenas: ``min > 6`` exclui (o piso da faixa já estoura o
+    teto); ``min <= 6`` fica (faixa 6–12 começa dentro do teto — mesma
+    semântica de ``duration_flag_text`` da F29, casos Edbz/Bosch 6–12).
+    """
+    if not title:
+        return False
+    from internship_finder.opportunity_intel import job_duration
+
+    dur = job_duration({"title": title, "description": None})
+    if not dur:
+        return False
+    return dur["min"] > _DURATION_OVER6M_MONTHS
+
+
+# FULL_TIME efetivo (F37): employment_type == FULL_TIME sem NENHUM
+# marcador de estágio no título NEM na descrição = vaga permanente
+# (full-time job), não estágio. Caso medido 13/10: Amazon EU Sàrl
+# "Business Analyst, EU Inbound & Inventory Placement Operations"
+# (FP #88 — passava por "placement" logístico na desc). CONTRA-CASO
+# travado: Praktikum legítimo marcado FULL_TIME (Bosch "Praktikum in der
+# Logistik" et al., 268/272 do FULL_TIME) continua eligible — o marcador
+# no título os preserva por construção.
+_FULL_TIME_VALUES = {"full_time", "fulltime", "full-time", "full time"}
+
+
+def is_full_time_permanent(job: dict) -> bool:
+    """Vaga FULL_TIME efetiva SEM marcador de estágio (F37)?
+
+    True quando ``employment_type`` normalizado é FULL_TIME e o texto
+    (título+descrição) não traz nenhum marcador de tipo estudante. As
+    vagas legítimas de estágio marcadas FULL_TIME carregam o marcador no
+    título (Praktikum/Intern/...) — o detector só pega as permanentes
+    de verdade.
+    """
+    et = str(job.get("employment_type") or "").strip().lower().replace("-", "_")
+    if et not in _FULL_TIME_VALUES:
+        return False
+    if et in STUDENT_EMPLOYMENT_TYPES:  # intern/internship/co-op (defensivo)
+        return False
+    title = str(job.get("title") or "")
+    description = job.get("description") or ""
+    text = f"{title} {description}".lower()
+    return not _has_any(STUDENT_TYPE_PATTERNS, text)
 
 
 # requires_master — a vaga exige/é mestrado (título OU descrição).
@@ -549,7 +727,9 @@ def applicability_exclusion_reason(
 
     Ordem de atribuição FIRST-MATCH (a mesma vaga nunca conta 2 motivos):
     ``german_required`` → ``visa_blocked`` → ``thesis_title`` →
-    ``werkstudent_puro`` → ``master_required``.
+    ``werkstudent_puro`` → ``master_required`` → ``eu_citizenship_required``
+    → ``nl_enrolment_required`` → ``phd_position`` → ``duration_over_6m`` →
+    ``full_time_permanent``.
 
     - ``german_required``: ``app_intel.german_level(título+descrição)`` ==
       ``required`` (classificador F18 — o dataset não carrega o nível; a
@@ -559,10 +739,25 @@ def applicability_exclusion_reason(
       exato via ``opportunity_intel``). Não-mentionadas e ``unclear``
       FICAM (unclear é a aposta do projeto). Sem ``intel_map`` o critério
       não aplica (função pura — nunca lê arquivos).
-    - ``thesis_title``: ``abschlussarbeit|thesis`` no título.
+    - ``thesis_title``: ``abschlussarbeit|thesis`` no título (F37:
+      estendido a ``Bachelorarbeit``/``Masterarbeit`` puros via
+      ``is_thesis_title_strict``).
     - ``werkstudent_puro``: título com ``werkstudent|working student`` SEM
       ``intern|internship|praktikant|praktikum`` (híbridos ficam).
     - ``master_required``: ``requires_master(título, descrição)``.
+    - ``eu_citizenship_required`` (F37): trecho literal exigindo
+      cidadania UE / EU working rights (teampicnic R6, Kraft Heinz R8) —
+      o dono tem passaporte BR.
+    - ``nl_enrolment_required`` (F37): matrícula/residência obrigatória
+      no sistema holandês (Vanderlande R31, Parfumado R12 HBO/WO).
+    - ``phd_position`` (F37): PhD/doctoral exigido (SAP PhD Internship) —
+      perfil é aluno de graduação.
+    - ``duration_over_6m`` (F37): título cita duração da vaga acima do
+      teto §16e de 6 meses (ArcelorMittal "12 months") — mesmo parser/
+      semântica do badge F29, título-only.
+    - ``full_time_permanent`` (F37): ``employment_type`` FULL_TIME sem
+      NENHUM marcador de estágio no título/descrição (Amazon BA EU
+      Inbound #88) — vaga permanente, não estágio.
     """
     from internship_finder.app_intel import german_level
 
@@ -584,7 +779,7 @@ def applicability_exclusion_reason(
         if visa_policy_state(entry) == "candidate_must_have_authorization":
             return "visa_blocked"
 
-    if is_thesis_title(title):
+    if is_thesis_title_strict(title):
         return "thesis_title"
 
     if is_werkstudent_puro_title(title):
@@ -592,6 +787,21 @@ def applicability_exclusion_reason(
 
     if requires_master(title, description):
         return "master_required"
+
+    if requires_eu_citizenship(title, description):
+        return "eu_citizenship_required"
+
+    if requires_nl_enrolment(title, description):
+        return "nl_enrolment_required"
+
+    if requires_phd(title, description):
+        return "phd_position"
+
+    if duration_over_6m_title(title):
+        return "duration_over_6m"
+
+    if is_full_time_permanent(job):
+        return "full_time_permanent"
 
     return None
 
