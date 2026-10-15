@@ -490,14 +490,25 @@ def test_page_regression_and_cap() -> None:
     check("página sem mapa: byte a byte idêntica (regressão zero)",
           html_pre == html_none)
 
-    # from_file com mapa ausente no caminho = silêncio gracioso
+    # from_file com mapa ausente no caminho = silêncio gracioso.
+    # F39-followup: generated_at FIXO nos dois renders — o par de
+    # chamadas independentes não pode mais cruzar uma borda de minuto
+    # (flake do run 38692415463: [FAIL] carimbado 06:35:00.059Z com o
+    # render de html_a às 06:34:59.9x).
     jobs_path = tmp / "eligible_jobs.json"
     jobs_path.write_text(json.dumps(jobs), encoding="utf-8")
-    html_a = mp.render_minimal_html_from_file(jobs_path)
+    html_a = mp.render_minimal_html_from_file(
+        jobs_path, generated_at="2026-10-08 09:00")
     html_b = mp.render_minimal_html_from_file(
-        jobs_path, employer_quality_path=tmp / "nao_existe.json")
+        jobs_path, employer_quality_path=tmp / "nao_existe.json",
+        generated_at="2026-10-08 09:00")
     check("from_file com mapa ausente == from_file sem o parâmetro",
           html_a == html_b)
+    # kwarg novo: carimbo declarado aparece no rodapé; default (None)
+    # continua gerando now() — contrato de produção preservado.
+    check("generated_at declarado aparece no rodapé (imune à borda de "
+          "minuto)",
+          "2026-10-08 09:00 UTC" in html_a)
 
     # cap: fixture com 30 vagas cabe no cap duro
     check(f"página de fixture < 150KB (cap duro)",
