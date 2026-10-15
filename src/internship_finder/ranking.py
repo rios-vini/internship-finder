@@ -63,6 +63,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from internship_finder.app_intel import english_evidence, german_level
@@ -306,11 +307,108 @@ def _penalty_score(title_low: str, employment_type: str | None) -> float:
     return penalty
 
 
-def score_job(job: dict[str, Any] | Any) -> Score:
+# ---------------------------------------------------------------------------
+# F38 — Freshness decay (fator multiplicativo por posted_at)
+# ---------------------------------------------------------------------------
+
+# Meia-vida ESCOLHIDA POR BENCHMARK (grade 3x3 sobre o snapshot congelado do
+# benchmark v2 — 20261012T090001Z; ver relatório F38 §grade): {90, 180, 365}d
+# medidos como função pura nos 3 perfis; 365d = menor perda de concordância
+# ordinal (tau business +0,537 vs +0,626 sem decay; 90d/+0,370 e 180d/+0,445
+# piores). MESMA meia-vida nos 3 perfis (decisão do card F38).
+DECAY_HALF_LIFE_DAYS = 365.0
+
+# Idade máxima considerada: posted_at no futuro (bad data) conta como idade 0
+# — decay nunca PREMIA dado ruim, no máximo ignora.
+DECAY_MAX_AGE_DAYS = 3650.0  # 10 anos: teto de sanidade, não de elegibilidade
+
+
+def _parse_iso_utc(value: Any) -> Any:
+    """Parse tolerante de data ISO 8601 (``Z`` -> ``+00:00``); None se ruim.
+
+    Mesma disciplina dos parsers de coleta (``dataset_source._parse_dt`` /
+    ``direct_fetch._parse_iso_date``): nunca crasha, devolve None para valor
+    ausente/inválido.
+    """
+    if not value:
+        return None
+    s = str(value).strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def freshness_decay(
+    posted_at: Any, now: Any, half_life_days: float = DECAY_HALF_LIFE_DAYS
+) -> float:
+    """Fator multiplicativo de fresnitude (F38): ``0.5 ** (idade/meia-vida)``.
+
+    - Idade em DIAS entre ``posted_at`` e ``now`` (ambos aware-UTC).
+    - SEM ``posted_at`` (ausente/inválido): fator **1.0 NEUTRO** — o
+      desconhecido nunca é penalizado (regra F38; 303/779 vagas do snapshot
+      12/10 estão sem posted_at).
+    - ``posted_at`` no futuro (dado ruim): idade 0 (fator 1.0) — decay não
+      premia bad data.
+    - SEM hard cutoff: o fator só DECAI exponencialmente, nunca zera
+      (remoção por idade é decisão PENDENTE do dono; decay-only é reversível).
+    - Função PURA: mesmos argumentos -> mesmo fator (determinismo do score).
+      ``now`` é sempre EXPLÍCITO — score_job sem ``now`` não aplica decay
+      (invariante byte-identical histórica, mesma disciplina da F36).
+    """
+    if now is None:
+        return 1.0
+    posted = _parse_iso_utc(posted_at)
+    if posted is None:
+        return 1.0
+    now_utc = now.astimezone(timezone.utc) if now.tzinfo else now.replace(tzinfo=timezone.utc)
+    age_days = (now_utc - posted).total_seconds() / 86400.0
+    if age_days <= 0.0:
+        return 1.0
+    age_days = min(age_days, DECAY_MAX_AGE_DAYS)
+    return 0.5 ** (age_days / float(half_life_days))
+
+
+def _apply_decay(
+    breakdown: dict[str, float], total: float, job: dict[str, Any], now: Any
+) -> tuple[dict[str, float], float]:
+    """Compõe o decay multiplicativo MANTENDO o invariante soma==score.
+
+    O decay é multiplicativo no total, mas entra no ``breakdown`` como
+    CONTRIBUIÇÃO ADITIVA (``decay`` = total_pós - total_pré) para que
+    ``sum(breakdown.values()) == score`` continue válido — o mesmo
+    invariante que ``ranking_benchmark.validate_benchmark`` checa e que o
+    ``refresh`` do benchmark preserva. Sem posted_at: contribuição 0.0
+    (fator neutro) e o total é devolvido INTACTO (byte-identical).
+    """
+    if now is None:
+        return breakdown, total
+    factor = freshness_decay(job.get("posted_at"), now)
+    if factor == 1.0:
+        return breakdown, total
+    new_total = round(total * factor, 2)
+    decayed = dict(breakdown)
+    decayed["decay"] = round(new_total - total, 2)
+    return decayed, new_total
+
+
+def score_job(job: dict[str, Any] | Any, *, now: Any = None) -> Score:
     """Score de compatibilidade de uma vaga (dict ou ``Job``) com o perfil.
 
     Funcao pura e deterministica: mesmos dados -> mesmo score. Aceita dict
     (o que o CLI le do JSON) ou modelo ``Job``.
+
+    F38 — freshness decay: com ``now`` (datetime aware), o total é
+    multiplicado por ``freshness_decay`` (meia-vida 365d; sem ``posted_at``
+    fator 1.0 NEUTRO) e o ``breakdown`` ganha a chave ``decay`` com a
+    contribuição aditiva (soma do breakdown continua == score). Sem ``now``
+    (default) o comportamento é o histórico BYTE-IDENTICAL — nenhum
+    call-site existente muda (mesma disciplina de invariante da F36).
     """
     d = job.to_dict() if hasattr(job, "to_dict") else job
     title = str(d.get("title") or "")
@@ -339,19 +437,27 @@ def score_job(job: dict[str, Any] | Any) -> Score:
         "registry": round(registry, 2),
     }
     total = round(sum(breakdown.values()), 2)
+    breakdown, total = _apply_decay(breakdown, total, d, now)
     return Score(total=total, breakdown=breakdown)
 
 
-def rank_jobs(jobs: list[dict[str, Any]] | list[Any]) -> list[dict[str, Any]]:
+def rank_jobs(
+    jobs: list[dict[str, Any]] | list[Any], *, now: Any = None
+) -> list[dict[str, Any]]:
     """Adiciona ``score`` + ``score_breakdown`` e ordena desc (deterministico).
 
     Desempate: score desc -> titulo (casefold) -> empresa -> id. Retorna uma
     NOVA lista de dicts (nao muta a entrada).
+
+    F38: ``now`` (datetime aware) ativa o freshness decay no score de cada
+    vaga (meia-vida 365d; sem posted_at fator 1.0 neutro). Sem ``now``
+    (default) o ranking é o histórico BYTE-IDENTICAL — o pipeline de coleta
+    passa ``now`` explícito, harnesses/benchmarks permanecem congelados.
     """
     out: list[dict[str, Any]] = []
     for item in jobs:
         d = item.to_dict() if hasattr(item, "to_dict") else dict(item)
-        score = score_job(d)
+        score = score_job(d, now=now)
         d["score"] = score.total
         d["score_breakdown"] = score.breakdown
         out.append(d)

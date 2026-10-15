@@ -26,7 +26,8 @@
   estratos DE/não-DE quando o arquivo carrega `country`) e
   `src/internship_finder/ranking_benchmark.py` (funções puras, stdlib;
   F27: validação e perfis de componente aceitam breakdown v1 de 6
-  componentes E v2 de 7 com `registry`).
+  componentes E v2 de 7 com `registry`; F38: também v3 de 8 com `decay` —
+  snapshots pós-F38 carregam a contribuição aditiva do freshness decay).
 - **Reprodução do benchmark em snapshot novo**:
   `scripts/make_ranking_benchmark.py refresh --snapshot data/eligible_jobs.json --run-date <data>` —
   re-extrai score/breakdown/rank pelos ids (chave estavél P1.1), preserva
