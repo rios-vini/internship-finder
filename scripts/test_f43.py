@@ -468,8 +468,10 @@ def test_secoes_intactas_full() -> None:
 def test_auto_regime() -> None:
     section("T8: regime liga com top >= PAGE_TOP_FULL (publish) e não com --top 100")
     jobs = make_jobs()[:12]
-    tmp = Path(tempfile.mkdtemp(prefix="f43-test-", dir=str(
-        Path.home() / ".hermes" / "cache" / "scratch"))) / "jobs.json"
+    # diretório temporário PORTÁVEL (o do sistema): o teste precisa rodar
+    # igual no CI (runner limpo) e na VPS — nunca apontar p/ paths do host.
+    tmpdir = tempfile.mkdtemp(prefix="f43-test-")
+    tmp = Path(tmpdir) / "jobs.json"
     tmp.write_text(json.dumps(jobs), encoding="utf-8")
     try:
         full = mp.render_minimal_html_from_file(
@@ -492,6 +494,7 @@ def test_auto_regime() -> None:
               "--full-list" in rc.stdout, rc.stdout[-200:] if rc.returncode else "")
     finally:
         shutil.rmtree(tmp.parent, ignore_errors=True)
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def main() -> int:
