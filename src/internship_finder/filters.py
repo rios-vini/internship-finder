@@ -533,19 +533,6 @@ def requires_phd(title: str, description: str | None) -> bool:
     return _res_fire(_PHD_RES, f"{title} {description or ''}")
 
 
-# Aushilfe por título (F37): vaga de apoio/temporária (Nebenjob/Minijob),
-# não estágio universitário. GALERIA ×8 medidas no 13/10 ("Aushilfe
-# (w/m/d)" + desc "studentische Aushilfen ... Werkstudenten" — o marcador
-# forte da DESC vazava; a exclusão por TÍTULO vence a desc, mesmo
-# mecanismo das regras Trainee/Azubi existentes).
-_AUSHILFE_TITLE_RE = re.compile(r"\baushilfe(n)?\b", re.IGNORECASE)
-
-# Schnupperpraktikum por título (F37): estágio de ORIENTAÇÃO ESCOLAR
-# (tentaiva pré-Azubi), público aluno de ensino médio — mesmo degrau do
-# Schuelerpraktikum já excluído por TYPE_EXCLUSION_PATTERNS. Caso medido
-# 13/10: Champignon "Schnupperpraktikum Kaufmann für Spedition...".
-_SCHNUPPER_TITLE_RE = re.compile(r"\bschnupper\w*", re.IGNORECASE)
-
 # Tese por título — extensão F37: Bachelorarbeit/Masterarbeit (composição
 # com hífen/espaço) são teses PUAS no título, e a vaga NÃO é estágio.
 # Casos medidos 13/10: OTTOFUCHSKG "Bachelorarbeit Data Science" (FP #57),
