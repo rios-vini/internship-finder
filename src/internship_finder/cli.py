@@ -68,6 +68,11 @@ from internship_finder.dedup import (
     deduplicate_ms_wildcard,
 )
 from internship_finder.mirror_dedup import KEY_MIRRORS_DE_EN, deduplicate_mirrors_de_en
+from internship_finder.cross_source_dedup import (
+    KEY_CROSS_SOURCE,
+    cross_source_provenance,
+    deduplicate_cross_source,
+)
 from internship_finder.filters import parse_country_spec, select_eligible
 from internship_finder.health import build_health_report
 from internship_finder.hydration import hydrate_descriptions, print_hydration_report
@@ -308,13 +313,21 @@ def print_dedup_report(dedup_stats: dict[str, int]) -> None:
         if dedup_stats.get(KEY_MS_WILDCARD)
         else ""
     )
+    # F48 — sub-estagio cross-fonte (campos estruturados): so aparece quando
+    # removeu algo (aditivo; 0 = linha identica a de antes da F48).
+    cross_line = (
+        f", {dedup_stats.get(KEY_CROSS_SOURCE, 0)} por espelho cross-fonte "
+        "(empresa+cidade+titulo)"
+        if dedup_stats.get(KEY_CROSS_SOURCE)
+        else ""
+    )
     print(
         f"dedup: removidas {total} "
         f"({dedup_stats.get('external_id', 0)} por external_id, "
         f"{dedup_stats.get('url', 0)} por URL, "
         f"{dedup_stats.get('company+title+location', 0)} por company+title+location, "
         f"{dedup_stats.get(KEY_MIRRORS_DE_EN, 0)} por mirrors DE/EN (requisition_id)"
-        f"{ms_line})"
+        f"{ms_line}{cross_line})"
     )
 
 
@@ -435,6 +448,23 @@ def run_filter_pipeline(
             dedup_stats[KEY_MIRRORS_DE_EN] = (
                 dedup_stats.get(KEY_MIRRORS_DE_EN, 0) + mirror_stats[KEY_MIRRORS_DE_EN]
             )
+    cross_removed: list[tuple[dict[str, Any], dict[str, Any], str]] = []
+    if dedup:
+        # F48 — sub-estagio cross-fonte por CAMPOS ESTRUTURADOS: a MESMA vaga
+        # publicada em FONTES diferentes (espelho EN/DE; ex.: registro do
+        # dataset x registro da ATS da empresa). Roda por ULTIMO, depois dos
+        # tiers classicos, do wildcard F23 e dos mirrors da Fase C (que
+        # exigem o MESMO tenant) — aqui o `source` PRECISA ser diferente,
+        # entao nenhum dos estagios anteriores poderia ter pego o par.
+        # Cidade normalizada + titulo DE/EN + identidade de empresa +
+        # guardrails (country/salary) decidem; o nao-canonico recebe
+        # `duplicate_of` (provenance) e sai do eligible/display/digest/
+        # ranking. Reversivel pelo gate do estagio pai (`--no-dedup`), mesma
+        # semantica do F23/Fase C — dedup e deterministico, sem kill switch.
+        selected, cross_stats, cross_removed = deduplicate_cross_source(selected)
+        if cross_stats:
+            for k, v in cross_stats.items():
+                dedup_stats[k] = dedup_stats.get(k, 0) + v
     if dedup:
         print_dedup_report(dedup_stats)
     if hydrate:
@@ -515,6 +545,20 @@ def run_filter_pipeline(
                     "run_id": run_id or utcnow_iso(),
                     "timestamp": utcnow_iso(),
                     **hydration_stats,
+                }
+            )
+        if cross_removed:
+            # F48 — provenance das fusoes cross-fonte (a vaga NAO-canonica
+            # sai do eligible; o rastro — id, `duplicate_of`, empresa,
+            # cidade, fontes e URLs dos dois lados — fica na metrica diaria,
+            # padrao F37/F39).
+            records.append(
+                {
+                    "type": "dedup_cross_source",
+                    "run_id": run_id or utcnow_iso(),
+                    "timestamp": utcnow_iso(),
+                    "removed": len(cross_removed),
+                    "pairs": cross_source_provenance(cross_removed),
                 }
             )
         if official_page_stats is not None:

@@ -147,7 +147,9 @@
       },
       "stratum": "T1_top12",
       "label": "otima",
-      "justification": "Mesma vaga da #4 em espelho EN (Bayer): SC&L Analytics + Enterprise Data Platform, decision support — core exato, inglês sinalizado"
+      "justification": "Mesma vaga da #4 em espelho EN (Bayer): SC&L Analytics + Enterprise Data Platform, decision support — core exato, inglês sinalizado",
+      "duplicate_of": "Bayer AG Pharmaceuticals|sf_dataset:bundesagentur:12708-1623235-1-S",
+      "duplicate_note": "[F48 2026-10-15] duplicata cross-fonte confirmada (mesma vaga Leverkusen; salário idêntico 2.280 EUR nos dois anúncios) — fusão pelo estágio cross-fonte estruturado (empresa normalizada + cidade + título DE/EN); o registro canônico é o do dataset (rank 4). Rótulo 'otima' e justificativa originais PRESERVADOS (histórico do dono, não reescrito); este registro sai dos pares comparáveis do tau (mesma regra dos inaplicáveis, decisão do dono 15/10)"
     },
     {
       "rank": 6,
