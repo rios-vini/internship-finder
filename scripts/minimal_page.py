@@ -1480,8 +1480,15 @@ def render_minimal_html_from_file(
     employer_quality_path: Path | str | None = None,
     inapplicable_ids: set[str] | None = None,
     salary_benchmark_path: Path | str | None = None,
+    generated_at: str | None = None,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
+
+    F39-followup: ``generated_at`` fixa o carimbo do rodape ("<date> UTC")
+    quando dado; default None = ``datetime.now`` (producao inalterada).
+    Testes byte-identity (test_f15 T6) passam o valor declarado em vez
+    de dois renders independentes cruzarem uma borda de minuto. Mesmo
+    padrao do ``now_ref`` da F36.
 
     F11: computa o diff de IDs contra o snapshot anterior do
     ``data/archive/`` (maior timestamp < agora; mecanica reutilizada do
@@ -1523,7 +1530,8 @@ def render_minimal_html_from_file(
         jobs = json.load(fh)
     if not isinstance(jobs, list):
         raise ValueError(f"formato inesperado em {path}: esperado lista de vagas")
-    generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+    generated = (generated_at if generated_at is not None
+                 else datetime.now(UTC).strftime("%Y-%m-%d %H:%M"))
 
     # F15 — mapa de qualidade do empregador + cruzamento ponto ótimo
     # (derivado NO BUILD; zero HTTP — só o dataset local e os arquivos
