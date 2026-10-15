@@ -41,6 +41,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -1231,6 +1232,102 @@ def followup_section_lines(digest_lines: list[str]) -> list[str]:
     return section
 
 
+# ---------------------------------------------------------------------------
+# F44 — frescor do intel de empresas (staleness). GATILHO de curadoria,
+# não produto do dia: aponta o que está velho/noivo para o HUMANO ir
+# buscar (princípio da fase: "automatize o gatilho, humanize o fetch").
+# A MÁQUINA é a do intel_freshness (report offline determinístico); o
+# digest só formata os gatilhos. Zero gatilhos -> seção AUSENTE (digest
+# byte a byte o de antes). Colapsa ao header no compact (padrão F13).
+# ---------------------------------------------------------------------------
+
+# Header ÚNICO da seção — distinto do ⏰ Follow-up (F14): o compactador
+# extrai por PREFIXO EXATO de header, nunca por emoji.
+INTEL_SECTION_PREFIX = "⏰ Intel de empresas"
+INTEL_SECTION_HEADER = f"{INTEL_SECTION_PREFIX} (frescor do intel)"
+
+# Cap de exemplos por gatilho na seção (o header carrega a CONTAGEM
+# absoluta; exemplos são ilustrativos — padrão "cap 5" da F13/F14).
+INTEL_MAX_SHOWN = 5
+
+
+def intel_lines(
+    triggers: dict | None,
+    *,
+    max_shown: int = INTEL_MAX_SHOWN,
+) -> list[str]:
+    """Seção '⏰ Intel de empresas' do digest (F44; contagens + cap 5).
+
+    ``triggers`` = saída de ``intel_freshness.triggers`` (None quando os
+    arquivos de origem não existem/ilegíveis — seção ausente). Zero
+    gatilhos (``stale_count == 0`` e ``no_kununu_count == 0``) -> ``[]``
+    (seção AUSENTE, sem linha vazia — A/B do card F44).
+
+    Layout (header carrega as contagens, sobrevive ao compact):
+
+        ⏰ Intel de empresas (frescor do intel) — 12 >90d; 3 alvo sem Kununu
+          🕰 1. BASF SE — checked 2026-06-10 (127d)
+          ...
+          ⭐ 1. Vanderlande — sem score Kununu (alvo da watchlist)
+          ...
+          → humano: CDP attach Kununu (~30s/empresa) + atualizar checked
+
+    Cada gatilho lista até ``max_shown`` exemplos; excedentes viram a
+    linha ``(+N outras — ver relatório intel_freshness.py)`` (padrão de
+    colapso-para-contagem da F11/F6.1). Nunca lança; nunca escreve.
+    """
+    if not triggers:
+        return []
+    stale_count = triggers.get("stale_count") or 0
+    no_kununu_count = triggers.get("no_kununu_count") or 0
+    if stale_count <= 0 and no_kununu_count <= 0:
+        return []
+    stale_days = triggers.get("stale_days")
+    # Header carrega só os gatilhos VIVOS (parte zerada é ruído — o
+    # exemplo do card "⏰ Intel: 12 empresas >90d; 3 alvo sem Kununu"
+    # pressupõe ambos; com um deles em zero só o outro aparece).
+    parts_txt: list[str] = []
+    if stale_count > 0:
+        parts_txt.append(f"{stale_count} >{stale_days}d")
+    if no_kununu_count > 0:
+        parts_txt.append(f"{no_kununu_count} alvo sem Kununu")
+    lines = [f"{INTEL_SECTION_HEADER} — " + "; ".join(parts_txt)]
+    stale_top = list(triggers.get("stale_top") or [])[:max_shown]
+    for pos, name in enumerate(stale_top, 1):
+        checked = (triggers.get("stale_top_checked") or [None] * len(stale_top))
+        checked_txt = f" — checked {checked[pos - 1]}" if pos <= len(checked) and checked[pos - 1] else ""
+        lines.append(f"  🕰 {pos}. {name}{checked_txt}")
+    if len(stale_top) < stale_count:
+        lines.append(f"  (+{stale_count - len(stale_top)} outras — ver relatório"
+                     " intel_freshness.py)")
+    no_kununu_top = list(triggers.get("no_kununu_top") or [])[:max_shown]
+    for pos, name in enumerate(no_kununu_top, 1):
+        lines.append(f"  ⭐ {pos}. {name} — sem score Kununu (alvo da watchlist)")
+    if len(no_kununu_top) < no_kununu_count:
+        lines.append(f"  (+{no_kununu_count - len(no_kununu_top)} outras — ver"
+                     " relatório intel_freshness.py)")
+    # Rodapé de ritual: só o que o gatilho VIVO pede (o rodapé único
+    # "CDP attach + checked" seria orientação errada quando só há um
+    # dos gatilhos — cada um tem seu fetch humano).
+    ritual: list[str] = []
+    if no_kununu_count > 0:
+        ritual.append("CDP attach Kununu nos alvo(s) sem score (~30s/empresa)")
+    if stale_count > 0:
+        ritual.append("reverificar sources/checked das >"
+                      f"{triggers.get('stale_days')}d")
+    lines.append("  → humano: " + "; ".join(ritual))
+    return lines
+
+
+def intel_section_lines(digest_lines: list[str]) -> list[str]:
+    """Extrai a seção ⏰ Intel de ``digest_lines`` (F44; para o compact).
+
+    Espelho de ``followup_section_lines`` (F14): header + corpo até a
+    próxima linha em branco; ``[]`` quando ausente.
+    """
+    return _section_by_prefix(digest_lines, INTEL_SECTION_PREFIX)
+
+
 def new_since_section_lines(digest_lines: list[str]) -> list[str]:
     """Extrai a secao 🆕 'Novas desde ontem' de ``digest_lines`` (F13).
 
@@ -1328,6 +1425,7 @@ def digest_sections(
     enrichment_path: str | Path | None = None,
     watchlist_path: str | Path | None = None,
     employer_quality_path: str | Path | None = None,
+    intel_freshness_paths: tuple | None = None,
     excluded_ids: set[str] | None = None,
     visa_countdown: bool = True,
 ) -> list[str] | None:
@@ -1363,6 +1461,14 @@ def digest_sections(
     F29: ``visa_countdown`` = linha estática do countdown do visto §16e
     ANTES do ⚡ Top 5 (default ``True``; ``False`` = digest byte a byte
     o de antes — usado pelo teste de presença/ausência).
+
+    F44: ``intel_freshness_paths`` = tupla (intel, watchlist,
+    employer_quality) — caminhos dos três arquivos versionados que
+    alimentam o gatilho de frescor (default ``None`` = seção ⏰ Intel
+    AUSENTE e o digest é byte a byte o de antes). Zero gatilhos
+    (nenhuma empresa >90d, nenhum alvo sem Kununu) também = seção
+    ausente. Best-effort: arquivos ausentes/corrompidos -> sem seção,
+    nunca derruba o digest.
     """
     current = load_ranking(current_path)
     if not current:
@@ -1497,6 +1603,33 @@ def digest_sections(
                 if radar:
                     lines.append("")
                     lines.extend(radar)
+        except Exception:  # noqa: BLE001 — seção nova nunca derruba o digest
+            pass
+
+    # F44 — frescor do intel de empresas (gatilho de curadoria): lê os
+    # MESMOS arquivos versionados do relatório offline (intel curado,
+    # watchlist F13, mapa F15) e monta a seção ⏰ quando há gatilhos.
+    # Best-effort: arquivos ausentes/corrompidos/zero gatilhos -> seção
+    # ausente; falha nunca derruba o digest (padrão das seções novas).
+    if intel_freshness_paths is not None:
+        try:
+            _scripts_dir = Path(__file__).resolve().parent
+            if str(_scripts_dir) not in sys.path:
+                sys.path.insert(0, str(_scripts_dir))
+            import intel_freshness as ifr
+            intel_comps = ifr.load_intel_companies(intel_freshness_paths[0])
+            wl_comps = ifr.load_watchlist_companies(intel_freshness_paths[1])
+            eq_comps = ifr.load_employer_quality_companies(
+                intel_freshness_paths[2])
+            # hoje via hook ``today()`` (padrão now_ref F29/F38): testes
+            # substituem a função para datas determinísticas.
+            trig = ifr.triggers(intel_comps, wl_comps, eq_comps,
+                                ref_date=ifr.today(),
+                                stale_days=ifr.DEFAULT_STALE_DAYS)
+            i_lines = intel_lines(trig)
+            if i_lines:
+                lines.append("")
+                lines.extend(i_lines)
         except Exception:  # noqa: BLE001 — seção nova nunca derruba o digest
             pass
 
