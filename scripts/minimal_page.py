@@ -1406,7 +1406,9 @@ def render_minimal_html(
             personal_statuses=p_statuses,
             inapplicable_ids=inapplicable,
             salary_benchmark_map=salary_benchmark_map,
-            skip_ids=shown_ids if full_list else None,
+            profile_maps=profile_maps if full_list else None,
+            skip_ids=(shown_ids if (full_list and full_limit is not None)
+                      else None),
         ))
         mat_header = "top 10"
         mat_note = (
@@ -1414,16 +1416,28 @@ def render_minimal_html(
             '(mesmas vagas elegíveis, pesos distintos dos de Supply '
             'Chain). O score à esquerda é o do perfil Materials.</p>')
         if full_list:
-            # F43 — no regime full a lista única é a fonte da verdade;
-            # a seção destaca o que o top 🧪 tem de EXCLUSIVO fora do
-            # top principal (badge/aba 🧪 reordena tudo na lista única).
-            mat_header = f"destaques fora do top {len(shown_ids)}"
-            mat_note = (
-                '<p class="p2">Ranking próprio para Materials Engineering '
-                '(pesos distintos dos de Supply Chain). A lista completa '
-                'está acima — use a aba 🧪 para reordená-la por este '
-                'perfil; aqui ficam só os destaques que o top principal '
-                'não mostra.</p>')
+            # F43 — a lista única é a FONTE DA VERDADE (universo inteiro);
+            # a seção segue como DESTAQUE do perfil (os mesmos top-10 do
+            # legado, coluna de score própria) e aponta para a aba 🧪, que
+            # reordena a lista COMPLETA por este perfil. Quando a lista
+            # única foi CORTADA pelo orçamento (``full_limit``), o atalho
+            # passa a mostrar só o que o corte deixou de fora (dedupe).
+            if full_limit is not None:
+                mat_header = f"destaques fora do top {len(shown_ids)}"
+                mat_note = (
+                    '<p class="p2">Ranking próprio para Materials Engineering '
+                    '(pesos distintos dos de Supply Chain). A lista completa '
+                    'está acima — use a aba 🧪 para reordená-la por este '
+                    'perfil; aqui ficam só os destaques que o top principal '
+                    'não mostra.</p>')
+            else:
+                mat_header = "destaques do perfil 🧪"
+                mat_note = (
+                    '<p class="p2">Ranking próprio para Materials Engineering '
+                    '(pesos distintos dos de Supply Chain, coluna à esquerda). '
+                    'A lista completa está acima — use a aba 🧪 para '
+                    'reordená-la INTEIRA por este perfil; aqui ficam os 10 '
+                    'destaques do perfil.</p>')
         if profile_limit and len(materials) > len(mat_list):
             mat_header = (
                 f"top {len(mat_list)} de {len(materials)} — orçamento de página do dia")
@@ -1454,7 +1468,9 @@ def render_minimal_html(
             personal_statuses=p_statuses,
             inapplicable_ids=inapplicable,
             salary_benchmark_map=salary_benchmark_map,
-            skip_ids=shown_ids if full_list else None,
+            profile_maps=profile_maps if full_list else None,
+            skip_ids=(shown_ids if (full_list and full_limit is not None)
+                      else None),
         ))
         eu_header = "top 10"
         eu_note = (
@@ -1463,16 +1479,25 @@ def render_minimal_html(
             'estrato; ver docs/f36_non_de_profile.md). O score à esquerda '
             'é o do perfil EU.</p>')
         if full_list:
-            # F43 — mesmo contrato de atalho da 🧪 (dedupe contra a lista
-            # única; aba 🇪🇺 reordena a lista completa por eu_score).
-            eu_header = f"destaques fora do top {len(shown_ids)}"
-            eu_note = (
-                '<p class="p2">Ranking próprio para o canal secundário '
-                '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
-                'estrato; ver docs/f36_non_de_profile.md). A lista completa '
-                'está acima — use a aba 🇪🇺 para reordená-la por este '
-                'perfil; aqui ficam só os destaques que o top principal '
-                'não mostra.</p>')
+            # F43 — mesmo contrato do destaque 🧪 (aba 🇪🇺 reordena a lista
+            # completa por eu_score; dedupe só no caso cortado).
+            if full_limit is not None:
+                eu_header = f"destaques fora do top {len(shown_ids)}"
+                eu_note = (
+                    '<p class="p2">Ranking próprio para o canal secundário '
+                    '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
+                    'estrato; ver docs/f36_non_de_profile.md). A lista completa '
+                    'está acima — use a aba 🇪🇺 para reordená-la por este '
+                    'perfil; aqui ficam só os destaques que o top principal '
+                    'não mostra.</p>')
+            else:
+                eu_header = "destaques do perfil 🇪🇺"
+                eu_note = (
+                    '<p class="p2">Ranking próprio para o canal secundário '
+                    '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
+                    'estrato; ver docs/f36_non_de_profile.md). A lista completa '
+                    'está acima — use a aba 🇪🇺 para reordená-la INTEIRA por '
+                    'este perfil; aqui ficam os 10 destaques do perfil.</p>')
         if profile_limit and len(eu) > len(eu_list):
             eu_header = (
                 f"top {len(eu_list)} de {len(eu)} — orçamento de página do dia")
