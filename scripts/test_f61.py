@@ -253,9 +253,17 @@ def test_real_scenario_0310() -> None:
     check("base operacional integra (problemas detalhados presentes)",
           "Problemas detectados" in msg and "Lidl" in msg
           and "recorrente há 30 runs" in msg)
-    check("secoes cortaveis fora (perfil/mudancas/materials)",
+    # F36.1 — contrato vizinho, edição CONSCIENTE (comentário de fase):
+    # as seções de perfil 🧪/🇪🇺 passaram a COLAPSAR ao header no compact
+    # (pattern F13 — nunca mais dropadas inteiras; antes o header 🧪 nem
+    # era candidato e sumia do digest desde 28/09). O CORPO das seções
+    # cortáveis continua fora; "Mudanças no ranking" segue dropada
+    # (abaixo dos headers na ordem de preservação).
+    check("secoes cortaveis fora (mudancas/corpo do perfil)",
           "Mudanças no ranking" not in msg
-          and "Perfil Materials" not in msg)
+          and "Vaga Mat" not in msg)
+    check("F36.1: header 🧪 Perfil Materials sobrevive ao compact",
+          "Perfil Materials" in msg)
     top5_in_msg = rg.top5_section_lines(msg.split("\n"))
     check("linhas do Top 5 identicas as do digest original (format_top5)",
           top5_in_msg == rg.top5_section_lines(digest))
