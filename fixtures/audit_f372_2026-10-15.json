@@ -1,0 +1,460 @@
+{
+ "fixture_version": "f372-2026-10-15",
+ "phase": "F37.2 — exclusão Erasmus+/pool espontâneo (decisão dono 15/10 '2a. A')",
+ "source": "snapshots congelados data/archive/20261013T090001Z + 20261014T090001Z (via cópias /tmp; data/ de produção intacto) + 1 contra-caso sintético DECLARADO (guard)",
+ "policy": "CI nunca audita contra dado vivo (padrão F37); títulos e trechos VERBATIM; detectors título-only.",
+ "jobs": [
+  {
+   "id": "e-farm|sf_dataset:join_com:14803221",
+   "company": "e-farm",
+   "title": "Paid Erasmus+ International Internship in International Logistics",
+   "location": "Hamburg, Germany",
+   "country_iso": "de",
+   "employment_type": "INTERN",
+   "description_snippets": [
+    "About E-FARM We top up your Erasmus+ grant with €1,000/month! About E-FARM At E-FARM, we are revolutionizing the way used agricultural machinery ",
+    "About E-FARM We top up your Erasmus+ grant with €1,000/month! About E-FARM At E-FARM, we are revolutionizing the way used agricultural machi"
+   ],
+   "score": null,
+   "group": "efarm_erasmus",
+   "expect_excluded": true,
+   "note": "#85: 'Paid Erasmus+ International Internship' — programa Erasmus+; dono 15/10 '2a. A' = EXCLUIR (F37.2)",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "erasmus_program"
+  },
+  {
+   "id": "indiecampers|sf_dataset:greenhouse:8810770002",
+   "company": "indiecampers",
+   "title": "Spontaneous Application | Tourism & Operations Internship - Erasmus+",
+   "location": "Stuttgart, Baden-Württemberg, Germany",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "**ABOUT US**\n\nIndie Campers, the go-to campervan Marketplace, is on a mission of making road trips available to everyone. Thanks to its digi"
+   ],
+   "score": null,
+   "group": "indiecampers_erasmus",
+   "expect_excluded": true,
+   "note": "#98: 'Spontaneous Application | ... - Erasmus+' — Erasmus+ vence no first-match (F37.2)",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "erasmus_program"
+  },
+  {
+   "id": "Tierklinik Ismaning GbR|sf_dataset:bundesagentur:10000-1197495558-S",
+   "company": "Tierklinik Ismaning GbR",
+   "title": "Erasmus plus-Programm als Praktikum  für Student*innen und Absolvent*innen der Veterinärmedizin",
+   "location": "85737 Ismaning, Bayern, Deutschland",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [],
+   "score": null,
+   "group": "tierklinik_erasmus_plus",
+   "expect_excluded": true,
+   "note": "'Erasmus plus-Programm als Praktikum für Student*innen und Absolvent*innen der Veterinärmedizin' — programa de mobilidade",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "erasmus_program"
+  },
+  {
+   "id": "clear|sf_dataset:bamboohr:483",
+   "company": "clear",
+   "title": "Erasmus Internship - Partnership Development Intern",
+   "location": "Amsterdam/Lyon, Netherlands",
+   "country_iso": "nl",
+   "employment_type": "INTERN",
+   "description_snippets": [
+    "ility Travel: none, except relocating to Amsterdam or Lyon Reporting to : Grants and Partnerships Coordinator Erasmus+ supports traineeships (work placements, internships) abroad at any workplace for students currently enrolled",
+    "Contract length: 4–6 months, with a possible paid 6-month extension based on performance and budget availability Hours: flexible, 20-40 hour"
+   ],
+   "score": null,
+   "group": "clear_erasmus_internship",
+   "expect_excluded": true,
+   "note": "'Erasmus Internship - Partnership Development Intern' (Amsterdam/Lyon) — programa Erasmus+",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "erasmus_program"
+  },
+  {
+   "id": "artscience-node|sf_dataset:join_com:5102095",
+   "company": "artscience-node",
+   "title": "Only for Erasmus/Turing Internship: AI/IT, Graphic Designer and/or Computer Science&Technologies on MA-Level",
+   "location": "Berlin, Germany",
+   "country_iso": "de",
+   "employment_type": "INTERN",
+   "description_snippets": [
+    "vidual and interdisciplinary studies, on openness and cooperation. Tasks Only for student with eligibility to Erasmus/Turing programs (Mundus, Plus or Pro: \"Erasmus for Young Entrepreneurs\". ). Without sending evidence of eligi",
+    "Our mission WITH COMPETENCE Accompanying, supporting, and disseminating sciences to society with Our innovative communication strategy throu"
+   ],
+   "score": null,
+   "group": "artscience_erasmus_turing",
+   "expect_excluded": true,
+   "note": "'Only for Erasmus/Turing Internship: AI/IT...' — programa Erasmus/Turing, não vaga aberta",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "erasmus_program"
+  },
+  {
+   "id": "Marquardt Group|sf_dataset:cornerstone:5650",
+   "company": "Marquardt Group",
+   "title": "Praktikant (m/w/d) im kaufmännischen Bereich - Initiativbewerbung",
+   "location": "Rietheim-Weilheim, DE",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "Was dich erwartet Wir bieten praxisorientierten, kreativen Studierenden mit logischem Denkvermögen und hohem Engagement vielseitige Einsatzm"
+   ],
+   "score": null,
+   "group": "marquardt_initiativ",
+   "expect_excluded": true,
+   "note": "'Praktikant (m/w/d) im kaufmännischen Bereich - Initiativbewerbung' — canal espontâneo, sem vaga concreta",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "Fraunhofer-Gesellschaft|successfactors:fraunhofer:1227795201",
+   "company": "Fraunhofer-Gesellschaft",
+   "title": "Initiativbewerbung wissenschaftliche / Hilfskräfte all genders",
+   "location": "Alzenau, DE, 63755",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "Die Fraunhofer-Einrichtung für Wertstoffkreisläufe und Ressourcenstrategie IWKS entwickelt zirkuläre Materialien und materialwissenschaftlic"
+   ],
+   "score": null,
+   "group": "fraunhofer_initiativ_wiss",
+   "expect_excluded": true,
+   "note": "'Initiativbewerbung wissenschaftliche / Hilfskräfte all genders' (benchmark v2 'falso_positivo' literal) — pool",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "Witzenmann GmbH|sf_dataset:successfactors:899086801",
+   "company": "Witzenmann GmbH",
+   "title": "Praktikant (m/w/d)  (Initiativ)",
+   "location": "Pforzheim, DE, 75175",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "sforderungen der Zukunft gemeinsam mit uns anpacken möchtest, dann bewerbe Dich gerne als Praktikant (m/w/d) (Initiativ). Das sind Deine möglichen Einsatzgebiete: Produktion und Vertrieb Aerospace Technologie & Produktinnovation ",
+    "Gerade noch an der Uni gehört und schon im praktischen Testlauf. Als Familienunternehmen haben wir auch mit weltweit 4.400 Mitarbeitenden fl"
+   ],
+   "score": null,
+   "group": "witzenmann_initiativ",
+   "expect_excluded": true,
+   "note": "'Praktikant (m/w/d) (Initiativ)' — 'Initiativ' puro no título = canal",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "Enzazaden|sf_dataset:workday:JR105017",
+   "company": "Enzazaden",
+   "title": "Open Internship Application",
+   "location": "Enkhuizen, The Netherlands",
+   "country_iso": "nl",
+   "employment_type": null,
+   "description_snippets": [
+    " at Enza Zaden, you’ll have the space to grow your talent and show your entrepreneurial mindset. We encourage initiative, curiosity, and ownership—exactly the qualities that have helped Enza Zaden move forward for generations. You",
+    "Are you looking for a work‑placement internship or a graduation research project where you get the opportunity to gain hands‑on experience a"
+   ],
+   "score": null,
+   "group": "enzazaden_open_internship",
+   "expect_excluded": true,
+   "note": "'Open Internship Application' (Enkhuizen NL) — pool de estágios",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "noxmobilitycom|sf_dataset:join_com:16294639",
+   "company": "noxmobilitycom",
+   "title": "Internship - Open Application (f/m/d)",
+   "location": "Berlin, Germany",
+   "country_iso": "de",
+   "employment_type": "INTERN",
+   "description_snippets": [
+    "rand hero and so on. Not because we planned it, but because it was required. Therefore: This internship is an open application. Tell us what you want to build, where you want to leave your mark, and we will shape a six-month project aro",
+    "If you’re insanely good at something, tell us your story. About Nox Nox is aiming to become the best alternative to short-haul flights by so"
+   ],
+   "score": null,
+   "group": "noxmobility_open_application",
+   "expect_excluded": true,
+   "note": "'Internship - Open Application (f/m/d)' (Berlin) — canal aberto",
+   "source_snapshot": "20261014T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "paretosecurities|sf_dataset:teamtailor:3926405",
+   "company": "paretosecurities",
+   "title": "Open Application - Investment Banking Internship",
+   "location": "Frankfurt am Main, Germany",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "Pareto Securities is looking for young talents with a strong interest in capital markets and finance who want to join our growing Investment"
+   ],
+   "score": null,
+   "group": "pareto_open_application",
+   "expect_excluded": true,
+   "note": "'Open Application - Investment Banking Internship' (Frankfurt) — canal aberto",
+   "source_snapshot": "20261014T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "Fraunhofer-Gesellschaft|successfactors:fraunhofer:1365521533",
+   "company": "Fraunhofer-Gesellschaft",
+   "title": "SPECULATIVE APPLICATION: INTERNSHIP",
+   "location": "Kaiserslautern, DE, 67663",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "and develop your skills with us, but haven't found a suitable vacancy? Then we look forward to receiving your speculative application. Please indicate in your speculative application which area or field of research best matches your interests.",
+    "Fraunhofer ITWM is one of currently 75 institutes belonging to the Fraunhofer Society for the Promotion of Applied Research and can therefor"
+   ],
+   "score": null,
+   "group": "fraunhofer_speculative",
+   "expect_excluded": true,
+   "note": "'SPECULATIVE APPLICATION: INTERNSHIP' (Fraunhofer Kaiserslautern) — EN initiativbewerbung, sem vaga concreta",
+   "source_snapshot": "20261014T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "Fraunhofer-Gesellschaft|successfactors:fraunhofer:1163661601",
+   "company": "Fraunhofer-Gesellschaft",
+   "title": "Unsolicited application students",
+   "location": "Hamburg, DE, 21029",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "loyee and gain valuable practical experience alongside your studies. In order to increase the chances of your unsolicited application, we ask you to submit documents that are as informative and complete as possible. Please submit your document",
+    "The Fraunhofer Research Institution for Additive Production Technologies IAPT in Hamburg Bergedorf is one of the leading institutions for th"
+   ],
+   "score": null,
+   "group": "fraunhofer_unsolicited",
+   "expect_excluded": true,
+   "note": "'Unsolicited application students' (Fraunhofer) — EN initiativbewerbung",
+   "source_snapshot": "20261014T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "nxp|workday:nxp/careers:R-10030165",
+   "company": "nxp",
+   "title": "Student Internships - Initiative Application (m/f/d)",
+   "location": "Gratkorn",
+   "country_iso": null,
+   "employment_type": null,
+   "description_snippets": [],
+   "score": null,
+   "group": "nxp_initiative_application",
+   "expect_excluded": true,
+   "note": "'Student Internships - Initiative Application (m/f/d)' (nxp Hamburg) — canal aberto de estágios",
+   "source_snapshot": "20261014T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "datev|workday:datev/Datev_Careers:ID01007",
+   "company": "datev",
+   "title": "Initiativ für IT",
+   "location": "Nuremberg",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [],
+   "score": null,
+   "group": "datev_initiativ_fur_it",
+   "expect_excluded": true,
+   "note": "'Initiativ für IT' (datev Nuremberg) — 'Initiativ' puro = pool",
+   "source_snapshot": "20261014T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "Jobs Festo|successfactors:jobs:1075460301",
+   "company": "Jobs Festo",
+   "title": "Spontanbewerbungen Festo Gewindetriebe AG",
+   "location": "Burg, CH, 5736",
+   "country_iso": "ch",
+   "employment_type": null,
+   "description_snippets": [
+    "m internationalen Unternehmen Eine offene und menschenorientierte DU-Unternehmenskultur Wenn du dich für eine Spontanbewerbung bei uns entscheidest, bitten wir dich, uns deinen Lebenslauf und relevante Zeugnisse zukommen zu lassen. Wir ",
+    "Du suchst nach einer neuen beruflichen Herausforderung und möchtest Teil eines innovativen Unternehmens sein? Dann bist du bei uns genau ric"
+   ],
+   "score": null,
+   "group": "festo_spontanbewerbung",
+   "expect_excluded": true,
+   "note": "'Spontanbewerbung(en)' (Festo/rhe/SONEPAR) — DE candidatura espontânea",
+   "source_snapshot": "20261014T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "Liebherr-International S.A.|successfactors:LiMySLive:938097401",
+   "company": "Liebherr-International S.A.",
+   "title": "Candidature spontanée - Liebherr Distribution et Services France",
+   "location": "Niederhergheim, FR",
+   "country_iso": "fr",
+   "employment_type": null,
+   "description_snippets": [
+    " pas trouvé l’emploi qui vous convient dans nos offres d’emploi ? Aucun problème. Envoyez-nous simplement une candidature spontanée. Même sans offre d’emploi spécifique, en tant que candidat qualifié et engagé, vous avez la possibilité de ",
+    "Vous n’avez pas trouvé l’emploi qui vous convient dans nos offres d’emploi ? Aucun problème. Envoyez-nous simplement une candidature spontan"
+   ],
+   "score": null,
+   "group": "liebherr_candidature_spontanee",
+   "expect_excluded": true,
+   "note": "'Candidature spontanée' (Liebherr FR) — FR candidatura espontânea",
+   "source_snapshot": "20261014T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "Volkswagen AG|successfactors:VWAGLPPROD10:1394397233",
+   "company": "Volkswagen AG",
+   "title": "Candidatura Espontânea - Portugal",
+   "location": "Lisboa, PT, 1200-246",
+   "country_iso": "pt",
+   "employment_type": null,
+   "description_snippets": [
+    "reat opportunity to rise your hand and give a heads-up to our Talent Acquisition Team. By joining through our Spontaneous Application , our recruiters will review, analyze and categorize your expertise so that, when the moment comes we can imm",
+    "Who Are We? Volkswagen Group Services is a Volkswagen Group company oriented towards working for Group companies worldwide. We provide servi"
+   ],
+   "score": null,
+   "group": "vw_candidatura_espontanea",
+   "expect_excluded": true,
+   "note": "'Candidatura Espontânea - Portugal' (VW PT) — PT candidatura espontânea",
+   "source_snapshot": "20261014T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "Webasto|successfactors:jobs:1016294301",
+   "company": "Webasto",
+   "title": "Spontaneous Application Luxembourg (F/M/X)",
+   "location": "Grevenmacher, LU",
+   "country_iso": "lu",
+   "employment_type": null,
+   "description_snippets": [
+    "ble job positions which match with your profile and expectations? Then we are looking forward to receive your spontaneous application. Please inform us in your documents in which department or job position you would like to work for us. Applic",
+    "People &amp; Organization (PO) focuses on our employees, Webasto's most valuable asset. PO encompasses a wide range of tasks, including recr"
+   ],
+   "score": null,
+   "group": "webasto_spontaneous_lu",
+   "expect_excluded": true,
+   "note": "'Spontaneous Application Luxembourg (F/M/X)' — pool LU",
+   "source_snapshot": "20261014T090001Z",
+   "expected_reason": "spontaneous_pool"
+  },
+  {
+   "id": "BoschGroup|smartrecruiters:BoschGroup:743999974127472",
+   "company": "BoschGroup",
+   "title": "Internship Logistics",
+   "location": "Tienen, Vlaanderen, be",
+   "country_iso": "be",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [],
+   "score": null,
+   "group": "contra_bosch_erasmus_desc",
+   "expect_excluded": false,
+   "note": "Bosch Tienen: desc menciona Erasmus/partner — menção NÃO é programa; título-only preserva o estágio legítimo",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "nxp|workday:nxp/careers:R-10066893",
+   "company": "nxp",
+   "title": "Intern (f/m/d) AI-Driven Data Analysis for Non-Volatile Memory Design",
+   "location": "Hamburg",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [],
+   "score": null,
+   "group": "contra_nxp_talent_pool_desc",
+   "expect_excluded": false,
+   "note": "NXP: 'Young Professional Talent Pool' na desc é perk pós-candidatura",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "REWE Group|sf_dataset:bundesagentur:12608-1438990-28043-1-S",
+   "company": "REWE Group",
+   "title": "Werkstudent International Tax (m/w/d)",
+   "location": "50668 Köln, Nordrhein Westfalen, Deutschland",
+   "country_iso": "de",
+   "employment_type": "PART_TIME",
+   "description_snippets": [],
+   "score": null,
+   "group": "contra_rewe_talentpool_desc",
+   "expect_excluded": false,
+   "note": "REWE: 'Talentpool' na desc = programa future steps, vaga concreta fica",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Edbz|sf_dataset:oracle:edbz.fa.us2.oraclecloud.com:25011485",
+   "company": "Edbz",
+   "title": "Praktikant/in (m/f/d) im Bereich Supply Chain, Operations, Einkauf oder Pricing – 2026",
+   "location": "Germany",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "e, bei der verschiedene Fachbereiche auf Dich aufmerksam werden. Deine Bewerbung kannst Du daher als eine Art Initiativbewerbung verstehen. Nach Eingang Deiner Bewerbung wirst Du von einem unserer Mitarbeiter kontaktiert und in einem erst",
+    "Change the world. Love your job. Als Praktikant/in bei TI bist Du mittendrin und erhältst wertvolle Einblicke in die geschäftlichen Zusammen"
+   ],
+   "score": null,
+   "group": "contra_edbz_initiativ_desc",
+   "expect_excluded": false,
+   "note": "Edbz: 'als eine Art Initiativbewerbung verstehen' na desc — vaga concreta de Praktikum",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "GRIFOLS, S.A.|sf_dataset:successfactors:1424198833",
+   "company": "GRIFOLS, S.A.",
+   "title": "Praktikum bei Haema",
+   "location": "Leipzig Zentrum Südost, DE",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "sammeln, ein Pflichtpraktikum absolvieren oder herausfinden, welcher Berufsweg zu dir passt? Dann bewirb dich initiativ für ein Praktikum bei Haema. Ob in unserer Unternehmenszentrale in Leipzig oder in einem unserer 40 Spendezen",
+    "Haema ist mit 40 Standorten der größte private Blut- und Plasmaspendedienst Deutschlands. Wir sind ein Partner von Grifols, einem weltweit f"
+   ],
+   "score": null,
+   "group": "contra_grifols_initiativ_desc",
+   "expect_excluded": false,
+   "note": "GRIFOLS: 'bewirb dich initiativ' na desc é instrução, não canal",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "henkel|cornerstone:henkel:89334",
+   "company": "henkel",
+   "title": "Internship R&D Packaging Hair & Body",
+   "location": "Düsseldorf, DE",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "support the assessment of packaging performance, quality and consumer usability Participate in sustainability initiatives, including recyclability improvements, PCR implementation and material reduction projects Support the prepara",
+    "About this Position Support packaging development projects from concept phase to market launch and assist in the design, evaluation and opti"
+   ],
+   "score": null,
+   "group": "contra_henkel_initiatives_desc",
+   "expect_excluded": false,
+   "note": "Henkel: 'initiatives' na desc/título-contexto NÃO casa \\binitiativ\\b (word-boundary)",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "atlascopcoP|successfactors:atlascopcoP:atlascopcoP:170271",
+   "company": "atlascopcoP",
+   "title": "Internships",
+   "location": "Belgium",
+   "country_iso": "be",
+   "employment_type": null,
+   "description_snippets": [],
+   "score": null,
+   "group": "contra_atlas_talentpool_desc",
+   "expect_excluded": false,
+   "note": "Atlas Copco (BE): 'talentpool' na desc NL = pós-candidatura",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "synthetic|erasmus-university-guard",
+   "company": "synthetic (guard defensivo)",
+   "title": "Research Internship at Erasmus University Rotterdam",
+   "location": "Rotterdam, Netherlands",
+   "country_iso": "nl",
+   "employment_type": "INTERN",
+   "description_snippets": [
+    "SINTÉTICO-DECLARADO: nenhum caso no universo 13/10+14/10; trava o guard anti-nome-próprio — 'Erasmus University' não é programa."
+   ],
+   "score": null,
+   "group": "contra_erasmus_university_guard",
+   "expect_excluded": false,
+   "note": "guard: 'Erasmus University Rotterdam' no título NÃO dispara erasmus_program (nome de instituição, não programa)",
+   "source_snapshot": "synthetic"
+  }
+ ]
+}

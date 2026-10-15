@@ -147,7 +147,10 @@ def t1_fixture_auditor() -> None:
               "contra_praktikum_fulltime"):
         check(f"fixture contém contra-caso '{g}'", g in groups)
 
-    # decisões pendentes do dono NÃO excluem nesta fase (e-farm, indiecampers)
+    # F37.2 (15/10): a decisão pendente VIROU decisão — dono respondeu "2a. A"
+    # (EXCLUIR); os detectores F37.2 agora excluem esses grupos com motivo
+    # próprio. Auditoria atualizada: expect_excluded=true, motivo
+    # erasmus_program (Erasmus+ vence first-match sobre pool).
     for e in jobs:
         if e["group"] in ("efarm_erasmus", "indiecampers_spontaneous"):
             j = {
@@ -156,8 +159,8 @@ def t1_fixture_auditor() -> None:
                 "employment_type": e.get("employment_type"),
                 "company": e.get("company"),
             }
-            check(f"decisão pendente (não implementa): {e['group']} fica",
-                  flt.applicability_exclusion_reason(j) is None)
+            check(f"decisão implementada (F37.2): {e['group']} exclui",
+                  flt.applicability_exclusion_reason(j) == "erasmus_program")
 
 
 # ---------------------------------------------------------------------------
