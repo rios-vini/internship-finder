@@ -201,6 +201,23 @@ HYDRATION_SOURCE = "hydrated_topn"
 # a vaga NAO sai do JSON — so desce do top exibido, como o dead_link).
 HYDRATION_INAPPLICABLE_FLAG = "hydration_inapplicable"
 
+# ---------------------------------------------------------------------------
+# F39 — remoção automática de hard-dead. Critério de "confirmado": o
+# veredito JÁ EXISTENTE do estágio de vitalidade — HTTP 404/410
+# (url_liveness.DEAD_STATUS), a MESMA resposta que marcava o badge F11;
+# nenhum critério novo é inventado. Soft-dead (marcador de corpo /
+# redirect-para-homepage / shell SPA — SOFT_DEAD_MARKERS/SPA_SHELL_*) e
+# inaplicáveis de hidratação mantêm a semântica F20/F25: ficam no JSON,
+# descem do topo com badge próprio — o corpo transitório pode ser
+# falso-positivo (e a URL está viva). DNS/timeout/403/429 continuam
+# IGNORADOS pelo estágio (bloqueio de bot/rede — nunca provam morte).
+# ---------------------------------------------------------------------------
+
+# Kill switch da F39 (mesmo padrão dos kill switches existentes): env var
+# presente => remoção desligada e o run segue com o comportamento F20
+# (vaga morta fica no JSON, só desce do topo com badge).
+DEAD_REMOVAL_ENV_FLAG = "INTERNSHIP_FINDER_DEAD_REMOVAL_OFF"
+
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 # Nomes das chaves aceitas no .env.
@@ -1129,6 +1146,77 @@ def _applicability_metrics_record(ranking: list, run_id: str | None = None) -> d
     }
 
 
+def _remove_hard_dead(ranking: list, hard_dead_ids: set[str],
+                      hard_dead_status: dict[str, int]) -> dict:
+    """F39 — remove do ``ranking`` (in place) as vagas com URL hard-dead
+    confirmada (HTTP 404/410 do estágio de vitalidade) e devolve as stats
+    do passe::
+
+        {"removed": int, "removed_ids": list[str],
+         "removed_entries": list[dict]({"id", "status", "url"}),
+         "already_removed": int, "already_removed_ids": list[str],
+         "by_status": dict[str, int]}
+
+    O id removido SAI COMPLETAMENTE do eligible_jobs.json (o JSON de
+    saída do pipeline não contém hard-dead — nem como vaga, nem como
+    registro; contadores e provenance ficam na métrica diária
+    ``dead_link_removal`` e no log, padrão F25/hydration_reassessment).
+    Idempotente por construção: no re-run sem re-coleta o id já não
+    está no JSON/logo não chega ao liveness; id hard-dead ausente do
+    ranking (churn da coleta entre o check e a escrita) é contado como
+    ``already_removed`` e não gera evento.
+    """
+    removed_rows: list[dict] = []
+    already_ids: list[str] = []
+    by_status: dict[str, int] = {}
+    for jid in sorted(hard_dead_ids):
+        jid = str(jid or "")
+        if not jid:
+            continue
+        idx = next(
+            (i for i, rec in enumerate(ranking)
+             if isinstance(rec, dict) and str(rec.get("id") or "") == jid),
+            None,
+        )
+        if idx is None:
+            # Vaga não está mais no JSON (churn da coleta): exclusão é
+            # no-op — idempotência por construção (re-run sem re-coleta
+            # nunca re-remove) e nenhum evento inventado.
+            already_ids.append(jid)
+            continue
+        rec = ranking[idx]
+        ranking.pop(idx)
+        status = int(hard_dead_status.get(jid) or 0)
+        removed_rows.append({
+            "id": jid, "status": status,
+            "url": str(rec.get("url") or ""),
+        })
+        by_status[str(status)] = by_status.get(str(status), 0) + 1
+    return {
+        "removed": len(removed_rows),
+        "removed_ids": [rec["id"] for rec in removed_rows],
+        "removed_entries": removed_rows,
+        "already_removed": len(already_ids),
+        "already_removed_ids": list(already_ids),
+        "by_status": by_status,
+    }
+
+
+def _extract_liveness_details(
+        stats: dict | None) -> tuple[set[str], dict[str, int]]:
+    """F39 — extrai (hard_dead_ids, hard_dead_status) dos stats do
+    ``check_liveness`` (compat graciosa: stats legado/mock sem as chaves
+    F39 => conjuntos vazios = nada a excluir; comportamento pré-F39)."""
+    stats = stats if isinstance(stats, dict) else {}
+    ids = stats.get("hard_dead_ids") or set()
+    status = stats.get("hard_dead_status") or {}
+    return (
+        {str(j) for j in ids if j},
+        {str(k): int(v) for k, v in status.items()
+         if str(v).lstrip("-").isdigit()},
+    )
+
+
 def _reassess_hydrated_applicability(job: dict) -> str | None:
     """F20 item 3 — re-avalia a aplicabilidade da vaga com a descricao
     hidratada, REUSANDO a funcao pura da cascata (F18 + F37:
@@ -1463,6 +1551,7 @@ def main(argv: list[str] | None = None) -> int:
     dead_ids: set[str] = set()
     inapplicable_ids: set[str] = set()
     hydration_stats: dict = {}
+    removal_stats: dict = {}  # F39 — stats da remoção de hard-dead (auditoria)
     pages_dir = Path(args.pages_dir).expanduser() if args.pages_dir else None
     if pages_dir is not None:
         try:
@@ -1483,6 +1572,48 @@ def main(argv: list[str] | None = None) -> int:
                     dead_ids, hydrated_bodies, hydration_stats = result, {}, {}
                 else:
                     dead_ids, hydrated_bodies, hydration_stats = result
+                # F39 — remoção de hard-dead confirmado: ids HTTP 404/410
+                # SEPARADOS dos soft-dead nos stats do liveness (extração
+                # tolerante — stats sem as chaves F39 = nada a excluir).
+                # Kill switch (env var presente => remoção OFF, run segue
+                # com o comportamento F20: vaga morta fica no JSON). O
+                # passe remove o registro do ranking in place e REESCREVE
+                # o JSON atômico ANTES do publish — o arquivo de saída do
+                # pipeline NÃO contém o hard-dead (nem badge, nem
+                # registro); provenance fica na métrica diária
+                # ``dead_link_removal`` + log. Idempotente por construção:
+                # re-run sem re-coleta não re-remove (o id já não está no
+                # arquivo).
+                if os.environ.get(DEAD_REMOVAL_ENV_FLAG) != "1":
+                    hard_dead_ids, hard_dead_status = \
+                        _extract_liveness_details(hydration_stats)
+                    removal_stats = _remove_hard_dead(
+                        ranking, hard_dead_ids, hard_dead_status)
+                    if removal_stats["removed"]:
+                        try:
+                            from internship_finder.cli import _write_json_atomic
+                            _write_json_atomic(
+                                ranking, data_dir / "eligible_jobs.json")
+                        except Exception as exc:  # noqa: BLE001
+                            log.warning("F39: exclusão não persistida (run "
+                                        "segue; veredito segue no liveness):"
+                                        " %s: %s", type(exc).__name__, exc)
+                    if removal_stats["removed"] or removal_stats["already_removed"]:
+                        log.info(
+                            "F39 remoção: %d hard-dead(s) saíram do "
+                            "eligible/display %s, %d já ausente(s) %s",
+                            removal_stats["removed"],
+                            removal_stats["by_status"],
+                            removal_stats["already_removed"],
+                            removal_stats["already_removed_ids"])
+                    else:
+                        log.info("F39 remoção: nenhum hard-dead confirmado "
+                                 "no top exibido deste run")
+                else:
+                    removal_stats = {}
+                    log.info("F39 remoção DESLIGADA (%s presente): "
+                             "semântica F20 preservada",
+                             DEAD_REMOVAL_ENV_FLAG)
                 # Hidratacao: aplica a descricao completa nas vagas vivas
                 # (provenance honesta; descricao original NUNCA piora) e
                 # re-avalia aplicabilidade com as regras da F18.
@@ -1642,6 +1773,26 @@ def main(argv: list[str] | None = None) -> int:
             log.error("publicacao GitHub Pages FALHOU: %s", publish_error)
     else:
         log.info("publicacao GitHub Pages desligada (sem --pages-dir)")
+
+    # F39 — métrica diária de auditoria da remoção de hard-dead (padrão
+    # JSONL do ``write_metrics``; mesmo pattern dos contadores de
+    # aplicabilidade/hidratação). Provenance COMPLETA por id removido
+    # (id, status HTTP, url) — auditável sem tocar o JSON de vagas.
+    # Append-only, best-effort: falha vira log e NUNCA derruba o run.
+    try:
+        from internship_finder.metrics import write_metrics
+        write_metrics(metrics_path, [{
+            "type": "dead_link_removal",
+            "run_id": summary.get("run_id") or utcnow_iso(),
+            "timestamp": utcnow_iso(),
+            "removed": removal_stats.get("removed", 0),
+            "already_removed": removal_stats.get("already_removed", 0),
+            "by_status": removal_stats.get("by_status", {}),
+            "removed_entries": removal_stats.get("removed_entries", []),
+        }])
+    except Exception as exc:  # noqa: BLE001 — métrica é best-effort
+        log.warning("F39: métrica dead_link_removal nao gravada: %s: %s",
+                    type(exc).__name__, exc)
 
     # Fase 2 — digest do ranking para o Telegram. MESMO gate UNICO da
     # publicacao (``publish_pages.publication_allowed``, auditoria 23/09): um
