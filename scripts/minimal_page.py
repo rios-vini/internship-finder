@@ -110,7 +110,6 @@ FULL_CARD_BUDGET_BYTES = 1_400
 # baixado de uma vez); o IO só adia a REVELAÇÃO — dados já no HTML = busca
 # client-side funciona sobre TUDO, inclusive o ainda não revelado.
 LAZY_INITIAL_CARDS = 20
-LAZY_REVEAL_BATCH = 20      # cards revelados por interseção observada
 LAZY_ROOT_MARGIN = 400        # px de antecipação (revela antes do fold)
 
 
@@ -1249,9 +1248,11 @@ def render_minimal_html(
     # subamostra — efeito DOCUMENTADO no relatório F43 §cap-empresa). As
     # seções 🧪/🇪🇺 PERMANECEM (contrato "seções intactas" do A/B): a full-
     # list mata os buracos POR CONSTRUÇÃO (toda vaga viva está na lista
-    # única; as seções seguem como atalhos top-10 por perfil, agora sem
-    # carrinho de já-vistas — ver _seen já-vistas). Regime legado (top-N):
-    # corte top + cap 2/empresa da F11, intocado.
+    # única; as seções 🧪/🇪🇺 seguem como DESTAQUE do perfil top-10 —
+    # mesmos cards do legado, coluna de score própria — e só deduplicam
+    # contra a lista quando ela foi cortada pelo orçamento (``full_limit``;
+    # ver ``skip_ids`` nas seções). Regime legado (top-N): corte top +
+    # cap 2/empresa da F11, intocado.
     if full_list:
         shown = list(alive)
         # F43 — corte de GARANTIA: só o último recurso do orçamento
@@ -1262,7 +1263,7 @@ def render_minimal_html(
             shown = shown[:max(int(full_limit), 0)]
     else:
         shown = apply_company_cap(alive, limit=top)
-    # F43 — ids da lista única (dedupe das seções-atalho no regime full).
+    # F43 — ids da lista única (fonte do dedupe das seções no caso cortado).
     shown_ids = {str(j.get("id") or "") for j in shown}
     new_ids = set(new_since_ids or set())
     entry_cache: dict = {}
