@@ -1,0 +1,523 @@
+{
+ "fixture_version": "2026-10-14",
+ "phase": "F37",
+ "source": "jobs VERBATIM dos snapshots congelados data/archive/20261013T090001Z + 20261014T090001Z (campos minimos + trechos literais das descricoes; NUNCA payload/raw completo)",
+ "policy": "A partir daqui o CI NUNCA mais audita contra dado vivo (licao test_f29).",
+ "jobs": [
+  {
+   "id": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung|direct:bundesagentur:20403-206272789-S",
+   "company": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung",
+   "title": "Aushilfe (w/m/d)",
+   "location": "66111 Saarbrücken, Saarland, Deutschland",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [
+    "keiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns",
+    "insatzmöglichkeiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns"
+   ],
+   "score": 0.5,
+   "group": "galeria_aushilfe",
+   "expect_excluded": true,
+   "note": "FP GALERIA x7 do top-100 da revisao 14/10 (Saarbrucken/Kiel/Goettingen/Kassel/Kleve/Fulda/Koeln); exclusao na camada TIPO via desc 'studentische Aushilfen...Werkstudenten' vazando",
+   "source_snapshot": "20261014T090001Z"
+  },
+  {
+   "id": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung|direct:bundesagentur:20403-206272791-S",
+   "company": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung",
+   "title": "Aushilfe (w/m/d)",
+   "location": "24103 Kiel, Schleswig_Holstein, Deutschland",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [
+    "keiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns",
+    "insatzmöglichkeiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns"
+   ],
+   "score": 0.5,
+   "group": "galeria_aushilfe",
+   "expect_excluded": true,
+   "note": "FP GALERIA x7 do top-100 da revisao 14/10 (Saarbrucken/Kiel/Goettingen/Kassel/Kleve/Fulda/Koeln); exclusao na camada TIPO via desc 'studentische Aushilfen...Werkstudenten' vazando",
+   "source_snapshot": "20261014T090001Z"
+  },
+  {
+   "id": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung|direct:bundesagentur:20403-206272802-S",
+   "company": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung",
+   "title": "Aushilfe (w/m/d)",
+   "location": "37073 Göttingen, Niedersachsen, Deutschland",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [
+    "keiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns",
+    "insatzmöglichkeiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns"
+   ],
+   "score": 0.5,
+   "group": "galeria_aushilfe",
+   "expect_excluded": true,
+   "note": "FP GALERIA x7 do top-100 da revisao 14/10 (Saarbrucken/Kiel/Goettingen/Kassel/Kleve/Fulda/Koeln); exclusao na camada TIPO via desc 'studentische Aushilfen...Werkstudenten' vazando",
+   "source_snapshot": "20261014T090001Z"
+  },
+  {
+   "id": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung|direct:bundesagentur:20403-206272805-S",
+   "company": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung",
+   "title": "Aushilfe (w/m/d)",
+   "location": "34117 Kassel, Hessen, Hessen, Deutschland",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [
+    "keiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns",
+    "insatzmöglichkeiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns"
+   ],
+   "score": 0.5,
+   "group": "galeria_aushilfe",
+   "expect_excluded": true,
+   "note": "FP GALERIA x7 do top-100 da revisao 14/10 (Saarbrucken/Kiel/Goettingen/Kassel/Kleve/Fulda/Koeln); exclusao na camada TIPO via desc 'studentische Aushilfen...Werkstudenten' vazando",
+   "source_snapshot": "20261014T090001Z"
+  },
+  {
+   "id": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung|direct:bundesagentur:20403-206272850-S",
+   "company": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung",
+   "title": "Aushilfe (w/m/d)",
+   "location": "47533 Kleve, Niederrhein, Nordrhein_Westfalen, Deutschland",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [
+    "keiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns",
+    "insatzmöglichkeiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns"
+   ],
+   "score": 0.5,
+   "group": "galeria_aushilfe",
+   "expect_excluded": true,
+   "note": "FP GALERIA x7 do top-100 da revisao 14/10 (Saarbrucken/Kiel/Goettingen/Kassel/Kleve/Fulda/Koeln); exclusao na camada TIPO via desc 'studentische Aushilfen...Werkstudenten' vazando",
+   "source_snapshot": "20261014T090001Z"
+  },
+  {
+   "id": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung|direct:bundesagentur:20403-206272854-S",
+   "company": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung",
+   "title": "Aushilfe (w/m/d)",
+   "location": "36037 Fulda, Hessen, Deutschland",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [
+    "keiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns",
+    "insatzmöglichkeiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns"
+   ],
+   "score": 0.5,
+   "group": "galeria_aushilfe",
+   "expect_excluded": true,
+   "note": "FP GALERIA x7 do top-100 da revisao 14/10 (Saarbrucken/Kiel/Goettingen/Kassel/Kleve/Fulda/Koeln); exclusao na camada TIPO via desc 'studentische Aushilfen...Werkstudenten' vazando",
+   "source_snapshot": "20261014T090001Z"
+  },
+  {
+   "id": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung|direct:bundesagentur:20403-206310437-S",
+   "company": "GALERIA S.à r.l. & Co. KG Nordrhein-Westfalen - Verwaltung",
+   "title": "Aushilfe (w/m/d)",
+   "location": "50733 Köln, Nordrhein_Westfalen, Deutschland",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [
+    "keiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns",
+    "insatzmöglichkeiten? Dann bist du bei GALERIA genau richtig! Wir suchen engagierte und zuverlässige studentische Aushilfen, Verkaufshilfen, Werkstudenten oder Verkaufsunterstützer in Teil- und Vollzeit, die Lust haben, uns"
+   ],
+   "score": 0.5,
+   "group": "galeria_aushilfe",
+   "expect_excluded": true,
+   "note": "FP GALERIA x7 do top-100 da revisao 14/10 (Saarbrucken/Kiel/Goettingen/Kassel/Kleve/Fulda/Koeln); exclusao na camada TIPO via desc 'studentische Aushilfen...Werkstudenten' vazando",
+   "source_snapshot": "20261014T090001Z"
+  },
+  {
+   "id": "AVISON Chemical GmbH|sf_dataset:eures:MTAwMDEtMTAwMTYwMDEwNi1TIDE",
+   "company": "AVISON Chemical GmbH",
+   "title": "Vetriebsmitarbeiter m/w/d - (Supply Chain Manager) - intern. Chemiehandel (Kaufmann/-frau - Groß- und Außenhandel (Außenhandel))",
+   "location": "DE (DE300)",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [],
+   "score": 9.0,
+   "group": "avison_intern_abbrev",
+   "expect_excluded": true,
+   "note": "FP AVISON DEA11/DE300 x2: 'intern. Chemiehandel' = abreviacao de 'internationaler', nao estagio; et=FULL_TIME",
+   "expected_reason": "full_time_permanent",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "AVISON Chemical GmbH|sf_dataset:eures:MTAwMDEtMTAwMTYwMDA5OS1TIDE",
+   "company": "AVISON Chemical GmbH",
+   "title": "Vetriebsmitarbeiter m/w/d - (Supply Chain Manager) - intern. Chemiehandel (Speditionskaufmann/-frau)",
+   "location": "DE (DEA11)",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [],
+   "score": 9.0,
+   "group": "avison_intern_abbrev",
+   "expect_excluded": true,
+   "note": "FP AVISON DEA11/DE300 x2: 'intern. Chemiehandel' = abreviacao de 'internationaler', nao estagio; et=FULL_TIME",
+   "expected_reason": "full_time_permanent",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "OTTOFUCHSKG|sf_dataset:smartrecruiters:744000053285391",
+   "company": "OTTOFUCHSKG",
+   "title": "Bachelorarbeit Data Science",
+   "location": "Meinerzhagen, NRW, de",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [
+    "Bachelorarbeit Data Science ID: 23/114e Wir bieten Ihnen die Möglichkeit, Ihre Absch"
+   ],
+   "score": 9.0,
+   "group": "ottfuchs_bachelorarbeit",
+   "expect_excluded": true,
+   "note": "FP #57: Bachelorarbeit PURO no titulo = tese, nao estagio; escapava de thesis_title (so 'abschlussarbeit|thesis')",
+   "expected_reason": "thesis_title",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "SAP|successfactors:jobs:1270207301",
+   "company": "SAP",
+   "title": "PhD Internship (f/m/d) - AI Research - Foundation Models on Structured Data",
+   "location": "Berlin, DE, 10557",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "PhD Internship (f/m/d) - AI Research - Foundation Models on Structured Da"
+   ],
+   "score": 8.5,
+   "group": "sap_phd",
+   "expect_excluded": true,
+   "note": "FP #79: PhD Internship no titulo — perfil do dono e graduacao",
+   "expected_reason": "phd_position",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Amazon EU Sàrl S.A R.L.|sf_dataset:eures:MTA0MjIzIDEx",
+   "company": "Amazon EU Sàrl S.A R.L.",
+   "title": "Business Analyst, EU Inbound & Inventory Placement Operations (m/f)",
+   "location": "LU",
+   "country_iso": "lu",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [
+    "In final year of study for Bachelor's or Master's degree, or graduated in the last 12 months"
+   ],
+   "score": 8.0,
+   "group": "amazon_fulltime_placement",
+   "expect_excluded": true,
+   "note": "FP #88: FULL_TIME efetivo; 'Inventory Placement Operations' = logistica, casava \\bplacements?\\b — snippet com frase completa p/ o guard 'Bachelor's or Master's' (master_required NAO dispara); exclusao via full_time_permanent",
+   "expected_reason": "full_time_permanent",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "ArcelorMittal|sf_dataset:oracle:emfg.fa.em4.oraclecloud.com:39731",
+   "company": "ArcelorMittal",
+   "title": "IT Procurement Internship - 12 months",
+   "location": "Luxembourg",
+   "country_iso": "lu",
+   "employment_type": null,
+   "description_snippets": [
+    "IT Procurement Internship - 12 months The IT & Telco sub-category is part of ArcelorMit"
+   ],
+   "score": 10.0,
+   "group": "arcelormittal_duration",
+   "expect_excluded": true,
+   "note": "FP #38: 'IT Procurement Internship - 12 months' — teto §16e 6 meses",
+   "expected_reason": "duration_over_6m",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Deutsche Börse AG|sf_dataset:successfactors:1446100033",
+   "company": "Deutsche Börse AG",
+   "title": "Internship Commodity ETD Clearing and Risk Operations for up to 12 months (part-/full-time)",
+   "location": "Leipzig, DE",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "modity ETD Clearing and Risk Operations for up to 12 months (part-/full-time) Have you ever wondered what hap"
+   ],
+   "score": 7.0,
+   "group": "deutscheboerse_duration",
+   "expect_excluded": true,
+   "note": "12 months no titulo — teto §16e",
+   "expected_reason": "duration_over_6m",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "teampicnic|greenhouse:teampicnic:6337034",
+   "company": "teampicnic",
+   "title": "Praktikum Business Analytics (m/w/d)",
+   "location": "Düsseldorf, North Rhine-Westphalia, Germany",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "ßend Englisch; Deutschkenntnisse sind ein Plus</p> </li> <li> <p>Du besitzt die Staatsbürgerschaft eines EU-Mitgliedstaates</p> </li> <li> <p>Verfügbarkeit: mindestens 4-6 Monate für ein reguläres Prakti"
+   ],
+   "score": 14.0,
+   "group": "teampicnic_eu_cit",
+   "expect_excluded": true,
+   "note": "R6: 'Staatsbürgerschaft eines EU-Mitgliedstaates' + mestrado exigido",
+   "expected_reason": "eu_citizenship_required",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Kraft Heinz|sf_dataset:eightfold:R-98100",
+   "company": "Kraft Heinz",
+   "title": "Supply chain & Logistics Intern",
+   "location": "Amsterdam, NH, NL",
+   "country_iso": "nl",
+   "employment_type": null,
+   "description_snippets": [
+    "u have good knowledge of the English language, both written and spoken. - NOTE: EU working rights are required *(Either you have an EU Citizenship, or you are studying in the Ne",
+    "nowledge of the English language, both written and spoken. - NOTE: EU working rights are required *(Either you have an EU Citizenship, or you are studying in the Netherlands).* **Professional Attributes:** - **Computer proficiency*"
+   ],
+   "score": 14.0,
+   "group": "kraftheinz_eu_working_rights",
+   "expect_excluded": true,
+   "note": "R8: 'EU working rights are required (Either you have an EU Citizenship...)'",
+   "expected_reason": "eu_citizenship_required",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Kraft Heinz|sf_dataset:eightfold:R-103940",
+   "company": "Kraft Heinz",
+   "title": "Procurement Finance Intern",
+   "location": "Amsterdam, NH, NL",
+   "country_iso": "nl",
+   "employment_type": null,
+   "description_snippets": [
+    "have good knowledge of the English language, both written and spoken. · NOTE: EU working rights are required (Either you have an EU Citizenship, or you are studying in the Net",
+    "nowledge of the English language, both written and spoken. · NOTE: EU working rights are required (Either you have an EU Citizenship, or you are studying in the Netherlands). **Professional Attributes:** · Ability to simplify: We"
+   ],
+   "score": 9.25,
+   "group": "kraftheinz_eu_working_rights",
+   "expect_excluded": true,
+   "note": "R8: 'EU working rights are required (Either you have an EU Citizenship...)'",
+   "expected_reason": "eu_citizenship_required",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Vanderlande|sf_dataset:workday:JR38233",
+   "company": "Vanderlande",
+   "title": "Internship: Finance process automation & AI",
+   "location": "Veghel, Netherlands",
+   "country_iso": "nl",
+   "employment_type": null,
+   "description_snippets": [
+    "active and eager to learn A team player with good English communication skills *Mandatory enrolment to a Dutch Education System & resident of The Netherlands What we offer A monthly internship allowan"
+   ],
+   "score": 11.25,
+   "group": "vanderlande_nl_enrolment",
+   "expect_excluded": true,
+   "note": "R31: 'Mandatory enrolment to a Dutch Education System & resident of The Netherlands'",
+   "expected_reason": "nl_enrolment_required",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Parfumado|sf_dataset:recruitee:1699411",
+   "company": "Parfumado",
+   "title": "Operations & Supply Chain Intern",
+   "location": "Amsterdam, Noord-Holland, Netherlands",
+   "country_iso": "nl",
+   "employment_type": "INTERN",
+   "description_snippets": [
+    "eal Operations & Supply Chain Intern You are enrolled in an HBO/WO programme with a strong practical mindset (Logistics, Pr"
+   ],
+   "score": 12.5,
+   "group": "parfumado_hbo",
+   "expect_excluded": true,
+   "note": "R12: 'enrolled in an HBO/WO programme' (sistema NL) + €450/mes",
+   "expected_reason": "nl_enrolment_required",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Karriere beim Champignon-Hofmeister Unternehmen|sf_dataset:successfactors:1141837301",
+   "company": "Karriere beim Champignon-Hofmeister Unternehmen",
+   "title": "Schnupperpraktikum Kaufmann für Spedition und Logistikdienstleistung (m/w/d) - Käserei Champignon",
+   "location": "Lauben / Allgäu, DE, 87493",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [],
+   "score": 6.0,
+   "group": "champignon_schnupper",
+   "expect_excluded": true,
+   "note": "Schnupperpraktikum = orientacao escolar (pre-Azubi) — mesmo degrau do Schuelerpraktikum; exclusao na camada TIPO",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "conxai|sf_dataset:bamboohr:67",
+   "company": "conxai",
+   "title": "Civil Engineering Intern - AI & Data",
+   "location": "Munich, Germany",
+   "country_iso": "de",
+   "employment_type": "INTERN",
+   "description_snippets": [
+    "Are Education: Currently pursuing (or recently graduated with) MS or PhD in Civil Engineering, Construction Management, Data Science, or a clo"
+   ],
+   "score": 6.25,
+   "group": "conxai_phd_desc",
+   "expect_excluded": true,
+   "note": "'Currently pursuing (or recently graduated with) MS or PhD' — PhD na desc",
+   "expected_reason": "phd_position",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "e-farm|sf_dataset:join_com:14803221",
+   "company": "e-farm",
+   "title": "Paid Erasmus+ International Internship in International Logistics",
+   "location": "Hamburg, Germany",
+   "country_iso": "de",
+   "employment_type": "INTERN",
+   "description_snippets": [
+    "Paid Erasmus+ International Internship in International Logistics About E-FARM We t"
+   ],
+   "score": 8.25,
+   "group": "efarm_erasmus",
+   "expect_excluded": false,
+   "note": "#85: 'Paid Erasmus+ International Internship' — pool Erasmus+ e decisao do dono (badge vs excluir); F37 NAO implementa",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "indiecampers|sf_dataset:greenhouse:8811159002",
+   "company": "indiecampers",
+   "title": "Spontaneous Application | Tourism & Operations Internship - Erasmus+",
+   "location": "Amsterdam, Noord-Holland, Netherlands",
+   "country_iso": "nl",
+   "employment_type": null,
+   "description_snippets": [
+    "Spontaneous Application | Tourism & Operations Internship - Erasmus+ **ABOUT US** Indie Campers, the go-to campervan Marketplace, is on a",
+    "Spontaneous Application | Tourism & Operations Inte"
+   ],
+   "score": 6.5,
+   "group": "indiecampers_spontaneous",
+   "expect_excluded": false,
+   "note": "#98: 'Spontaneous Application | Tourism & Operations Internship - Erasmus+' — decisao pendente (Erasmus+)",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "BoschGroup|smartrecruiters:BoschGroup:744000141914929",
+   "company": "BoschGroup",
+   "title": "Praktikum in der Logistik - Data & Analytics",
+   "location": "Lohr am Main, BY, de",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [],
+   "score": 15.5,
+   "group": "contra_praktikum_fulltime",
+   "expect_excluded": false,
+   "note": "CONTRA-CASO OBRIGATORIO: Praktikum legitimo marcado FULL_TIME nao pode morrer (existe no dataset: 268/272)",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Bayer AG Pharmaceuticals|sf_dataset:bundesagentur:12708-1623235-1-S",
+   "company": "Bayer AG Pharmaceuticals",
+   "title": "Praktikant*in Analytics Advisory & Data Democratization / SC&L Analytics (alle Geschlechter)",
+   "location": "51373 Leverkusen, Nordrhein Westfalen, Deutschland",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [],
+   "score": 14.25,
+   "group": "contra_bayer_top",
+   "expect_excluded": false,
+   "note": "R4/R5: 'Enrolled student in economics or comparable' — dono considera ok (Eng Materiais ≈ comparable)",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Edbz|sf_dataset:oracle:edbz.fa.us2.oraclecloud.com:25011485",
+   "company": "Edbz",
+   "title": "Praktikant/in (m/f/d) im Bereich Supply Chain, Operations, Einkauf oder Pricing – 2026",
+   "location": "Germany",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [
+    "n, sondern echte Freundschaften schliessen. - 6 – 12 Monate Praktikum an unserem europäischen Hauptstandort i"
+   ],
+   "score": 13.5,
+   "group": "contra_edbz_range_6_12",
+   "expect_excluded": false,
+   "note": "faixa '6 – 12 Monate' na DESC comeca dentro do teto; titulo sem duracao — NAO exclui (semantica F29 duration_flag_text)",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "trumpf|workday:trumpf/TRUMPF_Students:R00043505",
+   "company": "trumpf",
+   "title": "Praktikum Controlling & Business Analytics EUV (SS 2027)",
+   "location": "Ditzingen",
+   "country_iso": "de",
+   "employment_type": null,
+   "description_snippets": [],
+   "score": 13.0,
+   "group": "contra_trumpf_top",
+   "expect_excluded": false,
+   "note": "R11: sem visa policy — aplicavel",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Deloitte GmbH|sf_dataset:bundesagentur:15794-471478_50313-1-S",
+   "company": "Deloitte GmbH",
+   "title": "Praktikant / Werkstudent Data Analytics - Innovation & Transformation (m/w/d)",
+   "location": "40476 Düsseldorf, Nordrhein Westfalen, Deutschland",
+   "country_iso": "de",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [],
+   "score": 11.25,
+   "group": "contra_werkstudent_hybrid_fulltime",
+   "expect_excluded": false,
+   "note": "hibrido Werkstudent+Praktikant FULL_TIME — werkstudent_puro nao pega (hibrido fica)",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Amazon|sf_dataset:amazon:10567780",
+   "company": "Amazon",
+   "title": "Business Analyst Intern (6 months) - 2027",
+   "location": "Luxembourg, LUX",
+   "country_iso": "lu",
+   "employment_type": "FULL_TIME",
+   "description_snippets": [],
+   "score": 6.5,
+   "group": "contra_amazon_intern_6m",
+   "expect_excluded": false,
+   "note": "Intern legitimo FULL_TIME, '6 months' no titulo = exatamente o teto (nao acima)",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Citi|sf_dataset:workday:26993945",
+   "company": "Citi",
+   "title": "Banking, Investment Banking, Placement Analyst, Amsterdam – Netherlands 2027",
+   "location": "Amsterdam  Netherlands",
+   "country_iso": "nl",
+   "employment_type": null,
+   "description_snippets": [],
+   "score": 4.5,
+   "group": "contra_citi_placement",
+   "expect_excluded": false,
+   "note": "'Placement Analyst' UK = programa de 6 meses legitimo; placement composto preservado",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "Citi|sf_dataset:workday:26994569",
+   "company": "Citi",
+   "title": "Banking, Corporate Banking, Placement Analyst, Amsterdam - The Netherlands, 2027 (January- June Start)",
+   "location": "Amsterdam  Netherlands",
+   "country_iso": "nl",
+   "employment_type": null,
+   "description_snippets": [],
+   "score": 3.0,
+   "group": "contra_citi_placement",
+   "expect_excluded": false,
+   "note": "'Placement Analyst' UK = programa de 6 meses legitimo; placement composto preservado",
+   "source_snapshot": "20261013T090001Z"
+  },
+  {
+   "id": "nestleHRprdRMK|successfactors:jobdetails:1441411733",
+   "company": "nestleHRprdRMK",
+   "title": "Supply Chain (DSP) Intern - Nestlé Waters",
+   "location": "Brussels, BE",
+   "country_iso": "be",
+   "employment_type": null,
+   "description_snippets": [
+    "Position Summary • Where will you work? Nestlé’s offices in Brussels and Homeworking • When will you start? As from March 2027 • How long will it last? 6 months As part of the Supply Chain – Demand &amp; Supply Planning (DSP) Team – you will actively participa"
+   ],
+   "score": 8.5,
+   "group": "contra_nestle_top",
+   "expect_excluded": false,
+   "note": "R173: Nestle CIP, sem visa policy mencionada — aplicavel",
+   "source_snapshot": "20261013T090001Z"
+  }
+ ]
+}

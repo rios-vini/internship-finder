@@ -1098,29 +1098,58 @@ def _archive_run_info(archive_dir: Path, summary: dict, alert_count: int,
         log.warning("run_info.json nao gravado: %s", exc)
 
 
+def _applicability_metrics_record(ranking: list, run_id: str | None = None) -> dict:
+    """F37 — registro ``type: applicability`` (contagem derivada "aplicavel").
+
+    ``applicable = eligible - flagged`` por motivo (flag
+    ``hydration_inapplicable``), exposto no metrics para o header de
+    universo (cards F43/F44 consomem). Conta TODO flag presente no JSON
+    (novo OU herdado de re-run — mesma semantica do conjunto
+    ``backlog_inapplicable_ids``). Pura: nao grava nada.
+    """
+    from internship_finder.filters import APPLICABILITY_EXCLUSION_REASONS
+
+    flagged_by_reason = {
+        reason: sum(
+            1
+            for j in ranking
+            if isinstance(j, dict)
+            and j.get(HYDRATION_INAPPLICABLE_FLAG) == reason
+        )
+        for reason in APPLICABILITY_EXCLUSION_REASONS
+    }
+    return {
+        "type": "applicability",
+        "run_id": run_id or utcnow_iso(),
+        "timestamp": utcnow_iso(),
+        "eligible": len(ranking),
+        "flagged": sum(flagged_by_reason.values()),
+        "applicable": len(ranking) - sum(flagged_by_reason.values()),
+        **{f"flagged_{r}": v for r, v in flagged_by_reason.items()},
+    }
+
+
 def _reassess_hydrated_applicability(job: dict) -> str | None:
     """F20 item 3 — re-avalia a aplicabilidade da vaga com a descricao
-    hidratada, REUSANDO as funcoes puras da F18 (german_level /
-    requires_master). Devolve o motivo de inaplicabilidade
-    ("german_required"/"master_required") ou None (aplicavel).
+    hidratada, REUSANDO a funcao pura da cascata (F18 + F37:
+    ``filters.applicability_exclusion_reason`` verbatim). Devolve o motivo
+    de inaplicabilidade ("german_required"/"master_required"/... F37) ou
+    None (aplicavel).
+
+    F37 (14/10): a re-avaliacao herda o MESMO veredito dos filtros do
+    pipeline — a funcao completa, nao apenas german/master. Os dois call
+    sites (select_eligible do pipeline e este) sempre concordam por
+    construcao.
 
     So olha titulo + descricao HIDRATADA (o texto que a hidratacao
     revelou — o ponto do estagio). Falha de import = None (nunca derruba;
     a vaga fica como estava).
     """
     try:
-        from internship_finder.app_intel import german_level
-        from internship_finder.filters import requires_master
-        title = str(job.get("title") or "")
-        description = str(job.get("description") or "")
-        gl = german_level(f"{title} {description}")
-        if gl is not None and gl.level == "required":
-            return "german_required"
-        if requires_master(title, description):
-            return "master_required"
+        from internship_finder.filters import applicability_exclusion_reason
+        return applicability_exclusion_reason(job)
     except Exception:  # noqa: BLE001 — re-avaliacao nunca derruba o estagio
         return None
-    return None
 
 
 def _reassess_backlog_applicability(ranking: list) -> dict:
@@ -1567,6 +1596,20 @@ def main(argv: list[str] | None = None) -> int:
             }])
         except Exception as exc:  # noqa: BLE001 — metrica e best-effort
             log.warning("F25: registro de metricas do backlog nao gravado: "
+                        "%s: %s", type(exc).__name__, exc)
+        # F37 — contagem derivada "aplicavel" (= eligible − flagged) por
+        # motivo, exposta no metrics para o header de universo (cards
+        # F43/F44 consomem). Registro proprio, nao toca no "run" do
+        # pipeline; falha e best-effort (o run segue).
+        try:
+            from internship_finder.metrics import write_metrics as _wm
+            _wm(metrics_path, [
+                _applicability_metrics_record(
+                    ranking, summary.get("run_id")
+                )
+            ])
+        except Exception as exc:  # noqa: BLE001 — metrica e best-effort
+            log.warning("F37: metrica de aplicabilidade nao gravada: "
                         "%s: %s", type(exc).__name__, exc)
     except Exception as exc:  # noqa: BLE001 — F25 nunca derruba o run
         log.warning("F25: reavaliacao do backlog falhou (run segue sem as "
