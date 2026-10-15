@@ -106,6 +106,16 @@ EU_SECTION_TOP = 10
 # honesta "+X outras vagas de empresas-alvo" com a contagem real.
 RADAR_TOP_N = 15
 
+# F36.1 — orcamento de bytes das secoes de perfil 🧪/🇪🇺 (mesma decisao
+# F20, mesma familia). O fix do ghost-eu devolve as DUAS secoes a TODAS
+# as montagens da cadeia de degradacao; no dia real 14/10 isso somou
+# 8,6KB e a pagina (97 eventos radar + 244 novas) voltou a estourar o
+# cap por ~0,9KB. Quando o orçamento 🎯 (camada 3) ainda nao basta, as
+# secoes de perfil degradam de top-10 para top-5 com header honesto —
+# a seção NUNCA sai inteira (o bug original), o cap NUNCA estoura
+# (contrato F20/F6) e o header conta a verdade do que está listado.
+PROFILE_SECTION_BUDGET_TOP = 5
+
 # Orcamento de tamanho da pagina (spec: alvo <=100KB, cap duro 150KB
 # verificado no teste). O render e' size-aware: se o conteudo real
 # estourar o alvo, corta campos decorativos (snippet de descricao)
@@ -967,6 +977,7 @@ def render_minimal_html(
     quality_map: dict | None = None,
     sweet_spot_rows: list[dict] | None = None,
     radar_limit: int | None = None,
+    profile_limit: int | None = None,
     inapplicable_ids: set[str] | None = None,
     salary_benchmark_map: dict | None = None,
     now_ref: "datetime | None" = None,
@@ -1171,10 +1182,14 @@ def render_minimal_html(
 
     # Seção Materials — perfil alternativo, ranking proprio (digest ja
     # usa o MESMO rank_materials_jobs); top 10 por materials_score.
+    # F36.1 — ``profile_limit``: orçamento da camada 3 (espelho F20 do
+    # radar): degrada a lista para top-N com header HONESTO (conta o que
+    # está listado) quando a página estoura o cap. None = inteira.
     materials_section = ""
     if materials:
+        mat_list = materials[:profile_limit] if profile_limit else materials
         mat_cards = "\n".join(_cards_section(
-            materials, company_intel_map=company_intel_map,
+            mat_list, company_intel_map=company_intel_map,
             new_ids=new_ids, dead_ids=dead_ids, ref=ref,
             company_entry_cache=entry_cache, rank_start=1,
             score_key="materials_score", with_snippet=with_snippets,
@@ -1183,20 +1198,34 @@ def render_minimal_html(
             inapplicable_ids=inapplicable,
             salary_benchmark_map=salary_benchmark_map,
         ))
-        materials_section = (
-            '<h2>🧪 Materials Engineering — top 10 (perfil alternativo)</h2>'
+        mat_header = "top 10"
+        mat_note = (
             '<p class="p2">Ranking próprio para Materials Engineering '
             '(mesmas vagas elegíveis, pesos distintos dos de Supply '
-            'Chain). O score à esquerda é o do perfil Materials.</p>'
+            'Chain). O score à esquerda é o do perfil Materials.</p>')
+        if profile_limit and len(materials) > len(mat_list):
+            mat_header = (
+                f"top {len(mat_list)} de {len(materials)} — orçamento de página do dia")
+            mat_note = (
+                '<p class="p2">Ranking próprio para Materials Engineering '
+                '(mesmas vagas elegíveis, pesos distintos dos de Supply '
+                'Chain). O score à esquerda é o do perfil Materials. '
+                'Página cheia hoje: o restante do top 10 está no JSON/CSV '
+                'completos.</p>')
+        materials_section = (
+            f'<h2>🧪 Materials Engineering — {mat_header} (perfil alternativo)</h2>'
+            + mat_note
             + mat_cards
         )
 
     # F36 — Seção EU non-DE: terceiro perfil (canal secundário F7), mesmo
-    # padrão da seção Materials; top 10 por eu_score.
+    # padrão da seção Materials; top 10 por eu_score. F36.1 — o mesmo
+    # ``profile_limit`` da 🧪 (mesma família de orçamento).
     eu_section = ""
     if eu:
+        eu_list = eu[:profile_limit] if profile_limit else eu
         eu_cards = "\n".join(_cards_section(
-            eu, company_intel_map=company_intel_map,
+            eu_list, company_intel_map=company_intel_map,
             new_ids=new_ids, dead_ids=dead_ids, ref=ref,
             company_entry_cache=entry_cache, rank_start=1,
             score_key="eu_score", with_snippet=with_snippets,
@@ -1205,12 +1234,24 @@ def render_minimal_html(
             inapplicable_ids=inapplicable,
             salary_benchmark_map=salary_benchmark_map,
         ))
-        eu_section = (
-            '<h2>🇪🇺 Fora da Alemanha — top 10 (perfil EU non-DE)</h2>'
+        eu_header = "top 10"
+        eu_note = (
             '<p class="p2">Ranking próprio para o canal secundário '
             '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
             'estrato; ver docs/f36_non_de_profile.md). O score à esquerda '
-            'é o do perfil EU.</p>'
+            'é o do perfil EU.</p>')
+        if profile_limit and len(eu) > len(eu_list):
+            eu_header = (
+                f"top {len(eu_list)} de {len(eu)} — orçamento de página do dia")
+            eu_note = (
+                '<p class="p2">Ranking próprio para o canal secundário '
+                '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
+                'estrato; ver docs/f36_non_de_profile.md). O score à esquerda '
+                'é o do perfil EU. Página cheia hoje: o restante do top 10 '
+                'está no JSON/CSV completos.</p>')
+        eu_section = (
+            f'<h2>🇪🇺 Fora da Alemanha — {eu_header} (perfil EU non-DE)</h2>'
+            + eu_note
             + eu_cards
         )
 
@@ -1321,6 +1362,13 @@ def render_size_aware(
     F29: ``salary_benchmark_map`` repassado as montagens (estimativa
     rotulada, badges de idade/duração/red-flags e rodapé jurídico NÃO
     são decorativos — sobrevivem à remontagem).
+
+    F36.1 (bug de produção 14/10): TODA montagem desta cadeia repassa
+    TODAS as seções de perfil — a 3ª (orçamento 🎯) esquecia ``eu=`` e a
+    seção 🇪🇺 Fora da Alemanha sumia silenciosamente exatamente nos
+    dias de página estourada (best-effort por design = zero erro no
+    log). Regressão garantida por scripts/test_f36_1.py com fixture que
+    ESTOURA o cap (página pequena nunca exercita degradação).
     """
     html = render_minimal_html(
         jobs, total_eligible=total_eligible, generated_at=generated_at,
@@ -1357,7 +1405,7 @@ def render_size_aware(
             jobs, total_eligible=total_eligible, generated_at=generated_at,
             top=top, company_intel_map=company_intel_map,
             new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
-            materials=materials, with_snippets=False,
+            materials=materials, eu=eu, with_snippets=False,
             translation_cache=translation_cache,
             watchlist_events=watchlist_events,
             tracker_db=tracker_db,
@@ -1370,6 +1418,32 @@ def render_size_aware(
               f"de {len(watchlist_events)} eventos; página agora "
               f"{len(html.encode('utf-8'))} bytes (cap "
               f"{PAGE_HARD_CAP_BYTES})")
+        # F36.1 — orçamento de perfil (3-b): o fix ghost-eu devolve 🧪/🇪🇺
+        # a esta montagem; no dia real 14/10 a página voltou a estourar
+        # por ~0,9KB. Mesma família F20: degrada as seções de perfil para
+        # top-PROFILE_SECTION_BUDGET_TOP com header honesto (a seção NUNCA
+        # sai inteira — o bug original — e o cap NUNCA estoura).
+        if len(html.encode("utf-8")) > PAGE_HARD_CAP_BYTES \
+                and (materials or eu):
+            html = render_minimal_html(
+                jobs, total_eligible=total_eligible, generated_at=generated_at,
+                top=top, company_intel_map=company_intel_map,
+                new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
+                materials=materials, eu=eu, with_snippets=False,
+                translation_cache=translation_cache,
+                watchlist_events=watchlist_events,
+                tracker_db=tracker_db,
+                quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
+                radar_limit=RADAR_TOP_N,
+                profile_limit=PROFILE_SECTION_BUDGET_TOP,
+                inapplicable_ids=inapplicable_ids,
+                salary_benchmark_map=salary_benchmark_map,
+            )
+            print(f"pages: orçamento 🧪/🇪🇺 ativo — seções de perfil "
+                  f"degradadas p/ top-{PROFILE_SECTION_BUDGET_TOP} "
+                  f"(header honesto); página agora "
+                  f"{len(html.encode('utf-8'))} bytes (cap "
+                  f"{PAGE_HARD_CAP_BYTES})")
     return html
 
 

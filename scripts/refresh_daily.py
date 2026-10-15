@@ -735,9 +735,15 @@ def build_message(
         #       contagem quando aperta (1 linha cada), NUNCA sao dropadas
         #       inteiras (bug F11×F6.1: 05/10 a mensagem de 4414 chars
         #       derrubava 🆕 e 🎯 juntas);
-        #   (4) 🔗 link do ranking completo por ULTIMO.
-        # O resto do digest (perfil, novas, mudancas, materials, enrichment,
-        # pessoais) e cortado/resumido — o link leva ao ranking completo.
+        #   (4) headers 🧪 Materials e 🇪🇺 EU non-DE (F36.1) — mesma regra:
+        #       colapsam ao header (1 linha, o corpo cede espaço), NUNCA
+        #       dropadas inteiras (bug latente: 🧪 não aparecia no digest
+        #       compactado desde 28/09; 🇪🇺 estreou invisível — a família
+        #       de seções fantasma da página);
+        #   (5) 🔗 link do ranking completo por ULTIMO.
+        # O resto do digest (perfil, novas, mudancas, materials-corpo,
+        # eu-corpo, enrichment, pessoais) e cortado/resumido — o link leva
+        # ao ranking completo.
         link = next(
             (line for line in reversed(digest_lines) if line.startswith("🔗")),
             digest_lines[-1],
@@ -751,6 +757,11 @@ def build_message(
         # do N2 — o header e a linha mais densa e barata da secao).
         new_since = ranking_digest.new_since_section_lines(digest_lines)
         watch = ranking_digest.watchlist_section_lines(digest_lines)
+        # F36.1 — headers 🧪/🇪🇺: última camada de seção do compact (o
+        # corpo cede espaço às ⚡/🆕/🎯; o header identifica a seção e o
+        # link leva ao resto). [] quando a seção não existe no dia.
+        profile_headers = ranking_digest.materials_section_lines(digest_lines)[:1] \
+            + ranking_digest.eu_section_lines(digest_lines)[:1]
         # F14 — extracao da secao ⏰ Follow-up (padrao das demais; []
         # quando ausente). No compact a ⏰ colapsa ANTES do Top 5
         # (prioridade: base > 🆕 > ⚡ Top 5 > 🎯 > ⏰ — o follow-up e
@@ -803,9 +814,16 @@ def build_message(
             for ns_part, wl_part, fu_part in variants:
                 # Ordem de exibicao = ordem do digest (F13 §2.3): 🆕 antes
                 # do ⚡, 🎯 depois do ⚡ — so o colapso muda, nunca o layout.
+                # F36.1: os headers 🧪/🇪🇺 ocupam a posicao relativa que tem
+                # no digest inteiro (antes da 🆕) e viram bloco PROPRIO
+                # separado por linha em branco — o contrato dos extratores
+                # e "corpo ate o proxima linha em branco", entao secoes
+                # coladas sem blank corromperiam top5_section_lines(msg).
                 # F14: a ⏰ vem das secoes pessoais (depois do 🎯, antes
                 # do link) e mantem essa posicao no compact.
                 parts = base + [""]
+                if profile_headers:
+                    parts += profile_headers + [""]
                 if ns_part:
                     parts += ns_part
                 parts += top5
@@ -824,6 +842,8 @@ def build_message(
                 # e menos denso da base, os detalhes vivem no ranking).
                 for ns_part, wl_part, fu_part in variants:
                     parts = summarized + [""]
+                    if profile_headers:
+                        parts += profile_headers + [""]
                     if ns_part:
                         parts += ns_part
                     parts += top5
@@ -844,15 +864,22 @@ def build_message(
                 ns_part = [ns_full[0]] if ns_full else []
                 wl_part = [wl_full[0]] if wl_full else []
                 fu_part = [fu_full[0]] if fu_full else []
+                # F36.1 — headers de perfil seguem colapsados no nível 3
+                # (1 linha cada; bloco próprio blank-separado, como nos
+                # demais níveis — o contrato dos extratores exige). Guard
+                # igual ao dos níveis 1/2: seções ausentes não geram bloco
+                # em branco duplicado.
+                prof_block = profile_headers + [""] if profile_headers else []
                 kept: list[str] = [top5[0]]
                 for line in top5[1:]:
-                    candidate = (summarized + [""] + ns_part + kept
-                                 + wl_part + fu_part + [line] + ["", link])
+                    candidate = (summarized + [""] + prof_block + ns_part + kept
+                                 + wl_part + fu_part
+                                 + [line] + ["", link])
                     if len("\n".join(candidate)) > TELEGRAM_MAX_LEN:
                         break
                     kept.append(line)
                 if len(kept) > 1:
-                    parts = summarized + [""] + ns_part + kept + wl_part \
+                    parts = summarized + [""] + prof_block + ns_part + kept + wl_part \
                         + fu_part + ["", link]
                     text = "\n".join(parts)
                 else:

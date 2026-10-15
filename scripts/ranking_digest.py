@@ -67,9 +67,19 @@ NEW_MAX_SHOWN = 15
 # Fase 4: Tetos da secao do perfil Materials (compacta — mesma mensagem).
 MATERIALS_TOP5 = 5
 MATERIALS_NEW_MAX = 5
-# F36: tetos da secao do perfil EU non-DE (mesmo formato compacto).
+# F36: tetos da seção do perfil EU non-DE (mesmo formato compacto).
 EU_TOP5 = 5
 EU_NEW_MAX = 5
+
+# F36.1 — headers das seções de perfil 🧪/🇪🇺 do digest. O compactador do
+# Telegram (refresh_daily.build_message) extrai essas seções para que os
+# headers sobrevivam ao encurtamento >4096 (padrão F13: o PREFIXO é o
+# contrato de reconhecimento — o sufixo pode evoluir sem quebrar o
+# compactador). Antes do fix elas nem eram candidatas: a reconstrução por
+# prioridade as dropava inteiras (🧪 não aparecia no digest compactado
+# desde 28/09; 🇪🇺 estreou invisível no compacto).
+MATERIALS_SECTION_PREFIX = "🧪 Perfil Materials Engineering"
+EU_SECTION_PREFIX = "🇪🇺 Perfil EU non-DE"
 
 # Fase 3 (enrichment): tetos da secao de dados da pagina oficial.
 ENRICH_TOP5 = 5
@@ -1070,6 +1080,53 @@ def watchlist_section_lines(digest_lines: list[str]) -> list[str]:
             break
         section.append(line)
     return section
+
+
+def _section_by_prefix(digest_lines: list[str], prefix: str) -> list[str]:
+    """Extrai header + corpo de ``digest_lines`` ate o próximo blank (F36.1).
+
+    Mecânica comum dos extratores do compactador (F6.1/F13/F14): reconhece
+    a seção pelo PREFIXO EXATO de header (contrato; o sufixo pode evoluir),
+    copia header + corpo até a linha em branco seguinte. ``[]`` quando a
+    seção não existe (digest vazio/None, perfil ausente, best-effort).
+    Somente leitura; nunca lança.
+    """
+    header_idx = None
+    for idx, line in enumerate(digest_lines):
+        if line.startswith(prefix):
+            header_idx = idx
+            break
+    if header_idx is None:
+        return []
+    section = [digest_lines[header_idx]]
+    for line in digest_lines[header_idx + 1:]:
+        if not line.strip():
+            break
+        section.append(line)
+    return section
+
+
+def materials_section_lines(digest_lines: list[str]) -> list[str]:
+    """Extrai a seção 🧪 Perfil Materials (F36.1; para o compact).
+
+    Espelho de ``watchlist_section_lines`` (F13): header + corpo até o
+    próximo blank, ou ``[]`` quando ausente. O compactador usa o header
+    (que carrega a natureza da seção) como forma colapsada — o corpo
+    cede espaço às seções de maior prioridade, a seção NUNCA é dropada
+    inteira (bug latente pré-F36.1: 🧪 sumia do digest compactado desde
+    28/09 porque a reconstrução por prioridade nem a considerava).
+    """
+    return _section_by_prefix(digest_lines, MATERIALS_SECTION_PREFIX)
+
+
+def eu_section_lines(digest_lines: list[str]) -> list[str]:
+    """Extrai a seção 🇪🇺 Perfil EU non-DE (F36.1; para o compact).
+
+    Mesmo espelho da 🧪 (padrão F13/F36): header + corpo até o próximo
+    blank, ou ``[]`` quando ausente. ``[]`` também quando o estrato
+    não-DE está vazio (a seção honestamente não existe nesse dia).
+    """
+    return _section_by_prefix(digest_lines, EU_SECTION_PREFIX)
 
 
 # ---------------------------------------------------------------------------
