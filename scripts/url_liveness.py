@@ -343,11 +343,19 @@ def check_liveness_v2(
     open_url = opener or urllib.request.urlopen
     started = time.monotonic()
     dead: set[str] = set()
+    # F39 — separação hard-dead / soft-dead: hard = HTTP 404/410 (DEAD_STATUS,
+    # único veredito definitivo — anúncio removido pelo servidor); soft =
+    # marcador de corpo / redirect-para-homepage / shell SPA (200, URL viva).
+    # O set plano ``dead`` (compat F11/F20) continua contendo os dois; o
+    # refresh_daily (F39) usa os conjuntos separados para decidir exclusão.
+    hard_dead: set[str] = set()
+    hard_dead_status: dict[str, int] = {}
     bodies: dict[str, str] = {}
     attempts = 0
     http_responses = 0  # qualquer resposta HTTP recebida (inclui 404/410)
     net_errors = 0
     soft_dead = 0
+    soft_dead_ids: set[str] = set()  # F39: subconjunto soft de ``dead``
     hydrated = 0
     hydration_failed = 0
     short_candidates = 0
@@ -392,6 +400,8 @@ def check_liveness_v2(
                 http_responses += 1
                 if exc.code in DEAD_STATUS:
                     dead.add(jid)
+                    hard_dead.add(jid)
+                    hard_dead_status[jid] = int(exc.code)
                     _info("morta %s: %s -> HTTP %d", jid, url, exc.code)
                 continue
             except Exception:  # noqa: BLE001 — timeout/DNS/SSL/bloqueio
@@ -403,17 +413,20 @@ def check_liveness_v2(
             if marker is not None:
                 dead.add(jid)
                 soft_dead += 1
+                soft_dead_ids.add(jid)
                 _info("soft-dead %s: corpo contem %r (%s)", jid, marker, url)
                 continue
             if _final_path_is_homepage(final_url, url):
                 dead.add(jid)
                 soft_dead += 1
+                soft_dead_ids.add(jid)
                 _info("soft-dead %s: redirect para homepage (%s -> %s)",
                       jid, url, final_url)
                 continue
             if _is_spa_shell(body_text, body_len):
                 dead.add(jid)
                 soft_dead += 1
+                soft_dead_ids.add(jid)
                 _info("soft-dead %s: shell SPA de board (%d bytes, %s)",
                       jid, body_len, url)
                 continue
@@ -440,6 +453,11 @@ def check_liveness_v2(
             "hydration_failed": hydration_failed,
             "short_candidates": short_candidates,
             "duration_s": round(duration, 1),
+            # F39 — separação hard/soft (o chamador decide o destino de cada
+            # classe; ausentes em openers/mocks antigos = nada a excluir).
+            "hard_dead_ids": set(hard_dead),
+            "hard_dead_status": dict(hard_dead_status),
+            "soft_dead_ids": set(soft_dead_ids),
         }
         return dead, bodies, stats
     # Falha TOTAL de rede: nenhuma resposta HTTP de nenhuma tentativa —
@@ -454,6 +472,8 @@ def check_liveness_v2(
             "dead": set(), "hydrated": 0, "hydration_failed": 0,
             "short_candidates": short_candidates,
             "duration_s": round(duration, 1),
+            "hard_dead_ids": set(), "hard_dead_status": {},
+            "soft_dead_ids": set(),
         }
         return set(), bodies, stats
     _info("%d checks: %d morta(s) (%d soft), %d hidratada(s), "
@@ -466,6 +486,9 @@ def check_liveness_v2(
         "hydration_failed": hydration_failed,
         "short_candidates": short_candidates,
         "duration_s": round(duration, 1),
+        "hard_dead_ids": set(hard_dead),
+        "hard_dead_status": dict(hard_dead_status),
+        "soft_dead_ids": set(soft_dead_ids),
     }
     return dead, bodies, stats
 
