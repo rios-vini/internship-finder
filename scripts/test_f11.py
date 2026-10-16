@@ -228,8 +228,9 @@ def test_data_de_and_badge() -> None:
     check("data-de=preferred", 'data-de="preferred"' in html)
     check("data-de=plus", 'data-de="plus"' in html)
     check("data-de=none (sem menção)", 'data-de="none"' in html)
-    check("badge 🇩🇪 DE exigido APENAS em required",
-          html.count("🇩🇪 DE exigido") == 1)
+    cards_zone = html.split('<ol id="list">')[1].split("</ol>")[0]
+    check("badge 🇩🇪 (curto, F51) APENAS em required",
+          cards_zone.count('aria-hidden="true">🇩🇪<') == 1)
     check("toggle sem alemão exigido presente", 'id="f-de"' in html)
     check("label do toggle", "sem alemão exigido" in html)
 
@@ -630,8 +631,8 @@ def test_country_and_new_filters() -> None:
         check(f"data-iso={iso} nos cards", f'data-iso="{iso}"' in html)
     check("select de país presente (5 opções)", 'id="f-country"' in html
           and html.count("<option value=") >= 6)
-    check("sem bandeira 🇩🇪 no select (contrato F7: DE default visual)",
-          "🇩🇪" not in html)
+    check("sem bandeira 🇩🇪 no select (contrato F7: DE default visual; F51: legenda tem 🇩🇪)",
+          "🇩🇪" not in html.split('id="f-country"')[1].split("</select>")[0])
 
 
 def test_materials_section() -> None:
@@ -692,7 +693,8 @@ def test_age_badge() -> None:
     ref_posted = (datetime.now(UTC) - timedelta(days=3)).isoformat()
     jobs = [_job(0, posted=ref_posted), _job(1, posted=None)]
     html = mp.render_minimal_html(jobs, total_eligible=2, generated_at="x")
-    check("badge 'há 3d' na vaga com posted_at", "há 3d" in html)
+    check("badge '3d' na vaga com posted_at (F51: formato único)",
+          ">3d<" in html)
     check("sem badge na vaga sem posted_at", html.count("class=\"age\"") == 1)
 
 

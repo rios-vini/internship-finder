@@ -184,10 +184,10 @@ def test_badge_page() -> None:
     ]
     html = mp.render_minimal_html(
         jobs, total_eligible=4, generated_at="x", quality_map=qmap)
-    check("mapeada com score: ⭐ 4,2 · Kununu no card",
-          "⭐ 4,2 · Kununu" in html)
-    check("mapeada com GPTW: 🏆 GPTW 2026 no card",
-          "🏆 GPTW 2026" in html)
+    check("mapeada com score: ⭐ 4,2 no card (F51 compacto)",
+          "⭐ 4,2" in html)
+    check("mapeada com GPTW: 🏆 GPTW no card (F51: sem ano)",
+          "🏆 GPTW" in html)
     check("entrada unavailable: SEM badge (contagem exata)",
           html.count('class="eq"') == 2)
     check("não-mapeada: sem badge (id t3 limpo)",
@@ -221,8 +221,8 @@ def test_badge_page() -> None:
         jobs, total_eligible=4, generated_at="x", quality_map=qmap,
         tracker_db=db)
     card0 = html_both.split('data-q="Praktikum Supply Chain 0')[1].split("</li>")[0]
-    check("coexistência F14+F15: ✅ E ⭐ no MESMO card",
-          "✅" in card0 and "⭐ 4,2 · Kununu" in card0)
+    check("coexistência F14+F15: ✅ E ⭐ no MESMO card (F51 compacto)",
+          "✅" in card0 and "⭐ 4,2" in card0)
 
     # badge nas 4 seções de cards (top, 🆕, 🎯, materials)
     watch_ev = [dict(jobs[0], company="Gute Firma GmbH")]

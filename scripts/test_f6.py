@@ -179,7 +179,8 @@ def test_salary_only_when_cited() -> None:
     j["description"] = ("Wir bieten ein monatliches Gehalt von 2.117 €. "
                         "Weitere Aufgaben im Supply Chain Management.")
     html = mp.render_minimal_html([j], total_eligible=1, generated_at="x")
-    check("salario citado aparece (€2117)", "€2117" in html)
+    check("salario citado aparece (F51: €2.117/mês)",
+          "€2.117/mês" in html)
     j2 = _job(2)
     html2 = mp.render_minimal_html([j2], total_eligible=1, generated_at="x")
     check("sem salario citado -> sem valor inventado",
