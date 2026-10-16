@@ -328,21 +328,22 @@ def test_refresh_e2e() -> None:
         ids2 = {str(j.get("id")) for j in jobs2}
         check("hard-dead t0 SAIU do eligible_jobs.json (JSON sem o id)",
               "t0" not in ids2)
-        check("JSON contém exatamente os 29 registros de vagas (sem registro "
-              "de provenance — métrica é o canal de auditoria)",
-              len(jobs2) == 29
+        # F37.3 (decisão do dono 15/10): t1 revelou german_required na
+        # hidratação => também SAI do JSON (exclusão total), não apenas
+        # recebe o flag F25. JSON = 30 − t0 (F39) − t1 (F37.3) = 28.
+        check("F37.3: t1 (german_required pós-hidratação) SAIU do JSON",
+              "t1" not in ids2)
+        check("JSON contém exatamente os 28 registros de vagas (t0 F39 + "
+              "t1 F37.3 saíram; sem registro de provenance — métrica é o "
+              "canal de auditoria)",
+              len(jobs2) == 28
               and all("dead_link_removed" not in j for j in jobs2))
-        t1 = next(j for j in jobs2 if j["id"] == "t1")
-        check("F20 intocado: hidratação persistida (description_source)",
-              t1.get("description_source") == "hydrated_topn")
-        check("F20 intocado: marcador honesto no JSON (fica)",
-              t1.get("hydration_inapplicable") == "german_required")
         check("soft-dead t2 PERMANECE no JSON (badge é decisão do render)",
               "t2" in ids2)
         dead, ia = calls["publish"][0]
-        check("publish recebe veredito completo (dead t0+t2, ia t1) "
-              "SEPARADOS — contrato F20 preservado",
-              dead == {"t0", "t2"} and ia == {"t1"})
+        check("publish recebe veredito separado (dead t0+t2; ia vazio — "
+              "t1 saiu do JSON, F37.3) — contrato F20 preservado",
+              dead == {"t0", "t2"} and not ia)
         # Métrica diária dead_link_removal (provenance).
         recs = [r for r in calls.get("metrics", [])
                 if r.get("type") == "dead_link_removal"]

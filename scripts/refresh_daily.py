@@ -1305,6 +1305,61 @@ def _reassess_backlog_applicability(ranking: list) -> dict:
             "by_reason": by_reason}
 
 
+def _remove_json_excluded(ranking: list) -> dict:
+    """F37.3 — EXCLUSÃO TOTAL do eligible (decisão do dono 15/10: "german_
+    required: exclusão total aprovada"). Remove do ``ranking`` (in place) as
+    vagas cujo motivo de inaplicabilidade — o flag F20/F25
+    ``hydration_inapplicable``, atribuído pelo detector ÚNICO
+    ``filters.applicability_exclusion_reason`` — está em
+    ``filters.APPLICABILITY_JSON_EXCLUSION_REASONS`` (hoje ``german_required``).
+
+    Mesmo caminho de exclusão do eligible da F39 (``_remove_hard_dead``): o id
+    SAI do ``eligible_jobs.json`` e a provenance fica na métrica diária
+    ``applicability_exclusion`` (motivo + contadores por motivo + ids/entradas).
+    Diferença: a F39 mexe no que a coleta entrega (URL morta); aqui só muda o
+    que PERMANECE no arquivo de saída — score, ordem e coleta intocados.
+
+    Lê o flag já atribuído (o MESMO veredito do detector único) e NÃO
+    re-executa o detector: nenhum segundo mecanismo. Motivos fora do
+    subconjunto (master_required, thesis_title, ...) mantêm o design F25
+    intacto — ficam no JSON com a flag e só descem do topo exibido.
+    Idempotente: re-run sobre o JSON já limpo não acha flag => 0 removidos,
+    sem evento inventado.
+
+    Devolve ``{"removed", "removed_ids", "removed_entries", "by_reason"}``;
+    ``removed_entries`` = ``[{"id","reason","company","title"}]`` (auditável).
+    """
+    from internship_finder.filters import is_json_exclusion_reason
+
+    removed: list[dict] = []
+    kept: list = []
+    for job in ranking:
+        reason = (
+            job.get(HYDRATION_INAPPLICABLE_FLAG)
+            if isinstance(job, dict) else None
+        )
+        if is_json_exclusion_reason(reason):
+            removed.append({
+                "id": str(job.get("id") or ""),
+                "reason": str(reason),
+                "company": str(job.get("company") or ""),
+                "title": str(job.get("title") or ""),
+            })
+        else:
+            kept.append(job)
+    if removed:
+        ranking[:] = kept
+    by_reason: dict[str, int] = {}
+    for entry in removed:
+        by_reason[entry["reason"]] = by_reason.get(entry["reason"], 0) + 1
+    return {
+        "removed": len(removed),
+        "removed_ids": [entry["id"] for entry in removed],
+        "removed_entries": removed,
+        "by_reason": by_reason,
+    }
+
+
 def _sync_personal_ranking(root: Path, data_dir: Path) -> None:
     """Fase 8 — sync-ranking diario do banco pessoal (best-effort).
 
@@ -1706,13 +1761,21 @@ def main(argv: list[str] | None = None) -> int:
     # ja marcada NUNCA e re-flagada. Best-effort TOTAL: falha vira log e o
     # run segue com o exit da coleta.
     backlog_stats: dict = {}
+    excl_stats: dict = {}
     backlog_inapplicable_ids: set[str] = set()
     try:
         ranking = json.loads(
             (data_dir / "eligible_jobs.json").read_text(encoding="utf-8")
         ) if (data_dir / "eligible_jobs.json").exists() else []
         backlog_stats = _reassess_backlog_applicability(ranking)
-        if backlog_stats["newly_flagged"]:
+        # F37.3 — EXCLUSÃO TOTAL do eligible: remove do JSON os registros cujo
+        # motivo está em ``APPLICABILITY_JSON_EXCLUSION_REASONS`` (hoje só
+        # ``german_required``; decisão do dono 15/10). Roda DEPOIS do passe F25
+        # e sobre o JSON do disco — pega os flags do passe do topo (F20,
+        # persistidos acima) E os do backlog; o flag é o MESMO veredito do
+        # detector único, então não há segundo mecanismo nem detector novo.
+        excl_stats = _remove_json_excluded(ranking)
+        if backlog_stats["newly_flagged"] or excl_stats["removed"]:
             try:
                 from internship_finder.cli import _write_json_atomic
                 _write_json_atomic(ranking, data_dir / "eligible_jobs.json")
@@ -1720,6 +1783,7 @@ def main(argv: list[str] | None = None) -> int:
                 log.warning("F25: flags do backlog nao persistidas (JSON "
                             "segue sem os marcadores): %s: %s",
                             type(exc).__name__, exc)
+        if backlog_stats["newly_flagged"]:
             log.info("F25 backlog: %d hidratada(s) reavaliada(s), %d "
                      "nova(s) inaplicavel(is) %s — descem do topo exibido "
                      "(ficam no JSON)",
@@ -1729,6 +1793,14 @@ def main(argv: list[str] | None = None) -> int:
         else:
             log.info("F25 backlog: %d hidratada(s) reavaliada(s), nenhuma "
                      "nova inaplicavel", backlog_stats["reassessed"])
+        if excl_stats["removed"]:
+            log.info("F37.3 exclusao total do eligible: %d vaga(s) SAIRAM do "
+                     "eligible_jobs.json %s (motivos de exclusao total — "
+                     "decisao do dono 15/10)",
+                     excl_stats["removed"], excl_stats["by_reason"])
+        else:
+            log.info("F37.3 exclusao total do eligible: nenhuma vaga a "
+                     "remover neste run")
         # Semantica F20: flag => demovida das superficies exibidas. TODO
         # flag no JSON conta (nova OU herdada de run anterior no mesmo
         # arquivo — ex. re-run sem re-coleta), nao so as deste passe: a
@@ -1750,6 +1822,24 @@ def main(argv: list[str] | None = None) -> int:
             }])
         except Exception as exc:  # noqa: BLE001 — metrica e best-effort
             log.warning("F25: registro de metricas do backlog nao gravado: "
+                        "%s: %s", type(exc).__name__, exc)
+        # F37.3 — provenance da EXCLUSÃO TOTAL (padrão F37/F39: motivo +
+        # contador por motivo + ids/entradas que SAÍRAM do eligible). Sempre
+        # gravado (0 no dia sem exclusões = baseline auditável). Append-only,
+        # best-effort: falha NUNCA derruba o run.
+        try:
+            from internship_finder.metrics import write_metrics as _wm_excl
+            _wm_excl(metrics_path, [{
+                "type": "applicability_exclusion",
+                "run_id": summary.get("run_id") or utcnow_iso(),
+                "timestamp": utcnow_iso(),
+                "removed": excl_stats.get("removed", 0),
+                "by_reason": excl_stats.get("by_reason", {}),
+                "removed_ids": excl_stats.get("removed_ids", []),
+                "removed_entries": excl_stats.get("removed_entries", []),
+            }])
+        except Exception as exc:  # noqa: BLE001 — metrica e best-effort
+            log.warning("F37.3: metrica applicability_exclusion nao gravada: "
                         "%s: %s", type(exc).__name__, exc)
         # F37 — contagem derivada "aplicavel" (= eligible − flagged) por
         # motivo, exposta no metrics para o header de universo (cards
@@ -1774,6 +1864,12 @@ def main(argv: list[str] | None = None) -> int:
     # recebe o conjunto unificado de inaplicáveis; mortas seguem separadas
     # p/ o badge "🔗 morta" nunca mentir sobre uma vaga viva).
     inapplicable_ids = inapplicable_ids | backlog_inapplicable_ids
+    # F37.3 — as vagas EXCLUÍDAS do JSON não são mais "inaplicáveis exibidas":
+    # saíram de vez. Nem a página nem o digest devem receber ids que já não
+    # estão no eligible (o filtro de exibição é por id — id ausente seria
+    # inócuo, mas o conjunto honesto é o dos que AINDA estão no JSON).
+    if excl_stats.get("removed"):
+        inapplicable_ids -= set(excl_stats.get("removed_ids") or [])
 
     # Fase 1 — publicacao do ranking em GitHub Pages (apos a coleta e o health;
     # nunca derruba o run: falha vira publish_error, reportada no Telegram).
