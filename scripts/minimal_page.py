@@ -75,16 +75,54 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 __all__ = [
-    "PAGE_TOP", "PAGE_TARGET_BYTES", "COMPANY_MAX_CARDS",
+    "PAGE_TOP", "PAGE_TOP_FULL", "PAGE_TARGET_BYTES", "COMPANY_MAX_CARDS",
     "NEW_SINCE_SECTION_TOP", "MATERIALS_SECTION_TOP", "EU_SECTION_TOP",
     "GLOSSARY_TERMS",
-    "render_minimal_html", "render_minimal_html_from_file",
+    "page_full_cap_bytes", "render_minimal_html", "render_minimal_html_from_file",
     "apply_company_cap",
 ]
 
-# Quantas vagas a pagina publica mostra (F6: 50; F11 T4: 100 — o tamanho
-# real medido com 100 vagas do snapshot 04/10 e 92 KB, dentro do alvo).
+# Quantas vagas a pagina publica mostra. F11 T4 fixou top=100 (contrato do
+# regime top-N: cap 2/empresa, alvo 100KB, cap duro 150KB). F43 adiciona o
+# regime FULL-LIST (``full_list=True`` / ``--full-list``): TODAS as elegiveis
+# vivas entram no HTML — o cap acompanha o universo (``page_full_cap_bytes``,
+# proporcional) e a degradacao size-aware continua garantindo a entrega.
+# PAGE_TOP permanece 100 (regime legado default; testes F11/F20/F36.1).
 PAGE_TOP = 100
+# F43 — teto do regime full-list ("universo inteiro na pratica"; mesmo valor
+# do PUBLIC_TOP do publish — quem pede top explicito < universo cai no regime
+# top-N legado da F11, intocado).
+PAGE_TOP_FULL = 100_000
+
+# F43 — orcamento da pagina FULL (decisao de produto, ver relatorio F43):
+# o cap fixo de 150KB da F6/F11 era dimensionado p/ top-100 (~1KB/card).
+# A full-list muda de faixa (~861 cards reais ~ 0,9-1,1MB), entao o cap
+# acompanha o universo: CHROME fixo + orcamento por card. O orcamento por
+# card (1.400 B) tem ~30% de folga sobre a medicao real de 15/10 (~1.054
+# B/card com snippet; ~913 sem) — a degradacao size-aware (sem snippets ->
+# corte honesto) continua garantindo a entrega dentro do cap.
+FULL_CHROME_BYTES = 12_000
+FULL_CARD_BUDGET_BYTES = 1_400
+
+# F43 — lazy-render (IntersectionObserver): N cards renderizados de cara
+# (primeira tela + respiro de scroll; o resto entra na viewport em lotes).
+# O custo real é DOM/parse, não bytes (página estática, ~1KB/card no HTML
+# baixado de uma vez); o IO só adia a REVELAÇÃO — dados já no HTML = busca
+# client-side funciona sobre TUDO, inclusive o ainda não revelado.
+LAZY_INITIAL_CARDS = 20
+LAZY_ROOT_MARGIN = 400        # px de antecipação (revela antes do fold)
+
+
+def page_full_cap_bytes(total_eligible: int) -> int:
+    """Cap duro PROPORCIONAL da pagina full (F43): chrome + N * orcamento.
+
+    Pura e monotona: cresce com o universo (o inverso do cap fixo da F6
+    mentiria sobre a full-list). O cap fixo ``PAGE_HARD_CAP_BYTES`` de
+    150KB PERMANECE como o contrato do regime top-N legado (top= explicito)
+    — os dois regimes coexistem no mesmo render.
+    """
+    return max(PAGE_HARD_CAP_BYTES,
+               FULL_CHROME_BYTES + FULL_CARD_BUDGET_BYTES * max(int(total_eligible), 0))
 
 # Maximo de vagas EXIBIDAS por empresa no top (spec F11 T4 — regra de
 # EXIBICAO: nao altera score/ranking/JSON/CSV; o corte e refeito com as
@@ -690,7 +728,10 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           salary_estimate: str = "",
           age_stale: bool = False,
           duration_flag: str = "",
-          enrollment_red_flag: str = "") -> str:
+          enrollment_red_flag: str = "",
+          profile_scores: dict | None = None,
+          profile_ranks: dict | None = None,
+          profile_attrs: bool = False) -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -770,6 +811,30 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         snip = ""
     qtext = " ".join(x for x in (job.get("title"), job.get("company"),
                                  job.get("location")) if x)
+    # F43 — data-attrs de perfil: scores/ranks das abas business/materials/EU
+    # computados NO BUILD (função pura), consumidos client-side. Profile
+    # business = o score/rank exibidos (coluna .s/.r da lista principal) —
+    # não duplica bytes.
+    ps = profile_scores or {}
+    pr = profile_ranks or {}
+    prof_bits = []
+    if profile_attrs:
+        # F43 — identidade do card (lazy-render + abas/ordenação client-side)
+        # e o rank do perfil business (a coluna .r exibida). Só no regime
+        # full: o regime top-N legado NÃO ganha bytes novos (A/B byte-id).
+        prof_bits.append(
+            f' data-jid="{_esc(str(job.get("id") or ""))}" data-r="{rank}"')
+    for key, s_attr, r_attr in (("materials", "data-mat", "data-matr"),
+                                ("eu", "data-eu", "data-eur")):
+        val = ps.get(key)
+        if val is None:
+            continue
+        rank_v = pr.get(key)
+        prof_bits.append(
+            f' {s_attr}="{_fmt_score(val)}"')
+        if rank_v is not None:
+            prof_bits.append(f' {r_attr}="{rank_v}"')
+    prof_html = "".join(prof_bits)
     return (
         f'<li class="c{" vf-on" if visa else ""}{" dead-on" if dead else ""}"'
         f' data-s="{score}"'
@@ -780,6 +845,7 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         f' data-ws="{1 if is_werkstudent_title(job) else 0}"'
         f' data-data="{1 if is_data_bi_title(job) else 0}"'
         f' data-ia="{1 if inapplicable else 0}"'
+        f'{prof_html}'
         f' data-q="{_esc(qtext)}">'
         f'<span class="r">{rank}</span><span class="s">{score}</span>'
         f'<div class="bd">{inner}{en_title_html}<div class="m">{meta}</div>{snip}{btn}</div></li>'
@@ -833,6 +899,17 @@ a.t:hover{text-decoration:underline}
 @media(min-width:640px){main{padding:24px 20px 56px}h1{font-size:1.25rem}}
 """
 
+# F43 — CSS do regime full (tabs por perfil + lazy-render + contador). Vive
+# SEPARADO de ``_CSS`` e só entra na página do regime full: o regime top-N
+# legado segue byte a byte o mesmo HTML (contrato do A/B F43).
+_CSS_F43 = """#tabs{display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap}
+#tabs button{padding:7px 12px;border:1px solid #2a343e;border-radius:999px;background:#192027;color:#c8d3dd;font-size:.82rem;cursor:pointer}
+#tabs button:hover{background:#1b2733}
+#tabs button.on{border-color:#4da3ff;color:#e6edf3;background:#1b2733}
+.count{display:inline-block;font-size:.78rem;color:#9aa7b4;margin:0 0 8px}
+li.c[data-lazy="1"]{content-visibility:auto;contain-intrinsic-size:auto 110px}
+"""
+
 _JS = """(function(){var q=document.getElementById('q'),vf=document.getElementById('f-vf'),n=document.getElementById('n'),de=document.getElementById('f-de'),co=document.getElementById('f-country'),nw=document.getElementById('f-new'),ws=document.getElementById('f-ws'),da=document.getElementById('f-data');
 if(!q)return;function f(){var t=q.value.trim().toLowerCase(),v=vf&&vf.checked,d=de&&de.checked,iso=co&&co.value,nwv=nw&&nw.checked,wsv=ws&&ws.checked,dav=da&&da.checked,c=0;
 document.querySelectorAll('li.c').forEach(function(li){var ok=!t||li.getAttribute('data-q').toLowerCase().indexOf(t)>-1;
@@ -845,6 +922,75 @@ if(dav)ok=ok&&li.getAttribute('data-data')==='1';
 li.style.display=ok?'':'none';if(ok)c++;});if(n)n.textContent=c;}q.addEventListener('input',f);if(vf)vf.addEventListener('change',f);if(de)de.addEventListener('change',f);if(co)co.addEventListener('change',f);if(nw)nw.addEventListener('change',f);if(ws)ws.addEventListener('change',f);if(da)da.addEventListener('change',f);})();
 """
 
+# F43 — JS da página full-list: abas por perfil (business/materials/EU) +
+# busca/filtros sobre a LISTA ÚNICA (o input ``#q`` já existia; aqui ele
+# passa a governar a lista inteira, inclusive cards fora da viewport) +
+# lazy-render. O NÚCLEO puro do lazy (``f43LazyInit``) é executado em node
+# pelo test_f43; o wrapper com IntersectionObserver real fica em
+# _JS_LAZY_IO — não-testável offline (sem DOM/viewport no node).
+_JS_PROFILE = """(function(){var tabs=document.querySelectorAll('#tabs button'),lis=document.querySelectorAll('#list li.c');if(!tabs.length)return;
+var q=document.getElementById('q'),vf=document.getElementById('f-vf'),de=document.getElementById('f-de'),co=document.getElementById('f-country'),nw=document.getElementById('f-new'),ws=document.getElementById('f-ws'),da=document.getElementById('f-data');
+var state={q:'',vf:false,de:false,iso:'',nw:false,ws:false,da:false,prof:'business',vis:{}};
+function syncFilters(){state.q=q?q.value.trim().toLowerCase():'';state.vf=!!(vf&&vf.checked);state.de=!!(de&&de.checked);state.iso=co?co.value:'';state.nw=!!(nw&&nw.checked);state.ws=!!(ws&&ws.checked);state.da=!!(da&&da.checked);}
+function cardOk(li){var ok=!state.q||li.getAttribute('data-q').toLowerCase().indexOf(state.q)>-1;
+if(state.vf)ok=ok&&li.getAttribute('data-vf')==='1';
+if(state.de)ok=ok&&li.getAttribute('data-de')!=='required';
+if(state.iso)ok=ok&&li.getAttribute('data-iso')===state.iso;
+if(state.nw)ok=ok&&li.getAttribute('data-new')==='1';
+if(state.ws)ok=ok&&li.getAttribute('data-ws')!=='1';
+if(state.da)ok=ok&&li.getAttribute('data-data')==='1';
+return ok;}
+function applyProfile(p){state.prof=p;var boxes=[];
+for(var i=0;i<lis.length;i++){var li=lis[i],jid=li.getAttribute('data-jid');
+var r=li.getAttribute('data-r'),s=li.getAttribute('data-s');
+if(p==='materials'){r=li.getAttribute('data-matr');s=li.getAttribute('data-mat');}
+if(p==='eu'){r=li.getAttribute('data-eur');s=li.getAttribute('data-eu');}
+var has=(p==='business')||(s!==null&&s!=='');
+var sc=(s!==null&&s!=='')?parseFloat(s):0;
+boxes.push([sc,r,li,has&&cardOk(li),jid]);}
+boxes.sort(function(a,b){if(b[0]-a[0])return b[0]-a[0];var ra=parseInt(a[1],10)||0,rb=parseInt(b[1],10)||0;if(rb-ra)return rb-ra;return a[4]<b[4]?-1:(a[4]>b[4]?1:0);});
+var ol=document.getElementById('list');
+for(var j=0;j<boxes.length;j++){ol.appendChild(boxes[j][2]);boxes[j][2].style.display=boxes[j][3]?'':'none';}
+for(var m=0;m<tabs.length;m++){var on=tabs[m].getAttribute('data-prof')===p;tabs[m].className=on?'on':'';tabs[m].setAttribute('aria-selected',on?'true':'false');}
+var cnt=0;for(var n2=0;n2<boxes.length;n2++)if(boxes[n2][3])cnt++;
+var el=document.getElementById('n');if(el)el.textContent=cnt+' vagas';}
+function onFilter(){syncFilters();applyProfile(state.prof);}
+for(var t=0;t<tabs.length;t++){tabs[t].addEventListener('click',function(ev){var el=ev.target;while(el&&!el.getAttribute('data-prof'))el=el.parentNode;if(el)applyProfile(el.getAttribute('data-prof'));});}
+if(q)q.addEventListener('input',onFilter);
+if(vf)vf.addEventListener('change',onFilter);
+if(de)de.addEventListener('change',onFilter);
+if(co)co.addEventListener('change',onFilter);
+if(nw)nw.addEventListener('change',onFilter);
+if(ws)ws.addEventListener('change',onFilter);
+if(da)da.addEventListener('change',onFilter);
+window.__F43=state;window.__F43apply=applyProfile;window.__F43cardOk=cardOk;window.__F43sync=syncFilters;})();
+"""
+
+# F43 — lazy-render: NÚCLEO PURO, função nomeada ``f43LazyInit(all, n)`` —
+# dado o conjunto de cards da lista única (na ordem do documento = ordem do
+# ranking) e o nº de cards "eager" (primeira tela + respiro), devolve o mapa
+# ``{jid: '1'|'0'}`` da revelação inicial. É ESTA a função executada em node
+# pelo test_f43 (o wrapper de IO é só o consumidor dela no navegador).
+_JS_LAZY_CORE = """function f43LazyInit(all,n){var out={};for(var i=0;i<all.length;i++){var jid=all[i].getAttribute('data-jid');if(jid!==null&&jid!=='')out[jid]=i<n?'1':'0';}return out;}
+"""
+
+# F43 — wrapper REAL do IntersectionObserver (runtime do navegador; sem IO
+# suportado — ou sem o núcleo — revela TUDO: a página nunca fica vazia).
+# O card CONTINUA no DOM e no fluxo (a busca/abas operam sobre a lista
+# inteira, revelado ou não); o IO só controla o atributo ``data-lazy``, cujo
+# CSS (``content-visibility:auto``) faz o browser PULAR layout/paint do que
+# está fora da viewport — o custo real é DOM/paint, não bytes.
+_JS_LAZY_IO = """(function(){var N=%d,R=%d,lis=document.querySelectorAll('#list li.c');
+if(!window.__F43||typeof f43LazyInit!=='function')return;
+var state=window.__F43.state,init=f43LazyInit(lis,N),k;
+for(k in init)state.vis[k]=init[k];
+for(var i=0;i<lis.length;i++){if(state.vis[lis[i].getAttribute('data-jid')]==='0')lis[i].setAttribute('data-lazy','1');}
+if(!('IntersectionObserver' in window)){for(var j=0;j<lis.length;j++){state.vis[lis[j].getAttribute('data-jid')]='1';lis[j].removeAttribute('data-lazy');}if(window.__F43apply)window.__F43apply(state.prof);return;}
+var io=new IntersectionObserver(function(entries){var hit=0;for(var e=0;e<entries.length;e++){var t=entries[e].target;if(entries[e].isIntersecting){state.vis[t.getAttribute('data-jid')]='1';t.removeAttribute('data-lazy');io.unobserve(t);hit++;}}},{rootMargin:R+'px'});
+for(var m=0;m<lis.length;m++){if(lis[m].getAttribute('data-lazy')==='1')io.observe(lis[m]);}
+if(window.__F43apply)window.__F43apply(state.prof);})();
+"""
+
 
 def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     new_ids: set[str] | None, dead_ids: set[str] | None,
@@ -855,7 +1001,9 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     personal_statuses: dict | None = None,
                     quality_map: dict | None = None,
                     inapplicable_ids: set[str] | None = None,
-                    salary_benchmark_map: dict | None = None) -> list[str]:
+                    salary_benchmark_map: dict | None = None,
+                    profile_maps: dict | None = None,
+                    skip_ids: set[str] | None = None) -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -863,6 +1011,13 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     que e um ranking PROPRIO; exibir o score do perfil principal la
     seria desinformacao). ``with_snippet``: False = sem o resumo de
     descricao (degradacao size-aware — campo decorativo).
+
+    F43: ``profile_maps`` = {"scores": {id: {"materials": x, "eu": y}},
+    "ranks": {id: {"materials": n, "eu": m}}} — data-attrs das abas por
+    perfil (None = sem abas, cards idênticos ao pré-F43).
+    ``skip_ids``: ids já exibidos na LISTA ÚNICA full (F43: a seção 🧪/🇪🇺
+    vira atalho de DESTAQUE top-10, não duplicata — a full-list é a fonte
+    da verdade por construção; None = comportamento pré-F43, byte a byte).
 
     F12: ``translation_cache`` (dict, default None = sem cache) faz o
     snippet da descricao usar a traducao EN em cache quando existir —
@@ -890,8 +1045,14 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     dead_ids = dead_ids or set()
     inapplicable_ids = inapplicable_ids or set()
     personal_statuses = personal_statuses or {}
+    profile_scores_map = (profile_maps or {}).get("scores") or {}
+    profile_ranks_map = (profile_maps or {}).get("ranks") or {}
+    profile_attrs = profile_maps is not None
+    skip_ids = skip_ids or set()
     for i, job in enumerate(jobs, rank_start):
         jid = str(job.get("id") or "")
+        if jid in skip_ids:
+            continue  # F43 — já exibido na lista única; seção = atalho
         entry = None
         if company_intel_map is not None:
             if jid in company_entry_cache:
@@ -955,6 +1116,11 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             salary_estimate=salary_est,
             duration_flag=duration_flag_text(job),
             enrollment_red_flag=enrollment_flag(job),
+            profile_scores=(profile_scores_map.get(jid) or {}) if profile_attrs
+            else None,
+            profile_ranks=(profile_ranks_map.get(jid) or {}) if profile_attrs
+            else None,
+            profile_attrs=profile_attrs,
         ))
     return rows
 
@@ -981,6 +1147,9 @@ def render_minimal_html(
     inapplicable_ids: set[str] | None = None,
     salary_benchmark_map: dict | None = None,
     now_ref: "datetime | None" = None,
+    profile_maps: dict | None = None,
+    full_list: bool = False,
+    full_limit: int | None = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
 
@@ -1047,6 +1216,15 @@ def render_minimal_html(
     ``with_snippets=True`` o render e' montado com snippets; o chamador
     ``render_size_aware`` remonta sem snippets (campo DECORATIVO) quando
     o resultado estoura o alvo de bytes — nunca vagas a menos.
+
+    F43 (full-list): ``full_list=True`` muda o corte do ranking principal
+    de "top-N + cap 2/empresa" para "universo inteiro" (mortas continuam
+    fora — a URL está morta; o corte honesto "mostrando X de N" conta a
+    verdade). O cap passa a ser o PROPORCIONAL ``page_full_cap_bytes``
+    (chrome + N * orcamento/card) decidido no ``render_size_aware``.
+    ``profile_maps`` = data-attrs das abas (scores/ranks materials/EU por
+    vaga, computados no build). Default ``full_list=False`` = regime
+    top-N legado da F11 byte a byte.
     """
     ref = now_ref or datetime.now(UTC)
     dead_ids = set(dead_link_ids or set())
@@ -1063,7 +1241,30 @@ def render_minimal_html(
     # corte com a regra 2/empresa percorre a lista JA sem as mortas.
     # Regra de exibicao; o JSON/CSV (base de dados) e intocavel.
     alive = [j for j in jobs if str(j.get("id") or "") not in excluded]
-    shown = apply_company_cap(alive, limit=top)
+    # F43 — regime full-list: a lista única passa a ser o UNIVERSO inteiro
+    # de vagas vivas (sem corte top-N, sem cap 2/empresa — cap/empresa é
+    # regra de EXIBIÇÃO do regime top-N e causava ~20 ausências ocultas no
+    # top-100; no universo completo ele deixaria de ser top-list e viraria
+    # subamostra — efeito DOCUMENTADO no relatório F43 §cap-empresa). As
+    # seções 🧪/🇪🇺 PERMANECEM (contrato "seções intactas" do A/B): a full-
+    # list mata os buracos POR CONSTRUÇÃO (toda vaga viva está na lista
+    # única; as seções 🧪/🇪🇺 seguem como DESTAQUE do perfil top-10 —
+    # mesmos cards do legado, coluna de score própria — e só deduplicam
+    # contra a lista quando ela foi cortada pelo orçamento (``full_limit``;
+    # ver ``skip_ids`` nas seções). Regime legado (top-N): corte top +
+    # cap 2/empresa da F11, intocado.
+    if full_list:
+        shown = list(alive)
+        # F43 — corte de GARANTIA: só o último recurso do orçamento
+        # (``render_size_aware``) passa ``full_limit``; o corte é sempre o
+        # PREFIXO do ranking (nunca uma subamostra arbitrária) e a contagem
+        # do rodapé conta a verdade (ver ``shown_note``).
+        if full_limit is not None:
+            shown = shown[:max(int(full_limit), 0)]
+    else:
+        shown = apply_company_cap(alive, limit=top)
+    # F43 — ids da lista única (fonte do dedupe das seções no caso cortado).
+    shown_ids = {str(j.get("id") or "") for j in shown}
     new_ids = set(new_since_ids or set())
     entry_cache: dict = {}
     body = "\n".join(_cards_section(
@@ -1074,6 +1275,7 @@ def render_minimal_html(
         quality_map=quality_map,
         inapplicable_ids=inapplicable,
         salary_benchmark_map=salary_benchmark_map,
+        profile_maps=profile_maps,
     ))
     n_vf = sum(1 for j in shown if _visa_friendly(
         j, entry_cache.get(str(j.get("id") or ""))))
@@ -1097,6 +1299,7 @@ def render_minimal_html(
             personal_statuses=p_statuses,
             quality_map=quality_map,
             salary_benchmark_map=salary_benchmark_map,
+            profile_maps=profile_maps if full_list else None,
         ))
         new_section = (
             f'<h2>🆕 Novas desde ontem — {len(new_ids)} nova(s){extra}</h2>'
@@ -1132,6 +1335,7 @@ def render_minimal_html(
             personal_statuses=p_statuses,
             quality_map=quality_map,
             salary_benchmark_map=salary_benchmark_map,
+            profile_maps=profile_maps if full_list else None,
         ))
         total_line = f'{len(watchlist_events)} nova(s) nas empresas que você acompanha'
         if radar_omitted:
@@ -1180,11 +1384,17 @@ def render_minimal_html(
                     f"<li>{_esc(l)}</li>" for l in lines) + "</ul>"
             )
 
+    # F43 — comentário do bloco 🧪 atualizado (o corte em si é o original
+    # da F36.1; no full o dedupe tira as duplicatas da lista única).
     # Seção Materials — perfil alternativo, ranking proprio (digest ja
     # usa o MESMO rank_materials_jobs); top 10 por materials_score.
     # F36.1 — ``profile_limit``: orçamento da camada 3 (espelho F20 do
     # radar): degrada a lista para top-N com header HONESTO (conta o que
     # está listado) quando a página estoura o cap. None = inteira.
+    # F43 — full-list: cards que já estão na lista única são PULADOS
+    # (``skip_ids``): a seção vira atalho de DESTAQUE do top materials
+    # (toda vaga já está na lista, ordenável pela ABA 🧪). Regime legado:
+    # comportamento pré-F43 byte a byte (skip_ids vazio).
     materials_section = ""
     if materials:
         mat_list = materials[:profile_limit] if profile_limit else materials
@@ -1197,12 +1407,38 @@ def render_minimal_html(
             personal_statuses=p_statuses,
             inapplicable_ids=inapplicable,
             salary_benchmark_map=salary_benchmark_map,
+            profile_maps=profile_maps if full_list else None,
+            skip_ids=(shown_ids if (full_list and full_limit is not None)
+                      else None),
         ))
         mat_header = "top 10"
         mat_note = (
             '<p class="p2">Ranking próprio para Materials Engineering '
             '(mesmas vagas elegíveis, pesos distintos dos de Supply '
             'Chain). O score à esquerda é o do perfil Materials.</p>')
+        if full_list:
+            # F43 — a lista única é a FONTE DA VERDADE (universo inteiro);
+            # a seção segue como DESTAQUE do perfil (os mesmos top-10 do
+            # legado, coluna de score própria) e aponta para a aba 🧪, que
+            # reordena a lista COMPLETA por este perfil. Quando a lista
+            # única foi CORTADA pelo orçamento (``full_limit``), o atalho
+            # passa a mostrar só o que o corte deixou de fora (dedupe).
+            if full_limit is not None:
+                mat_header = f"destaques fora do top {len(shown_ids)}"
+                mat_note = (
+                    '<p class="p2">Ranking próprio para Materials Engineering '
+                    '(pesos distintos dos de Supply Chain). A lista completa '
+                    'está acima — use a aba 🧪 para reordená-la por este '
+                    'perfil; aqui ficam só os destaques que o top principal '
+                    'não mostra.</p>')
+            else:
+                mat_header = "destaques do perfil 🧪"
+                mat_note = (
+                    '<p class="p2">Ranking próprio para Materials Engineering '
+                    '(pesos distintos dos de Supply Chain, coluna à esquerda). '
+                    'A lista completa está acima — use a aba 🧪 para '
+                    'reordená-la INTEIRA por este perfil; aqui ficam os 10 '
+                    'destaques do perfil.</p>')
         if profile_limit and len(materials) > len(mat_list):
             mat_header = (
                 f"top {len(mat_list)} de {len(materials)} — orçamento de página do dia")
@@ -1233,6 +1469,9 @@ def render_minimal_html(
             personal_statuses=p_statuses,
             inapplicable_ids=inapplicable,
             salary_benchmark_map=salary_benchmark_map,
+            profile_maps=profile_maps if full_list else None,
+            skip_ids=(shown_ids if (full_list and full_limit is not None)
+                      else None),
         ))
         eu_header = "top 10"
         eu_note = (
@@ -1240,6 +1479,26 @@ def render_minimal_html(
             '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
             'estrato; ver docs/f36_non_de_profile.md). O score à esquerda '
             'é o do perfil EU.</p>')
+        if full_list:
+            # F43 — mesmo contrato do destaque 🧪 (aba 🇪🇺 reordena a lista
+            # completa por eu_score; dedupe só no caso cortado).
+            if full_limit is not None:
+                eu_header = f"destaques fora do top {len(shown_ids)}"
+                eu_note = (
+                    '<p class="p2">Ranking próprio para o canal secundário '
+                    '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
+                    'estrato; ver docs/f36_non_de_profile.md). A lista completa '
+                    'está acima — use a aba 🇪🇺 para reordená-la por este '
+                    'perfil; aqui ficam só os destaques que o top principal '
+                    'não mostra.</p>')
+            else:
+                eu_header = "destaques do perfil 🇪🇺"
+                eu_note = (
+                    '<p class="p2">Ranking próprio para o canal secundário '
+                    '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
+                    'estrato; ver docs/f36_non_de_profile.md). A lista completa '
+                    'está acima — use a aba 🇪🇺 para reordená-la INTEIRA por '
+                    'este perfil; aqui ficam os 10 destaques do perfil.</p>')
         if profile_limit and len(eu) > len(eu_list):
             eu_header = (
                 f"top {len(eu_list)} de {len(eu)} — orçamento de página do dia")
@@ -1255,8 +1514,20 @@ def render_minimal_html(
             + eu_cards
         )
 
+    # F43 — footer honesto por regime: full-list = "todas as N" (a página
+    # É o universo); legado = "Top N de N" + cap 2/empresa (se aplicou).
+    if full_list:
+        if full_limit is not None and len(shown) < len(alive):
+            shown_note = (f"mostrando {len(shown)} de {len(alive)} vagas "
+                          f"elegíveis (orçamento de página do dia)")
+        else:
+            shown_note = f"todas as {len(shown)} vagas elegíveis"
+    else:
+        # F43: o regime top-N legado mantém o rodapé EXATO da F11 (a
+        # contagem honesta com "mostrando X de Y" é do regime full).
+        shown_note = f"Top {len(shown)} de {total_eligible} vagas elegíveis"
     footer_note = (
-        f"Top {len(shown)} de {total_eligible} vagas elegíveis · {n_vf} com 🛂 "
+        f"{shown_note} · {n_vf} com 🛂 "
         "(empresa com política de visto) · ranking, JSON e CSV completos "
         "são gerados pelo pipeline no VPS"
     )
@@ -1269,18 +1540,56 @@ def render_minimal_html(
         f'<option value="{iso}">{iso.upper()}</option>'
         for iso in COUNTRY_FLAGS
     )
+    # F43 — abas por perfil (regime full): a lista única reordenável por
+    # business/materials/EU. Default business (= ordem do ranking oficial).
+    # O contador "#n" é DOM-latente desde a F6 (o _JS original referencia
+    # getElementById('n') com guard if(n) e o span nunca existiu); no regime
+    # full ele ganha vida: o _JS_PROFILE escreva a contagem visível da aba
+    # ativa + filtros + lazy-state (o _JS legado continua contando nos
+    # bastidores, mas o span agora é do _JS_PROFILE — o primeiro que rodar
+    # por último vence; no full o _JS_PROFILE roda DEPOIS).
+    tabs_html = ""
+    extra_js = ""
+    if full_list:
+        tabs_html = (
+            '<span id="n" class="count" aria-live="polite"></span>\n'
+            '<div id="tabs" role="tablist">'
+            '<button type="button" class="on" data-prof="business"'
+            ' aria-selected="true">💼 Business</button>'
+            '<button type="button" data-prof="materials"'
+            ' aria-selected="false">🧪 Materials</button>'
+            '<button type="button" data-prof="eu"'
+            ' aria-selected="false">🇪🇺 EU non-DE</button>'
+            '</div>'
+        )
+        extra_js = (
+            _JS_LAZY_CORE + _JS_PROFILE
+            + _JS_LAZY_IO % (LAZY_INITIAL_CARDS, LAZY_ROOT_MARGIN)
+        )
+    _css_f43 = _CSS_F43 if full_list else ""
+    # F43 — o bloco JS extra (núcleo lazy + abas) só existe no regime full;
+    # na página legada o HTML segue byte a byte o da F11 (nenhuma tag vazia).
+    _script_f43 = f"<script>{extra_js}</script>" if extra_js else ""
+    page_title = (
+        f"Internship Finder — todas as {len(shown)} vagas do dia"
+        if full_list else f"Internship Finder — top {len(shown)} do dia"
+    )
+    h1_title = (
+        "Internship Finder — todas as vagas do dia"
+        if full_list else "Internship Finder — top do dia"
+    )
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>Internship Finder — top {len(shown)} do dia</title>
-<style>{_CSS}</style>
+<title>{page_title}</title>
+<style>{_CSS}{_css_f43}</style>
 </head>
 <body>
 <main>
-<h1>Internship Finder — top do dia</h1>
+<h1>{h1_title}</h1>
 <p class="p">{_esc(generated_at)} UTC · ordenado pelo score do pipeline · 🛂 = empresa com política de visto</p>
 <div class="bar">
 <input id="q" type="search" placeholder="Buscar título, empresa, local…">
@@ -1290,7 +1599,7 @@ def render_minimal_html(
 {'<label><input type="checkbox" id="f-new"> só novas de ontem</label>' if new_ids else ''}
 <label><input type="checkbox" id="f-ws"> sem Werkstudent</label>
 <label><input type="checkbox" id="f-data"> Data/BI</label>
-</div>
+</div>{tabs_html}
 <ol id="list">
 {body}
 </ol>
@@ -1303,7 +1612,7 @@ def render_minimal_html(
 {_legal_footer_html()}
 {glossary}
 </main>
-<script>{_JS}</script>
+<script>{_JS}</script>{_script_f43}
 </body>
 </html>
 """
@@ -1327,6 +1636,8 @@ def render_size_aware(
     sweet_spot_rows: list[dict] | None = None,
     inapplicable_ids: set[str] | None = None,
     salary_benchmark_map: dict | None = None,
+    full_list: bool = False,
+    profile_maps: dict | None = None,
 ) -> str:
     """``render_minimal_html`` com degradacao progressiva de tamanho (F11+F20).
 
@@ -1370,6 +1681,15 @@ def render_size_aware(
     log). Regressão garantida por scripts/test_f36_1.py com fixture que
     ESTOURA o cap (página pequena nunca exercita degradação).
     """
+    # F43 — orçamento por REGIME: o top-N legado mantém alvo 100KB + cap duro
+    # 150KB (F11, intocado); a full-list troca por UM valor só — o cap
+    # proporcional ao universo (``page_full_cap_bytes``): com ~900 cards o
+    # cap fixo de 150KB mentiria sobre a página. ``target`` = ``hard_cap``
+    # no full (não há "alvo macio" a perseguir: a entrega É a lista inteira,
+    # e o snippet é o primeiro campo decorativo a cair).
+    hard_cap = (page_full_cap_bytes(total_eligible) if full_list
+                else PAGE_HARD_CAP_BYTES)
+    target = hard_cap if full_list else PAGE_TARGET_BYTES
     html = render_minimal_html(
         jobs, total_eligible=total_eligible, generated_at=generated_at,
         top=top, company_intel_map=company_intel_map,
@@ -1381,8 +1701,9 @@ def render_size_aware(
         quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
         inapplicable_ids=inapplicable_ids,
         salary_benchmark_map=salary_benchmark_map,
+        full_list=full_list, profile_maps=profile_maps,
     )
-    if len(html.encode("utf-8")) > PAGE_TARGET_BYTES:
+    if len(html.encode("utf-8")) > target:
         html = render_minimal_html(
             jobs, total_eligible=total_eligible, generated_at=generated_at,
             top=top, company_intel_map=company_intel_map,
@@ -1394,13 +1715,14 @@ def render_size_aware(
             quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
             inapplicable_ids=inapplicable_ids,
             salary_benchmark_map=salary_benchmark_map,
+            full_list=full_list, profile_maps=profile_maps,
         )
     # F20 (item 4) — orçamento 🎯: só quando a montagem mais enxuta AINDA
     # estoura o cap duro. A 🎯 é aparada (top RADAR_TOP_N por prioridade)
     # ANTES do gate ⭐ da F15 — inverte a pendência: a seção de valor
     # entra, a lista longa degrada honestamente.
     if watchlist_events and len(watchlist_events) > RADAR_TOP_N \
-            and len(html.encode("utf-8")) > PAGE_HARD_CAP_BYTES:
+            and len(html.encode("utf-8")) > hard_cap:
         html = render_minimal_html(
             jobs, total_eligible=total_eligible, generated_at=generated_at,
             top=top, company_intel_map=company_intel_map,
@@ -1413,6 +1735,7 @@ def render_size_aware(
             radar_limit=RADAR_TOP_N,
             inapplicable_ids=inapplicable_ids,
             salary_benchmark_map=salary_benchmark_map,
+            full_list=full_list, profile_maps=profile_maps,
         )
         print(f"pages: orçamento 🎯 ativo — seção aparada p/ top-{RADAR_TOP_N} "
               f"de {len(watchlist_events)} eventos; página agora "
@@ -1423,7 +1746,7 @@ def render_size_aware(
         # por ~0,9KB. Mesma família F20: degrada as seções de perfil para
         # top-PROFILE_SECTION_BUDGET_TOP com header honesto (a seção NUNCA
         # sai inteira — o bug original — e o cap NUNCA estoura).
-        if len(html.encode("utf-8")) > PAGE_HARD_CAP_BYTES \
+        if len(html.encode("utf-8")) > hard_cap \
                 and (materials or eu):
             html = render_minimal_html(
                 jobs, total_eligible=total_eligible, generated_at=generated_at,
@@ -1438,13 +1761,98 @@ def render_size_aware(
                 profile_limit=PROFILE_SECTION_BUDGET_TOP,
                 inapplicable_ids=inapplicable_ids,
                 salary_benchmark_map=salary_benchmark_map,
+                full_list=full_list, profile_maps=profile_maps,
             )
             print(f"pages: orçamento 🧪/🇪🇺 ativo — seções de perfil "
                   f"degradadas p/ top-{PROFILE_SECTION_BUDGET_TOP} "
                   f"(header honesto); página agora "
                   f"{len(html.encode('utf-8'))} bytes (cap "
-                  f"{PAGE_HARD_CAP_BYTES})")
+                  f"{hard_cap})")
+    # F43 — última garantia do regime FULL: se nem a montagem sem snippets
+    # coube no cap proporcional, corta a lista no MAIOR prefixo do ranking
+    # que caiba (busca binária sobre o nº de cards; cada tentativa mede a
+    # página INTEIRA, já com as seções-atalho) e o rodapé conta a verdade
+    # ("mostrando X de Y"). O cap proporcional tem folga de projeto
+    # (~1,4 KB/card vs ~1,0 KB/card medido no universo real): este caminho
+    # é a GARANTIA de entrega, não o comportamento normal.
+    if full_list and len(html.encode("utf-8")) > hard_cap:
+        excluded = {str(x) for x in (dead_link_ids or set())}
+        excluded |= {str(x) for x in (inapplicable_ids or set())}
+        universe = [j for j in jobs if str(j.get("id") or "") not in excluded]
+        best: str | None = None
+        best_n = 0
+        lo, hi = 1, len(universe)
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            trial = render_minimal_html(
+                jobs, total_eligible=total_eligible, generated_at=generated_at,
+                top=top, company_intel_map=company_intel_map,
+                new_since_ids=new_since_ids, dead_link_ids=dead_link_ids,
+                materials=materials, eu=eu, with_snippets=False,
+                translation_cache=translation_cache,
+                watchlist_events=watchlist_events,
+                tracker_db=tracker_db,
+                quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
+                inapplicable_ids=inapplicable_ids,
+                salary_benchmark_map=salary_benchmark_map,
+                full_list=True, profile_maps=profile_maps, full_limit=mid,
+            )
+            if len(trial.encode("utf-8")) <= hard_cap:
+                best, best_n, lo = trial, mid, mid + 1
+            else:
+                hi = mid - 1
+        if best is not None:
+            html = best
+            print(f"pages: orçamento FULL ativo — lista cortada em {best_n} "
+                  f"de {len(universe)} vagas (rodapé honesto); página agora "
+                  f"{len(html.encode('utf-8'))} bytes (cap {hard_cap})")
+        else:
+            print(f"pages: ATENÇÃO — nem 1 card cabe no cap FULL ({hard_cap} "
+                  f"bytes); página medida {len(html.encode('utf-8'))} bytes")
     return html
+
+
+def _profile_maps(jobs: list[dict]) -> dict:
+    """F43 — scores/ranks dos perfis alternativos, por vaga (BUILD, puro).
+
+    REUSA os rankings do pipeline (``rank_materials_jobs`` /
+    ``rank_eu_stratum``) — nenhuma regra de score nasce aqui: o ``rank`` é
+    a posição na lista ordenada do próprio perfil (1-based, o mesmo número
+    que a seção-atalho exibe) e o score é o campo do perfil
+    (``materials_score`` / ``eu_score``). Zero rede, zero mutação da
+    entrada (ambas as funções devolvem lista nova).
+
+    Semântica do estrato EU: ``rank_eu_stratum`` corta o estrato não-DE
+    (é o que a seção 🇪🇺 promete) — vagas fora do estrato NÃO recebem
+    ``data-eu`` e, na aba 🇪🇺, ficam fora (é informação, não filtro
+    silencioso: o score EU de uma vaga DE/fora do estrato não é do canal).
+
+    Best-effort: qualquer falha -> perfil ausente (a aba correspondente
+    apenas não esconde nada — nunca derruba o render).
+    """
+    scores: dict = {}
+    ranks: dict = {}
+    try:
+        from internship_finder.materials_ranking import rank_materials_jobs
+        for i, j in enumerate(rank_materials_jobs(jobs), 1):
+            jid = str(j.get("id") or "")
+            if not jid or j.get("materials_score") is None:
+                continue
+            scores.setdefault(jid, {})["materials"] = j["materials_score"]
+            ranks.setdefault(jid, {})["materials"] = i
+    except Exception:  # noqa: BLE001 — aba opcional, nunca erro
+        pass
+    try:
+        from internship_finder.eu_ranking import rank_eu_stratum
+        for i, j in enumerate(rank_eu_stratum(jobs), 1):
+            jid = str(j.get("id") or "")
+            if not jid or j.get("eu_score") is None:
+                continue
+            scores.setdefault(jid, {})["eu"] = j["eu_score"]
+            ranks.setdefault(jid, {})["eu"] = i
+    except Exception:  # noqa: BLE001 — aba opcional, nunca erro
+        pass
+    return {"scores": scores, "ranks": ranks}
 
 
 def _previous_snapshot(archive_root: Path) -> list[dict] | None:
@@ -1480,6 +1888,7 @@ def render_minimal_html_from_file(
     employer_quality_path: Path | str | None = None,
     inapplicable_ids: set[str] | None = None,
     salary_benchmark_path: Path | str | None = None,
+    full_list: bool = False,
     generated_at: str | None = None,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
@@ -1532,6 +1941,15 @@ def render_minimal_html_from_file(
         raise ValueError(f"formato inesperado em {path}: esperado lista de vagas")
     generated = (generated_at if generated_at is not None
                  else datetime.now(UTC).strftime("%Y-%m-%d %H:%M"))
+
+    # F43 — REGIME: full-list explícito (``full_list=True`` /
+    # ``--full-list``) OU pedido de "todas as vagas" (``top >=
+    # PAGE_TOP_FULL`` — é o que o publish pede desde a F6 via
+    # ``PUBLIC_TOP``: quem pede o universo com um ``top`` explícito menor
+    # continua no regime top-N legado da F11, intocado). No full, os
+    # data-attrs de perfil (abas 🧪/🇪🇺) são computados AQUI, no build.
+    full = bool(full_list) or top >= PAGE_TOP_FULL
+    profile_maps = _profile_maps(jobs) if full else None
 
     # F15 — mapa de qualidade do empregador + cruzamento ponto ótimo
     # (derivado NO BUILD; zero HTTP — só o dataset local e os arquivos
@@ -1623,6 +2041,7 @@ def render_minimal_html_from_file(
         quality_map=quality_map, sweet_spot_rows=sweet_spot_rows,
         inapplicable_ids=inapplicable_ids,
         salary_benchmark_map=salary_benchmark_map,
+        full_list=full, profile_maps=profile_maps,
     )
     # F15 §4 — a seção Ponto ótimo só permanece se a página COM ela
     # couber no cap duro (150KB); a MEDIÇÃO é no render FINAL (com todas
@@ -1630,7 +2049,9 @@ def render_minimal_html_from_file(
     # uma vez sem a seção (o badge ⭐ nos cards PERMANECE) e reporta a
     # pendência com o tamanho medido. Nunca estoura o cap por causa
     # da seção.
-    if sweet_spot_rows and len(html.encode("utf-8")) > PAGE_HARD_CAP_BYTES:
+    hard_cap = (page_full_cap_bytes(len(jobs)) if full
+                else PAGE_HARD_CAP_BYTES)
+    if sweet_spot_rows and len(html.encode("utf-8")) > hard_cap:
         size_with = len(html.encode("utf-8"))
         html = render_size_aware(
             jobs, total_eligible=len(jobs), generated_at=generated,
@@ -1643,9 +2064,10 @@ def render_minimal_html_from_file(
             quality_map=quality_map, sweet_spot_rows=None,
             inapplicable_ids=inapplicable_ids,
             salary_benchmark_map=salary_benchmark_map,
+            full_list=full, profile_maps=profile_maps,
         )
         print(f"pages: seção ⭐ Ponto ótimo OMITIDA — página com ela "
-              f"({size_with} bytes) estoura o cap de {PAGE_HARD_CAP_BYTES} "
+              f"({size_with} bytes) estoura o cap de {hard_cap} "
               f"bytes; publicada sem a seção "
               f"({len(html.encode('utf-8'))} bytes)")
     return html
@@ -1723,6 +2145,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="benchmark salarial curado (F29; default "
                              "config/salary_benchmark.json do repo; '' "
                              "desliga a estimativa de mercado rotulada)")
+    parser.add_argument("--full-list", dest="full_list", action="store_true",
+                        help="F43: regime FULL-LIST — TODAS as vagas "
+                             "elegiveis na pagina unica (sem corte top-N e "
+                             "sem cap 2/empresa, que sao regras de EXIBICAO "
+                             "do top), com abas por perfil + lazy-render; o "
+                             "cap passa a ser proporcional ao universo. "
+                             "Default: regime top-N legado da F11 (intacto).")
     parser.add_argument("--no-eu", dest="include_eu", action="store_false",
                         help="desliga a seção EU non-DE (F36; ligada por "
                              "default)")
@@ -1779,6 +2208,7 @@ def main(argv: list[str] | None = None) -> int:
         inapplicable_ids=inapplicable_ids,
         salary_benchmark_path=salary_benchmark_path,
         include_eu=args.include_eu,
+        full_list=args.full_list,
     )
     if args.output == "-":
         sys.stdout.write(page)
