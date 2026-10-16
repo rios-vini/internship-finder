@@ -118,19 +118,20 @@ def has_gptw(entry: dict | None) -> bool:
 
 
 def badge_text(entry: dict | None) -> str:
-    """Texto curto do badge de qualidade (F15 §2); ``''`` quando não há.
+    """Texto curto do badge de qualidade (F15 §2; F51: compacto); ``''`` sem.
 
-    - Prêmio GPTW vence (mais raro/valioso): ``🏆 GPTW <ano>``;
-    - Senão, score Kununu presente: ``⭐ <N,N> · Kununu`` (uma casa
-      decimal, vírgula — exibição alemã consistente com a página);
+    - Prêmio GPTW vence (mais raro/valioso): ``🏆 GPTW`` (F51: sem o
+      ano — repetido por card, explicado UMA vez na legenda);
+    - Senão, score Kununu presente: ``⭐ N,N`` (F51: sem o sufixo
+      ``· Kununu``; fonte explicada na legenda);
     - Entrada sem score e sem prêmio ("unavailable"): SEM badge —
       a entrada existe para auditoria do mapa, não para render ruído.
     """
     if has_gptw(entry):
-        return f"🏆 GPTW {int(entry['gptw_award'])}"
+        return "🏆 GPTW"
     score = _score_of(entry)
     if score is not None:
-        return f"⭐ {score:.1f}".replace(".", ",") + " · Kununu"
+        return f"⭐ {score:.1f}".replace(".", ",")
     return ""
 
 

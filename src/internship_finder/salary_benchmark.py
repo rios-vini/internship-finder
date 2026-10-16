@@ -33,6 +33,7 @@ __all__ = [
     "estimate_for_category",
     "salary_category_of",
     "salary_estimate_line",
+    "salary_estimate_short",
     "salary_estimate_for_job",
     "market_salary_estimate",
 ]
@@ -125,6 +126,17 @@ def salary_estimate_line(entry: dict) -> str:
     return f"{SALARY_ESTIMATE_LABEL}: ~{entry.get('text')}{date_part} ({source})"
 
 
+def salary_estimate_short(entry: dict) -> str:
+    """F51 — estimativa compacta do CARD: ``≈<texto>*``.
+
+    A honestidade da F29 continua: o ``*`` remete à legenda única, que
+    reproduz o rótulo LITERAL ``estimativa de mercado`` (a palavra
+    "estimativa" segue presente na página — dentro da legenda, no
+    bloco explicando o ``*``), a fonte e a data ``checked``. Pura.
+    """
+    return f"≈{entry.get('text')}*"
+
+
 def market_salary_estimate(job: dict,
                            benchmark: dict[str, dict] | None) -> dict | None:
     """Estimativa de mercado para a vaga quando o anúncio NÃO cita salário.
@@ -154,13 +166,19 @@ def market_salary_estimate(job: dict,
 
 
 def salary_estimate_for_job(job: dict,
-                            benchmark: dict[str, dict] | None) -> str:
+                            benchmark: dict[str, dict] | None,
+                            *, compact: bool = False) -> str:
     """Linha pronta para o card/página; ``''`` quando não se aplica.
 
-    Pura e offline; encapsula o contrato completo (detectado presente =
-    linha vazia — o chamador mostra apenas o salário detectado).
+    Pura e offline; encapsula o contrato completo (detectado presente = ''
+    — o chamador mostra apenas o salário detectado). F51:
+    ``compact=True`` devolve a forma curta ``≈€1.507/mês*`` (o ``*``
+    aponta para a legenda única); ``compact=False`` mantém a linha
+    rotulada completa da F29 (digest e superfícies fora do card).
     """
     est = market_salary_estimate(job, benchmark)
     if est is None:
         return ""
+    if compact:
+        return salary_estimate_short(est["entry"])
     return salary_estimate_line(est["entry"])
