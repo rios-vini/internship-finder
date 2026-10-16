@@ -242,6 +242,12 @@ def render_ranking_html(
     sinais de candidatura (idade, duração §16e, red-flags, rodapé
     jurídico). Benchmark versionado no repo (config/); loader tolerante:
     ausente/ilegível -> sem estimativa, nunca quebra.
+
+    F52: ``--vitrine`` (explicito aqui para fixar o contrato) liga a
+    vitrine recruiter no render — bloco "About this system" (EN) no
+    topo, light mode via prefers-color-scheme, meta description + OG
+    (sem og:image) e favicon SVG data-URI. Zero arquivo extra: o
+    publish continua empurrando SÓ index.html para a gh-pages.
     """
     script = root / "scripts" / "minimal_page.py"
     if not script.exists():
@@ -257,6 +263,7 @@ def render_ranking_html(
         "--tracker-db", "data/personal/jobs_personal.db",
         "--employer-quality", "config/employer_quality.json",
         "--salary-benchmark", "config/salary_benchmark.json",
+        "--vitrine",
     ]
     if dead_link_ids:
         dead_tmp = output_path.parent / ".dead_ids.txt"

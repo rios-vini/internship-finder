@@ -44,6 +44,26 @@ F12 (camada de exibição EN) adiciona ao render — tudo display-only:
 - **Rodapé-glossário estático** (``_glossary_html``): 6 termos fixos
   DE→EN, HTML puro, sem JS.
 
+F52 (vitrine recruiter — ``vitrine=True`` / ``--vitrine``) adiciona ao
+render a primeira impressão profissional para quem chega por link
+(Anschreiben/LinkedIn/CV) — SEM atrapalhar o loop diário do dono e SEM
+quebrar o contrato de publish (só index.html):
+
+- **Bloco "About this system"** (EN): ``<details>`` FECHADO no topo —
+  o resumo de 1 linha fica visível; 2–3 linhas dentro. Os números
+  (empresas acompanhadas, vagas elegíveis do dia) são renderizados DO
+  BUILD, nunca hardcode. O texto é RASCUNHO revisável pelo dono.
+- **Light mode**: ``@media (prefers-color-scheme: light)`` com paleta
+  espelhada (tokens pares dark/light, contraste AA). Zero JS — só CSS.
+- **``<head>``**: meta description (EN), og:title/og:description/
+  og:type/og:url canônico (SEM og:image — publish só empurra
+  index.html; arquivo extra é fora de escopo por design).
+- **Favicon**: SVG inline data-URI (~200B), zero arquivo extra.
+
+Default ``vitrine=False``: página byte a byte idêntica à pré-F52 (o
+publish liga via ``--vitrine`` explícito, fixando o contrato — padrão
+F13/F15/F43).
+
 Mortos removidos (F6): ``application_deadline`` (F1: validade do FEED,
 nao data real), ``official_page`` (F1: desligado) e os campos de intel do
 enrichment LLM (Fase 3, cookie-walled). Nada disso e renderizado. O
@@ -612,6 +632,44 @@ LEGAL_ZUSTIMMUNG_PHRASE = (
 )
 
 
+def _tracked_companies_count() -> "int | None":
+    """F52 — nº de empresas acompanhadas pelo registry (DO BUILD, nunca
+    hardcode). Best-effort total: import falha (pacote ausente em uso
+    manual standalone) -> None -> o about omite o número, nunca quebra.
+    """
+    try:
+        from internship_finder.registry import CompanyRegistry
+        return len(CompanyRegistry().entries)
+    except Exception:  # noqa: BLE001 — vitrine é best-effort, nunca erro
+        return None
+
+
+def _about_html(tracked_companies: "int | None", total_eligible: int) -> str:
+    """F52 — bloco "About this system" (EN), <details> FECHADO no topo.
+
+    Custo vertical para o dono: 1 linha (o summary). Os números vêm DO
+    BUILD (registry via ``_tracked_companies_count``, elegíveis do dia do
+    ``total_eligible`` — parâmetro que o chamador já passava); texto é
+    rascunho revisável (ver relatório da fase). Pura e offline.
+    """
+    if tracked_companies is not None:
+        sources = (f"a 5M+ job-posting dataset plus {tracked_companies} "
+                   f"tracked employer career pages")
+    else:
+        sources = "a 5M+ job-posting dataset and tracked employer career pages"
+    return (
+        '<details class="about">'
+        f'<summary>{_ABOUT_SUMMARY}</summary>'
+        '<p>This page is my own daily job-ranking system: an automated '
+        f'pipeline that scans {sources}, scores each role for fit '
+        '(procurement / supply chain), employer quality and visa policy, '
+        f'and republishes this list every morning — {total_eligible} '
+        f'eligible role{"s" if total_eligible != 1 else ""} today. '
+        f'<a href="{REPO_URL}">Source code on GitHub</a>.</p>'
+        '</details>'
+    )
+
+
 def _legal_footer_html() -> str:
     """F29 item 7: rodapé com as frases jurídicas LITERAIS do §16e.
 
@@ -910,6 +968,76 @@ _CSS_F43 = """#tabs{display:flex;gap:6px;margin:0 0 12px;flex-wrap:wrap}
 li.c[data-lazy="1"]{content-visibility:auto;contain-intrinsic-size:auto 110px}
 """
 
+# F52 — vitrine recruiter. Página canônica do GitHub Pages (verificada ao
+# vivo 16/10: 200 OK) — usada no og:url e no link "Source code on GitHub"
+# do bloco about. O repo é público: o link funciona para o recruiter.
+SITE_URL = "https://rios-vini.github.io/internship-finder/"
+REPO_URL = "https://github.com/rios-vini/internship-finder"
+
+# F52 — favicon: SVG inline data-URI (~200B), ZERO arquivo extra (o
+# publish empurra só index.html para a gh-pages — contrato intocado).
+# Marcador "VR" do ranking em verde-score sobre o painel escuro do site.
+_FAVICON_HREF = (
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' "
+    "viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' "
+    "fill='%2310151b'/%3E%3Ctext x='16' y='22' font-family='Arial, "
+    "sans-serif' font-size='13' font-weight='bold' fill='%239fd8b4' "
+    "text-anchor='middle'%3EVR%3C/text%3E%3C/svg%3E"
+)
+
+# F52 — rascunho do about (dono revisa claims antes do merge; texto
+# final vai no relatório). Números NUNCA aqui — vêm do build.
+_ABOUT_SUMMARY = (
+    "Built and updated daily by Vinicius Rios — about this system"
+)
+
+# F52 — CSS do bloco about + light mode. Tokens pares dark/light: o
+# dark é o default (regime do dono intocado); o light espelha a paleta
+# sob @media(prefers-color-scheme: light) — zero JS.
+_CSS_F52 = """details.about{margin:0 0 12px;font-size:.82rem}
+details.about summary{color:#9fb3c8;cursor:pointer;padding:2px 0}
+details.about p{margin:6px 0 2px;color:#9aa7b4;line-height:1.5}
+details.about a{color:#4da3ff}
+@media(prefers-color-scheme:light){
+body{background:#ffffff;color:#1f2328}
+main a{color:#0969da}
+h2{color:#383f47}
+.p,.p2{color:#5b6570}
+.r{color:#5b6570}
+.t{color:#1f2328}
+a.t:visited{color:#383f47}
+.m{color:#5b6570}
+.d{color:#454c54}
+.d.en{color:#1a5da8}
+.en{color:#1a5da8}
+.age{color:#5b6570}
+.est{color:#3d5a78}
+.nsal{color:#6b7480}
+.gloss,.f,.legal{color:#6b7480}
+.spot{color:#383f47}
+.radar-more{color:#5b6570}
+.bar input[type=search]{background:#f4f6f8;border-color:#c6ccd2;color:#1f2328}
+.bar select{background:#f4f6f8;border-color:#c6ccd2;color:#1f2328}
+.bar input[type=checkbox]{accent-color:#0969da}
+li.c{border-bottom-color:#e6e9ec}
+.s{color:#116326}
+.vf{color:#116326}
+.de{color:#7a5d00}
+.dead{color:#a12622}
+.newb{color:#116326}
+.pt{color:#116326}
+.eq{color:#7a5d00}
+.age-stale{color:#954f04}
+.dur{color:#954f04}
+.flag{color:#954f04}
+.btn{border-color:#116326;color:#116326}
+.btn:hover{background:#116326;color:#ffffff}
+details.about summary{color:#3d5a78}
+details.about p{color:#5b6570}
+details.about a{color:#0969da}
+}
+"""
+
 _JS = """(function(){var q=document.getElementById('q'),vf=document.getElementById('f-vf'),n=document.getElementById('n'),de=document.getElementById('f-de'),co=document.getElementById('f-country'),nw=document.getElementById('f-new'),ws=document.getElementById('f-ws'),da=document.getElementById('f-data');
 if(!q)return;function f(){var t=q.value.trim().toLowerCase(),v=vf&&vf.checked,d=de&&de.checked,iso=co&&co.value,nwv=nw&&nw.checked,wsv=ws&&ws.checked,dav=da&&da.checked,c=0;
 document.querySelectorAll('li.c').forEach(function(li){var ok=!t||li.getAttribute('data-q').toLowerCase().indexOf(t)>-1;
@@ -1150,6 +1278,7 @@ def render_minimal_html(
     profile_maps: dict | None = None,
     full_list: bool = False,
     full_limit: int | None = None,
+    vitrine: bool = False,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
 
@@ -1225,6 +1354,13 @@ def render_minimal_html(
     ``profile_maps`` = data-attrs das abas (scores/ranks materials/EU por
     vaga, computados no build). Default ``full_list=False`` = regime
     top-N legado da F11 byte a byte.
+
+    F52 (vitrine recruiter): ``vitrine=True`` liga o bloco "About this
+    system" (EN, <details> fechado no topo, números do build), light
+    mode via prefers-color-scheme (CSS puro), meta description + OG no
+    <head> (sem og:image — contrato de publish: só index.html) e favicon
+    SVG inline data-URI. Default ``False`` = página byte a byte a
+    pré-F52 (o publish liga via ``--vitrine`` explícito).
     """
     ref = now_ref or datetime.now(UTC)
     dead_ids = set(dead_link_ids or set())
@@ -1578,18 +1714,46 @@ def render_minimal_html(
         "Internship Finder — todas as vagas do dia"
         if full_list else "Internship Finder — top do dia"
     )
+    # F52 — vitrine recruiter (default OFF: nada disto existe na página
+    # legada — byte a byte pré-F52). Head: meta description + OG (sem
+    # og:image) + favicon data-URI + color-scheme honesto (dark default +
+    # light via media query). Corpo: bloco about com números DO BUILD.
+    _meta_f52 = ""
+    _about = ""
+    _css_f52 = ""
+    if vitrine:
+        _meta_f52 = (
+            '\n<meta name="description" content="Daily-updated ranking of '
+            'internship and working-student jobs in procurement and supply '
+            'chain (Germany and target EU countries), automatically scored '
+            'for role fit, employer quality and visa policy.">'
+            f'\n<meta property="og:title" content="{page_title}">'
+            '\n<meta property="og:description" content="Daily-updated '
+            'ranking of internship and working-student jobs in procurement '
+            'and supply chain, automatically scored for role fit, employer '
+            'quality and visa policy.">'
+            '\n<meta property="og:type" content="website">'
+            f'\n<meta property="og:url" content="{SITE_URL}">'
+            f'\n<link rel="icon" href="{_FAVICON_HREF}" type="image/svg+xml">'
+        )
+        # O \n inicial vive NO VALOR (não na linha do template): com
+        # vitrine=False o HTML é byte a byte o pré-F52 (nenhuma linha
+        # vazia fantasma no <head>/corpo).
+        _about = "\n" + _about_html(_tracked_companies_count(),
+                                    total_eligible)
+        _css_f52 = _CSS_F52
     return f"""<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
-<title>{page_title}</title>
-<style>{_CSS}{_css_f43}</style>
+<meta name="color-scheme" content="{'dark light' if vitrine else 'dark'}">
+<title>{page_title}</title>{_meta_f52}
+<style>{_CSS}{_css_f43}{_css_f52}</style>
 </head>
 <body>
 <main>
-<h1>{h1_title}</h1>
+<h1>{h1_title}</h1>{_about}
 <p class="p">{_esc(generated_at)} UTC · ordenado pelo score do pipeline · 🛂 = empresa com política de visto</p>
 <div class="bar">
 <input id="q" type="search" placeholder="Buscar título, empresa, local…">
@@ -1638,6 +1802,7 @@ def render_size_aware(
     salary_benchmark_map: dict | None = None,
     full_list: bool = False,
     profile_maps: dict | None = None,
+    vitrine: bool = False,
 ) -> str:
     """``render_minimal_html`` com degradacao progressiva de tamanho (F11+F20).
 
@@ -1702,6 +1867,7 @@ def render_size_aware(
         inapplicable_ids=inapplicable_ids,
         salary_benchmark_map=salary_benchmark_map,
         full_list=full_list, profile_maps=profile_maps,
+        vitrine=vitrine,
     )
     if len(html.encode("utf-8")) > target:
         html = render_minimal_html(
@@ -1716,6 +1882,7 @@ def render_size_aware(
             inapplicable_ids=inapplicable_ids,
             salary_benchmark_map=salary_benchmark_map,
             full_list=full_list, profile_maps=profile_maps,
+            vitrine=vitrine,
         )
     # F20 (item 4) — orçamento 🎯: só quando a montagem mais enxuta AINDA
     # estoura o cap duro. A 🎯 é aparada (top RADAR_TOP_N por prioridade)
@@ -1736,6 +1903,7 @@ def render_size_aware(
             inapplicable_ids=inapplicable_ids,
             salary_benchmark_map=salary_benchmark_map,
             full_list=full_list, profile_maps=profile_maps,
+            vitrine=vitrine,
         )
         print(f"pages: orçamento 🎯 ativo — seção aparada p/ top-{RADAR_TOP_N} "
               f"de {len(watchlist_events)} eventos; página agora "
@@ -1762,6 +1930,7 @@ def render_size_aware(
                 inapplicable_ids=inapplicable_ids,
                 salary_benchmark_map=salary_benchmark_map,
                 full_list=full_list, profile_maps=profile_maps,
+                vitrine=vitrine,
             )
             print(f"pages: orçamento 🧪/🇪🇺 ativo — seções de perfil "
                   f"degradadas p/ top-{PROFILE_SECTION_BUDGET_TOP} "
@@ -1796,6 +1965,7 @@ def render_size_aware(
                 inapplicable_ids=inapplicable_ids,
                 salary_benchmark_map=salary_benchmark_map,
                 full_list=True, profile_maps=profile_maps, full_limit=mid,
+                vitrine=vitrine,
             )
             if len(trial.encode("utf-8")) <= hard_cap:
                 best, best_n, lo = trial, mid, mid + 1
@@ -1890,6 +2060,7 @@ def render_minimal_html_from_file(
     salary_benchmark_path: Path | str | None = None,
     full_list: bool = False,
     generated_at: str | None = None,
+    vitrine: bool = False,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
 
@@ -2042,6 +2213,7 @@ def render_minimal_html_from_file(
         inapplicable_ids=inapplicable_ids,
         salary_benchmark_map=salary_benchmark_map,
         full_list=full, profile_maps=profile_maps,
+        vitrine=vitrine,
     )
     # F15 §4 — a seção Ponto ótimo só permanece se a página COM ela
     # couber no cap duro (150KB); a MEDIÇÃO é no render FINAL (com todas
@@ -2065,6 +2237,7 @@ def render_minimal_html_from_file(
             inapplicable_ids=inapplicable_ids,
             salary_benchmark_map=salary_benchmark_map,
             full_list=full, profile_maps=profile_maps,
+            vitrine=vitrine,
         )
         print(f"pages: seção ⭐ Ponto ótimo OMITIDA — página com ela "
               f"({size_with} bytes) estoura o cap de {hard_cap} "
@@ -2155,6 +2328,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-eu", dest="include_eu", action="store_false",
                         help="desliga a seção EU non-DE (F36; ligada por "
                              "default)")
+    parser.add_argument("--vitrine", dest="vitrine", action="store_true",
+                        help="F52: vitrine recruiter — bloco About this "
+                             "system (EN) no topo, light mode via "
+                             "prefers-color-scheme, meta description + OG "
+                             "no head e favicon data-URI. Default: OFF "
+                             "(página byte a byte a pré-F52).")
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -2209,6 +2388,7 @@ def main(argv: list[str] | None = None) -> int:
         salary_benchmark_path=salary_benchmark_path,
         include_eu=args.include_eu,
         full_list=args.full_list,
+        vitrine=args.vitrine,
     )
     if args.output == "-":
         sys.stdout.write(page)
