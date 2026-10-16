@@ -212,16 +212,39 @@ def _fmt_score(value) -> str:
         return "—"
 
 
+_PERIOD_DISPLAY = {"month": "mês", "monat": "mês", "year": "ano",
+                   "jahr": "ano", "hour": "hora", "stunde": "hora",
+                   "week": "semana", "woche": "semana", "day": "dia",
+                   "tag": "dia"}
+
+
+def _fmt_eur(value) -> str:
+    """F51: valor monetário com separador de milhar alemão (2.280)."""
+    try:
+        return f"{float(value):,.0f}".replace(",", ".")
+    except (TypeError, ValueError):
+        return f"{value}"
+
+
 def _fmt_salary(salary: dict | None) -> str:
-    """Salario citado no anuncio (evidencia textual; nunca inventado)."""
+    """Salário citado no anuncio (evidencia textual; nunca inventado).
+
+    F51 item 2: formato compacto alemão ``€2.280/mês`` (milhar com
+    ponto; período traduzido para PT quando conhecido — o VALOR e a
+    UNIDADE vêm do anúncio, apenas a exibição é localizada).
+    """
     if not salary:
         return ""
     period = salary.get("period")
+    if period is not None:
+        period = _PERIOD_DISPLAY.get(str(period).strip().lower(),
+                                     str(period))
     suffix = f"/{period}" if period else ""
     if salary.get("min") is not None and salary.get("max") is not None:
         if float(salary["min"]) == float(salary["max"]):
-            return f"€{salary['min']:g}{suffix}"
-        return f"€{salary['min']:g}–€{salary['max']:g}{suffix}"
+            return f"€{_fmt_eur(salary['min'])}{suffix}"
+        return (f"€{_fmt_eur(salary['min'])}–€{_fmt_eur(salary['max'])}"
+                f"{suffix}")
     return ""
 
 
