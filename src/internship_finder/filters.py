@@ -443,6 +443,27 @@ APPLICABILITY_EXCLUSION_REASONS = (
     "spontaneous_pool",
 )
 
+# F37.3 (decisão do dono 15/10 ~23:45 UTC, literal: "german_required:
+# exclusão total aprovada"): motivos cujo veredito é EXCLUSÃO TOTAL do
+# eligible_jobs.json também quando revelados na re-avaliação PÓS-HIDRATAÇÃO
+# (F20 topo exibido / F25 backlog) — o registro SAI do arquivo (com
+# provenance na métrica diária), e NÃO apenas o flag F25
+# ``hydration_inapplicable`` (que demove do topo mas mantém a vaga no JSON).
+# A cascata ``select_eligible`` já remove TODO motivo (não só estes); este
+# subconjunto é a decisão de QUEM também exclui fora da cascata — a decisão
+# vive num lugar só: ampliar a exclusão = somar o motivo a esta tupla
+# (1 linha). Nenhum segundo mecanismo, nenhum detector duplicado — o motivo
+# vem de ``applicability_exclusion_reason``.
+APPLICABILITY_JSON_EXCLUSION_REASONS = ("german_required",)
+
+
+def is_json_exclusion_reason(reason: str | None) -> bool:
+    """F37.3 — True quando o motivo de inaplicabilidade EXCLUI a vaga do
+    eligible_jobs.json (mesma trilha de exclusão da cascata e da remoção
+    F39), e não só a demove do topo (flag F25). ``None``/motivo não listado
+    = False (design F25 intacto)."""
+    return reason in APPLICABILITY_JSON_EXCLUSION_REASONS
+
 # Tese por TÍTULO (case-insensitive). "Abschlussarbeit" cobre as teses DE
 # sem grau no nome (Bachelorarbeit/Masterarbeit têm os compostos próprios,
 # mas caem aqui também); "thesis" cobre EN (Bachelor's/Master's Thesis,

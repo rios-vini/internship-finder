@@ -1,0 +1,126 @@
+{
+  "universe": "eligible_jobs.json 2026-10-15 (pós-run 09:00 UTC, 861 vagas, main 6878e5f); trechos literais de língua preservados VERBATIM (campos mínimos, nunca o payload completo); expectativas validadas contra o detector único applicability_exclusion_reason (classificador F18 app_intel.german_level) no clone /tmp/if-f373 em 16/10",
+  "expected_removals": 4,
+  "jobs": [
+    {
+      "group": "positivo-DE-obrigatorio",
+      "id": "BoschGroup|smartrecruiters:BoschGroup:744000141914929",
+      "company": "BoschGroup",
+      "title": "Praktikum in der Logistik - Data & Analytics",
+      "employment_type": "INTERN",
+      "location": "Stuttgart, DE",
+      "country_iso": "de",
+      "description_snippet": "Möchtest du die Logistik von morgen durch intelligente Datenströme revolutionieren? Dann entwickle mit uns skalierbare Datenprodukte und Reports. Werde Teil unseres agilen Teams! Sprachen: verhandlungssicheres Deutsch und sehr gutes Englisch  Beginn: nach Absprache Dauer: 6 Monate",
+      "expect_json_excluded": true,
+      "expected_reason": "german_required"
+    },
+    {
+      "group": "positivo-DE-obrigatorio",
+      "id": "Hilti Group|absolventa:13379865",
+      "company": "Hilti Group",
+      "title": "Intern Strategic Procurement Electronics & Drives (m/f/d)",
+      "employment_type": "INTERN",
+      "location": "Kaufering, DE",
+      "country_iso": "de",
+      "description_snippet": "We are looking for an intern in the field of Strategic Procurement for Electronics & Drives for at least 6 months starting immediately. Independent and responsible working style Very good German and English skills Interest in technical topics",
+      "expect_json_excluded": true,
+      "expected_reason": "german_required"
+    },
+    {
+      "group": "positivo-DE-obrigatorio",
+      "id": "trumpf|workday:trumpf/TRUMPF_Students:R00043249",
+      "company": "trumpf",
+      "title": "Praktikum Data & Analytics Engineering – Data Refinement & KPI",
+      "employment_type": "INTERN",
+      "location": "Ditzingen, DE",
+      "country_iso": "de",
+      "description_snippet": "Pflichtpraktikum oder freiwilliges Praktikum. Deutsch- und Englischkenntnisse in Wort und Schrift runden Ihr Profil ab",
+      "expect_json_excluded": true,
+      "expected_reason": "german_required"
+    },
+    {
+      "group": "positivo-DE-obrigatorio",
+      "id": "Robert Bosch GmbH|sf_dataset:bundesagentur:15986-REF296008N-",
+      "company": "Robert Bosch GmbH",
+      "title": "Pflichtpraktikum Data Engineering & Data Analytics im Akustik",
+      "employment_type": "INTERN",
+      "location": "Stuttgart, DE",
+      "country_iso": "de",
+      "description_snippet": "Additional Information\nBeginn: nach Absprache\nSprachen: Deutsch und Englisch\nDauer: 4 - 6 Monate (ausschließlich Pflichtpraktikum gemäß Immatrikulationsbescheinigung)",
+      "expect_json_excluded": true,
+      "expected_reason": "german_required"
+    },
+    {
+      "group": "contra-caso-von-Vorteil",
+      "id": "Würth Group|sf_dataset:successfactors:1439347933",
+      "company": "Würth Group",
+      "title": "Praktikant (m/w/d) im Bereich Logistik - Import Beschaffung",
+      "employment_type": "INTERN",
+      "location": "Künzelsau, DE",
+      "country_iso": "de",
+      "description_snippet": "Du unterstützt unser Team bei Transportorganisation für die nationale und internationale Beschaffungslogistik. Spezialisierung im Bereich Logistik von Vorteil. Gute Englischkenntnisse in Wort und Schrift sind wünschenswert.",
+      "expect_json_excluded": false,
+      "expected_reason": null
+    },
+    {
+      "group": "contra-caso-German-is-a-plus",
+      "id": "adidas|sf_dataset:successfactors:1442914133",
+      "company": "adidas",
+      "title": "INTERNSHIP OPPORTUNITIES - CONSUMER, MARKETPLACE AND SALES INSIGHTS & ANALYTICS (M/F/D)",
+      "employment_type": "INTERN",
+      "location": "Herzogenaurach, DE",
+      "country_iso": "de",
+      "description_snippet": "Project Management, Strategy or similar Fluency in English (written & spoken), German is a plus Strong MS Office skills (especially Excel and PowerPoint)",
+      "expect_json_excluded": false,
+      "expected_reason": null
+    },
+    {
+      "group": "contra-caso-German-is-a-plus",
+      "id": "BASF SE|successfactors:basf:1443393533",
+      "company": "BASF SE",
+      "title": "Internship Business Reporting (m/f/d) - Hybrid Option GER",
+      "employment_type": "INTERN",
+      "location": "Berlin, DE",
+      "country_iso": "de",
+      "description_snippet": "In Global Business Services, we support BASF's divisions with a cross-functional network. service-minded, with very good English skills, German is a plus you are based in Berlin or able to work regularly from our Berlin office",
+      "expect_json_excluded": false,
+      "expected_reason": null
+    },
+    {
+      "group": "contra-caso-German-is-a-plus",
+      "id": "C & A (Canda)|sf_dataset:successfactors:1435161633",
+      "company": "C & A (Canda)",
+      "title": "Intern (m/f/d) Data Governance",
+      "employment_type": "INTERN",
+      "location": "Düsseldorf, DE",
+      "country_iso": "de",
+      "description_snippet": "Excellent communication and stakeholder management skills Fluent in English; German is a plus Available for a full-time internship of six months' duration",
+      "expect_json_excluded": false,
+      "expected_reason": null
+    },
+    {
+      "group": "contra-caso-von-Vorteil",
+      "id": "trumpf|workday:trumpf/TRUMPF_Students:R00043505",
+      "company": "trumpf",
+      "title": "Praktikum Controlling & Business Analytics EUV (SS 2027)",
+      "employment_type": "INTERN",
+      "location": "Ditzingen, DE",
+      "country_iso": "de",
+      "description_snippet": "Grundkenntnisse in SAP (ERP/BW) sowie in Power BI runden Ihr Profil ab und sind von Vorteil Durch eine strukturierte und proaktive Arbeitsweise überzeugen Sie mit ausgeprägten analytischen und konzeptionellen Fähigkeiten",
+      "expect_json_excluded": false,
+      "expected_reason": null
+    },
+    {
+      "group": "contra-caso-EN-puro",
+      "id": "careers.marsh.com|sf_dataset:phenom:R_366549",
+      "company": "careers.marsh.com",
+      "title": "Oliver Wyman - Data & Analytics Consulting - Intern (m/f/d) - Berlin",
+      "employment_type": "INTERN",
+      "location": "Berlin, Germany",
+      "country_iso": "de",
+      "description_snippet": "We are currently hiring an intern to join our Data & Analytics team in Berlin, supporting clients in complex business challenges. You will develop analytical solutions, conduct data-driven projects, and collaborate with diverse teams. Ideal for students with a quantitative background and proficiency in Python or R.",
+      "expect_json_excluded": false,
+      "expected_reason": null
+    }
+  ]
+}

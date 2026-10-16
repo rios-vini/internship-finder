@@ -342,26 +342,37 @@ def test_refresh_e2e() -> None:
         # persistiu no JSON
         after = json.loads(
             (data_dir / "eligible_jobs.json").read_text(encoding="utf-8"))
+        after_ids = {j["id"] for j in after}
         flagged = {j["id"] for j in after if j.get("hydration_inapplicable")}
-        check("JSON persistido: j0/j2 flagadas", flagged == {"j0", "j2"},
-              f"flagged={flagged}")
+        # F37.3 (decisão do dono 15/10): j0/j2 revelaram german_required na
+        # re-avaliação => SAEM do eligible_jobs.json (exclusão total), não
+        # apenas recebem o flag F25.
+        check("F37.3: j0/j2 SAIRAM do JSON (exclusão total german_required)",
+              "j0" not in after_ids and "j2" not in after_ids)
+        check("JSON sem flags remanescentes (só havia german_required)",
+              not flagged, f"flagged={flagged}")
         check("JSON intacta: j1/j3 hidratadas aplicáveis sem flag",
-              all("hydration_inapplicable" not in after[i] for i in (1, 3)))
+              all("hydration_inapplicable" not in after[i] for i in (0, 1)))
         check("não-hidratadas sem flag",
-              all("hydration_inapplicable" not in after[i] for i in range(4, 20)))
-        check("contagem/ordem do JSON preservada (20, mesmos ids)",
-              [j["id"] for j in after] == [f"j{i}" for i in range(20)])
+              all("hydration_inapplicable" not in after[i]
+                  for i in range(2, 18)))
+        check("contagem/ordem do JSON (18: j1/j3 + j4..j19, ordem preservada)",
+              [j["id"] for j in after]
+              == ["j1", "j3"] + [f"j{i}" for i in range(4, 20)])
 
         # publish recebeu as inaplicáveis do backlog
         dead, ia = calls["publish"][0]
-        check("publish recebeu inapplicable_ids do backlog {j0,j2}",
-              ia == {"j0", "j2"}, f"ia={ia}")
+        # F37.3: as removidas do JSON não vão para as superfícies exibidas —
+        # o conjunto honesto é o das que AINDA estão no JSON.
+        check("publish recebeu inapplicable_ids vazio (j0/j2 saíram do "
+              "JSON — F37.3)", not ia, f"ia={ia}")
         check("publish recebeu dead_link_ids vazio (liveness limpo)",
               dead == set())
 
         # digest recebeu excluded_ids unificado
-        check("digest recebeu excluded_ids {j0,j2}",
-              calls["digest"][0] == {"j0", "j2"},
+        check("digest recebeu excluded_ids vazio (removidas não são "
+              "exibidas — F37.3)",
+              not calls["digest"][0],
               f"excluded={calls['digest'][0]}")
 
         # métricas: registro próprio no JSONL
@@ -419,8 +430,10 @@ def test_refresh_e2e() -> None:
         check("idempotência: JSON byte a byte após o 2º run",
               (data_dir / "eligible_jobs.json").read_bytes() == snapshot)
         dead2, ia2 = calls["publish"][1]
-        check("idempotência: publish do 2º run recebe as mesmas flagadas",
-              ia2 == {"j0", "j2"})
+        # F37.3: j0/j2 saíram do JSON no 1º run; no 2º, sem flags no JSON,
+        # nada a demover (o conjunto exibível honesto permanece vazio).
+        check("idempotência: publish do 2º run sem inaplicáveis (j0/j2 já "
+              "excluídos — F37.3)", not ia2, f"ia2={ia2}")
         recs2 = [json.loads(l) for l in
                  (data_dir / "collection_metrics.jsonl").read_text().splitlines()
                  if l not in set(metrics_mid.splitlines())]

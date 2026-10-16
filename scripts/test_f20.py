@@ -699,17 +699,18 @@ def test_refresh_e2e() -> None:
 
         check("refresh termina exit 0 com estágio F20", rc == 0)
         dead, ia = calls["publish"][0]
-        check("publish recebe dead_link_ids e inapplicable_ids SEPARADOS",
-              dead == {"t0"} and ia == {"t1"})
+        # F37.3 (decisão do dono 15/10): t1 revelou german_required na
+        # hidratação => SAI do eligible_jobs.json (não é mais "inaplicável
+        # exibida": quem sai do JSON não recebe badge). Mortas seguem
+        # SEPARADAS (badge "🔗 morta" nunca mente sobre uma vaga viva).
+        check("publish recebe dead_link_ids e inapplicable_ids SEPARADOS "
+              "(ia vazio: a inaplicável SAIU do JSON — F37.3)",
+              dead == {"t0"} and not ia)
         jobs2 = json.loads((data_dir / "eligible_jobs.json").read_text(
             encoding="utf-8"))
-        t1 = next(j for j in jobs2 if j["id"] == "t1")
-        check("hidratação persistida: description_source=hydrated_topn",
-              t1.get("description_source") == "hydrated_topn")
-        check("hidratação persistida: timestamp presente",
-              "description_hydrated_at" in t1)
-        check("hidratação persistida: marcador honesto no JSON (fica)",
-              t1.get("hydration_inapplicable") == "german_required")
+        ids_f373 = {str(j.get("id")) for j in jobs2}
+        check("F37.3: t1 (german_required pós-hidratação) SAIU do JSON",
+              "t1" not in ids_f373)
         t0j = next(j for j in jobs2 if j["id"] == "t0")
         check("vaga morta: intocada no JSON (só desce do top)",
               t0j.get("description_source") is None
