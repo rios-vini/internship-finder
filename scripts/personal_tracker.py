@@ -54,8 +54,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/ (F41)
 
 from internship_finder import app_intel  # noqa: E402  (deadline employer p/ reminders)
+import application_log as alog  # noqa: E402  (F41 — event log de candidaturas)
 
 # ------------------------------------------------------------------ constantes
 
@@ -68,6 +70,8 @@ PRIORITIES = ("high", "normal", "low")
 EFFORTS = ("low", "medium", "high")
 
 DEFAULT_DB = Path("data/personal/jobs_personal.db")
+# F41 — log append-only dos desfechos (ground truth); vive AO LADO do banco.
+DEFAULT_LOG = Path("data/personal/application_events.jsonl")
 DEFAULT_RANKING = Path("data/eligible_jobs.json")
 DEFAULT_JOBS_DB = Path("data/jobs.db")
 DEFAULT_CSV = Path("data/personal/shortlist.csv")
@@ -179,6 +183,90 @@ def upsert_status(conn: sqlite3.Connection, job_id: str, status: str, *,
             add_event(conn, job_id, "marked", status)
 
 
+# ------------------------------------------------- F41 — event log / view
+#
+# F41 (16/10): o log append-only (``data/personal/application_events.jsonl``)
+# é o GROUND TRUTH dos DESFECHOS de candidatura. O SQLite do tracker é a
+# VIEW derivada — ``rebuild`` reconstrói o status a partir do log
+# (determinístico: último evento COM status por job_id). Comandos de
+# desfecho gravam PRIMEIRO no log (source=cli) e o banco é atualizado como
+# view. ``message_id`` determinístico (cli:<job>:<tipo>:<data>) torna replay
+# idempotente. O log nunca é reescrito; duplo-clique/replay não o corrompem.
+
+# status do tracker que É um desfecho de candidatura -> event_type do log.
+_OUTCOME_STATUS_TO_EVENT = {
+    "applied": "applied", "interview": "interview", "offer": "offer",
+    "rejected": "rejected", "withdrawn": "withdrawn",
+}
+
+
+def resolve_log_path(args: argparse.Namespace) -> Path:
+    """Log F41 ao lado do banco pessoal (``--log`` sobrescreve)."""
+    explicit = getattr(args, "log", None)
+    if explicit:
+        return Path(explicit)
+    return Path(args.db).parent / DEFAULT_LOG.name
+
+
+def company_for(args: argparse.Namespace, job_id: str) -> str:
+    """Empresa do job_id no ranking atual (vazio quando ausente)."""
+    for j in load_ranking(args.ranking):
+        if str(j.get("id")) == str(job_id):
+            return str(j.get("company") or "")
+    return ""
+
+
+def append_log_event(args: argparse.Namespace, job_id: str, event_type: str, *,
+                     ts: str | None = None, source: str = "cli") -> dict:
+    """Appenda um evento ao log F41 (idempotente por message_id)."""
+    stamp = alog.normalize_ts(ts or utcnow_iso())
+    mid = f"cli:{job_id}:{event_type}:{stamp[:10]}"
+    event = {
+        "message_id": mid, "ts": stamp, "job_id": str(job_id),
+        "company": company_for(args, job_id), "event_type": event_type,
+        "source": source,
+    }
+    return alog.append_events(resolve_log_path(args), [event])
+
+
+def rebuild_view(conn: sqlite3.Connection, log_path: Path | str) -> dict:
+    """Reconstrói a VIEW (``job_status``) a partir do log — determinístico.
+
+    ``status = último evento COM status por job_id`` (ordenação (ts,
+    message_id)). Só escreve quando o status derivado difere → 2 rebuilds
+    seguidos = mesmo estado (0 mudanças no 2º). NUNCA toca o log.
+    """
+    derived = alog.rebuild_status(alog.read_events(log_path))
+    changed = inserted = 0
+    for job_id, rec in derived.items():
+        status = rec["status"]
+        if status is None:
+            continue  # só eventos 'note': não define status
+        when = rec["last_status_ts"] or utcnow_iso()
+        row = conn.execute(
+            "SELECT status FROM job_status WHERE job_id = ?", (job_id,)
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                "INSERT INTO job_status (job_id, status, priority, next_action, "
+                "effort, effort_flags, note, updated_at, first_marked_at) "
+                "VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?)",
+                (job_id, status, when, when),
+            )
+            inserted += 1
+        elif row["status"] != status:
+            conn.execute(
+                "UPDATE job_status SET status = ?, updated_at = ? WHERE job_id = ?",
+                (status, when, job_id),
+            )
+            changed += 1
+    conn.commit()
+    return {
+        "jobs": len(derived), "inserted": inserted, "changed": changed,
+        "events": sum(r["n_events"] for r in derived.values()),
+    }
+
+
 # ------------------------------------------------------------------ comandos
 
 def cmd_mark(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
@@ -195,6 +283,9 @@ def cmd_mark(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
                   priority=args.priority, next_action=args.next_action,
                   effort=args.effort, effort_flags=args.effort_flags,
                   note=args.note)
+    # F41: desfecho marcado -> registra no log append-only (ground truth).
+    if args.status in _OUTCOME_STATUS_TO_EVENT:
+        append_log_event(args, args.job_id, _OUTCOME_STATUS_TO_EVENT[args.status])
     if args.priority is not None:
         add_event(conn, args.job_id, "priority", args.priority)
     if args.note is not None:
@@ -232,6 +323,9 @@ def _parse_date(value: str | None) -> str:
 
 def cmd_applied(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     applied_at = _parse_date(args.date)
+    # F41: candidatura é um DESFECHO -> grava no log (ground truth) primeiro,
+    # com a data real da candidatura (idempotente por data).
+    append_log_event(args, args.job_id, "applied", ts=applied_at)
     conn.execute(
         "INSERT INTO job_applications (job_id, applied_at, status, response_at, "
         "interview_at, contact) VALUES (?, ?, 'applied', ?, ?, ?) "
@@ -270,6 +364,9 @@ def cmd_feedback(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
 
 def cmd_note(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     add_event(conn, args.job_id, "note", args.text)
+    # F41: nota registrada também no log (event_type=note, sem texto — o
+    # schema do log NÃO carrega o conteúdo da nota, que fica só no SQLite).
+    append_log_event(args, args.job_id, "note")
     row = conn.execute(
         "SELECT status FROM job_status WHERE job_id = ?", (args.job_id,)
     ).fetchone()
@@ -561,6 +658,44 @@ def cmd_ranking_feedback(conn: sqlite3.Connection, args: argparse.Namespace) -> 
     return 0
 
 
+# ------------------------------------------------------------- F41 (loop)
+
+
+def cmd_ingest(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Ingest offline idempotente de um dump de mensagens (F41).
+
+    Lê o dump JSON (``--dump``), resolve/parseia as mensagens contra o
+    eligible (``--ranking``) e appenda os eventos NOVOS ao log (replay do
+    mesmo dump = no-op). Em seguida reconstrói a view (``rebuild``) salvo
+    ``--no-rebuild``. ZERO rede — só lê arquivo local.
+    """
+    log_path = resolve_log_path(args)
+    try:
+        dump = json.loads(Path(args.dump).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"ERRO: dump ilegivel {args.dump!r}: {exc}")
+        return 1
+    res = alog.ingest_dump(dump, eligible=load_ranking(args.ranking),
+                           log_path=log_path)
+    print(f"[OK] ingest: {res['messages']} mensagens -> {res['events']} eventos "
+          f"(matched={res['matched']} unmatched={res['unmatched']} "
+          f"skipped={res['skipped']}); +{res['appended']} no log "
+          f"({res['skipped_duplicates']} duplicados ignorados)")
+    if not args.no_rebuild:
+        return cmd_rebuild(conn, args)
+    return 0
+
+
+def cmd_rebuild(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Reconstrói a VIEW do tracker a partir do log (F41, determinístico)."""
+    log_path = resolve_log_path(args)
+    r = rebuild_view(conn, log_path)
+    print(f"[OK] rebuild: {r['events']} eventos -> {r['jobs']} vagas "
+          f"(inseridas={r['inserted']} atualizadas={r['changed']}) "
+          f"da view {log_path}")
+    return 0
+
+
 # ------------------------------------------------------------- F14 (semanal)
 
 # F14 — métricas semanais janela: 7 dias corridos (spec §2.2).
@@ -707,6 +842,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help=f"ranking elegivel atual (default: {DEFAULT_RANKING})")
     p.add_argument("--jobs-db", default=str(DEFAULT_JOBS_DB), metavar="PATH",
                    help=f"jobs.db da coleta p/ first_seen/active (default: {DEFAULT_JOBS_DB})")
+    p.add_argument("--log", default=None, metavar="PATH",
+                   help="F41 — log append-only de desfechos (default: ao lado do --db)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     m = sub.add_parser("mark", help="marca/atualiza o estado pessoal da vaga")
@@ -765,6 +902,15 @@ def build_parser() -> argparse.ArgumentParser:
                        "7 dias a partir dos job_events")
     w.add_argument("--days", type=int, default=WEEKLY_WINDOW_DAYS,
                    metavar="N", help=f"janela em dias (default {WEEKLY_WINDOW_DAYS})")
+
+    ing = sub.add_parser("ingest", help="F41: ingere um dump de mensagens "
+                         "(offline, idempotente por message_id)")
+    ing.add_argument("--dump", required=True, metavar="PATH",
+                     help="JSON do dump de mensagens (schema no application_log.py)")
+    ing.add_argument("--no-rebuild", action="store_true",
+                     help="nao reconstruir a view apos o ingest")
+    sub.add_parser("rebuild", help="F41: reconstroi a view do tracker a "
+                   "partir do log append-only (deterministico)")
     return p
 
 
@@ -796,6 +942,10 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_ranking_feedback(conn, args)
         if args.cmd == "weekly":
             return cmd_weekly(conn, args)
+        if args.cmd == "ingest":
+            return cmd_ingest(conn, args)
+        if args.cmd == "rebuild":
+            return cmd_rebuild(conn, args)
         conn.close()
         return 1
     finally:
