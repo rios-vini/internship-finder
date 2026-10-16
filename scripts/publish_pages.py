@@ -304,7 +304,10 @@ def minimal_page_top() -> int:
     """
     try:
         import minimal_page  # scripts/ vive no sys.path deste modulo
-        return minimal_page.PAGE_TOP
+        # F43-followup (dono 16/10, dec. (a)): flip autorizado — a página
+        # pública publica o regime FULL-LIST (universo inteiro, lazy-render);
+        # o bug da união parcial morre aqui.
+        return minimal_page.PAGE_TOP_FULL
     except ImportError:
         return 50
 

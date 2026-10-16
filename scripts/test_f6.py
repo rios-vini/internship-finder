@@ -303,7 +303,7 @@ def test_publish_integration() -> None:
         out.parent.mkdir()
         html = pp.render_ranking_html(fake_root, out, top=pp.PUBLIC_TOP)
         size = len(html.encode("utf-8"))
-        check("HTML gerado pelo minimal_page", "top do dia" in html)
+        check("HTML gerado pelo minimal_page (regime full F43)", "todas as vagas do dia" in html)
         # F11: PAGE_TOP=100; 55 vagas em 55 empresas -> 55 cards PRINCIPAIS
         # (a seção Materials opcional adiciona os seus — contar o <ol>).
         main_list = html.split('<ol id="list">')[1].split("</ol>")[0]
