@@ -368,9 +368,10 @@
    ],
    "score": 8.25,
    "group": "efarm_erasmus",
-   "expect_excluded": false,
-   "note": "#85: 'Paid Erasmus+ International Internship' — pool Erasmus+ e decisao do dono (badge vs excluir); F37 NAO implementa",
-   "source_snapshot": "20261013T090001Z"
+   "expect_excluded": true,
+   "note": "#85: 'Paid Erasmus+ International Internship' — programa Erasmus+; dono 15/10 '2a. A' = EXCLUIR (implementado na F37.2)",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "erasmus_program"
   },
   {
    "id": "indiecampers|sf_dataset:greenhouse:8811159002",
@@ -385,9 +386,10 @@
    ],
    "score": 6.5,
    "group": "indiecampers_spontaneous",
-   "expect_excluded": false,
-   "note": "#98: 'Spontaneous Application | Tourism & Operations Internship - Erasmus+' — decisao pendente (Erasmus+)",
-   "source_snapshot": "20261013T090001Z"
+   "expect_excluded": true,
+   "note": "#98: 'Spontaneous Application | ... - Erasmus+' — Erasmus+ vence first-match (dono 15/10 '2a. A' = EXCLUIR, F37.2)",
+   "source_snapshot": "20261013T090001Z",
+   "expected_reason": "erasmus_program"
   },
   {
    "id": "BoschGroup|smartrecruiters:BoschGroup:744000141914929",

@@ -424,6 +424,10 @@ from internship_finder.countries import (
 # EU-citizenship, NL-enrolment, PhD, duração >6m por título, FULL_TIME
 # efetivo sem marcador de estágio. Tese estendida (Bachelorarbeit/
 # Masterarbeit puros) continua no motivo thesis_title existente.
+# F37.2 (15/10): 2 novos motivos (decisão do dono 15/10 "2a. A" = EXCLUIR,
+# mesmo mecanismo da F37): erasmus_program (programa de mobilidade
+# estudantil Erasmus+; perfil do dono = visto §16e candidatura direta) e
+# spontaneous_pool (candidatura espontânea/pool, título-only).
 APPLICABILITY_EXCLUSION_REASONS = (
     "german_required",
     "visa_blocked",
@@ -435,6 +439,8 @@ APPLICABILITY_EXCLUSION_REASONS = (
     "phd_position",
     "duration_over_6m",
     "full_time_permanent",
+    "erasmus_program",
+    "spontaneous_pool",
 )
 
 # Tese por TÍTULO (case-insensitive). "Abschlussarbeit" cobre as teses DE
@@ -614,6 +620,106 @@ def is_full_time_permanent(job: dict) -> bool:
     return not _has_any(STUDENT_TYPE_PATTERNS, text)
 
 
+# F37.2 (15/10) — Erasmus+ = programa de mobilidade estudantil europeia. O
+# dono tem visto §16e com candidatura DIRETA e não é estudante-UE em
+# mobilidade: postings de programa Erasmus+ não são aplicáveis (decisão
+# literal "2a. A" = EXCLUIR). Detecção por TÍTULO apenas — a menção na
+# descrição NÃO mata (contra-casos medidos 13/10: Bosch Tienen "Internship
+# Purchasing Project Management (M/PPE-WS10)" / "Internship Logistics" /
+# "Internship in the fields Manufacturing and Production planning" citam
+# Erasmus/partner na desc e são estágios legítimos).
+# Casos medidos (universo 13/10): e-farm "Paid Erasmus+ International
+# Internship in International Logistics" (#85) e "Baltic Markets – Paid
+# Erasmus+ ... Digital Sales" etc. ×6; indiecampers "Spontaneous Application
+# | Tourism & Operations Internship - Erasmus+" ×11; clear "Erasmus
+# Internship - Partnership Development Intern" / "... Project Management
+# Intern"; Tierklinik Ismaning "Erasmus plus-Programm als Praktikum für
+# Student*innen und Absolvent*innen der Veterinärmedizin"; artscience-node
+# "Only for Erasmus/Turing Internship: AI/IT, Graphic Designer...".
+# Guard anti-nome-próprio (empresa/pessoa/universidade chamada Erasmus,
+# zero casos no universo 13/10+14/10, defensivo): ocorrências de
+# "Erasmus University/Universität/College/MC" não contam como programa.
+_ERASMUS_PROGRAM_RE = re.compile(r"\berasmus\b", re.IGNORECASE)
+_ERASMUS_NAME_RE = re.compile(
+    r"\berasmus\s+(university|universit(ä|a|a)?t|college|mc)\b", re.IGNORECASE
+)
+
+
+def requires_erasmus_program(title: str | None, description: str | None = None) -> bool:
+    """Título identifica a vaga como programa Erasmus+ (F37.2)?
+
+    Título-only: remove as ocorrências de nome próprio (``Erasmus
+    University Rotterdam`` etc.) e casa ``\\berasmus\\b`` no que sobra —
+    "Erasmus Internship"/"Erasmus+ program"/"Erasmus plus-Programm" são
+    programas de mobilidade; "Erasmus University" sozinho não é. A
+    descrição é aceita por assinatura mas deliberadamente IGNORADA
+    (contra-casos Bosch desc-erasmus medidos no universo).
+    """
+    if not title:
+        return False
+    cleaned = _ERASMUS_NAME_RE.sub(" ", title)
+    return bool(_ERASMUS_PROGRAM_RE.search(cleaned))
+
+
+# F37.2 (15/10) — candidatura espontânea / pool: posting que NÃO é uma vaga
+# concreta, é um canal de "mande seu CV". TÍTULO-only (desc-only NUNCA mata
+# — contra-casos medidos 13/10: NXP "become part of NXP's Young
+# Professional Talent Pool" (perk), REWE "Aufnahme in das Bindungsprogramm
+# 'future steps' mit exklusiven Events und Talentpool" (programa
+# pós-candidatura), Atlas Copco "bewaard in onze talentpool voor
+# toekomstige opportuniteiten" (desc NL), Edbz "Deine Bewerbung kannst Du
+# daher als eine Art Initiativbewerbung verstehen" (vaga concreta), GRIFOLS
+# "bewirb dich initiativ für ein Praktikum bei Haema" (instrução),
+# Henkel/BASF/Bayer "...initiatives/Initiativen..." (FP do \binitiativ\w* —
+# word-boundary fecha esta classe: "initiatives" NÃO casa).
+# Casos medidos (títulos): "Spontaneous Application" (VW, Webasto, Allianz,
+# Barco, Swisslife, NXP FR, indiecampers), "Candidature spontanée"
+# (Liebherr FR, NXP), "Candidatura Espontânea/á" (VW ES/PT),
+# "Initiativbewerbung(en)" (Fraunhofer ×40+, AIXTRON, Bosch JMP, caronsale,
+# continental, Telekom, eathappy, Marquardt, Klinikum...),
+# "Initiativstelle(n)" (Fraunhofer HHI, VW ZENDA, Klinikum EB),
+# "Initiativ" puro (Witzenmann "Praktikant (m/w/d) (Initiativ)", datev
+# "Initiativ für IT"), "Talent Pool" (ABB ×30), "Open Application"
+# (noxmobility, jacklinks, paretosecurities), "Open Internship Application"
+# (Enzazaden), "Speculative Application" (Fraunhofer ×15), "Unsolicited
+# application" (Fraunhofer/Bosch ×50), "Initiative Application"
+# (Fraunhofer, nxp "Student Internships - Initiative Application (m/f/d)",
+# Knorr-Bremse, sungrow).
+_SPONTANEOUS_POOL_RES = [
+    re.compile(r"\bspontaneous\s+applications?\b", re.IGNORECASE),
+    re.compile(r"\bcandidature\s+spontan(é|e)e?s?\b", re.IGNORECASE),
+    re.compile(r"\bcandidatura\s+espont(â|á|a)ne[as]?\b", re.IGNORECASE),
+    re.compile(r"\bspontan\w*bewerbung\w*\b", re.IGNORECASE),
+    # DE — "Initiativbewerbung(en)", "Initiativstelle(n)", "Initiativ"
+    # puro ("Praktikant (m/w/d) (Initiativ)", "Initiativ für IT").
+    # \binitiativ\b sozinho NÃO casa "Initiativen"/"initiatives"/
+    # "Initiative" (word-boundary) — o FP em massa medido no eligible
+    # (124 estágios legítimos) fica vivo.
+    re.compile(r"\binitiativ(bewerbung\w*|stelle\w*|stellen)?\b", re.IGNORECASE),
+    # EN — pools nomeados: "Talent Pool", "Open (Internship) Application",
+    # "Speculative Application", "Unsolicited Application", "Initiative
+    # Application". "open application" no título é sempre canal; na
+    # descrição é menção (não olhamos desc).
+    re.compile(r"\btalent\s*pool\b", re.IGNORECASE),
+    re.compile(r"\bopen\s+(internship\s+)?applications?\b", re.IGNORECASE),
+    re.compile(r"\b(speculative|unsolicited|initiative)\s+applications?\b",
+               re.IGNORECASE),
+]
+
+
+def is_spontaneous_pool_title(title: str | None) -> bool:
+    """Título identifica o posting como candidatura espontânea/pool (F37.2)?
+
+    Título-only: os padrões só casam nomes de CANAL ("Spontaneous
+    Application", "Initiativbewerbung", "Talent Pool", "Open
+    Application"...) no título. Vagas concretas que mencionam o canal na
+    descrição ficam (contra-casos medidos acima).
+    """
+    if not title:
+        return False
+    return any(rx.search(title) for rx in _SPONTANEOUS_POOL_RES)
+
+
 # requires_master — a vaga exige/é mestrado (título OU descrição).
 #
 # Título: tese/estudo de mestrado por definição (Masterarbeit, Master's
@@ -758,6 +864,18 @@ def applicability_exclusion_reason(
     - ``full_time_permanent`` (F37): ``employment_type`` FULL_TIME sem
       NENHUM marcador de estágio no título/descrição (Amazon BA EU
       Inbound #88) — vaga permanente, não estágio.
+    - ``erasmus_program`` (F37.2): título identifica programa Erasmus+/
+      mobilidade estudantil (e-farm #85, indiecampers #98, clear, Tierklinik,
+      artscience-node) — o dono aplica com visto §16e/candidatura direta,
+      não é estudante-UE em mobilidade (decisão "2a. A"). Título-only;
+      menção na descrição NÃO mata (Bosch Tienen ficam).
+    - ``spontaneous_pool`` (F37.2): título identifica canal de candidatura
+      espontânea/pool — "Spontaneous Application", "Initiativbewerbung",
+      "Initiativstelle", "Initiativ", "Candidature spontanée",
+      "Candidatura Espontânea", "Spontanbewerbung", "Talent Pool", "Open
+      Application", "Speculative/Unsolicited/Initiative Application" — e o
+      posting NÃO é uma vaga concreta (decisão "2a. A"). Título-only;
+      menção na descrição NÃO mata (NXP/REWE/Edbz/GRIFOLS ficam).
     """
     from internship_finder.app_intel import german_level
 
@@ -802,6 +920,16 @@ def applicability_exclusion_reason(
 
     if is_full_time_permanent(job):
         return "full_time_permanent"
+
+    # F37.2 (decisão do dono 15/10, "2a. A" = EXCLUIR): programas Erasmus+
+    # ANTES de pool — first-match: indiecampers "Spontaneous Application |
+    # ... - Erasmus+" conta como erasmus_program (programa de mobilidade é
+    # o motivo mais específico da vaga).
+    if requires_erasmus_program(title, description):
+        return "erasmus_program"
+
+    if is_spontaneous_pool_title(title):
+        return "spontaneous_pool"
 
     return None
 
