@@ -784,6 +784,13 @@ def build_message(
         # (prioridade: base > 🆕 > ⚡ Top 5 > 🎯 > ⏰ — o follow-up e
         # lembrete de pendencia cronica, o Top 5 e o produto do dia).
         followup = ranking_digest.followup_section_lines(digest_lines)
+        # F44 — extração da seção ⏰ Intel de empresas (padrão F36.1: []
+        # quando ausente). No compact colapsa ao header ANTES da ⏰
+        # Follow-up: prioridade: ... > 🎯 > ⏰ Follow-up > ⏰ Intel — a
+        # seção é gatilho de curadoria (meta-informação), abaixo das
+        # pendências pessoais e do produto do dia; o header carrega as
+        # contagens e o corpo (exemplos) cede espaço primeiro.
+        intel_fresh = ranking_digest.intel_section_lines(digest_lines)
         # Base com a lista de problemas resumida em contagem (computada UMA
         # vez, pura; o slice termina em base_len porque ``lines`` ja contem
         # o digest anexado, que e reconstruido abaixo pelas secoes + top5 +
@@ -818,17 +825,25 @@ def build_message(
             # as novidades. Nenhuma secao e dropada inteira: quando
             # todas as variantes ainda estouram, nivel 2/3 mantem os
             # headers com contagem.
-            variants: list[tuple[list[str], list[str], list[str]]] = []
-            for fu_collapsed, wl_collapsed, ns_collapsed in (
-                    (False, False, False), (True, False, False),
-                    (True, True, False), (True, True, True)):
+            # F44 — a ⏰ Intel de empresas colapsa antes da ⏰ Follow-up
+            # (gatilho de curadoria < pendência pessoal); o header com
+            # as contagens sobrevive em todos os níveis (padrão F36.1).
+            in_full = intel_fresh or []
+            variants: list[tuple[list[str], list[str], list[str], list[str]]] = []
+            for in_collapsed, fu_collapsed, wl_collapsed, ns_collapsed in (
+                    (False, False, False, False),
+                    (True, False, False, False),
+                    (True, True, False, False),
+                    (True, True, True, False),
+                    (True, True, True, True)):
                 ns_part = [ns_full[0]] if ns_full and ns_collapsed else ns_full
                 wl_part = [wl_full[0]] if wl_full and wl_collapsed else wl_full
                 fu_part = [fu_full[0]] if fu_full and fu_collapsed else fu_full
-                variants.append((ns_part, wl_part, fu_part))
+                in_part = [in_full[0]] if in_full and in_collapsed else in_full
+                variants.append((ns_part, wl_part, fu_part, in_part))
 
             text = None
-            for ns_part, wl_part, fu_part in variants:
+            for ns_part, wl_part, fu_part, in_part in variants:
                 # Ordem de exibicao = ordem do digest (F13 §2.3): 🆕 antes
                 # do ⚡, 🎯 depois do ⚡ — so o colapso muda, nunca o layout.
                 # F36.1: os headers 🧪/🇪🇺 ocupam a posicao relativa que tem
@@ -838,6 +853,9 @@ def build_message(
                 # coladas sem blank corromperiam top5_section_lines(msg).
                 # F14: a ⏰ vem das secoes pessoais (depois do 🎯, antes
                 # do link) e mantem essa posicao no compact.
+                # F44: a ⏰ Intel de empresas vem imediatamente ANTES da
+                # ⏰ Follow-up (mesma posição relativa do digest inteiro —
+                # so o colapso muda, nunca o layout, regra F13 §2.3).
                 parts = base + [""]
                 if profile_headers:
                     parts += profile_headers + [""]
@@ -846,6 +864,8 @@ def build_message(
                 parts += top5
                 if wl_part:
                     parts += wl_part
+                if in_part:
+                    parts += in_part
                 if fu_part:
                     parts += fu_part
                 parts += ["", link]
@@ -857,7 +877,7 @@ def build_message(
                 # estoura — a lista de problemas da base ja esta resumida
                 # em ``summarized`` (1 linha de contagem; o bloco mais caro
                 # e menos denso da base, os detalhes vivem no ranking).
-                for ns_part, wl_part, fu_part in variants:
+                for ns_part, wl_part, fu_part, in_part in variants:
                     parts = summarized + [""]
                     if profile_headers:
                         parts += profile_headers + [""]
@@ -866,6 +886,8 @@ def build_message(
                     parts += top5
                     if wl_part:
                         parts += wl_part
+                    if in_part:
+                        parts += in_part
                     if fu_part:
                         parts += fu_part
                     parts += ["", link]
@@ -881,6 +903,7 @@ def build_message(
                 ns_part = [ns_full[0]] if ns_full else []
                 wl_part = [wl_full[0]] if wl_full else []
                 fu_part = [fu_full[0]] if fu_full else []
+                in_part = [in_full[0]] if in_full else []
                 # F36.1 — headers de perfil seguem colapsados no nível 3
                 # (1 linha cada; bloco próprio blank-separado, como nos
                 # demais níveis — o contrato dos extratores exige). Guard
@@ -890,14 +913,14 @@ def build_message(
                 kept: list[str] = [top5[0]]
                 for line in top5[1:]:
                     candidate = (summarized + [""] + prof_block + ns_part + kept
-                                 + wl_part + fu_part
+                                 + wl_part + in_part + fu_part
                                  + [line] + ["", link])
                     if len("\n".join(candidate)) > TELEGRAM_MAX_LEN:
                         break
                     kept.append(line)
                 if len(kept) > 1:
                     parts = summarized + [""] + prof_block + ns_part + kept + wl_part \
-                        + fu_part + ["", link]
+                        + in_part + fu_part + ["", link]
                     text = "\n".join(parts)
                 else:
                     # Ultimo recurso: NENHUMA linha de vaga cabe — linha
@@ -1819,6 +1842,15 @@ def main(argv: list[str] | None = None) -> int:
                 # (config/employer_quality.json; ausente = Top 5 sem ⭐,
                 # o digest sai byte a byte igual ao de antes).
                 employer_quality_path=root / "config" / "employer_quality.json",
+                # F44 — gatilho de frescor do intel: os MESMOS três
+                # arquivos versionados do relatório offline
+                # (scripts/intel_freshness.py). Zero gatilhos = seção
+                # ⏰ ausente; best-effort: nunca derruba o digest.
+                intel_freshness_paths=(
+                    root / "company_intel" / "company_intelligence.json",
+                    root / "config" / "company_watchlist.json",
+                    root / "config" / "employer_quality.json",
+                ),
                 # F25 — os DOIS Top 5 cortam as demovidas das superfícies
                 # exibidas (mortas do liveness + inaplicáveis pós-hidratação,
                 # backlog incluído): a vaga seguinte sobe, mesma semântica
