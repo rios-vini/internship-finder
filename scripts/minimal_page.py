@@ -1131,7 +1131,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     inapplicable_ids: set[str] | None = None,
                     salary_benchmark_map: dict | None = None,
                     profile_maps: dict | None = None,
-                    skip_ids: set[str] | None = None) -> list[str]:
+                    skip_ids: set[str] | None = None,
+                    display_aliases: dict | None = None) -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -1167,6 +1168,14 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     ">45 dias" com classe própria; flag de duração >6 meses (§16e) e
     red-flag de matrícula em universidade alemã. INFORMATIVO: nenhum
     sinal altera score/ordem/ids — só o card.
+
+    F54 (higiene de display): ``display_aliases`` = mapa curado
+    {company original → nome de exibição} (config/display_aliases.json;
+    None/{} = sem aliases — o sanitizer mojibake permanece ativo). O
+    card é renderizado da VIEW higienizada (cópia rasa: mojibake
+    corrigido em title/company/location + alias na company); o match de
+    intel/badges continua pelo job ORIGINAL — o alias nunca contamina o
+    pipeline. Ambíguos ficam ORIGINAIS por design (regra de honestidade).
     """
     rows: list[str] = []
     new_ids = new_ids or set()
@@ -1181,6 +1190,18 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
         jid = str(job.get("id") or "")
         if jid in skip_ids:
             continue  # F43 — já exibido na lista única; seção = atalho
+        # F54 — VIEW de display (cópia rasa): mojibake corrigido em
+        # title/company/location + alias de empresa. O job ORIGINAL
+        # segue para intel/quality/salary (match por string exata do
+        # dataset — alias/mojibake NÃO podem contaminar o pipeline).
+        # Import lazy + best-effort: sem o pacote (fixtures de publish
+        # que copiam só o minimal_page), render igual ao pré-F54.
+        dview = job
+        try:
+            from internship_finder import display_hygiene
+            dview = display_hygiene.display_job_view(job, display_aliases or {})
+        except Exception:  # noqa: BLE001 — view best-effort, nunca erro
+            dview = job
         entry = None
         if company_intel_map is not None:
             if jid in company_entry_cache:
@@ -1229,7 +1250,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
         else:
             snippet, snippet_is_en = "", False
         rows.append(_card(
-            i, job, visa=visa, salary=salary,
+            i, dview, visa=visa, salary=salary,
             snippet=snippet, snippet_is_en=snippet_is_en,
             apply_href=apply_href, job_href=job_href,
             de_level=_german_level_attr(job),
@@ -1237,7 +1258,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             dead=jid in dead_ids, is_new=jid in new_ids,
             score_override=(job.get(score_key)
                             if score_key != "score" else None),
-            en_title_html=_title_en_line(job),
+            en_title_html=_title_en_line(dview),
             personal_status=personal_statuses.get(jid),
             quality_entry=q_entry,
             inapplicable=jid in inapplicable_ids,
@@ -1279,6 +1300,7 @@ def render_minimal_html(
     full_list: bool = False,
     full_limit: int | None = None,
     vitrine: bool = False,
+    display_aliases: dict | None = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
 
@@ -1346,6 +1368,13 @@ def render_minimal_html(
     ``render_size_aware`` remonta sem snippets (campo DECORATIVO) quando
     o resultado estoura o alvo de bytes — nunca vagas a menos.
 
+    F54 (higiene de display): ``display_aliases`` = mapa curado
+    {company original → nome de exibição} (None = sem aliases; o
+    sanitizer mojibake é SEMPRE ativo nos campos display). Aplicado no
+    ponto ÚNICO ``_cards_section`` — vale para o topo, 🆕, 🎯, 🧪, 🇪🇺
+    e o regime full-list (ambos os regimes da spec). Display-only: o
+    dataset e o match de intel seguem pelo job original.
+
     F43 (full-list): ``full_list=True`` muda o corte do ranking principal
     de "top-N + cap 2/empresa" para "universo inteiro" (mortas continuam
     fora — a URL está morta; o corte honesto "mostrando X de N" conta a
@@ -1412,6 +1441,7 @@ def render_minimal_html(
         inapplicable_ids=inapplicable,
         salary_benchmark_map=salary_benchmark_map,
         profile_maps=profile_maps,
+        display_aliases=display_aliases,
     ))
     n_vf = sum(1 for j in shown if _visa_friendly(
         j, entry_cache.get(str(j.get("id") or ""))))
@@ -1436,6 +1466,7 @@ def render_minimal_html(
             quality_map=quality_map,
             salary_benchmark_map=salary_benchmark_map,
             profile_maps=profile_maps if full_list else None,
+            display_aliases=display_aliases,
         ))
         new_section = (
             f'<h2>🆕 Novas desde ontem — {len(new_ids)} nova(s){extra}</h2>'
@@ -1472,6 +1503,7 @@ def render_minimal_html(
             quality_map=quality_map,
             salary_benchmark_map=salary_benchmark_map,
             profile_maps=profile_maps if full_list else None,
+            display_aliases=display_aliases,
         ))
         total_line = f'{len(watchlist_events)} nova(s) nas empresas que você acompanha'
         if radar_omitted:
@@ -1544,6 +1576,7 @@ def render_minimal_html(
             inapplicable_ids=inapplicable,
             salary_benchmark_map=salary_benchmark_map,
             profile_maps=profile_maps if full_list else None,
+            display_aliases=display_aliases,
             skip_ids=(shown_ids if (full_list and full_limit is not None)
                       else None),
         ))
@@ -1606,6 +1639,7 @@ def render_minimal_html(
             inapplicable_ids=inapplicable,
             salary_benchmark_map=salary_benchmark_map,
             profile_maps=profile_maps if full_list else None,
+            display_aliases=display_aliases,
             skip_ids=(shown_ids if (full_list and full_limit is not None)
                       else None),
         ))
@@ -1803,6 +1837,7 @@ def render_size_aware(
     full_list: bool = False,
     profile_maps: dict | None = None,
     vitrine: bool = False,
+    display_aliases: dict | None = None,
 ) -> str:
     """``render_minimal_html`` com degradacao progressiva de tamanho (F11+F20).
 
@@ -1845,6 +1880,10 @@ def render_size_aware(
     dias de página estourada (best-effort por design = zero erro no
     log). Regressão garantida por scripts/test_f36_1.py com fixture que
     ESTOURA o cap (página pequena nunca exercita degradação).
+
+    F54: ``display_aliases`` repassado a TODAS as montagens desta
+    cadeia (lição F36.1 — nenhuma degradação pode perder a higiene de
+    display; sanitizer + aliases sobrevivem a remontagens).
     """
     # F43 — orçamento por REGIME: o top-N legado mantém alvo 100KB + cap duro
     # 150KB (F11, intocado); a full-list troca por UM valor só — o cap
@@ -1868,6 +1907,7 @@ def render_size_aware(
         salary_benchmark_map=salary_benchmark_map,
         full_list=full_list, profile_maps=profile_maps,
         vitrine=vitrine,
+        display_aliases=display_aliases,
     )
     if len(html.encode("utf-8")) > target:
         html = render_minimal_html(
@@ -1883,6 +1923,7 @@ def render_size_aware(
             salary_benchmark_map=salary_benchmark_map,
             full_list=full_list, profile_maps=profile_maps,
             vitrine=vitrine,
+            display_aliases=display_aliases,
         )
     # F20 (item 4) — orçamento 🎯: só quando a montagem mais enxuta AINDA
     # estoura o cap duro. A 🎯 é aparada (top RADAR_TOP_N por prioridade)
@@ -1904,6 +1945,7 @@ def render_size_aware(
             salary_benchmark_map=salary_benchmark_map,
             full_list=full_list, profile_maps=profile_maps,
             vitrine=vitrine,
+            display_aliases=display_aliases,
         )
         print(f"pages: orçamento 🎯 ativo — seção aparada p/ top-{RADAR_TOP_N} "
               f"de {len(watchlist_events)} eventos; página agora "
@@ -1931,6 +1973,7 @@ def render_size_aware(
                 salary_benchmark_map=salary_benchmark_map,
                 full_list=full_list, profile_maps=profile_maps,
                 vitrine=vitrine,
+                display_aliases=display_aliases,
             )
             print(f"pages: orçamento 🧪/🇪🇺 ativo — seções de perfil "
                   f"degradadas p/ top-{PROFILE_SECTION_BUDGET_TOP} "
@@ -1966,6 +2009,7 @@ def render_size_aware(
                 salary_benchmark_map=salary_benchmark_map,
                 full_list=True, profile_maps=profile_maps, full_limit=mid,
                 vitrine=vitrine,
+                display_aliases=display_aliases,
             )
             if len(trial.encode("utf-8")) <= hard_cap:
                 best, best_n, lo = trial, mid, mid + 1
@@ -2061,6 +2105,7 @@ def render_minimal_html_from_file(
     full_list: bool = False,
     generated_at: str | None = None,
     vitrine: bool = False,
+    display_aliases_path: Path | str | None = None,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
 
@@ -2105,6 +2150,11 @@ def render_minimal_html_from_file(
     ausente/corrompido -> mapa vazio -> sem estimativa em qualquer card,
     nunca erro. Os sinais independentes do benchmark (idade, duração
     §16e, red-flags, rodapé jurídico) permanecem.
+
+    F54: ``display_aliases_path`` = ``config/display_aliases.json``
+    (default None = sem aliases; o sanitizer mojibake permanece ativo).
+    Loader tolerante: ausente/corrompido -> {} -> cards com higienização
+    de mojibake e nomes ORIGINAIS de empresa, nunca erro.
     """
     with path.open(encoding="utf-8") as fh:
         jobs = json.load(fh)
@@ -2160,6 +2210,18 @@ def render_minimal_html_from_file(
         except Exception:  # noqa: BLE001 — cache e best-effort, nunca erro
             translation_cache = {}
 
+    # F54 — aliases de display de empresa (config/display_aliases.json).
+    # Loader tolerante: ausente/corrompido -> {} (higiene de mojibake
+    # permanece; nomes de empresa ficam ORIGINAIS), nunca erro.
+    display_aliases: dict = {}
+    if display_aliases_path:
+        try:
+            from internship_finder import display_hygiene
+            display_aliases = display_hygiene.load_display_aliases(
+                display_aliases_path)
+        except Exception:  # noqa: BLE001 — F54 é best-effort, nunca erro
+            display_aliases = {}
+
     new_ids: set[str] | None = None
     watchlist_events: list[dict] | None = None
     if archive_root is not None:
@@ -2214,6 +2276,7 @@ def render_minimal_html_from_file(
         salary_benchmark_map=salary_benchmark_map,
         full_list=full, profile_maps=profile_maps,
         vitrine=vitrine,
+        display_aliases=display_aliases,
     )
     # F15 §4 — a seção Ponto ótimo só permanece se a página COM ela
     # couber no cap duro (150KB); a MEDIÇÃO é no render FINAL (com todas
@@ -2238,6 +2301,7 @@ def render_minimal_html_from_file(
             salary_benchmark_map=salary_benchmark_map,
             full_list=full, profile_maps=profile_maps,
             vitrine=vitrine,
+            display_aliases=display_aliases,
         )
         print(f"pages: seção ⭐ Ponto ótimo OMITIDA — página com ela "
               f"({size_with} bytes) estoura o cap de {hard_cap} "
@@ -2318,6 +2382,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="benchmark salarial curado (F29; default "
                              "config/salary_benchmark.json do repo; '' "
                              "desliga a estimativa de mercado rotulada)")
+    parser.add_argument("--display-aliases", default="config/display_aliases.json",
+                        metavar="PATH",
+                        help="aliases de display de empresa (F54; "
+                             "default config/display_aliases.json do "
+                             "repo; '' desliga — o sanitizer mojibake "
+                             "permanece ativo em qualquer caso)")
     parser.add_argument("--full-list", dest="full_list", action="store_true",
                         help="F43: regime FULL-LIST — TODAS as vagas "
                              "elegiveis na pagina unica (sem corte top-N e "
@@ -2377,6 +2447,9 @@ def main(argv: list[str] | None = None) -> int:
     salary_benchmark_path = (
         Path(args.salary_benchmark) if args.salary_benchmark else None
     )
+    display_aliases_path = (
+        Path(args.display_aliases) if args.display_aliases else None
+    )
     page = render_minimal_html_from_file(
         Path(args.input), top=args.top, company_intel_map=company_intel_map,
         archive_root=archive_root, dead_link_ids=dead_ids,
@@ -2389,6 +2462,7 @@ def main(argv: list[str] | None = None) -> int:
         include_eu=args.include_eu,
         full_list=args.full_list,
         vitrine=args.vitrine,
+        display_aliases_path=display_aliases_path,
     )
     if args.output == "-":
         sys.stdout.write(page)
