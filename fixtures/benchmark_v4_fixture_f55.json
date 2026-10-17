@@ -1,0 +1,48 @@
+{
+ "fixture_version": "f55-2026-10-17",
+ "jobs": [
+  {
+   "id": "Corbion Career Site|sf_dataset:successfactors:1444333533",
+   "label": "ruim",
+   "rank": 65,
+   "title": "Internship -  HR Rewards Analytics (BSc, BA, MSc, MBA)",
+   "justification": "HR Rewards/Total Rewards analytics: RH (rubrica ruim 'RH/vendas'); dashboards tangentes nao mudam a area; EN ok, sem duracao citada"
+  },
+  {
+   "id": "nestleHRprdRMK|successfactors:jobdetails:1441411733",
+   "label": "otima",
+   "rank": 124,
+   "title": "Supply Chain (DSP) Intern - Nestlé Waters",
+   "justification": "Demand & Supply Planning Nestle Waters Bruxelas: supply chain core, 'Fluent in English. Dutch and or French are a plus', 6 meses Mar/2027, matricula ok — dono aplica hoje"
+  },
+  {
+   "id": "adidas|sf_dataset:successfactors:1442838433",
+   "label": "otima",
+   "rank": 19,
+   "title": "INTERNSHIP - GLOBAL PROCUREMENT (M/F/D)",
+   "justification": "Global Procurement Excellence adidas: procurement core, EN, 6 meses (Mar-Set 2027), full-time student ok; NOTA: deadline 15/10/2026 23:59 CET vencida no dia da coleta (estado de dados, nao eligibility estrutural)"
+  },
+  {
+   "id": "hella|cornerstone:https://hella.csod.com/ux/ats/careersite/3/home?c=hella:18877",
+   "label": "boa",
+   "rank": 262,
+   "title": "PRAKTIKUM IM BEREICH OPERATIONS PROCESSES DEVELOPMENT POLYMER",
+   "justification": "Kunststofffügetechnologien (juntas/solda, caracterizacao mecanica — core materials): area-alvo; texto DE sem sinal EN (1 dimensao fraca)"
+  },
+  {
+   "id": "BoschGroup|smartrecruiters:BoschGroup:744000141914929",
+   "label": "inaplicavel",
+   "rank": 3,
+   "title": "Praktikum in der Logistik - Data & Analytics",
+   "justification": "F18/F25 german_required nativo: 'verhandlungssicheres Deutsch und sehr gutes Englisch' — A1-A2 nao atende; exclui-la e o trabalho da F37"
+  },
+  {
+   "id": "Würth Industrie Service GmbH & Co. KG|absolventa:13251590",
+   "label": "boa",
+   "rank": 13,
+   "title": "Praktikant (m/w/d) im Bereich Logistik - Import Beschaffung",
+   "justification": "Mesma vaga Würth Import Beschaffung (espelho Absolventa): núcleo da descrição (tarefas + requisitos) idêntico VERBATIM, intro/contato divergem — DUPLICATA cross-fonte não fundida pela F48 (company strings divergem)"
+  }
+ ],
+ "note": "Entradas VERBATIM de benchmarks/ranking_benchmark_v4.json (campos minimos p/ recalculo do tau: id, label, rank; title/justification p/ auditoria). Casos de diagnostico F55: HR Rewards Analytics (ruim #65 acima de otimas no v4 — causa do gate HR), Supply Chain DSP Nestle (otima afundada #124), GLOBAL PROCUREMENT (otima de nucleo #19), polymer operations (boa no topo do perfil materials no v4), Wuerth Import Beschaffung (score frozen STALE — achado de proveniencia F55), Bosch Logistik Data & Analytics (inaplicavel, fora dos pares pela decisao do dono 15/10 '3. A')."
+}

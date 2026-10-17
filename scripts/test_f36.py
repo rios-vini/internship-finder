@@ -181,10 +181,15 @@ def main() -> int:
         check("fn −2.5 para 'Digital Marketing Intern' (sem área primária)",
               sc_mkt.breakdown["fn"] == PENALTY_NON_TARGET_FUNCTION,
               f"fn={sc_mkt.breakdown['fn']}")
-        # gate: híbrido com área primária é protegido
+        # gate: híbrido com área primária é protegido — EXCETO a categoria
+        # HR desde a F55 (régua v4: "HR Rewards Analytics" rotulada RUIM
+        # ficava acima de ótimas de supply chain nos perfis business e EU;
+        # a correção mede tau EU 0.478 -> 0.652 com zero inversões novas).
+        # "HR Analytics Intern" agora leva a penalidade cheia.
         sc_hyb = eu_score_job(dict(FX_JOBS[2]))
-        check("gate: 'HR Analytics Intern' protegido (analytics é primária)",
-              sc_hyb.breakdown["fn"] == 0.0, f"fn={sc_hyb.breakdown['fn']}")
+        check("HR sem gate (F55): 'HR Analytics Intern' penalizado",
+              sc_hyb.breakdown["fn"] == PENALTY_NON_TARGET_FUNCTION,
+              f"fn={sc_hyb.breakdown['fn']}")
         # sales-BD sem área primária é penalizado
         sc_sales = eu_score_job(dict(FX_JOBS[4]))
         check("fn −2.5 para 'Sales Development Intern' (sem área primária)",
