@@ -209,16 +209,17 @@ def test_title_line_in_card() -> None:
 
 
 def test_glossary_footer() -> None:
-    section("T4: rodape-glossario estatico (6 termos, HTML puro)")
+    section("T4: glossário estático (F51: dentro da legenda única)")
     html = mp.render_minimal_html([_job(0)], total_eligible=1, generated_at="x")
     check("glossario presente", "Glossário DE→EN:" in html)
     for de, en in mp.GLOSSARY_TERMS:
         check(f"termo {de} = {en}", f"{de} = {en}" in html)
     check("6 termos fixos", len(mp.GLOSSARY_TERMS) == 6)
-    check("sem JS no glossario (classe gloss, puro texto)",
-          'class="gloss"' in html)
-    check("glossario no fim (depois do rodape F6)",
-          html.index("Glossário DE→EN:") > html.index("ranking, JSON e CSV completos"))
+    check("sem JS no glossario (puro texto, F51: na legenda)",
+          'class="legend"' in html
+          and "<summary>" in html)
+    check("glossario na legenda (details, antes da lista — F51)",
+          html.index("Glossário DE→EN:") < html.index('<ol id="list">'))
     check("sem emoji no glossario (contrato visual F7)",
           "🇩🇪" not in html.split("Glossário")[1].split("</p>")[0])
 

@@ -416,7 +416,8 @@ def test_minimal_page() -> None:
                                   generated_at="2026-10-03T06:00:00Z")
     check("vaga NL com bandeira 🇳🇱 no meta", "🇳🇱 NL" in html)
     check("vaga NL com cidade Utrecht", "Utrecht" in html)
-    check("vaga DE SEM bandeira no meta", "🇩🇪" not in html)
+    check("vaga DE SEM bandeira no meta (F51: 🇩🇪 só na legenda)",
+          "🇩🇪" not in html.split('<ol id="list">')[1].split("</ol>")[0])
     check("badge 🛂 presente (Amazon EU visa_friendly)", "🛂" in html)
     check("data-vf=1 na vaga LU", 'data-vf="1"' in html)
     check("tamanho < 150 KB", len(html) < 150_000)

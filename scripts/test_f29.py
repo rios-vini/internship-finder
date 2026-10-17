@@ -161,13 +161,14 @@ def group_b_estimate() -> None:
     with_sal = _job(6, salary_text="Vergütung: 1.200 € pro Monat")
     html_sal = _render([with_sal], bm)
     check("B6 detectado presente -> SEM estimativa no card (nunca ambos)",
-          "estimativa de mercado" not in html_sal and "€1200" in html_sal)
+          "estimativa de mercado" not in html_sal.split('<ol id="list">')[1]
+          and "€1.200" in html_sal)
     no_sal = _job(7)
     html_est = _render([no_sal], bm)
-    check("B7 ausente + derivável -> estimativa rotulada no card",
-          sb.SALARY_ESTIMATE_LABEL in html_est and "€1.507/mês" in html_est)
+    check("B7 ausente + derivável -> estimativa compacta no card (F51)",
+          "≈€1.507/mês*" in html_est)
     check("B7b benchmark None -> card sem estimativa (regressão zero)",
-          "estimativa de mercado" not in _render([no_sal], None))
+          "≈€" not in _render([no_sal], None).split('<ol id="list">')[1])
 
 
 def group_c_age() -> None:
@@ -177,15 +178,15 @@ def group_c_age() -> None:
     old = _job(8, posted="2026-06-01T00:00:00+00:00")   # 134 dias
     new = _job(9, posted="2026-10-12T00:00:00+00:00")   # 1 dia
     none_posted = _job(10)
-    check("C1 'postada há N dias' no card (>45d)",
-          "postada há 134 dias" in _render([old], bm))
+    check("C1 idade '134d' no card (>45d; F51 formato único)",
+          ">134d<" in _render([old], bm))
     check("C2 >45d -> classe age-stale (destaque discreto)",
           "age-stale" in _render([old], bm))
     check("C3 <=45d -> sem age-stale no card",
           'class="age age-stale"' not in _render([new], bm)
           and 'class="age-stale"' not in _render([new], bm))
-    check("C3b 'há 1d' formato curto preservado (F11)",
-          "há 1d" in _render([new], bm))
+    check("C3b '1d' formato único F51",
+          ">1d<" in _render([new], bm))
     check("C4 sem posted_at -> sem badge (regressão F11)",
           "postada há" not in _render([none_posted], bm))
 

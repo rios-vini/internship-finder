@@ -212,16 +212,39 @@ def _fmt_score(value) -> str:
         return "—"
 
 
+_PERIOD_DISPLAY = {"month": "mês", "monat": "mês", "year": "ano",
+                   "jahr": "ano", "hour": "hora", "stunde": "hora",
+                   "week": "semana", "woche": "semana", "day": "dia",
+                   "tag": "dia"}
+
+
+def _fmt_eur(value) -> str:
+    """F51: valor monetário com separador de milhar alemão (2.280)."""
+    try:
+        return f"{float(value):,.0f}".replace(",", ".")
+    except (TypeError, ValueError):
+        return f"{value}"
+
+
 def _fmt_salary(salary: dict | None) -> str:
-    """Salario citado no anuncio (evidencia textual; nunca inventado)."""
+    """Salário citado no anuncio (evidencia textual; nunca inventado).
+
+    F51 item 2: formato compacto alemão ``€2.280/mês`` (milhar com
+    ponto; período traduzido para PT quando conhecido — o VALOR e a
+    UNIDADE vêm do anúncio, apenas a exibição é localizada).
+    """
     if not salary:
         return ""
     period = salary.get("period")
+    if period is not None:
+        period = _PERIOD_DISPLAY.get(str(period).strip().lower(),
+                                     str(period))
     suffix = f"/{period}" if period else ""
     if salary.get("min") is not None and salary.get("max") is not None:
         if float(salary["min"]) == float(salary["max"]):
-            return f"€{salary['min']:g}{suffix}"
-        return f"€{salary['min']:g}–€{salary['max']:g}{suffix}"
+            return f"€{_fmt_eur(salary['min'])}{suffix}"
+        return (f"€{_fmt_eur(salary['min'])}–€{_fmt_eur(salary['max'])}"
+                f"{suffix}")
     return ""
 
 
@@ -372,14 +395,14 @@ def personal_status_map(db_path: Path | str | None) -> dict:
 # ---------------------------------------------------------------------------
 
 def employer_quality_badge(entry: dict | None) -> str:
-    """Span HTML do badge ⭐/🏆 de qualidade (F15 §2); '' quando não há.
+    """Span HTML do badge ⭐/🏆 de qualidade (F15 §2; F51: compacto).
 
-    ``entry`` = saída de ``employer_quality.quality_for``. Texto curto
-    (spec: "⭐ 4,2 · Kununu" / "🏆 GPTW 2026") — SEM title: o texto é
-    auto-explicativo e o orçamento de bytes do card é apertado (a
-    página é minimalista por design da F6; 89 badges reais custariam
-    +6,4 KB só em títulos). Best-effort: falha de import devolve ''
-    (a página nunca quebra).
+    ``entry`` = saída de ``employer_quality.quality_for``. F51: texto
+    curto SEM sufixo/detalhe ("⭐ 4,0" / "🏆 GPTW") e SEM title= — a
+    explicação vive UMA vez na legenda única (details/summary). O span
+    com aria-hidden no emoji é montado pelo ``_card``; esta função é a
+    ponte pura texto→span para superfícies fora do card. Best-effort:
+    falha de import devolve '' (a página nunca quebra).
     """
     if not entry:
         return ""
@@ -506,14 +529,12 @@ AGE_STALE_DAYS = 45
 
 
 def age_badge_text(job: dict, ref: datetime) -> str:
-    """F29 item 3: 'postada há N dias' no card; mais explícita após 45 dias.
+    """F51 item 3: idade em UM formato — 'Nd' (badge); '<1d' no dia.
 
-    F11 compat: ``_age_days_text`` continua devolvendo "há Nd" (testes
-    F11 travam esse contrato); este wrapper da F29 usa a forma nominal
-    "postada há N dias" — antes do limiar é o atalho "há Nd" (economia de
-    bytes no card), depois do limiar o texto completo + destaque discreto
-    fica a cargo do chamador (classe ``age-stale``; o item 4c do card
-    manda NÃO criar sinal extra: >90 dias já é coberto por ESTE badge).
+    F29 compat: o destaque >45d segue existindo, mas pela CLASSE
+    ``age-stale`` do chamador (não por texto mais longo — 4 formatos
+    convivendo era o problema medido). ``_age_days_text`` mantém o
+    contrato pré-F51 "há Nd" para os testes F11.
     """
     dt = _parse_posted_at(job.get("posted_at"))
     if dt is None:
@@ -522,10 +543,8 @@ def age_badge_text(job: dict, ref: datetime) -> str:
     if days < 0:
         return ""
     if days == 0:
-        return "há <1d"
-    if days > AGE_STALE_DAYS:
-        return f"postada há {days} dias"
-    return f"há {days}d"
+        return "<1d"
+    return f"{days}d"
 
 
 def age_is_stale(job: dict, ref: datetime) -> bool:
@@ -685,6 +704,67 @@ def _legal_footer_html() -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# F51 — LEGENDA ÚNICA (details/summary, ZERO JS, custo constante na página).
+# Cada badge/símbolo do card passa a ser explicado UMA vez aqui; os title=
+# por badge (custo ~6,4KB/89 badges, decisão documentada da F15) saem do
+# card. Fecha por padrão; <summary> é focusable (acessibilidade nativa).
+# ---------------------------------------------------------------------------
+
+def _legend_html() -> str:
+    """F51: <details> com o significado dos badges, do *, do §16e,
+    glossário DE→EN, seções de perfil e score — a semântica GLOBAL da
+    página em um bloco único, estático e offline (custo fixo ~2,5KB)."""
+    items = [
+        "<dt><span aria-hidden=\"true\">🛂</span> política de visto</dt>"
+        "<dd>empresa com política de visto declarada (visa_policy: "
+        "explicit_support ou unclear)</dd>",
+        "<dt><span aria-hidden=\"true\">🇩🇪</span> alemão exigido</dt>"
+        "<dd>anúncio exige alemão (german_level: required)</dd>",
+        "<dt><span aria-hidden=\"true\">🚫</span> inaplicável</dt>"
+        "<dd>a descrição completa (hidratada do site) revelou requisito "
+        "de alemão ou mestrado — vaga fora do seu perfil, sai do top</dd>",
+        "<dt>⭐ N,N</dt>"
+        "<dd>nota média dos funcionários no portal Kununu (ex.: ⭐ 4,0)</dd>",
+        "<dt>🏆 GPTW</dt>"
+        "<dd>prêmio Great Place to Work (ano no mapa curado "
+        "config/employer_quality.json)</dd>",
+        "<dt><span aria-hidden=\"true\">🆕</span> nova</dt>"
+        "<dd>vaga que não existia no snapshot de ontem</dd>",
+        "<dt><span aria-hidden=\"true\">✅</span> já aplicou</dt>"
+        "<dd>status do seu tracker pessoal (✅ aplicou · 📞 entrevista · "
+        "🎉 oferta · ❌ rejeitada · 🚫 retirada · 👁️ ignorada)</dd>",
+        "<dt><span aria-hidden=\"true\">🔗</span> morta</dt>"
+        "<dd>URL retornou 404/410 no check de vitalidade — vaga "
+        "provavelmente preenchida/removida</dd>",
+        "<dt>⏳ / ⚠️</dt>"
+        "<dd>sinais informativos do §16e: duração citada acima do teto de "
+        "6 meses / anúncio exige matrícula ativa em universidade alemã</dd>",
+        "<dt>*</dt>"
+        "<dd>estimativa de mercado: salário NÃO citado no anúncio, "
+        "estimado por categoria do título (praktikum.info, kununu/Indeed; "
+        "curado 2026/10). O valor SEM citado no anúncio é o real</dd>",
+        "<dt>Nd</dt>"
+        "<dd>idade da vaga em dias desde posted_at (>45d destacada)</dd>",
+        "<dt>score</dt>"
+        "<dd>fit do título + qualidade do empregador + política de visto "
+        "− decaimento por idade; abas 💼/🧪/🇪🇺 reordenam por perfis com "
+        "pesos distintos (materials/EU: ver docs/f36_non_de_profile.md)</dd>",
+        "<dt>EN:</dt>"
+        "<dd>linha de tradução offline do título (dicionário DE→EN; o "
+        "original DE nunca é substituído)</dd>",
+    ]
+    gloss = " · ".join(f"{_esc(de)} = {_esc(en)}" for de, en in GLOSSARY_TERMS)
+    return (
+        '<details class="legend"><summary>ℹ️ Legenda</summary>'
+        "<dl>" + "".join(items) + "</dl>"
+        f"<p>Glossário DE→EN: {gloss}</p>"
+        '<p>' + _esc(LEGAL_DURATION_PHRASE) + " "
+        + _esc(LEGAL_ZUSTIMMUNG_PHRASE) + "</p>"
+        "</details>"
+    )
+
+
 def radar_budget_sort_key(job: dict) -> tuple:
     """Prioridade do orcamento 🎯 (F20; pura, deterministica).
 
@@ -818,24 +898,45 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     ``enrollment_red_flag`` = badge "exige matrícula em universidade
     alemã" (padrões DE/EN no título/descrição).
     """
-    vf = ' <span class="vf" title="Empresa com política de visto (visa_policy: explicit_support ou unclear)">🛂</span>' if visa else ""
+    # F51 — texto do badge de qualidade (compacto: "⭐ 4,0"/"🏆 GPTW")
+    # computado UMA vez; a explicação vive na legenda única.
+    quality_text = ""
+    if quality_entry is not None:
+        try:
+            from internship_finder import employer_quality
+            quality_text = employer_quality.badge_text(quality_entry)
+        except Exception:  # noqa: BLE001 — view best-effort
+            quality_text = ""
+    # F51 item 7 — ordem FIXA: 🛂 → 🇩🇪/🚫 → ⭐/🏆 → 🆕 → sinais F29 →
+    # ✅(pessoal) → 🔗. Emojis com aria-hidden="true": o leitor de tela lê
+    # o texto VISÍVEL do badge (🇩🇪, 🚫, 🏆, ⭐ 4,0, 🔗); a semântica
+    # completa de cada um vive UMA vez na legenda (details/summary
+    # focusable). Os title= saíram dos badges (custo por card) — a
+    # explicação é a legenda única.
+    badge_bits = []
+    if visa:
+        badge_bits.append(
+            '<span class="vf"><span aria-hidden="true">🛂</span></span>')
     if de_level == "required":
-        vf += ' <span class="de" title="Anúncio exige alemão (german_level: required)">🇩🇪 DE exigido</span>'
-    if dead:
-        vf += ' <span class="dead" title="URL retornou 404/410 no check de vitalidade — a vaga provavelmente foi preenchida/removida">🔗 morta</span>'
+        badge_bits.append(
+            ' <span class="de"><span aria-hidden="true">🇩🇪</span></span>')
     if inapplicable:
-        vf += ' <span class="dead" title="A descrição completa da vaga (hidratada do site) revelou requisito de alemão ou mestrado — vaga inaplicável ao perfil; sai do top">🚫 inaplicável</span>'
+        badge_bits.append(
+            ' <span class="dead"><span aria-hidden="true">🚫</span></span>')
+    if quality_text:
+        badge_bits.append(f' <span class="eq">{quality_text}</span>')
     if is_new:
-        vf += ' <span class="newb">🆕</span>'
+        badge_bits.append(' <span class="newb"><span aria-hidden="true">🆕</span></span>')
     if duration_flag:
-        vf += (f' <span class="dur" title="Duração citada no anúncio '
-               f'excede o máximo do visto §16e">⏳ {_esc(duration_flag)}</span>')
+        badge_bits.append(f' <span class="dur">⏳ {_esc(duration_flag)}</span>')
     if enrollment_red_flag:
-        vf += (f' <span class="flag" title="Anúncio exige matrícula '
-               f'ativa em universidade alemã (padrão DE/EN no texto)">'
-               f'⚠️ {_esc(enrollment_red_flag)}</span>')
-    vf += personal_status_badge(personal_status)
-    vf += employer_quality_badge(quality_entry)
+        badge_bits.append(
+            f' <span class="flag">⚠️ {_esc(enrollment_red_flag)}</span>')
+    badge_bits.append(personal_status_badge(personal_status))
+    if dead:
+        badge_bits.append(
+            ' <span class="dead"><span aria-hidden="true">🔗</span></span>')
+    vf = "".join(badge_bits)
     title = _esc(job.get("title") or "(sem título)")
     inner = f'<a class="t" href="{_esc(job_href)}" target="_blank" rel="noopener">{title}</a>{vf}' if job_href else f'<span class="t">{title}</span>{vf}'
     meta_bits = [
@@ -857,9 +958,9 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     score = _fmt_score(score_override if score_override is not None
                       else job.get("score"))
     btn = ""
-    if apply_href:
+    if apply_href and apply_href != job_href:
         btn = f'<a class="btn" href="{_esc(apply_href)}" target="_blank" rel="noopener">candidatar-se ↗</a>'
-    elif job_href:
+    elif job_href and not apply_href:
         btn = f'<a class="btn" href="{_esc(job_href)}" target="_blank" rel="noopener">abrir vaga ↗</a>'
     if snippet and snippet_is_en:
         snip = f'<p class="d en">{_esc("EN · " + snippet)}</p>'
@@ -954,6 +1055,13 @@ a.t:hover{text-decoration:underline}
 .btn{display:inline-block;margin-top:7px;padding:6px 14px;border:1px solid #1c7a4a;color:#9fd8b4;border-radius:999px;font-size:.82rem;text-decoration:none}
 .btn:hover{background:#1c7a4a;color:#10151b}
 .f{color:#9aa7b4;font-size:.72rem;margin:10px 0 0}
+.legend{margin:0 0 12px;color:#9aa7b4;font-size:.78rem}
+.legend summary{cursor:pointer;color:#c8d3dd;font-size:.82rem;padding:4px 0;list-style:none}
+.legend summary:hover{color:#e6edf3}
+.legend dl{margin:6px 0 0}
+.legend dt{color:#c8d3dd;font-weight:600;margin-top:6px}
+.legend dd{margin:0 0 0 0;color:#9aa7b4}
+.legend p{margin:8px 0 0}
 @media(min-width:640px){main{padding:24px 20px 56px}h1{font-size:1.25rem}}
 """
 
@@ -1236,7 +1344,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             try:
                 from internship_finder import salary_benchmark
                 salary_est = salary_benchmark.salary_estimate_for_job(
-                    job, salary_benchmark_map)
+                    job, salary_benchmark_map, compact=True)
             except Exception:  # noqa: BLE001 — display best-effort
                 salary_est = ""
         job_href = _safe_url(job.get("url"))
@@ -1543,11 +1651,10 @@ def render_minimal_html(
             sweet_section = (
                 '<h2>⭐ Ponto ótimo — empresas grandes com boa qualidade '
                 'de trabalho e 🛂</h2>'
-                '<p class="p2">Cruzamento (derivado no build, sem consulta '
-                'externa): volume de vagas elegíveis × qualidade do '
-                'empregador (Kununu ≥ 4,0 ou prêmio Great Place to Work) '
-                '× política de visto. Mapa curado em '
-                'config/employer_quality.json.</p>'
+                '<p class="p2">Cruzamento volume × qualidade (Kununu ≥ 4,0 '
+                'ou GPTW) × política de visto — derivado no build, mapa '
+                'curado em config/employer_quality.json; critérios na '
+                'legenda.</p>'
                 + '<ul class="spot">' + "".join(
                     f"<li>{_esc(l)}</li>" for l in lines) + "</ul>"
             )
@@ -1583,8 +1690,9 @@ def render_minimal_html(
         mat_header = "top 10"
         mat_note = (
             '<p class="p2">Ranking próprio para Materials Engineering '
-            '(mesmas vagas elegíveis, pesos distintos dos de Supply '
-            'Chain). O score à esquerda é o do perfil Materials.</p>')
+            '(pesos distintos dos de Supply Chain; ver '
+            'docs/f36_non_de_profile.md). Score à esquerda: perfil '
+            'Materials — os detalhes vivem na legenda.</p>')
         if full_list:
             # F43 — a lista única é a FONTE DA VERDADE (universo inteiro);
             # a seção segue como DESTAQUE do perfil (os mesmos top-10 do
@@ -1646,9 +1754,9 @@ def render_minimal_html(
         eu_header = "top 10"
         eu_note = (
             '<p class="p2">Ranking próprio para o canal secundário '
-            '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
-            'estrato; ver docs/f36_non_de_profile.md). O score à esquerda '
-            'é o do perfil EU.</p>')
+            '(NL/BE/LU/FI — pesos calibrados no estrato; ver '
+            'docs/f36_non_de_profile.md). Score à esquerda: perfil EU '
+            '— os detalhes vivem na legenda.</p>')
         if full_list:
             # F43 — mesmo contrato do destaque 🧪 (aba 🇪🇺 reordena a lista
             # completa por eu_score; dedupe só no caso cortado).
@@ -1701,8 +1809,8 @@ def render_minimal_html(
         "(empresa com política de visto) · ranking, JSON e CSV completos "
         "são gerados pelo pipeline no VPS"
     )
-    # F12 T4 — rodapé-glossário estático (offline; sempre presente).
-    glossary = _glossary_html()
+    # F51 — glossário e frases §16e vivem DENTRO da legenda única (zero
+    # duplicação de rodapé; o custo é fixo, não por card).
     # Select de pais SEM bandeiras: o contrato da F7 e "DE e o default visual
     # — bandeira so no canal secundario"; o select e um controle, nao um
     # card (e o emoji DE no select poluiria o documento inteiro).
@@ -1798,6 +1906,7 @@ def render_minimal_html(
 <label><input type="checkbox" id="f-ws"> sem Werkstudent</label>
 <label><input type="checkbox" id="f-data"> Data/BI</label>
 </div>{tabs_html}
+{_legend_html()}
 <ol id="list">
 {body}
 </ol>
@@ -1807,8 +1916,6 @@ def render_minimal_html(
 {eu_section}
 {sweet_section}
 <p class="f">{_esc(footer_note)}</p>
-{_legal_footer_html()}
-{glossary}
 </main>
 <script>{_JS}</script>{_script_f43}
 </body>
