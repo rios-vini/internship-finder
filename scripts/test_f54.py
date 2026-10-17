@@ -48,6 +48,7 @@ Uso:  .venv/bin/python scripts/test_f54.py   (ou bash scripts/test_f54.py)
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -419,6 +420,122 @@ def test_cli() -> None:
               (proc2.stderr or "")[-200:] if proc2.returncode else "")
 
 
+# ---------------------------------------------------------------------------
+# Q — painel ⭐ de qualidade (F54.1): aliases também lá
+# ---------------------------------------------------------------------------
+
+def _tag_stripped(html: str) -> str:
+    """Texto VISÍVEL da página: tags fora (mesmo padrão do A/B do
+    orquestrador que detectou a fuga). Atributos (href, data-jid, …) vivem
+    DENTRO dos colchetes da tag e somem junto — sobra só o texto puro.
+    """
+    return re.sub(r"<[^>]+>", " ", html)
+
+
+def _panel_section(html: str) -> str:
+    """HTML da seção '⭐ Ponto ótimo' (o painel de qualidade); '' ausente."""
+    m = re.search(r"<h2>⭐ Ponto ótimo.*?</ul>", html, re.S)
+    return m.group(0) if m else ""
+
+
+def _fixture_painel() -> list[dict]:
+    """Empresas que caem no painel ⭐ via quality_map/intel (offline):
+    DHL (GPTW), BCG (Kununu) — as duas strings ALIAS do caso real — e um
+    controle limpo (Bosch) que NÃO pode ser aliasado."""
+    return [
+        _job("dhl|p:1", "Praktikum Logistik International",
+             "careers.dhl.com", "Bonn", 11.0),
+        _job("dhl|p:2", "Praktikum Supply Chain", "careers.dhl.com",
+             "Bonn", 10.0),
+        _job("bcg|p:1", "Praktikum Procurement Analytics",
+             "careers.bcg.com", "Düsseldorf", 9.0),
+        _job("bosch|p:1", "Werkstudent Material", "Bosch",
+             "Stuttgart", 8.0),
+    ]
+
+
+def test_quality_panel() -> None:
+    section("Q1–Q6 — F54.1: painel ⭐ de qualidade passa pelo MESMO alias")
+    aliases = dh.load_display_aliases(ALIASES_PATH)
+
+    # intel (visa_friendly — critério 3 do painel) + quality (critério 2)
+    with tempfile.TemporaryDirectory() as tmp:
+        ip = Path(tmp) / "intel.json"
+        ip.write_text(json.dumps({"companies": [
+            {"company": "careers.dhl.com", "visa_policy": "unclear",
+             "sources": ["https://example.com/dhl"], "checked": "2026-10-01"},
+            {"company": "careers.bcg.com", "visa_policy": "unclear",
+             "sources": ["https://example.com/bcg"], "checked": "2026-10-01"},
+            {"company": "Bosch", "visa_policy": "unclear",
+             "sources": ["https://example.com/bosch"], "checked": "2026-10-01"},
+        ]}), encoding="utf-8")
+        intel = oi.load_company_intel(ip)
+
+        qp = Path(tmp) / "eq.json"
+        qp.write_text(json.dumps({"companies": [
+            {"company": "careers.dhl.com", "kununu_score": 3.7,
+             "kununu_reviews": 100, "gptw_award": 2026,
+             "source_url": "https://example.com/k/dhl", "checked": "2026-10-01"},
+            {"company": "careers.bcg.com", "kununu_score": 4.0,
+             "kununu_reviews": 50, "gptw_award": None,
+             "source_url": "https://example.com/k/bcg", "checked": "2026-10-01"},
+            {"company": "Bosch", "kununu_score": 4.0, "kununu_reviews": 200,
+             "gptw_award": None,
+             "source_url": "https://example.com/k/bosch", "checked": "2026-10-01"},
+        ]}), encoding="utf-8")
+        from internship_finder import employer_quality as eq
+        quality_map = eq.load_employer_quality(qp)
+
+        jobs = _fixture_painel()
+        rows = eq.sweet_spot_companies(jobs, quality_map, intel)
+        check("Q0 rows derivadas (3 empresas, originais cruas)",
+              [r["company"] for r in rows] ==
+              ["careers.dhl.com", "Bosch", "careers.bcg.com"],
+              str([r["company"] for r in rows]))
+
+        html = _render(jobs, display_aliases=aliases, company_intel_map=intel,
+                       quality_map=quality_map, sweet_spot_rows=rows)
+        panel = _panel_section(html)
+        visible = _tag_stripped(html)
+
+        check("Q1 painel presente no render",
+              bool(panel) and "vagas eligible" in panel)
+        check("Q2 painel SEM nenhum nome do mapa cru (11/11)",
+              all(k not in panel for k in aliases),
+              str([k for k in aliases if k in panel]))
+        check("Q3 DHL/BCG aliasados no painel",
+              "DHL" in panel and "careers.dhl.com" not in panel
+              and "BCG" in panel and "careers.bcg.com" not in panel,
+              panel[:200])
+        # TODO o HTML (texto visível), não só o painel — pega qualquer OUTRA
+        # fuga de texto visível que o painel-teste deixaria passar.
+        check("Q4 página inteira sem nome do mapa no TEXTO visível",
+              all(k not in visible for k in aliases),
+              str([k for k in aliases if k in visible]))
+        check("Q5 linha do painel no formato esperado",
+              "<li>DHL · ⭐ 3,7 · 🏆 GPTW 2026 · 2 vagas eligible</li>" in panel
+              and "<li>Bosch · ⭐ 4,0 · Kununu · 1 vaga eligible</li>" in panel
+              and "<li>BCG · ⭐ 4,0 · Kununu · 1 vaga eligible</li>" in panel)
+        check("Q5b rows ORIGINAIS nunca mutadas (display-only)",
+              [r["company"] for r in rows] ==
+              ["careers.dhl.com", "Bosch", "careers.bcg.com"])
+
+        # Q6 — cadeia de degradação (render_size_aware): o painel sobrevive
+        # às remontagens COM higiene (lição F36.1/F54).
+        html_chain = mp.render_size_aware(
+            jobs, total_eligible=len(jobs), generated_at=STAMP,
+            company_intel_map=intel, quality_map=quality_map,
+            sweet_spot_rows=rows, display_aliases=aliases)
+        check("Q6 cadeia de degradação: painel limpo em TODAS as montagens",
+              all(k not in _tag_stripped(html_chain) for k in aliases))
+
+        # Q7 — sem sweet_spot_rows: painel ausente, render nunca quebra.
+        html_empty = _render(jobs, display_aliases=aliases,
+                             sweet_spot_rows=[])
+        check("Q7 painel ausente (rows vazias) — sem erro, sem seção",
+              isinstance(html_empty, str) and not _panel_section(html_empty))
+
+
 def main() -> int:
     print("F54 — higiene de display: sanitizer mojibake + aliases de empresa")
     test_module_sanitizer()
@@ -427,6 +544,7 @@ def main() -> int:
     test_render_full()
     test_ab_byte_diff()
     test_cli()
+    test_quality_panel()
     print()
     if FAILURES:
         print(f"F54: FALHAS: {len(FAILURES)} de {CHECKS} checks")
