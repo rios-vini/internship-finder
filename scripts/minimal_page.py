@@ -1633,6 +1633,25 @@ def render_minimal_html(
     sweet_section = ""
     if sweet_spot_rows:
         lines = []
+
+        # F54.1 — o painel usa OUTRA fonte de nomes (sweet_spot_rows
+        # derivadas do dataset inteiro, fora do _cards_section): sem
+        # aliasing, os crus ("careers.dhl.com", "careers.bcg.com")
+        # escapavam para o texto visível. PONTO ÚNICO (spec F54.1 item
+        # 1 — não reimplementar): o nome passa pela MESMA
+        # display_job_view dos cards (sanitizer mojibake + alias EXATO;
+        # incerto → original). Import lazy + best-effort: sem o pacote,
+        # nome ORIGINAL (mesmo regime do _cards_section). O row nunca é
+        # mutado (display-only; digest/pipeline seguem pela string crua).
+        def _panel_display(raw) -> str:
+            try:
+                from internship_finder import display_hygiene
+                view = display_hygiene.display_job_view(
+                    {"company": raw}, display_aliases or {})
+                return str(view.get("company") or "")
+            except Exception:  # noqa: BLE001 — display best-effort
+                return str(raw or "")
+
         for r in sweet_spot_rows:
             if r.get("gptw_award") and r.get("kununu_score") is None:
                 quality = f"🏆 GPTW {int(r['gptw_award'])}"
@@ -1645,7 +1664,7 @@ def render_minimal_html(
                 continue
             n = r["eligible"]
             lines.append(
-                f"{r['company']} · {quality} · "
+                f"{_panel_display(r.get('company'))} · {quality} · "
                 f"{n} vaga{'s' if n != 1 else ''} eligible")
         if lines:
             sweet_section = (
