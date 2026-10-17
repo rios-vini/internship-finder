@@ -402,8 +402,8 @@ jobs:
           # explícito, padrão F13/F15/F43). test_f52.py: 51 checks,
           # 100% offline; A/B no próprio teste (T5: cards idênticos,
           # nenhuma marca F52 no default).
-          # F54 (17/10): test_f54 entra na suíte (86º script — array do
-          # main 51642b6 tem 85) — higiene de display no render público:
+          # F54 (17/10): test_f54 entra na suíte (87º script — array do
+          # main 51642b6 tem 86) — higiene de display no render público:
           # sanitizer mojibake determinístico (UTF-8-decodado-como-cp1252/
           # latin-1 → re-decodar UTF-8, decode STRICT como validador —
           # função pura, zero deps, sem ftfy) + aliases de empresa
