@@ -1,0 +1,23 @@
+{
+  "_comment": "F54 — aliases de DISPLAY de empresa (higiene da página pública). Match EXATO por string do dataset (case-sensitive, sem substring); aplicado SÓ no render, NUNCA nos dados/pipeline (o match de intel/badges continua pela string original). Regra de honestidade: alias troca só o NOME de exibição (branding), nunca inventa empresa; string incerta fica ORIGINAL (ver [CONFIRMAR-DONO] no relatório F54).",
+  "aliases": {
+    "lidlstiftup2": "Lidl",
+    "careers.allianz.com": "Allianz",
+    "Our jobs - CANAL+ Group": "CANAL+ Group",
+    "hairoboticseurope.jobs.personio.com": "HAI Robotics",
+    "nestleHRprdRMK": "Nestlé",
+    "FRoSTA AG Career": "FRoSTA",
+    "careers.dhl.com": "DHL",
+    "careers.roche.com": "Roche",
+    "careers.bcg.com": "BCG",
+    "careers.agcocorp.com": "AGCO",
+    "careers.knorr-bremse.com": "Knorr-Bremse",
+    "bil.csod.com": "BIL",
+    "issgovernance": "ISS Governance",
+    "trumpf": "TRUMPF",
+    "hella": "HELLA",
+    "Gsk": "GSK",
+    "AUMOVIO SE Haupverwaltung": "AUMOVIO SE",
+    "auto1": "AUTO1"
+  }
+}

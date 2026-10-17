@@ -235,8 +235,8 @@ def render_ranking_html(
     pipeline NÃO consulta Kununu/GPTW (mapa é curadoria manual).
     Best-effort: ausente/ilegível -> sem badge/seção, nunca quebra.
 
-    F29: ``--salary-benchmark config/salary_benchmark.json`` (default
-    do minimal_page; explicito aqui para fixar o contrato) habilita a
+    F29: ``--salary-benchmark config/salary_benchmark.json`` (default do
+    minimal_page; explicito aqui para fixar o contrato) habilita a
     ESTIMATIVA DE MERCADO rotulada nos cards (campo separado do salário
     detectado; só quando o anúncio não cita valor), junto dos demais
     sinais de candidatura (idade, duração §16e, red-flags, rodapé
@@ -248,6 +248,12 @@ def render_ranking_html(
     topo, light mode via prefers-color-scheme, meta description + OG
     (sem og:image) e favicon SVG data-URI. Zero arquivo extra: o
     publish continua empurrando SÓ index.html para a gh-pages.
+    F54: ``--display-aliases config/display_aliases.json`` (default do
+    minimal_page; explicito aqui para fixar o contrato) habilita os
+    aliases de display de empresa (ex.: ``careers.dhl.com`` → ``DHL``)
+    JUNTO do sanitizer mojibake no render (higienização display-only —
+    dataset e match de intel intocados). Loader tolerante: ausente/
+    ilegível -> nomes ORIGINAIS, nunca quebra.
     """
     script = root / "scripts" / "minimal_page.py"
     if not script.exists():
@@ -264,6 +270,7 @@ def render_ranking_html(
         "--employer-quality", "config/employer_quality.json",
         "--salary-benchmark", "config/salary_benchmark.json",
         "--vitrine",
+        "--display-aliases", "config/display_aliases.json",
     ]
     if dead_link_ids:
         dead_tmp = output_path.parent / ".dead_ids.txt"
