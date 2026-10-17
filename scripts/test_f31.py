@@ -354,11 +354,18 @@ def test_stage() -> None:
     sys.path.insert(0, "src")
     from internship_finder import research_sources as rs
 
+    # F47: default ON total (set F30_DEFAULT_OFF_SOURCES vazio) — TODAS as
+    # 11 fontes executam, entao o dict de fetchers fake precisa ser
+    # COMPLETO (a suite e zero-HTTP: fonte sem fake chamaria o fetcher
+    # REAL = rede).
+    _f_ok = lambda **kw: ([], {"source": "x", "status": "ok", "jobs": 0})  # noqa: E731
     # E1: fetcher morto -> failed no summary; run segue.
     jobs, summary = rs.collect_research_sources(
         fetchers={
             "mpg_rss": lambda **kw: ([], {"source": "mpg_rss", "status": "ok", "jobs": 0}),
             "bme": lambda **kw: _fetcher_dead(),
+            **{n: _f_ok for n, _ in rs.RESEARCH_SOURCE_ORDER
+               if n not in ("mpg_rss", "bme")},
         },
         env={},
     )
@@ -371,6 +378,8 @@ def test_stage() -> None:
         fetchers={
             "mpg_rss": lambda **kw: ([], {"source": "mpg_rss", "status": "ok", "jobs": 3}),
             "bme": lambda **kw: ([], {"source": "bme", "status": "ok", "jobs": 0}),
+            **{n: _f_ok for n, _ in rs.RESEARCH_SOURCE_ORDER
+               if n not in ("mpg_rss", "bme")},
         },
         env={"INTERNSHIP_FINDER_RESEARCH_SOURCES_OFF": "bme"},
     )
@@ -380,7 +389,10 @@ def test_stage() -> None:
           f"sources={summary['sources']}")
     # E3: nome desconhecido -> ignorado sem crash.
     jobs, summary = rs.collect_research_sources(
-        fetchers={"bme": lambda **kw: ([], {"source": "bme", "status": "ok", "jobs": 1})},
+        fetchers={
+            "bme": lambda **kw: ([], {"source": "bme", "status": "ok", "jobs": 1}),
+            **{n: _f_ok for n, _ in rs.RESEARCH_SOURCE_ORDER if n != "bme"},
+        },
         env={"INTERNSHIP_FINDER_RESEARCH_SOURCES_OFF": "fonte_inexistente"},
     )
     check("E3. nome desconhecido no CSV -> ignorado (sem crash)",
