@@ -71,6 +71,12 @@ STAMP = "2026-10-16 12:00"
 BM = sb.load_salary_benchmark(REPO / "config" / "salary_benchmark.json")
 QM = eq.load_employer_quality(REPO / "config" / "employer_quality.json")
 
+# Baseline CONGELADO do A/B F4/F4b: main pré-F51 (merge da F54). O código
+# da F51 (card compacto) nasceu no PR #143 → main 323daf1; tudo anterior a
+# ele serve como lado "antes". Pós-merge, main móvel conteria a própria
+# F51 e o A/B mediria −0B (bug do CI do main em 17/10).
+_AB_BASELINE_SHA = "079b13c"
+
 DE_REQUIRED = ("Sehr gute Deutschkenntnisse in Wort und Schrift "
                "erforderlich")
 
@@ -358,13 +364,21 @@ def _ab_fixture(n: int = 120, n_comp: int = 6) -> list[dict]:
 
 
 def _ab_before(jobs: list[dict]) -> int | None:
-    """A/B real: MESMA fixture no minimal_page.py do main (subprocesso
+    """A/B real: MESMA fixture no minimal_page.py PRÉ-F51 (subprocesso
     isolado, 100% offline), MESMA montagem (render_minimal_html com
     snippets) — comparação de regimes idênticos; o delta é a anatomia
-    do card F51, não a cadeia de degradação. None se indisponível."""
+    do card F51, não a cadeia de degradação. None se indisponível.
+
+    O baseline é o SHA CONGELADO do main pré-F51 (merge da F54), NUNCA
+    ``main`` móvel: pós-merge o main CONTÉM a F51 e o A/B compararia
+    F51 com ela mesma (delta −0B determinístico — quebrou o CI do main
+    em 17/10). Pré-F51 o teste é de regressão viva; pós-F51 (este SHA
+    já contido), o A/B vira censo de regressão: falha só se o card
+    compacto REGREDIR (pós-F51 voltar a crescer)."""
+    pre = _AB_BASELINE_SHA
     try:
         blob = subprocess.run(
-            ["git", "show", "main:scripts/minimal_page.py"],
+            ["git", "show", f"{pre}:scripts/minimal_page.py"],
             capture_output=True, text=True, cwd=str(REPO), check=True,
         ).stdout
     except Exception:  # noqa: BLE001
@@ -377,7 +391,7 @@ def _ab_before(jobs: list[dict]) -> int | None:
         for mod in ("employer_quality.py", "salary_benchmark.py"):
             try:
                 src_blob = subprocess.run(
-                    ["git", "show", f"main:src/internship_finder/{mod}"],
+                    ["git", "show", f"{pre}:src/internship_finder/{mod}"],
                     capture_output=True, text=True, cwd=str(REPO),
                     check=True).stdout
             except Exception:  # noqa: BLE001
