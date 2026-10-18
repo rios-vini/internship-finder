@@ -139,7 +139,9 @@ def _fixture_clean() -> list[dict]:
 def _render(jobs, **kw):
     kw.setdefault("total_eligible", len(jobs))
     kw.setdefault("generated_at", STAMP)
-    return mp.render_minimal_html(jobs, **kw)
+    # F46: default do render virou EN (decisão do dono 15/10); esta suíte
+    # valida o chrome/alias da fase — force lang="pt" (contrato (b) F46).
+    return mp.render_minimal_html(jobs, lang="pt", **kw)
 
 
 # ---------------------------------------------------------------------------
@@ -525,7 +527,7 @@ def test_quality_panel() -> None:
         html_chain = mp.render_size_aware(
             jobs, total_eligible=len(jobs), generated_at=STAMP,
             company_intel_map=intel, quality_map=quality_map,
-            sweet_spot_rows=rows, display_aliases=aliases)
+            sweet_spot_rows=rows, display_aliases=aliases, lang="pt")
         check("Q6 cadeia de degradação: painel limpo em TODAS as montagens",
               all(k not in _tag_stripped(html_chain) for k in aliases))
 

@@ -164,15 +164,18 @@ def make_tracker(path: Path, rows: list[tuple[str, str]]) -> Path:
 
 
 def render_full(jobs: list[dict], **kw) -> str:
+    # F46: default do render virou EN (decisão do dono 15/10); esta suíte
+    # valida o chrome/bytes da fase — force lang="pt" (contrato (b) F46).
     return mp.render_size_aware(
         jobs, total_eligible=len(jobs), generated_at=STAMP,
-        full_list=True, profile_maps=mp._profile_maps(jobs), **kw)
+        full_list=True, profile_maps=mp._profile_maps(jobs),
+        lang="pt", **kw)
 
 
 def render_legacy(jobs: list[dict], **kw) -> str:
     return mp.render_size_aware(
         jobs, total_eligible=len(jobs), generated_at=STAMP,
-        top=mp.PAGE_TOP, **kw)
+        top=mp.PAGE_TOP, lang="pt", **kw)
 
 
 def card_block(page: str, jid: str) -> str:
@@ -423,7 +426,7 @@ def test_nojs_and_legacy_ab() -> None:
           f"{main_block.count('<li ')} cards")
     legacy = mp.render_minimal_html(
         jobs, total_eligible=len(jobs), generated_at=STAMP,
-        top=mp.PAGE_TOP, with_snippets=True)
+        top=mp.PAGE_TOP, with_snippets=True, lang="pt")
     check("full difere do legado (features existem de fato)",
           len(full.encode()) != len(legacy.encode()))
 
@@ -747,7 +750,7 @@ def test_budget() -> None:
     cur = mp.render_minimal_html(
         jobs, total_eligible=len(jobs), generated_at=STAMP,
         full_list=True, profile_maps=mp._profile_maps(jobs),
-        with_snippets=True)
+        with_snippets=True, lang="pt")
     delta = len(cur.encode("utf-8")) - base[0]
     # chrome F53 = blocos novos (núcleo+JS+CSS+toggles) + a EXTENSÃO do
     # _JS_PROFILE (estado se/ap, condições do cardOk, empty-state,
@@ -779,7 +782,7 @@ def test_publish_path() -> None:
     tmp.write_text(json.dumps(jobs), encoding="utf-8")
     try:
         html = mp.render_minimal_html_from_file(
-            tmp, top=mp.PAGE_TOP_FULL, generated_at=STAMP)
+            tmp, top=mp.PAGE_TOP_FULL, generated_at=STAMP, lang="pt")
         check("publish liga o full E a interatividade (toggles)",
               'id="f-seen"' in html and 'id="f-app"' in html)
         check("publish: data-factors no card",

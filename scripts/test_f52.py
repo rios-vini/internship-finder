@@ -101,9 +101,11 @@ def make_jobs(n: int = 12) -> list[dict]:
 
 
 def render(vitrine: bool, jobs: list[dict], **kw) -> str:
+    # F46: default do render virou EN (decisão do dono 15/10); esta suíte
+    # valida o chrome/contrato da fase — force lang="pt" (contrato (b) F46).
     return mp.render_minimal_html(
         jobs, vitrine=vitrine, total_eligible=len(jobs),
-        generated_at=STAMP, top=mp.PAGE_TOP, **kw)
+        generated_at=STAMP, top=mp.PAGE_TOP, lang="pt", **kw)
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +146,7 @@ def test_about_bloco() -> None:
     # plural honesto
     one = mp.render_minimal_html(
         make_jobs(1), vitrine=True, total_eligible=1, generated_at=STAMP,
-        top=mp.PAGE_TOP)
+        top=mp.PAGE_TOP, lang="pt")
     check("singular com 1 vaga (roles -> role)", "eligible role today" in one
           and "eligible roles today" not in one)
 
@@ -286,8 +288,9 @@ def test_ab_byte_diff() -> None:
     section("T5. A/B byte-diff — default pré-F52 byte a byte")
     jobs = make_jobs()
     a1 = render(vitrine=False, jobs=jobs)
-    a2 = mp.render_minimal_html(  # sem passar o kwarg = default
-        jobs, total_eligible=len(jobs), generated_at=STAMP, top=mp.PAGE_TOP)
+    a2 = mp.render_minimal_html(  # sem passar o kwarg vitrine = default
+        jobs, total_eligible=len(jobs), generated_at=STAMP, top=mp.PAGE_TOP,
+        lang="pt")
     check("default == vitrine=False explícito (kwarg idempotente)",
           a1 == a2)
     check("nenhuma marca F52 no default (about/OG/favicon/light)",
@@ -305,10 +308,10 @@ def test_ab_byte_diff() -> None:
     # regime full também preserva o A/B do default
     fa = mp.render_size_aware(jobs, total_eligible=len(jobs),
                               generated_at=STAMP, top=mp.PAGE_TOP,
-                              full_list=True)
+                              full_list=True, lang="pt")
     fb = mp.render_size_aware(jobs, total_eligible=len(jobs),
                               generated_at=STAMP, top=mp.PAGE_TOP,
-                              full_list=True, vitrine=True)
+                              full_list=True, vitrine=True, lang="pt")
     check("regime full: default sem marcas F52; vitrine com about",
           "class=\"about\"" not in fa and "class=\"about\"" in fb)
 
@@ -356,13 +359,14 @@ def test_size_aware_preserva_vitrine() -> None:
     # about/head (padrão F13 — a vitrine não é campo decorativo).
     h = mp.render_size_aware(jobs, total_eligible=len(jobs),
                              generated_at=STAMP, top=mp.PAGE_TOP,
-                             vitrine=True)
+                             vitrine=True, lang="pt")
     check("render_size_aware(vitrine=True) entrega about",
           'class="about"' in h)
     check("render_size_aware(vitrine=True) entrega OG",
           'og:url' in h)
     h_def = mp.render_size_aware(jobs, total_eligible=len(jobs),
-                                 generated_at=STAMP, top=mp.PAGE_TOP)
+                                 generated_at=STAMP, top=mp.PAGE_TOP,
+                                 lang="pt")
     check("render_size_aware default sem marcas F52",
           'class="about"' not in h_def and "og:" not in h_def)
     # from_file repassa a vitrine (caminho do CLI)
@@ -370,10 +374,11 @@ def test_size_aware_preserva_vitrine() -> None:
         p = Path(tmp) / "eligible_jobs.json"
         p.write_text(json.dumps(jobs), encoding="utf-8")
         hf = mp.render_minimal_html_from_file(p, top=mp.PAGE_TOP,
-                                              vitrine=True)
+                                              vitrine=True, lang="pt")
         check("from_file(vitrine=True) entrega about",
               'class="about"' in hf)
-        hf_def = mp.render_minimal_html_from_file(p, top=mp.PAGE_TOP)
+        hf_def = mp.render_minimal_html_from_file(p, top=mp.PAGE_TOP,
+                                                  lang="pt")
         check("from_file default sem marcas F52",
               'class="about"' not in hf_def and "og:" not in hf_def)
 

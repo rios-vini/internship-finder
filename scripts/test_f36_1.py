@@ -181,7 +181,7 @@ def test_page_over_cap_keeps_sections() -> None:
             jobs, total_eligible=len(jobs),
             generated_at="2026-10-14T09:35:00Z",
             materials=materials, eu=eu,
-            watchlist_events=events, new_since_ids=new_ids,
+            watchlist_events=events, new_since_ids=new_ids, lang="pt",
         )
     stdout = buf.getvalue()
     nbytes = len(html.encode("utf-8"))
@@ -224,11 +224,12 @@ def test_page_profile_budget_layer() -> None:
     events = [dict(j) for j in ranked[:95]]
     new_ids = {j["id"] for j in events}
     # prova do aperto: radar top-15 SOZINHO ainda estoura (3-b é necessário)
+    # F46: default do render virou EN (decisão do dono 15/10); esta suíte valida o chrome pt da fase — fixtures forçam lang="pt" (contrato (b) da F46).
     radar_only = mp.render_minimal_html(
         jobs, total_eligible=n, generated_at="2026-10-14T09:35:00Z",
         materials=materials, eu=eu, with_snippets=False,
         watchlist_events=events, new_since_ids=new_ids,
-        radar_limit=mp.RADAR_TOP_N)
+        radar_limit=mp.RADAR_TOP_N, lang="pt")
     check("pré-condição: radar-15 sozinho AINDA estoura o cap (3-b dispara)",
           len(radar_only.encode("utf-8")) > mp.PAGE_HARD_CAP_BYTES,
           f"{len(radar_only.encode('utf-8'))} bytes")
@@ -237,7 +238,7 @@ def test_page_profile_budget_layer() -> None:
         html = mp.render_size_aware(
             jobs, total_eligible=n, generated_at="2026-10-14T09:35:00Z",
             materials=materials, eu=eu,
-            watchlist_events=events, new_since_ids=new_ids,
+            watchlist_events=events, new_since_ids=new_ids, lang="pt",
         )
     stdout = buf.getvalue()
     nbytes = len(html.encode("utf-8"))
@@ -264,7 +265,7 @@ def test_page_profile_limit_default() -> None:
     eu = rank_eu_stratum(jobs)[: mp.EU_SECTION_TOP]
     html = mp.render_minimal_html(
         jobs, total_eligible=len(jobs), generated_at="2026-10-14T09:35:00Z",
-        materials=materials, eu=eu)
+        materials=materials, eu=eu, lang="pt")
     check("página normal mantém header 'top 10' (byte a byte o layout)",
           "Fora da Alemanha — top 10 (perfil EU non-DE)" in html
           and "Materials Engineering — top 10 (perfil alternativo)" in html)
@@ -282,7 +283,7 @@ def test_page_under_cap() -> None:
         html = mp.render_size_aware(
             jobs, total_eligible=len(jobs),
             generated_at="2026-10-14T09:35:00Z",
-            materials=materials, eu=eu,
+            materials=materials, eu=eu, lang="pt",
         )
     check("página pequena: sem orçamento 🎯 (nenhuma degradação)",
           "orçamento 🎯 ativo" not in buf.getvalue())
@@ -298,7 +299,7 @@ def test_page_without_eu_data() -> None:
     with redirect_stdout(buf):
         html = mp.render_minimal_html(
             jobs, total_eligible=len(jobs),
-            generated_at="2026-10-14T09:35:00Z", eu=None,
+            generated_at="2026-10-14T09:35:00Z", eu=None, lang="pt",
         )
     check("eu=None → sem seção 🇪🇺 (sem erro)",
           "Fora da Alemanha" not in html)
@@ -312,14 +313,14 @@ def test_page_without_eu_data() -> None:
     with redirect_stdout(buf):
         html2 = mp.render_minimal_html(
             de_only, total_eligible=len(de_only),
-            generated_at="2026-10-14T09:35:00Z", eu=eu_empty,
+            generated_at="2026-10-14T09:35:00Z", eu=eu_empty, lang="pt",
         )
     check("estrato vazio → sem seção 🇪🇺 (sem erro)",
           "Fora da Alemanha" not in html2)
     check("render_size_aware com eu vazio: idem, sem erro",
           "Fora da Alemanha" not in mp.render_size_aware(
               de_only, total_eligible=len(de_only),
-              generated_at="2026-10-14T09:35:00Z", eu=[]))
+              generated_at="2026-10-14T09:35:00Z", eu=[], lang="pt"))
 
 
 def test_page_structural_contract() -> None:

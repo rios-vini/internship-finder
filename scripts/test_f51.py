@@ -115,11 +115,14 @@ def _job(i: int, *, title="Praktikum Supply Chain", company="Acme GmbH",
 
 
 def _render(jobs, *, full=False, bm=BM, qm=QM, **kw) -> str:
+    # F46: default do render virou EN (decisão do dono 15/10); esta suíte
+    # valida o chrome pt da fase — force lang="pt" (contrato (b) da F46).
     return mp.render_minimal_html(
         jobs, total_eligible=len(jobs), generated_at=STAMP,
         now_ref=REF, salary_benchmark_map=bm, quality_map=qm,
         full_list=full,
         profile_maps=mp._profile_maps(jobs) if full else None,
+        lang="pt",
         **kw)
 
 
@@ -270,13 +273,13 @@ def group_d_badges() -> None:
     qm_sap = {"sap": {"kununu_score": 4.0}}
     html_s = mp.render_minimal_html(
         [_job(44, company="SAP")], total_eligible=1, generated_at=STAMP,
-        now_ref=REF, quality_map=qm_sap)
+        now_ref=REF, quality_map=qm_sap, lang="pt")
     check("D1f '⭐ 4,0' presente (compacto, com vírgula)",
           "⭐ 4,0" in html_s)
     qm_gptw = {"sap": {"gptw_award": 2026}}
     html_g = mp.render_minimal_html(
         [_job(45, company="SAP")], total_eligible=1, generated_at=STAMP,
-        now_ref=REF, quality_map=qm_gptw)
+        now_ref=REF, quality_map=qm_gptw, lang="pt")
     check("D1g '🏆 GPTW' presente (sem ano)",
           "🏆 GPTW" in html_g and "GPTW 2026" not in html_g)
     check("D2 aria-hidden no 🛂",
@@ -289,7 +292,7 @@ def group_d_badges() -> None:
     html_m = mp.render_minimal_html(
         [mega], total_eligible=1, generated_at=STAMP, now_ref=REF,
         quality_map=qm_sap, salary_benchmark_map=BM,
-        new_since_ids={"t46"})
+        new_since_ids={"t46"}, lang="pt")
     zone = _badge_zone(html_m, "t46")
     seq = ("🛂", "🇩🇪", "⭐", "🆕", "⏳", "⚠️")
     pos = [zone.find(x) for x in seq]
@@ -299,7 +302,7 @@ def group_d_badges() -> None:
     # vaga morta entra COM badge (radar não corta mortas do evento).
     html_r = mp.render_minimal_html(
         [_job(53)], total_eligible=1, generated_at=STAMP, now_ref=REF,
-        watchlist_events=[_job(53)], dead_link_ids={"t53"})
+        watchlist_events=[_job(53)], dead_link_ids={"t53"}, lang="pt")
     zone_r = _badge_zone(html_r, "t53")
     check("D3b 🔗 DEPOIS de 🛂 na ordem (seção 🎯)",
           zone_r.find("🛂") < zone_r.find("🔗") and "🔗" in zone_r)
@@ -438,7 +441,7 @@ def group_f_budget() -> None:
     jobs = _ab_fixture()
     html_top = mp.render_size_aware(
         jobs, total_eligible=len(jobs), generated_at=STAMP,
-        salary_benchmark_map=BM, quality_map=QM, top=mp.PAGE_TOP)
+        salary_benchmark_map=BM, quality_map=QM, top=mp.PAGE_TOP, lang="pt")
     size_top = len(html_top.encode("utf-8"))
     check("F2 top-N < 150KB (cap duro)",
           size_top < mp.PAGE_HARD_CAP_BYTES, f"{size_top}B")
@@ -447,7 +450,7 @@ def group_f_budget() -> None:
     html_full = mp.render_size_aware(
         jobs, total_eligible=len(jobs), generated_at=STAMP,
         salary_benchmark_map=BM, quality_map=QM, full_list=True,
-        profile_maps=mp._profile_maps(jobs))
+        profile_maps=mp._profile_maps(jobs), lang="pt")
     size_full = len(html_full.encode("utf-8"))
     cap_full = mp.page_full_cap_bytes(len(jobs))
     check("F3 full-list <= cap proporcional", size_full <= cap_full,
@@ -467,7 +470,7 @@ def group_f_budget() -> None:
     html_ab = mp.render_minimal_html(
         jobs_ab, total_eligible=len(jobs_ab), generated_at=STAMP,
         salary_benchmark_map=BM, quality_map=QM, with_snippets=True,
-        top=mp.PAGE_TOP)
+        top=mp.PAGE_TOP, lang="pt")
     size_ab = len(html_ab.encode("utf-8"))
     before = _ab_before(jobs_ab)
     if before is not None:
