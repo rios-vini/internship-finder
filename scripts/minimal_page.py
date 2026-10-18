@@ -212,6 +212,58 @@ def _fmt_score(value) -> str:
         return "—"
 
 
+# F53 (item 3) — rótulos curtos PT dos fatores do breakdown (mesma
+# convenção de decimal do _fmt_score: ponto). Chaves = chaves do
+# ``score_breakdown`` do ranking (business) e dos breakdowns de perfil
+# (``materials_breakdown``/``eu_breakdown`` — mesma forma de campo).
+_SCORE_FACTOR_LABELS: dict[str, str] = {
+    "area": "área",
+    "skills": "skills",
+    "language": "idioma",
+    "type": "tipo",
+    "location": "local",
+    "registry": "interesse",
+    "penalties": "penal",
+    "decay": "idade",
+}
+
+
+def _score_factors_attr(job: dict, score_key: str = "score") -> str:
+    """F53 — ``data-factors`` com os top-3 fatores do breakdown (pura).
+
+    ``score_key`` decide QUAL breakdown explica o score EXIBIDO no card
+    ("score" -> ``score_breakdown``; "materials_score" ->
+    ``materials_breakdown``; "eu_score" -> ``eu_breakdown``) — o tooltip
+    nunca explica um score que não é o da coluna. Top-3 por valor
+    (desc, empate por chave = determinístico), só fatores ≠ 0.
+    Formato compacto: ``área +2 · idioma +1.5 · tipo +1``. Breakdown
+    ausente/todos-zero -> '' (atributo omitido, custo zero por card).
+    Custo medido: ~40-55 B/card no regime full (ver test_f53 + relatório).
+    """
+    if score_key == "score":
+        key = "score_breakdown"
+    elif score_key.endswith("_score"):
+        key = score_key[:-6] + "_breakdown"
+    else:
+        key = f"{score_key}_breakdown"
+    breakdown = job.get(key) if isinstance(job, dict) else None
+    if not isinstance(breakdown, dict) or not breakdown:
+        return ""
+    items = sorted(
+        ((str(k), v) for k, v in breakdown.items()
+         if isinstance(v, (int, float)) and not isinstance(v, bool) and v),
+        key=lambda kv: (-kv[1], kv[0]),
+    )
+    parts: list[str] = []
+    for k, v in items[:3]:
+        label = _SCORE_FACTOR_LABELS.get(k, k)
+        magnitude = f"{abs(v):.1f}".rstrip("0").rstrip(".")
+        parts.append(f"{label} {'+' if v > 0 else '-'}{magnitude}")
+    if not parts:
+        return ""
+    return f' data-factors="{_esc(" · ".join(parts))}"'
+
+
 _PERIOD_DISPLAY = {"month": "mês", "monat": "mês", "year": "ano",
                    "jahr": "ano", "hour": "hora", "stunde": "hora",
                    "week": "semana", "woche": "semana", "day": "dia",
@@ -869,7 +921,9 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           enrollment_red_flag: str = "",
           profile_scores: dict | None = None,
           profile_ranks: dict | None = None,
-          profile_attrs: bool = False) -> str:
+          profile_attrs: bool = False,
+          f53: bool = False,
+          factors_attr: str = "") -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -897,6 +951,15 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     "duração N meses — acima do teto §16e (6 meses)" quando citada >6;
     ``enrollment_red_flag`` = badge "exige matrícula em universidade
     alemã" (padrões DE/EN no título/descrição).
+
+    F53 (interatividade, SÓ no regime full — ``f53=True``; o regime
+    top-N legado permanece byte a byte o da F51): ``data-ps`` = status
+    pessoal com badge (o MESMO estado do event log F41 que alimenta o
+    ✅/📞/❌; cliente filtra "esconder aplicadas" por este atributo) e
+    ``factors_attr`` = ``data-factors`` pré-computado no <span> do score
+    (top-3 do breakdown — tooltip nativo montado client-side; sem JS o
+    atributo é inerte e a página renderiza idêntica). Sem ``f53`` nenhum
+    byte novo sai do card.
     """
     # F51 — texto do badge de qualidade (compacto: "⭐ 4,0"/"🏆 GPTW")
     # computado UMA vez; a explicação vive na legenda única.
@@ -994,6 +1057,15 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         if rank_v is not None:
             prof_bits.append(f' {r_attr}="{rank_v}"')
     prof_html = "".join(prof_bits)
+    # F53 — data-ps: status COM badge para o toggle client-side "esconder
+    # aplicadas" (regime full). O valor é o MESMO estado que alimenta o
+    # ✅/📞/❌ (event log F41 via view job_status do tracker); status sem
+    # ícone (new/interesting/review) NÃO ganha o atributo — não é
+    # candidatura. 'ignored' ganha o atributo, mas o filtro JS o preserva
+    # (ignorada ≠ aplicada — decisão documentada no relatório F53).
+    data_ps = ""
+    if f53 and personal_status_icon(personal_status):
+        data_ps = f' data-ps="{_esc(str(personal_status).strip().lower())}"'
     return (
         f'<li class="c{" vf-on" if visa else ""}{" dead-on" if dead else ""}"'
         f' data-s="{score}"'
@@ -1004,9 +1076,9 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         f' data-ws="{1 if is_werkstudent_title(job) else 0}"'
         f' data-data="{1 if is_data_bi_title(job) else 0}"'
         f' data-ia="{1 if inapplicable else 0}"'
-        f'{prof_html}'
+        f'{data_ps}{prof_html}'
         f' data-q="{_esc(qtext)}">'
-        f'<span class="r">{rank}</span><span class="s">{score}</span>'
+        f'<span class="r">{rank}</span><span class="s"{factors_attr}>{score}</span>'
         f'<div class="bd">{inner}{en_title_html}<div class="m">{meta}</div>{snip}{btn}</div></li>'
     )
 
@@ -1166,8 +1238,9 @@ li.style.display=ok?'':'none';if(ok)c++;});if(n)n.textContent=c;}q.addEventListe
 # _JS_LAZY_IO — não-testável offline (sem DOM/viewport no node).
 _JS_PROFILE = """(function(){var tabs=document.querySelectorAll('#tabs button'),lis=document.querySelectorAll('#list li.c');if(!tabs.length)return;
 var q=document.getElementById('q'),vf=document.getElementById('f-vf'),de=document.getElementById('f-de'),co=document.getElementById('f-country'),nw=document.getElementById('f-new'),ws=document.getElementById('f-ws'),da=document.getElementById('f-data');
-var state={q:'',vf:false,de:false,iso:'',nw:false,ws:false,da:false,prof:'business',vis:{}};
-function syncFilters(){state.q=q?q.value.trim().toLowerCase():'';state.vf=!!(vf&&vf.checked);state.de=!!(de&&de.checked);state.iso=co?co.value:'';state.nw=!!(nw&&nw.checked);state.ws=!!(ws&&ws.checked);state.da=!!(da&&da.checked);}
+var se=document.getElementById('f-seen'),ap=document.getElementById('f-app');
+var state={q:'',vf:false,de:false,iso:'',nw:false,ws:false,da:false,prof:'business',vis:{},seenshow:false,hideapp:false};
+function syncFilters(){state.q=q?q.value.trim().toLowerCase():'';state.vf=!!(vf&&vf.checked);state.de=!!(de&&de.checked);state.iso=co?co.value:'';state.nw=!!(nw&&nw.checked);state.ws=!!(ws&&ws.checked);state.da=!!(da&&da.checked);state.seenshow=!!(se&&se.checked);state.hideapp=!!(ap&&ap.checked);}
 function cardOk(li){var ok=!state.q||li.getAttribute('data-q').toLowerCase().indexOf(state.q)>-1;
 if(state.vf)ok=ok&&li.getAttribute('data-vf')==='1';
 if(state.de)ok=ok&&li.getAttribute('data-de')!=='required';
@@ -1175,6 +1248,8 @@ if(state.iso)ok=ok&&li.getAttribute('data-iso')===state.iso;
 if(state.nw)ok=ok&&li.getAttribute('data-new')==='1';
 if(state.ws)ok=ok&&li.getAttribute('data-ws')!=='1';
 if(state.da)ok=ok&&li.getAttribute('data-data')==='1';
+if(state.hideapp){var ps=li.getAttribute('data-ps');if(ps&&ps!=='ignored')ok=false;}
+if(!state.seenshow&&li.getAttribute('data-seen')==='1')ok=false;
 return ok;}
 function applyProfile(p){state.prof=p;var boxes=[];
 for(var i=0;i<lis.length;i++){var li=lis[i],jid=li.getAttribute('data-jid');
@@ -1189,7 +1264,8 @@ var ol=document.getElementById('list');
 for(var j=0;j<boxes.length;j++){ol.appendChild(boxes[j][2]);boxes[j][2].style.display=boxes[j][3]?'':'none';}
 for(var m=0;m<tabs.length;m++){var on=tabs[m].getAttribute('data-prof')===p;tabs[m].className=on?'on':'';tabs[m].setAttribute('aria-selected',on?'true':'false');}
 var cnt=0;for(var n2=0;n2<boxes.length;n2++)if(boxes[n2][3])cnt++;
-var el=document.getElementById('n');if(el)el.textContent=cnt+' vagas';}
+var el=document.getElementById('n');if(el)el.textContent=cnt+' vagas';
+var emp=document.getElementById('empty');if(emp)emp.style.display=cnt?'none':'';}
 function onFilter(){syncFilters();applyProfile(state.prof);}
 for(var t=0;t<tabs.length;t++){tabs[t].addEventListener('click',function(ev){var el=ev.target;while(el&&!el.getAttribute('data-prof'))el=el.parentNode;if(el)applyProfile(el.getAttribute('data-prof'));});}
 if(q)q.addEventListener('input',onFilter);
@@ -1199,6 +1275,8 @@ if(co)co.addEventListener('change',onFilter);
 if(nw)nw.addEventListener('change',onFilter);
 if(ws)ws.addEventListener('change',onFilter);
 if(da)da.addEventListener('change',onFilter);
+if(se)se.addEventListener('change',onFilter);
+if(ap)ap.addEventListener('change',onFilter);
 window.__F43=state;window.__F43apply=applyProfile;window.__F43cardOk=cardOk;window.__F43sync=syncFilters;})();
 """
 
@@ -1216,15 +1294,87 @@ _JS_LAZY_CORE = """function f43LazyInit(all,n){var out={};for(var i=0;i<all.leng
 # inteira, revelado ou não); o IO só controla o atributo ``data-lazy``, cujo
 # CSS (``content-visibility:auto``) faz o browser PULAR layout/paint do que
 # está fora da viewport — o custo real é DOM/paint, não bytes.
+# F53 — FIX de bug latente da F43 (descoberto ao executar o stack inteiro
+# em node p/ testar a interatividade): o wrapper lia ``window.__F43.state``,
+# mas o _JS_PROFILE grava ``window.__F43 = state`` (objeto PLANO). No
+# navegador real o wrapper morria em TypeError silencioso logo na 1ª linha
+# de estado → data-lazy nunca aplicado (lazy-render INERTE em produção) e a
+# applyProfile inicial nunca rodava daqui. Correto: o estado É window.__F43.
 _JS_LAZY_IO = """(function(){var N=%d,R=%d,lis=document.querySelectorAll('#list li.c');
 if(!window.__F43||typeof f43LazyInit!=='function')return;
-var state=window.__F43.state,init=f43LazyInit(lis,N),k;
+var state=window.__F43,init=f43LazyInit(lis,N),k;
 for(k in init)state.vis[k]=init[k];
 for(var i=0;i<lis.length;i++){if(state.vis[lis[i].getAttribute('data-jid')]==='0')lis[i].setAttribute('data-lazy','1');}
 if(!('IntersectionObserver' in window)){for(var j=0;j<lis.length;j++){state.vis[lis[j].getAttribute('data-jid')]='1';lis[j].removeAttribute('data-lazy');}if(window.__F43apply)window.__F43apply(state.prof);return;}
 var io=new IntersectionObserver(function(entries){var hit=0;for(var e=0;e<entries.length;e++){var t=entries[e].target;if(entries[e].isIntersecting){state.vis[t.getAttribute('data-jid')]='1';t.removeAttribute('data-lazy');io.unobserve(t);hit++;}}},{rootMargin:R+'px'});
 for(var m=0;m<lis.length;m++){if(lis[m].getAttribute('data-lazy')==='1')io.observe(lis[m]);}
 if(window.__F43apply)window.__F43apply(state.prof);})();
+"""
+
+
+# ---------------------------------------------------------------------------
+# F53 — Interatividade vanilla (regime FULL apenas; o regime top-N legado
+# segue byte a byte o da F51). Tudo é progressive enhancement: SEM JS a
+# página renderiza e funciona idêntica — nenhum destes elementos existe no
+# HTML estático (botões, empty-state e voltar-ao-topo são criados client-
+# side; data-seen/data-factors são inertos sem interpretador).
+#
+# Itens da spec:
+#   1. "já vi" por vaga — alvo de toque discreto ("✓ já vi") → localStorage
+#      (chave por job-id, display-only, por dispositivo) → data-seen=1
+#      (CSS: opacidade reduzida) + toggle "mostrar já vistas" no .bar.
+#      Vistas ficam OCULTAS por padrão (o atrito do scan é re-lê-las) e o
+#      toggle as revela (ainda esmaecidas). Gêmeos entre seções (mesma
+#      vaga na lista + 🆕) sincronizam via setSeen por job-id.
+#   2. "esconder aplicadas" — data-ps vem do BUILD (view F41 do event
+#      log); o toggle client-side filtra por esse atributo (lido pelo
+#      cardOk do _JS_PROFILE — contagem/empty-state seguem a verdade).
+#      'ignored' (👁️) NÃO é candidatura: permanece visível.
+#   3. score on-demand — data-factors (top-3 do breakdown) no <span> do
+#      score vira title= (tooltip nativo) montado AQUI: custo estático
+#      só do atributo; a explicação global segue na legenda (F51).
+#   4. empty-state — o <p id="empty"> é criado AQUI e ligado/desligado
+#      pelo applyProfile (onde a contagem visível é computada).
+#   5. voltar-ao-topo — botão fixo discreto após scroll; o LIMIAR é o
+#      núcleo puro ``f53Top(y)`` (executado em node pelo test_f53, no
+#      padrão f43LazyInit).
+# ---------------------------------------------------------------------------
+_JS_F53_CORE = """function f53Top(y){return y>600;}
+"""
+_JS_F53 = """(function(){
+var P='if53seen:';
+function lsGet(k){try{return window.localStorage.getItem(k);}catch(e){return null;}}
+function lsSet(k,v){try{if(v===null)window.localStorage.removeItem(k);else window.localStorage.setItem(k,v);}catch(e){}}
+var lis=document.querySelectorAll('li.c[data-jid]');
+function setSeen(jid,on){for(var n=0;n<lis.length;n++){var l=lis[n];if(l.getAttribute('data-jid')===jid){if(on)l.setAttribute('data-seen','1');else l.removeAttribute('data-seen');var sb=l.querySelector('.seenb');if(sb)sb.className=on?'seenb on':'seenb';}}}
+for(var i=0;i<lis.length;i++){var li=lis[i],jid=li.getAttribute('data-jid');
+if(lsGet(P+jid))li.setAttribute('data-seen','1');
+var b=document.createElement('button');b.type='button';b.className='seenb'+(li.getAttribute('data-seen')?' on':'');b.textContent='✓ já vi';
+b.setAttribute('aria-label','marcar ou desmarcar como já vista');
+(function(jid,btn){btn.addEventListener('click',function(){var on=lsGet(P+jid)==='1';lsSet(P+jid,on?null:'1');setSeen(jid,!on);if(window.__F43apply)window.__F43apply(window.__F43.prof);});})(jid,b);
+var bd=li.querySelector('.bd');(bd||li).appendChild(b);
+var s=li.querySelector('.s'),f=s?s.getAttribute('data-factors'):null;
+if(s&&f)s.setAttribute('title','fatores do score: '+f);}
+var list=document.getElementById('list');
+if(list){var emp=document.createElement('p');emp.className='empty';emp.id='empty';emp.style.display='none';emp.textContent='nenhuma vaga corresponde à busca';list.parentNode.insertBefore(emp,list);}
+var topb=document.createElement('button');topb.type='button';topb.id='totop';topb.textContent='↑';topb.setAttribute('aria-label','voltar ao topo');
+topb.addEventListener('click',function(){window.scrollTo(0,0);});
+(document.body||document.documentElement).appendChild(topb);
+function syncTop(){var y=window.pageYOffset||document.documentElement.scrollTop||0;topb.style.display=f53Top(y)?'':'none';}
+window.addEventListener('scroll',syncTop);syncTop();
+if(window.__F43apply)window.__F43apply(window.__F43.prof);
+})();
+"""
+
+# F53 — CSS do regime full (vive SEPARADO de _CSS/_CSS_F43 pela mesma
+# regra da F43: o regime legado não ganha 1 byte). data-seen dima o card
+# (opacidade — a vaga continua legível no toggle "mostrar já vistas").
+_CSS_F53 = """li.c[data-seen="1"]{opacity:.45}
+.seenb{display:inline-block;margin:6px 0 0;padding:2px 9px;border:1px solid #2a343e;border-radius:999px;background:none;color:#9aa7b4;font-size:.72rem;cursor:pointer}
+.seenb.on{background:#1b2733;color:#e6edf3;border-color:#4da3ff}
+.seenb:hover{border-color:#4da3ff;color:#e6edf3}
+.empty{color:#9aa7b4;font-size:.85rem;padding:12px 2px}
+#totop{position:fixed;right:12px;bottom:14px;display:none;width:38px;height:38px;border-radius:999px;border:1px solid #2a343e;background:#192027;color:#c8d3dd;font-size:1.1rem;cursor:pointer;z-index:9}
 """
 
 
@@ -1240,7 +1390,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     salary_benchmark_map: dict | None = None,
                     profile_maps: dict | None = None,
                     skip_ids: set[str] | None = None,
-                    display_aliases: dict | None = None) -> list[str]:
+                    display_aliases: dict | None = None,
+                    f53: bool = False) -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -1284,6 +1435,11 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     corrigido em title/company/location + alias na company); o match de
     intel/badges continua pelo job ORIGINAL — o alias nunca contamina o
     pipeline. Ambíguos ficam ORIGINAIS por design (regra de honestidade).
+
+    F53: ``f53`` liga os atributos de interatividade (data-ps +
+    data-factors) — o chamador passa ``full_list``; False = cards byte a
+    byte pré-F53. O breakdown lido é o do ``score_key`` da SEÇÃO
+    (business/materials/EU) — o tooltip explica o score exibido.
     """
     rows: list[str] = []
     new_ids = new_ids or set()
@@ -1378,6 +1534,9 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             profile_ranks=(profile_ranks_map.get(jid) or {}) if profile_attrs
             else None,
             profile_attrs=profile_attrs,
+            f53=f53,
+            factors_attr=(_score_factors_attr(job, score_key)
+                          if f53 else ""),
         ))
     return rows
 
@@ -1550,6 +1709,7 @@ def render_minimal_html(
         salary_benchmark_map=salary_benchmark_map,
         profile_maps=profile_maps,
         display_aliases=display_aliases,
+        f53=full_list,
     ))
     n_vf = sum(1 for j in shown if _visa_friendly(
         j, entry_cache.get(str(j.get("id") or ""))))
@@ -1575,6 +1735,7 @@ def render_minimal_html(
             salary_benchmark_map=salary_benchmark_map,
             profile_maps=profile_maps if full_list else None,
             display_aliases=display_aliases,
+            f53=full_list,
         ))
         new_section = (
             f'<h2>🆕 Novas desde ontem — {len(new_ids)} nova(s){extra}</h2>'
@@ -1612,6 +1773,7 @@ def render_minimal_html(
             salary_benchmark_map=salary_benchmark_map,
             profile_maps=profile_maps if full_list else None,
             display_aliases=display_aliases,
+            f53=full_list,
         ))
         total_line = f'{len(watchlist_events)} nova(s) nas empresas que você acompanha'
         if radar_omitted:
@@ -1705,6 +1867,7 @@ def render_minimal_html(
             display_aliases=display_aliases,
             skip_ids=(shown_ids if (full_list and full_limit is not None)
                       else None),
+            f53=full_list,
         ))
         mat_header = "top 10"
         mat_note = (
@@ -1769,6 +1932,7 @@ def render_minimal_html(
             display_aliases=display_aliases,
             skip_ids=(shown_ids if (full_list and full_limit is not None)
                       else None),
+            f53=full_list,
         ))
         eu_header = "top 10"
         eu_note = (
@@ -1847,6 +2011,12 @@ def render_minimal_html(
     # por último vence; no full o _JS_PROFILE roda DEPOIS).
     tabs_html = ""
     extra_js = ""
+    # F53 — toggles da interatividade (SÓ no regime full; o legado segue
+    # byte a byte o da F51 — o \n inicial vive NO VALOR, nunca no template).
+    f53_bar = (
+        '\n<label><input type="checkbox" id="f-seen"> mostrar já vistas</label>'
+        '\n<label><input type="checkbox" id="f-app"> esconder aplicadas</label>'
+    ) if full_list else ""
     if full_list:
         tabs_html = (
             '<span id="n" class="count" aria-live="polite"></span>\n'
@@ -1859,11 +2029,15 @@ def render_minimal_html(
             ' aria-selected="false">🇪🇺 EU non-DE</button>'
             '</div>'
         )
+        # F53 — o bloco de interatividade roda DEPOIS do núcleo/abas/lazy
+        # (usa window.__F43*; sem eles, guarda e não quebra).
         extra_js = (
             _JS_LAZY_CORE + _JS_PROFILE
             + _JS_LAZY_IO % (LAZY_INITIAL_CARDS, LAZY_ROOT_MARGIN)
+            + _JS_F53_CORE + _JS_F53
         )
     _css_f43 = _CSS_F43 if full_list else ""
+    _css_f53 = _CSS_F53 if full_list else ""
     # F43 — o bloco JS extra (núcleo lazy + abas) só existe no regime full;
     # na página legada o HTML segue byte a byte o da F11 (nenhuma tag vazia).
     _script_f43 = f"<script>{extra_js}</script>" if extra_js else ""
@@ -1910,7 +2084,7 @@ def render_minimal_html(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="{'dark light' if vitrine else 'dark'}">
 <title>{page_title}</title>{_meta_f52}
-<style>{_CSS}{_css_f43}{_css_f52}</style>
+<style>{_CSS}{_css_f43}{_css_f53}{_css_f52}</style>
 </head>
 <body>
 <main>
@@ -1923,7 +2097,7 @@ def render_minimal_html(
 <select id="f-country"><option value="">todos os países</option>{country_opts}</select>
 {'<label><input type="checkbox" id="f-new"> só novas de ontem</label>' if new_ids else ''}
 <label><input type="checkbox" id="f-ws"> sem Werkstudent</label>
-<label><input type="checkbox" id="f-data"> Data/BI</label>
+<label><input type="checkbox" id="f-data"> Data/BI</label>{f53_bar}
 </div>{tabs_html}
 {_legend_html()}
 <ol id="list">

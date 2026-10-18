@@ -402,6 +402,26 @@ jobs:
           # explícito, padrão F13/F15/F43). test_f52.py: 51 checks,
           # 100% offline; A/B no próprio teste (T5: cards idênticos,
           # nenhuma marca F52 no default).
+          # F53 (18/10): test_f53 entra na suíte (91º script — array do
+          # main 1b548c1 tem 90; rebase pós-F47/F55 com UNIÃO viva do
+          # array) — interatividade vanilla no regime
+          # full-list (a página do publish): "✓ já vi" por vaga com
+          # localStorage (display-only, por dispositivo), toggle "esconder
+          # aplicadas" sobre o data-ps do event log F41 (build), top-3
+          # fatores do breakdown como data-factors no score (tooltip
+          # nativo montado por JS), empty-state da busca e voltar-ao-topo.
+          # Progressive enhancement: sem JS a página é byte a byte a da
+          # F51 (A/B contra o SHA congelado no próprio teste); o regime
+          # top-N legado segue intocado. INCLUSIVE fix de bug latente da
+          # F43 descoberto pela fase: o wrapper do lazy-render lia
+          # window.__F43.state (objeto inexistente — o estado É
+          # window.__F43) e morria em TypeError silencioso no navegador
+          # real (lazy-render inerte desde a F43; agora vivo, com
+          # regressão em node no próprio teste). test_f53.py: 92 checks
+          # com história git completa (A/B sha256 contra o SHA congelado
+          # 1b548c1); no runner RASO do CI os 4 checks de A/B entram em
+          # [SKIP] (convenção test_f51/_ab_before) — 88 checks, 100%
+          # offline (JS executado em node com localStorage mockado).
           # F54 (17/10): test_f54 entra na suíte (87º script — array do
           # main 51642b6 tem 86) — higiene de display no render público:
           # sanitizer mojibake determinístico (UTF-8-decodado-como-cp1252/
@@ -428,7 +448,7 @@ jobs:
           # no estágio (com default ON total, fonte sem fake chamaria o
           # fetcher real = rede). test_f47.py: 24 checks.
           # F51 (16/10): test_f51
-          tests=(test_atomic_outputs test_filters test_collect_flags test_coverage test_hardening test_countries test_application_deadline test_app_intel test_opportunity_intel test_audit2_quality test_visa_policy test_hydration test_dedup test_mirror_dedup test_official_page test_official_evidence test_ranking test_geocoding test_sqlite test_db_backup test_validation test_errors test_health test_interface test_publish_pages test_lifecycle test_registry test_registry_consistency test_refresh test_digest test_zero_return test_identity test_ranking_benchmark test_materials_ranking test_ptbr test_personal_tracker test_audit_fixes test_enrichment test_enrichment_present test_structured_fields test_spike_e test_fasef test_faseg test_fasei test_fasej test_f1 test_f3 test_f4 test_f5 test_f6 test_f61 test_f7 test_f9 test_f10 test_f11 test_f12 test_f125 test_f13 test_f14 test_f15 test_f16 test_f18 test_f20 test_f21 test_f22 test_f23 test_f24 test_f25 test_f28 test_f29 test_f30 test_f31 test_f34 test_f36 test_f38 test_f36_1 test_f37 test_f39 test_f48 test_f372 test_f44 test_f43 test_f41 test_f373 test_f42 test_f52 test_f54 test_f51 test_f47 test_f55)
+          tests=(test_atomic_outputs test_filters test_collect_flags test_coverage test_hardening test_countries test_application_deadline test_app_intel test_opportunity_intel test_audit2_quality test_visa_policy test_hydration test_dedup test_mirror_dedup test_official_page test_official_evidence test_ranking test_geocoding test_sqlite test_db_backup test_validation test_errors test_health test_interface test_publish_pages test_lifecycle test_registry test_registry_consistency test_refresh test_digest test_zero_return test_identity test_ranking_benchmark test_materials_ranking test_ptbr test_personal_tracker test_audit_fixes test_enrichment test_enrichment_present test_structured_fields test_spike_e test_fasef test_faseg test_fasei test_fasej test_f1 test_f3 test_f4 test_f5 test_f6 test_f61 test_f7 test_f9 test_f10 test_f11 test_f12 test_f125 test_f13 test_f14 test_f15 test_f16 test_f18 test_f20 test_f21 test_f22 test_f23 test_f24 test_f25 test_f28 test_f29 test_f30 test_f31 test_f34 test_f36 test_f38 test_f36_1 test_f37 test_f39 test_f48 test_f372 test_f44 test_f43 test_f41 test_f373 test_f42 test_f52 test_f54 test_f51 test_f47 test_f55 test_f53)
           status=0
           for t in "${tests[@]}"; do
             echo "==================== $t ===================="
