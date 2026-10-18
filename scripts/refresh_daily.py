@@ -791,6 +791,12 @@ def build_message(
         # pendências pessoais e do produto do dia; o header carrega as
         # contagens e o corpo (exemplos) cede espaço primeiro.
         intel_fresh = ranking_digest.intel_section_lines(digest_lines)
+        # F45 — extração da seção 📅 Funil & sazonalidade (padrão F44: []
+        # quando ausente). No compact colapsa ao header DEPOIS da ⏰ Intel
+        # (spec F45: "sua seção semanal entra depois disso") e exibe por
+        # último, antes do 🔗 link, após as seções pessoais; o header com
+        # as contagens sobrevive em todos os níveis.
+        funnel_sect = ranking_digest.funnel_section_lines(digest_lines)
         # Base com a lista de problemas resumida em contagem (computada UMA
         # vez, pura; o slice termina em base_len porque ``lines`` ja contem
         # o digest anexado, que e reconstruido abaixo pelas secoes + top5 +
@@ -829,21 +835,30 @@ def build_message(
             # (gatilho de curadoria < pendência pessoal); o header com
             # as contagens sobrevive em todos os níveis (padrão F36.1).
             in_full = intel_fresh or []
-            variants: list[tuple[list[str], list[str], list[str], list[str]]] = []
-            for in_collapsed, fu_collapsed, wl_collapsed, ns_collapsed in (
-                    (False, False, False, False),
-                    (True, False, False, False),
-                    (True, True, False, False),
-                    (True, True, True, False),
-                    (True, True, True, True)):
+            # F45 — a 📅 Funil & sazonalidade entra DEPOIS da ⏰ Intel na
+            # cadeia de colapso (meta-informação semanal < pendência
+            # pessoal; "sua seção semanal entra depois disso"); header com
+            # contagens sobrevive (padrão F36.1/F44). Ausente -> [] e a
+            # cadeia degenera na de antes (variantes extras são no-op).
+            fn_full = funnel_sect or []
+            variants: list[tuple[list[str], list[str], list[str],
+                                 list[str], list[str]]] = []
+            for in_collapsed, fn_collapsed, fu_collapsed, wl_collapsed, ns_collapsed in (
+                    (False, False, False, False, False),
+                    (True, False, False, False, False),
+                    (True, True, False, False, False),
+                    (True, True, True, False, False),
+                    (True, True, True, True, False),
+                    (True, True, True, True, True)):
                 ns_part = [ns_full[0]] if ns_full and ns_collapsed else ns_full
                 wl_part = [wl_full[0]] if wl_full and wl_collapsed else wl_full
                 fu_part = [fu_full[0]] if fu_full and fu_collapsed else fu_full
                 in_part = [in_full[0]] if in_full and in_collapsed else in_full
-                variants.append((ns_part, wl_part, fu_part, in_part))
+                fn_part = [fn_full[0]] if fn_full and fn_collapsed else fn_full
+                variants.append((ns_part, wl_part, fu_part, in_part, fn_part))
 
             text = None
-            for ns_part, wl_part, fu_part, in_part in variants:
+            for ns_part, wl_part, fu_part, in_part, fn_part in variants:
                 # Ordem de exibicao = ordem do digest (F13 §2.3): 🆕 antes
                 # do ⚡, 🎯 depois do ⚡ — so o colapso muda, nunca o layout.
                 # F36.1: os headers 🧪/🇪🇺 ocupam a posicao relativa que tem
@@ -868,6 +883,10 @@ def build_message(
                     parts += in_part
                 if fu_part:
                     parts += fu_part
+                # F45 — a 📅 exibe por último, antes do link (a posição
+                # relativa do digest inteiro; só o colapso muda).
+                if fn_part:
+                    parts += fn_part
                 parts += ["", link]
                 if _fits(parts):
                     text = "\n".join(parts)
@@ -877,7 +896,7 @@ def build_message(
                 # estoura — a lista de problemas da base ja esta resumida
                 # em ``summarized`` (1 linha de contagem; o bloco mais caro
                 # e menos denso da base, os detalhes vivem no ranking).
-                for ns_part, wl_part, fu_part, in_part in variants:
+                for ns_part, wl_part, fu_part, in_part, fn_part in variants:
                     parts = summarized + [""]
                     if profile_headers:
                         parts += profile_headers + [""]
@@ -890,6 +909,8 @@ def build_message(
                         parts += in_part
                     if fu_part:
                         parts += fu_part
+                    if fn_part:
+                        parts += fn_part
                     parts += ["", link]
                     if _fits(parts):
                         text = "\n".join(parts)
@@ -904,6 +925,8 @@ def build_message(
                 wl_part = [wl_full[0]] if wl_full else []
                 fu_part = [fu_full[0]] if fu_full else []
                 in_part = [in_full[0]] if in_full else []
+                # F45 — a 📅 segue colapsada ao header no nível 3.
+                fn_part = [fn_full[0]] if fn_full else []
                 # F36.1 — headers de perfil seguem colapsados no nível 3
                 # (1 linha cada; bloco próprio blank-separado, como nos
                 # demais níveis — o contrato dos extratores exige). Guard
@@ -913,14 +936,14 @@ def build_message(
                 kept: list[str] = [top5[0]]
                 for line in top5[1:]:
                     candidate = (summarized + [""] + prof_block + ns_part + kept
-                                 + wl_part + in_part + fu_part
+                                 + wl_part + in_part + fu_part + fn_part
                                  + [line] + ["", link])
                     if len("\n".join(candidate)) > TELEGRAM_MAX_LEN:
                         break
                     kept.append(line)
                 if len(kept) > 1:
                     parts = summarized + [""] + prof_block + ns_part + kept + wl_part \
-                        + in_part + fu_part + ["", link]
+                        + in_part + fu_part + fn_part + ["", link]
                     text = "\n".join(parts)
                 else:
                     # Ultimo recurso: NENHUMA linha de vaga cabe — linha
@@ -1973,6 +1996,24 @@ def main(argv: list[str] | None = None) -> int:
                 digest_lines = personal_lines
         except Exception as exc:  # noqa: BLE001 — pessoal nunca derruba o run
             log.warning("secoes pessoais nao montadas (run segue normal): %s", exc)
+        # F45 — seção 📅 Funil & sazonalidade (última antes do link, APÓS
+        # as seções pessoais — a ordem F44 "⏰ Intel imediatamente antes
+        # da 📌 Follow-up" fica intacta). Fontes: metrics do run + event
+        # log F41 + ranking vivo; best-effort TOTAL (sem dados legíveis
+        # = seção ausente, digest byte a byte o de antes). O digest montado
+        # sem ranking (digest_lines None) não ganha a seção — o funil é
+        # meta-informação do pipeline, não substituto de ranking.
+        try:
+            fn_lines = ranking_digest.funnel_seasonality_section(
+                metrics_path=data_dir / "collection_metrics.jsonl",
+                events_path=data_dir / "personal" / "application_events.jsonl",
+                eligible_path=data_dir / "eligible_jobs.json",
+            )
+            if fn_lines and digest_lines:
+                digest_lines = digest_lines[:-1] + fn_lines + [digest_lines[-1]]
+        except Exception as exc:  # noqa: BLE001 — F45 nunca derruba o run
+            log.warning("secao F45 (funil & sazonalidade) nao montada "
+                        "(run segue normal): %s", exc)
         try:
             _sync_personal_ranking(root, data_dir)
         except Exception as exc:  # noqa: BLE001 — sync nunca derruba o run

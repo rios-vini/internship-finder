@@ -1717,6 +1717,179 @@ def personal_sections(db_path: str | Path, current_path: str | Path, *,
 
 
 # ---------------------------------------------------------------------------
+# F45 — funil com motivo de morte + calendário de sazonalidade (a seção
+# "semanal" do digest; padrão F44: a MÁQUINA é o relatório offline
+# ``scripts/funnel_report.py`` + o parser puro ``scripts/seasonality.py``,
+# o digest só FORMATA. Zero dados legíveis -> seção AUSENTE e o digest é
+# byte a byte o de antes; no compact a 📅 colapsa ao header DEPOIS da
+# ⏰ Intel — spec F45: "sua seção semanal entra depois disso" — e exibe
+# por último, antes do 🔗 link, APÓS as seções pessoais (a ordem F44
+# "⏰ Intel imediatamente antes da 📌 Follow-up" fica intacta).
+# ---------------------------------------------------------------------------
+
+# Header ÚNICO da seção — o compactador extrai por PREFIXO EXATO de
+# header, nunca por emoji (padrão F44/F14/F13).
+FUNNEL_SECTION_PREFIX = "📅 Funil & sazonalidade"
+
+# Cap de exemplos por bloco (motivos de morte / janelas do calendário) —
+# o header carrega as CONTAGENS, os exemplos são ilustrativos (padrão
+# "cap 5" da F13/F44).
+FUNNEL_MAX_SHOWN = 5
+
+
+def _fmt_count(value: int | None) -> str:
+    """Inteiro com separador de milhar (padrão pt-BR: 2.134)."""
+    if value is None:
+        return "—"
+    return f"{value:,}".replace(",", ".")
+
+
+def funnel_seasonality_lines(
+    report: dict | None,
+    *,
+    max_reasons: int = FUNNEL_MAX_SHOWN,
+    max_windows: int = FUNNEL_MAX_SHOWN,
+) -> list[str]:
+    """Seção '📅 Funil & sazonalidade' do digest (F45; PURA sobre ``report``).
+
+    ``report`` = saída de ``funnel_report.build_report`` (None quando
+    nenhuma fonte legível -> seção ausente). O header carrega as
+    contagens vivas (sobrevive ao compact): dia do último run, total de
+    inaplicáveis e vagas com janela de início. Corpo (cap 5 por bloco):
+
+        📅 Funil & sazonalidade (último run 17/10) — 2.134 inaplicáveis; 156 vagas com janela de início
+          ✂ alemão exigido: 1.189 · werkstudent puro: 705 · ... (+7 outros motivos)
+          📈 elegíveis: 871 hoje vs 779 há 7 runs (+92)
+          📆 jan–jul/2027: 48 · ab sofort: 37 · ... (+19 outras janelas)
+          📌 candidaturas (log F41): 12 eventos · 8 vagas — aplicadas 5 · ...
+
+    Bloco ausente quando o dado ausente (sem trend, sem eventos F41,
+    sem janelas). Nunca lança; nunca escreve; nunca lê arquivo (a pureza
+    é o contrato de teste — I/O fica no loader ``funnel_seasonality_section``).
+    """
+    if not report:
+        return []
+    fun = report.get("funnel")
+    sea = report.get("seasonality") or {}
+    app = report.get("application")
+
+    # Header: contagens VIVAS (partes zeradas/ausentes não aparecem —
+    # ruído, padrão F44 do "12 >90d; 3 alvo sem Kununu").
+    header_parts: list[str] = []
+    run_day = ""
+    if fun:
+        day = str(fun.get("run_id") or "")[:10]
+        if day:
+            y, m, d = day.split("-")
+            run_day = f" (último run {d}/{m})"
+        deaths = (fun.get("applicability") or {}).get("total") or 0
+        if deaths > 0:
+            header_parts.append(f"{_fmt_count(deaths)} inaplicáveis")
+    with_window = sea.get("with_window") or 0
+    if with_window > 0:
+        header_parts.append(f"{with_window} vagas com janela de início")
+    if not header_parts and not app:
+        return []
+    lines = [FUNNEL_SECTION_PREFIX + run_day
+             + (f" — {'; '.join(header_parts)}" if header_parts else "")]
+
+    # ✂ motivos de morte (death-reason breakdown) — cap 5, só > 0.
+    reasons = ((fun or {}).get("applicability") or {}).get("reasons") or {}
+    alive = [(k, n) for k, n in reasons.items() if n > 0]
+    if alive:
+        alive.sort(key=lambda kv: (-kv[1], kv[0]))
+        shown = alive[:max_reasons]
+        # rótulo do próprio funnel_report (mesma fonte, sem segunda tabela)
+        try:
+            _scripts_dir = Path(__file__).resolve().parent
+            if str(_scripts_dir) not in sys.path:
+                sys.path.insert(0, str(_scripts_dir))
+            import funnel_report as _fr
+            label_of = _fr.death_label
+        except Exception:  # noqa: BLE001 — rótulo é best-effort
+            label_of = lambda k: k  # noqa: E731 — fallback: chave crua
+        txt = " · ".join(f"{label_of(k)}: {_fmt_count(n)}" for k, n in shown)
+        if len(alive) > max_reasons:
+            txt += f" (+{len(alive) - max_reasons} outros motivos)"
+        lines.append(f"  ✂ {txt}")
+
+    # 📈 trend semanal (último run vs 7 runs atrás; ausente sem histórico).
+    trend = report.get("trend")
+    if trend:
+        d = int(trend.get("delta") or 0)
+        delta_txt = f"+{d}" if d > 0 else (str(d) if d < 0 else "±0")
+        lines.append(f"  📈 elegíveis: {trend.get('eligible_last')} hoje vs "
+                     f"{trend.get('eligible_then')} há {trend.get('window')} runs "
+                     f"({delta_txt})")
+
+    # 📆 calendário de sazonalidade — cap 5 janelas.
+    cal = sea.get("calendar") or []
+    if cal:
+        shown = cal[:max_windows]
+        txt = " · ".join(f"{item['label']}: {item['count']}" for item in shown)
+        if len(cal) > max_windows:
+            txt += f" (+{len(cal) - max_windows} outras janelas)"
+        lines.append(f"  📆 {txt}")
+
+    # 📌 cauda pessoal (event log F41) — só quando existem eventos.
+    if app:
+        parts = ", ".join(
+            f"{_F45_EVENT_LABELS.get(et, et)} {n}"
+            for et, n in sorted(app.get("by_type", {}).items()))
+        lines.append(f"  📌 candidaturas (log F41): {app.get('events')} eventos"
+                     f" · {app.get('jobs')} vagas — {parts}")
+    return lines
+
+
+# Rótulos dos desfechos F41 na linha 📌 (mesma nomenclatura do relatório).
+_F45_EVENT_LABELS = {
+    "applied": "aplicadas", "screening": "triagem", "interview": "entrevista",
+    "offer": "oferta", "rejected": "rejeitadas", "withdrawn": "desistiu",
+    "note": "notas",
+}
+
+
+def funnel_section_lines(digest_lines: list[str]) -> list[str]:
+    """Extrai a seção 📅 Funil & sazonalidade de ``digest_lines`` (F45).
+
+    Espelho de ``intel_section_lines`` (F44): header + corpo até a próxima
+    linha em branco; ``[]`` quando ausente. Uso: compactador do Telegram.
+    """
+    return _section_by_prefix(digest_lines, FUNNEL_SECTION_PREFIX)
+
+
+def funnel_seasonality_section(
+    metrics_path: str | Path,
+    events_path: str | Path,
+    eligible_path: str | Path,
+    *,
+    best_top: int | None = None,
+    week_window: int | None = None,
+) -> list[str]:
+    """Monta a seção 📅 PRONTA (F45): carrega o relatório offline
+    (``funnel_report.build_report``) e formata. Best-effort TOTAL: fontes
+    ausentes/corrompidas/qualquer falha -> ``[]`` (seção ausente, digest
+    byte a byte o de antes — nunca derruba o run). I/O vive AQUI (o
+    formatador ``funnel_seasonality_lines`` segue puro p/ os testes).
+    """
+    try:
+        _scripts_dir = Path(__file__).resolve().parent
+        if str(_scripts_dir) not in sys.path:
+            sys.path.insert(0, str(_scripts_dir))
+        import funnel_report as fr
+        kwargs: dict = {}
+        if best_top is not None:
+            kwargs["best_top"] = best_top
+        if week_window is not None:
+            kwargs["week_window"] = week_window
+        report = fr.build_report(metrics_path, events_path, eligible_path,
+                                 **kwargs)
+        return funnel_seasonality_lines(report)
+    except Exception:  # noqa: BLE001 — seção nova nunca derruba o digest
+        return []
+
+
+# ---------------------------------------------------------------------------
 # CLI de inspecao (uso manual/testes; NAO e usada pelo refresh)
 # ---------------------------------------------------------------------------
 
