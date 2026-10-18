@@ -95,7 +95,7 @@ WEIGHT_DE_CAPITAL = 0.5
 # tau materials -0.305. Medido na grade F55: penalidade 0.0 ->
 # tau +0.076 (G1, 40 inversoes resolvidas, ZERO criadas); com a area
 # primaria do titulo pesando 0.5 (componente ``area`` novo abaixo) ->
-# +0.438 (G2b/G12). A funcao nao-materiais RESTANTE (logistica/vendas/
+# +0.438 (G2b). A funcao nao-materiais RESTANTE (logistica/vendas/
 # financas/RH/software/administrativo) mantem -1.0.
 PENALTY_PROCUREMENT = 0.0
 PENALTY_OTHER_FUNCTION = -1.0
@@ -106,19 +106,25 @@ PENALTY_OTHER_FUNCTION = -1.0
 # Lente de area do dono SOBRE o perfil materials: niveis PRIMARY + RELATED de
 # filters (3.0/2.0), SO o titulo — SEM o nivel WEAK ("data", "sap",
 # "reporting", "analyst" sao o vocabulario de ruido de template do business:
-# medido na grade F55, com o weak incluido a generica "Working Student Data
-# Analytics" (area 4.0) vencia "Praktikum Materials Testing" (nucleo 2.5) e o
-# tau caia 0.438 -> com o weak excluido: tau 0.495, 5 inversoes criadas (vs
-# 15) e as invariantes de identidade voltam (nucleo > area generica).
+# medido na grade F55, com o weak incluido (G2, 1.0x area_score cheio) a
+# generica "Working Student Data Analytics" (area 4.0 = 3.0 primary + 1.0
+# weak) vencia "Praktikum Materials Testing" (nucleo 2.5) e o tau caia
+# +0.381; com o weak EXCLUIDO (variante final): tau +0.495 — 99 inversoes
+# resolvidas (vs 93 da 0.5x-cheia G2b) com as MESMAS 15 criadas da lente de
+# area, e as invariantes de identidade voltam (nucleo > area generica).
 # Peso 1.0 = metade da lente de area do business (2.0x sobre o mesmo
 # area_score): o nucleo materials/adjacent segue dono da identidade do
 # perfil; a area so desempata a favor da formacao/objetivo do dono quando o
 # sinal de materiais esta ausente. Grade F55 (40 rotulados, universo 844,
 # funcao oficial): sem area -> tau +0.086 (otimas de procurement sem braco);
-# com primary+related 1.0x -> +0.495 (93 inversoes resolvidas — TODAS as
-# otimas afundadas do v4 — e apenas 5 criadas); 2.0x -> +0.381 (identidade
-# diluida) e primary-only -> 0.438 com 24 criadas (topo inundado de
-# procurement). 1.0x primary+related e o ponto da grade.
+# com primary+related 1.0x -> +0.495 (99 inversoes resolvidas — TODAS as
+# otimas afundadas do v4 — e 15 criadas, herdadas da lente de area: a hibrida
+# "Analytics Advisory & Data Democratization / SC&L" (titulo de analytics,
+# sem termo SC/proc -> sem braco) e a otima adidas GLOBAL PROCUREMENT (desc
+# sem contexto materials) ficam abaixo das boas de procurement puro; 2.0x
+# com weak -> +0.381 (identidade diluida) e primary-only -> 0.438 com 24
+# criadas (topo inundado de procurement). 1.0x primary+related SEM weak e o
+# ponto da grade.
 from internship_finder.filters import AREA_PRIMARY, AREA_RELATED
 
 _AREA_MATS_LEVELS: tuple[tuple[float, list], ...] = (

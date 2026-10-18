@@ -338,13 +338,18 @@ def test_materials_lines() -> None:
     check("cabecalho do perfil materials presente",
           "🧪 Perfil Materials Engineering" in text)
     mat_order = [j["id"] for j in rdg.rank_materials_jobs(cur)]
+    top1_title = next(j["title"] for j in cur if j["id"] == mat_order[0])
     check("Top 5 materials segue o RANKING materials (nao o do principal)",
-          "1. Praktikum Materials Testing" in text
-          or mat_order[0] == "m1")
+          f"1. {top1_title}" in text and mat_order[0] == "m3")
     check("'Werkstudent Logistik' (topo do principal) nao lidera materials",
-          "1. Werkstudent Logistik" not in text)
-    check("'Einkauf Aluminium' penalizada nao aparece no Top 5",
-          "Einkauf Aluminium" not in text)
+          "1. Werkstudent Logistik" not in text and mat_order[-1] == "biz1")
+    # F55 (17/10, régua v4): a premissa "compras/SCM = perfil oposto" foi
+    # REFUTADA — as 4 ótimas rotuladas são procurement/SC. O híbrido
+    # "Einkauf Aluminium" carrega núcleo materials (2.5) + área do dono
+    # (procurement 3.0) e LIDERA o perfil duplo do dono; a expectativa
+    # antiga (penalizada, fora do Top 5) codificava a premissa refutada.
+    check("'Einkauf Aluminium' (núcleo+área do dono) LIDERA o Top 5 (F55)",
+          "1. Werkstudent Einkauf Aluminium" in text)
     check("nova vaga materials listada em 'Novas no Top 30 Materials'",
           "Novas no Top 30 Materials" in text and "Praktikum Beschichtung" in text)
     # mesmo conjunto -> nenhuma nova
