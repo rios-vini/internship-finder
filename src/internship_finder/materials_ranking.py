@@ -55,7 +55,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from internship_finder.filters import STUDENT_TYPE_PATTERNS
+from internship_finder.filters import (
+    AREA_PRIMARY,
+    AREA_RELATED,
+    STUDENT_TYPE_PATTERNS,
+)
 from internship_finder.ranking import Score, _apply_decay
 
 # ---------------------------------------------------------------------------
@@ -78,10 +82,60 @@ WEIGHT_TYPE_TITLE = 1.0
 # Localizacao: DE explicito / Berlin (mesmo conceito do perfil principal).
 WEIGHT_DE_EXPLICIT = 1.0
 WEIGHT_DE_CAPITAL = 0.5
-# Penalidades por funcao NAO-materiais. Compras/SCM e o PERFIL OPOSTO
-# (negocio) e pesa mais; as demais funcoes sao menos antagonicas.
-PENALTY_PROCUREMENT = -1.5
+# ---------------------------------------------------------------------------
+# Penalidades por funcao NAO-materiais.
+# ---------------------------------------------------------------------------
+# F55 (17/10, veredito v4 — revisao de pesos justificada): a premissa
+# "compras/SCM e o PERFIL OPOSTO" foi REFUTADA pela regua v4 — as 4 vagas
+# rotuladas OTIMAS pelo dono sao de procurement/supply chain (a area PRIMARIA
+# do projeto: proc/supply primario, materials secundario; meios medidos nas
+# otimas: componente materials 0.0, adjacent 0.25). Penalizar -1.5 o nucleo
+# da candidatura real afundou as otimas (#88-#840) e deixou "ruim" de HR
+# (0.5) empatada ACIMA de procurement otima (0.5, desempate por titulo):
+# tau materials -0.305. Medido na grade F55: penalidade 0.0 ->
+# tau +0.076 (G1, 40 inversoes resolvidas, ZERO criadas); com a area
+# primaria do titulo pesando 0.5 (componente ``area`` novo abaixo) ->
+# +0.438 (G2b). A funcao nao-materiais RESTANTE (logistica/vendas/
+# financas/RH/software/administrativo) mantem -1.0.
+PENALTY_PROCUREMENT = 0.0
 PENALTY_OTHER_FUNCTION = -1.0
+
+# ---------------------------------------------------------------------------
+# F55 — area primaria/relacionada do dono no TITULO (componente ``area``)
+# ---------------------------------------------------------------------------
+# Lente de area do dono SOBRE o perfil materials: niveis PRIMARY + RELATED de
+# filters (3.0/2.0), SO o titulo — SEM o nivel WEAK ("data", "sap",
+# "reporting", "analyst" sao o vocabulario de ruido de template do business:
+# medido na grade F55, com o weak incluido (G2, 1.0x area_score cheio) a
+# generica "Working Student Data Analytics" (area 4.0 = 3.0 primary + 1.0
+# weak) vencia "Praktikum Materials Testing" (nucleo 2.5) e o tau caia
+# +0.381; com o weak EXCLUIDO (variante final): tau +0.495 — 99 inversoes
+# resolvidas (vs 93 da 0.5x-cheia G2b) com as MESMAS 15 criadas da lente de
+# area, e as invariantes de identidade voltam (nucleo > area generica).
+# Peso 1.0 = metade da lente de area do business (2.0x sobre o mesmo
+# area_score): o nucleo materials/adjacent segue dono da identidade do
+# perfil; a area so desempata a favor da formacao/objetivo do dono quando o
+# sinal de materiais esta ausente. Grade F55 (40 rotulados, universo 844,
+# funcao oficial): sem area -> tau +0.086 (otimas de procurement sem braco);
+# com primary+related 1.0x -> +0.495 (99 inversoes resolvidas — TODAS as
+# otimas afundadas do v4 — e 15 criadas, herdadas da lente de area: a hibrida
+# "Analytics Advisory & Data Democratization / SC&L" (titulo de analytics,
+# sem termo SC/proc -> sem braco) e a otima adidas GLOBAL PROCUREMENT (desc
+# sem contexto materials) ficam abaixo das boas de procurement puro; 2.0x
+# com weak -> +0.381 (identidade diluida) e primary-only -> 0.438 com 24
+# criadas (topo inundado de procurement). 1.0x primary+related SEM weak e o
+# ponto da grade.
+from internship_finder.filters import AREA_PRIMARY, AREA_RELATED
+
+_AREA_MATS_LEVELS: tuple[tuple[float, list], ...] = (
+    (3.0, AREA_PRIMARY),
+    (2.0, AREA_RELATED),
+)
+_AREA_MATS_RES: tuple[tuple[float, list[re.Pattern]], ...] = tuple(
+    (lvl, [re.compile(p, re.IGNORECASE) for p in pats])
+    for lvl, pats in _AREA_MATS_LEVELS
+)
+WEIGHT_AREA_TITLE = 1.0
 
 # ---------------------------------------------------------------------------
 # Termos do NUCLEO de materiais (fortes; cada termo unico no titulo conta)
@@ -247,6 +301,15 @@ def _block_score(
     )
 
 
+def _area_owner_score(title: str) -> float:
+    """F55: área do dono (primary+related, SEM weak) no título do materials."""
+    score = 0.0
+    for lvl, patterns in _AREA_MATS_RES:
+        if any(p.search(title) for p in patterns):
+            score += lvl
+    return score
+
+
 def _type_score(title: str) -> float:
     """Marcador forte de tipo de vaga no titulo (mesma regra do principal)."""
     return (
@@ -324,11 +387,14 @@ def materials_score_job(job: dict[str, Any] | Any, *, now: Any = None) -> Score:
     type_bonus = _type_score(title)
     location = _location_score(d)
     penalties = _penalty_score(title)
+    # F55 — área do dono (primary+related, sem weak) no título.
+    area = _area_owner_score(title)
 
     breakdown = {
         "materials": round(materials, 2),
         "adjacent": round(adjacent, 2),
         "context": round(context, 2),
+        "area": round(WEIGHT_AREA_TITLE * area, 2),
         "type": round(type_bonus, 2),
         "location": round(location, 2),
         "penalties": round(penalties, 2),

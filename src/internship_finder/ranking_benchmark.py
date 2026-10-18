@@ -74,16 +74,48 @@ BREAKDOWN_KEYS_V2: tuple[str, ...] = BREAKDOWN_KEYS + ("registry",)
 # continuam válidos — mesma política retroativa de F3.
 BREAKDOWN_KEYS_V3: tuple[str, ...] = BREAKDOWN_KEYS_V2 + ("decay",)
 
+# F55 (17/10) adicionou ``fn`` (função não-alvo no título, HR sem gate) e
+# ``core`` (núcleo de negócio SC/procurement) ao business e ao EU, e ``area``
+# (área primária do dono) ao materials. Formas válidas pós-F55: business/EU
+# carregam fn+core (area já está na base); materials carrega area. Os velhos
+# continuam válidos — mesma política retroativa de F3/F38 (o arquivo
+# versionado não é reescrito).
+BREAKDOWN_KEYS_V4: tuple[str, ...] = BREAKDOWN_KEYS_V2 + ("fn", "core")
+BREAKDOWN_KEYS_V4_DECAY: tuple[str, ...] = BREAKDOWN_KEYS_V4 + ("decay",)
+BREAKDOWN_KEYS_EU: tuple[str, ...] = BREAKDOWN_KEYS + ("interest", "fn", "core")
+BREAKDOWN_KEYS_EU_DECAY: tuple[str, ...] = BREAKDOWN_KEYS_EU + ("decay",)
+BREAKDOWN_KEYS_MATERIALS: tuple[str, ...] = (
+    "materials", "adjacent", "context", "area", "type", "location", "penalties",
+)
+BREAKDOWN_KEYS_MATERIALS_DECAY: tuple[str, ...] = (
+    BREAKDOWN_KEYS_MATERIALS + ("decay",)
+)
+_VALID_BREAKDOWN_SHAPES: tuple[frozenset[str], ...] = tuple(
+    frozenset(s)
+    for s in (
+        BREAKDOWN_KEYS,
+        BREAKDOWN_KEYS_V2,
+        BREAKDOWN_KEYS_V3,
+        BREAKDOWN_KEYS_V4,
+        BREAKDOWN_KEYS_V4_DECAY,
+        BREAKDOWN_KEYS_EU,
+        BREAKDOWN_KEYS_EU_DECAY,
+        BREAKDOWN_KEYS_MATERIALS,
+        BREAKDOWN_KEYS_MATERIALS_DECAY,
+    )
+)
+
 
 def _breakdown_key_set(breakdown: dict[str, Any]) -> set[str] | None:
-    """Conjunto válido para o breakdown: v1 (6), v2 (7) ou v3 (7+decay)."""
-    keys = set(breakdown)
-    if (
-        keys == set(BREAKDOWN_KEYS)
-        or keys == set(BREAKDOWN_KEYS_V2)
-        or keys == set(BREAKDOWN_KEYS_V3)
-    ):
-        return keys
+    """Conjunto válido: v1 (6), v2 (7), v3 (8) ou as formas F55.
+
+    F55: business/EU = base + registry + fn + core (+ decay com now);
+    materials = materials/adjacent/context + area + type/location/penalties
+    (+ decay). Registros velhos continuam válidos (política retroativa).
+    """
+    keys = frozenset(breakdown)
+    if keys in _VALID_BREAKDOWN_SHAPES:
+        return set(keys)
     return None
 
 # Chave de ordenacao oficial do ranking (ranking.py rank_jobs).

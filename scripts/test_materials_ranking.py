@@ -129,13 +129,16 @@ def test_gate_contexto() -> None:
 
 
 def test_penalidades_funcao() -> None:
-    print("== penalidades: funcao de negocio no TITULO; descricao nao penaliza ==")
+    print("== penalidades: funcao nao-materiais; F55: compras/SCM NAO penaliza ==")
+    # F55 (veredito v4): a premissa "compras/SCM = perfil oposto" foi
+    # REFUTADA pela régua — as 4 ótimas do v4 são de procurement/supply
+    # chain (área primária do projeto). PENALTY_PROCUREMENT -1.5 -> 0.0.
     einkauf = materials_score_job(job("p1", "Werkstudent Einkauf (m/w/d)", desc=""))
-    check("'Einkauf' no titulo penaliza (funcao oposta)",
-          einkauf.breakdown["penalties"] < 0)
+    check("'Einkauf' no titulo NAO penaliza mais (premissa refutada F55)",
+          einkauf.breakdown["penalties"] == 0.0)
     scc = materials_score_job(job("p2", "Working Student Supply Chain", desc=""))
-    check("'Supply Chain' no titulo penaliza",
-          scc.breakdown["penalties"] < 0)
+    check("'Supply Chain' no titulo NAO penaliza mais (premissa refutada F55)",
+          scc.breakdown["penalties"] == 0.0)
     # mesma vaga tecnica com descricao repleta de termos de negocio (ME Office,
     # area organizacional citando Einkauf): NAO penaliza (titulo manda).
     tec = materials_score_job(job(
@@ -146,10 +149,25 @@ def test_penalidades_funcao() -> None:
     ))
     check("descricao com Einkauf/Office/Finance NAO penaliza (titulo limpo)",
           tec.breakdown["penalties"] == 0.0)
+    # outras funcoes nao-materiais (logistica/vendas/financas) MANTM -1.0.
+    other = materials_score_job(job("p6", "Werkstudent Vertrieb & Marketing", desc=""))
+    check("funcao nao-materiais (vendas/marketing) mantem penalidade",
+          other.breakdown["penalties"] < 0)
     alu = materials_score_job(job("p4", "Praktikant Einkauf Aluminium (w/m/x)", desc=""))
     tec_real = materials_score_job(job("p5", "Praktikum Entwicklung Batteriezelle (w/m/d)", desc=""))
-    check("'Einkauf Aluminium' (comercial) fica abaixo de vaga tecnica real",
-          alu.total < tec_real.total + 0.01)
+    # F55: "Einkauf Aluminium" carrega nucleo materials (aluminium 2.5) E a
+    # area do dono (procurement 3.0) — pela rubrica v4 (aplicável-first: as
+    # otimas do dono sao procurement/SC com sinal tecnico) o hibrido
+    # alinhado ao perfil DUPLO do dono fica ACIMA da vaga tecnica pura sem
+    # sinal de area do dono. A expectativa antiga (alu < tec) codificava a
+    # premissa refutada "compras = perfil oposto".
+    check("hibrido 'Einkauf Aluminium' (nucleo+area dono) fica acima da "
+          "tecnica pura (rubrica v4: perfil duplo)",
+          alu.total > tec_real.total)
+    # E o nucleo materials SEM area do dono segue acima da area pura.
+    check("nucleo materials puro fica acima de procurement sem nucleo",
+          materials_score_job(job("p7", "Praktikum Werkstoffpruefung", desc="")).total
+          > materials_score_job(job("p8", "Werkstudent Einkauf (m/w/d)", desc="")).total)
 
 
 def test_descricao_corrobora_1x() -> None:
@@ -177,9 +195,9 @@ def test_breakdown_honesto() -> None:
         check(f"soma == total ({t[:40]}...)",
               abs(sc.total - round(sum(sc.breakdown.values()), 2)) < 1e-9)
     sc = materials_score_job(job("h2", "Praktikum Beschichtung (w/m/d)"))
-    check("componentes implementados (6, todos reais)",
-          set(sc.breakdown) == {"materials", "adjacent", "context", "type",
-                                "location", "penalties"})
+    check("componentes implementados (7, todos reais — F55 soma 'area')",
+          set(sc.breakdown) == {"materials", "adjacent", "context", "area",
+                                "type", "location", "penalties"})
 
 
 def test_independencia_do_principal() -> None:
@@ -203,7 +221,8 @@ def test_independencia_do_principal() -> None:
     biz_order = [j["id"] for j in rank_jobs(jobs_in)]
     check("ordem materials != ordem business (posicoes independentes)",
           mat_order != biz_order)
-    check("vaga tecnica lidera o ranking materials (nao o Data Analytics 17.5)",
+    check("vaga tecnica lidera o ranking materials (area F55 nao inverte: "
+          "nucleo 2.5+context vence area 2.0+adjacent)",
           mat_order[0] == "2")
     check("entrada nao mutada (sem materials_score na lista original)",
           all("materials_score" not in j for j in jobs_in))

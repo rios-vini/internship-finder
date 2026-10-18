@@ -72,6 +72,7 @@ from internship_finder.filters import (
     SENIORITY_PATTERNS,
     STUDENT_TYPE_PATTERNS,
     area_score,
+    function_penalty_nontarget,
     infer_country_iso,
 )
 from internship_finder.registry import CompanyRegistry
@@ -91,7 +92,17 @@ WEIGHT_AREA_TITLE = 2.0  # area do TITULO (filters.area_score, so titulo)
 # "data" no template) NAO esta na amostra (churn). Mantem 0.0: calibracao
 # original em 13.482 brutas > experimento em 29; honestidade > completude.
 WEIGHT_AREA_DESC = 0.0  # area da DESCRICAO (mantido: 0 — experimento F5 nao autoriza mudanca)
-WEIGHT_SKILL = 0.75  # por competencia do perfil na descricao
+# F55 (17/10, veredito v4 0.410/-0.305/0.478 — revisao de pesos justificada):
+# 0.75 -> 1.0. O v4 mediu gradiente de skills DESALINHADO com o rotulo no
+# business (medias otima 1.31 > aceitavel 0.56 > boa 0.41): a "boa" média é
+# vaga de campo sem descrição rica e a "aceitável" média é Controlling/BI com
+# template cheio de termos — o peso fraco deixava o template ganhar do
+# conteúdo. Nos 40 rotulados: tau business +0.505 (fn+core, G6a) ->
+# +0.524 com skills 1.0 (final, ZERO inversões novas criadas, 12 resolvidas);
+# EU compartilha o peso (reuso _skills_score) e mantém 0.652. Skills é o
+# sinal do CONTEUDO real da vaga — peso de termo único continua (1 termo =
+# 1.0, nunca por ocorrência).
+WEIGHT_SKILL = 1.0  # por competencia do perfil na descricao (F55: 0.75 -> 1.0)
 WEIGHT_LANG_EN = 1.5  # ingles essencial (qualquer evidencia no titulo/descricao)
 PENALTY_LANG_DE_REQUIRED = -2.0  # "German required", "fließende Deutschkenntnisse"...
 PENALTY_LANG_DE_PREFERRED = -0.5  # "German preferred", "von Vorteil", par sem nivel
@@ -112,6 +123,32 @@ PENALTY_FULL_TIME = -0.5  # suave: Werkstudent/Praktikum marcados FULL_TIME
 # "Robert Bosch GmbH"; FP tipo "Bosch" dentro de outro nome e raro e
 # benigno). NAO e filtro: todos os jobs entram, so com -1.0 relativo.
 WEIGHT_REGISTRY_INTEREST = 1.0
+
+# ---------------------------------------------------------------------------
+# F55 — núcleo de negócio no TÍTULO (componente ``core``)
+# ---------------------------------------------------------------------------
+# O v4 (veredito 0.410/-0.305/0.478, revisão de pesos justificada) mostrou o
+# conflito função×área pelo outro lado: "supply chain" no título vale área
+# RELATED (2.0) enquanto "business analytics"/"Controlling ... Analytics"
+# valem PRIMÁRIA cheia (3.0 + compostos) — ótimas de núcleo caíam para
+# aceitáveis de template (KPMG "boa" #1 acima de ótimas no quartil topo;
+# DSP Nestlé ótima #125). O componente soma +1.5 quando o TÍTULO carrega o
+# núcleo SC/procurement do dono (analytics NÃO é núcleo — a lente de área
+# já o cobre; e "Supply Chain" em nome de produto é raro no conjunto).
+# Grade F55 (40 rotulados v4, universo 844): k=1.5 -> tau business 0.505 /
+# EU 0.652 com ZERO inversões novas; k=2.5 -> 0.533/0.739 mas cria 3
+# inversões (híbrida "Analytics Advisory & Data Democratization / SC"
+# — ótima pelo lado SC — cede 3 posições a boas). Escolhido 1.5: critério
+# atingido sem dano colateral (disciplina F36: centro conservador do
+# intervalo; grid fino é frágil com n=40).
+CORE_BUSINESS_PATTERNS = [
+    r"\bsupply[ -]?chain\b",
+    r"\bprocurement\b",
+    r"\bpurchas\w*\b",
+    r"\beinkauf\w*\b",
+    r"\bbeschaffung\w*\b",
+]
+WEIGHT_CORE_BUSINESS = 1.5
 
 # Frases de PRODUTO que contem termos de area ("Analytics" em "SAP Analytics
 # Cloud"). O termo e do NOME DO PRODUTO, nao da funcao da vaga: nao deve
@@ -215,6 +252,16 @@ def registry_interest(company: str | None) -> float:
 
 def _matches_any(patterns: list[str], text: str) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
+
+
+def _core_business_score(title: str) -> float:
+    """F55: +WEIGHT_CORE_BUSINESS quando o TÍTULO carrega o núcleo de
+    negócio do dono (SC/procurement — ver docstring do componente)."""
+    return (
+        WEIGHT_CORE_BUSINESS
+        if _matches_any(CORE_BUSINESS_PATTERNS, title)
+        else 0.0
+    )
 
 
 def _mask_product_phrases(text: str) -> str:
@@ -426,6 +473,12 @@ def score_job(job: dict[str, Any] | Any, *, now: Any = None) -> Score:
     location = _location_score(d)
     penalties = _penalty_score(title.lower(), d.get("employment_type"))
     registry = registry_interest(d.get("company"))
+    # F55 — função não-alvo no título, HR SEM gate (a categoria HR é
+    # checada antes do termo primário de área: "HR Rewards Analytics" é RH,
+    # não vaga de dados — inversões gap-3 medidas no v4). Restante das
+    # categorias (marketing/sales-BD) mantém o gate de híbridos de dados.
+    fn = function_penalty_nontarget(title, ungated_hr=True)
+    core = _core_business_score(title)
 
     breakdown = {
         "area": round(area, 2),
@@ -435,6 +488,8 @@ def score_job(job: dict[str, Any] | Any, *, now: Any = None) -> Score:
         "location": round(location, 2),
         "penalties": round(penalties, 2),
         "registry": round(registry, 2),
+        "fn": round(fn, 2),
+        "core": round(core, 2),
     }
     total = round(sum(breakdown.values()), 2)
     breakdown, total = _apply_decay(breakdown, total, d, now)

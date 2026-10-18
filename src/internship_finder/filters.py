@@ -387,6 +387,78 @@ def matches_area(title: str, description: str | None = None) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Função NÃO-alvo no TÍTULO (F55 — casa canônica; antes vivia só no eu_ranking)
+# ---------------------------------------------------------------------------
+# Três categorias (marketing/HR/vendas-BD) = os "ruim" do estrato não-DE no
+# benchmark v2 (F27/F36): marketing/BD/HR de startups EN. Cada lista é CURTA
+# por design: penalidade de título precisa ser precisa; termo genérico demais
+# criaria dano colateral. F55 (17/10, veredito v4): a regra migrou para cá
+# porque a lente de função deixa de ser exclusiva do perfil EU — o business
+# também penaliza, com a correção medida no v4: "HR Rewards Analytics"
+# (rotulada RUIM pelo dono) passava pelo gate de área primária ("analytics")
+# e ficava ACIMA de ótimas de supply chain (inversões gap-3 nos perfis
+# business e EU). A categoria HR passa a ser checada ANTES do gate
+# (``ungated_hr``): analytics NÃO protege RH. Híbridos de dados nas demais
+# categorias ("Sales Analytics") continuam protegidos pelo gate.
+PENALTY_NON_TARGET_FUNCTION = -2.5
+NON_TARGET_FUNCTION_PATTERNS: dict[str, list[str]] = {
+    "marketing": [
+        r"\bmarketing\b",
+        r"\bbrand\b",
+        r"\bcommunications\b",
+        r"\bcontent\b",
+        r"\btourism\b",
+        r"\bevent management\b",
+    ],
+    "hr": [
+        r"\bhr\b",
+        r"\bhuman resources\b",
+        r"\brecruit\w*",
+        r"\btalent\b",
+        r"\bpeople\b",
+        r"\bemployee experience\b",
+    ],
+    "sales_bd": [
+        r"\bsales\b",
+        r"\bbusiness development\b",
+        r"\baccount manager\b",
+        r"\bclient services\b",
+        r"\bcustomer (care|service|support)",
+        r"\bkey account",
+    ],
+}
+_NON_TARGET_FN_RES = [
+    re.compile(p, re.IGNORECASE)
+    for pats in NON_TARGET_FUNCTION_PATTERNS.values()
+    for p in pats
+]
+_NON_TARGET_HR_RES = [
+    re.compile(p, re.IGNORECASE) for p in NON_TARGET_FUNCTION_PATTERNS["hr"]
+]
+
+
+def function_penalty_nontarget(title: str, *, ungated_hr: bool = False) -> float:
+    """Penalidade por função não-alvo no TÍTULO.
+
+    ``ungated_hr=False`` (comportamento F36/EU): o termo PRIMÁRIO de área no
+    título protege a vaga (híbridos de dados — "HR Analytics" sob a regra
+    antiga). ``ungated_hr=True`` (correção F55 medida no v4, aplicada ao
+    business e ao EU): a categoria HR é checada ANTES do gate — "HR Rewards
+    Analytics" é RH com template de dados, não vaga de dados; "Sales
+    Analytics" e as demais categorias continuam protegidas pelo gate
+    (mesmo espírito da regra do milestone 2: o sinal forte vence a função
+    organizacional).
+    """
+    if ungated_hr and any(rx.search(title) for rx in _NON_TARGET_HR_RES):
+        return PENALTY_NON_TARGET_FUNCTION
+    if any(p.search(title) for p in _PATTERNS["primary"]):
+        return 0.0
+    if any(rx.search(title) for rx in _NON_TARGET_FN_RES):
+        return PENALTY_NON_TARGET_FUNCTION
+    return 0.0
+
+
+# ---------------------------------------------------------------------------
 # Pais / localizacao (re-export de ``countries`` — ver P2 #12)
 # ---------------------------------------------------------------------------
 

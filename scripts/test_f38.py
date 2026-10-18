@@ -52,6 +52,7 @@ from internship_finder.eu_ranking import eu_score_job, rank_eu_jobs  # noqa: E40
 from internship_finder.ranking_benchmark import (  # noqa: E402
     BREAKDOWN_KEYS_V2,
     BREAKDOWN_KEYS_V3,
+    BREAKDOWN_KEYS_V4,
     _breakdown_key_set,
 )
 
@@ -135,7 +136,7 @@ def main() -> int:
     expected = round(s_old.total * (0.5 ** (90 / 365.0)), 2)
     check("sem now: total e breakdown byte-identical (sem chave decay)",
           s_now.total != s_old.total and "decay" not in s_old.breakdown
-          and set(s_old.breakdown) == set(BREAKDOWN_KEYS_V2),
+          and set(s_old.breakdown) == set(BREAKDOWN_KEYS_V4),
           f"total {s_old.total}")
     check("com now: total = round(total * fator)",
           s_now.total == expected, f"{s_now.total} vs {expected}")
