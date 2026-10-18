@@ -78,7 +78,13 @@ REPO = Path(__file__).resolve().parent.parent
 # _AB_BASELINE_SHA = estado src/ (pré-condição; move com a fase);
 # _AB_LEGACY_PAGE_SHA = minimal_page.py pré-F53 (render legado + medida
 # do _JS_PROFILE; fixo em 1b548c1, que vive no main para sempre).
-_AB_BASELINE_SHA = "451a21f"
+# F50 (18/10): src/ moveu de novo (enrichment/runner.py — reasoning_effort
+# low no call-site, fix F34; geocoding.py — reparo Nominatim addressdetails
+# + lazy attach; gates F1 intactos, flags default OFF). Padrão F56: a
+# âncora da pré-condição src/ move para o head da fase que tocou src/; o
+# render legado permanece congelado em _AB_LEGACY_PAGE_SHA (minimal_page.py
+# intocado pela F50 — byte-identity do legado inalterado).
+_AB_BASELINE_SHA = "4f2815c"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 
