@@ -89,8 +89,10 @@ def _jobs_realistic(n: int = 50) -> list[dict]:
 def test_render_minimal() -> None:
     print("== F6.1: render minimal — campos, mortos ausentes, tamanho ==")
     jobs = _jobs_realistic(50)
+    # F46: default do render virou EN (decisão do dono 15/10); esta suíte valida o chrome pt da fase — fixtures forçam lang="pt" (contrato (b) da F46).
     html = mp.render_minimal_html(
         jobs, total_eligible=478, generated_at="2026-10-03 12:00",
+        lang="pt",
     )
     size = len(html.encode("utf-8"))
     # F11: cap de EXIBICAO 2 vagas/empresa — 50 vagas em 6 empresas => 12 cards
@@ -129,7 +131,7 @@ def test_render_minimal() -> None:
     # escape: titulo com <script> nao executa
     evil = _job(99, title='<script>alert(1)</script> Evil')
     html_evil = mp.render_minimal_html([evil], total_eligible=1,
-                                       generated_at="x")
+                                       generated_at="x", lang="pt")
     check("escape HTML: <script> no titulo nao vira tag",
           "<script>alert" not in html_evil
           and "<script>" in html_evil)
@@ -141,13 +143,13 @@ def test_render_top_cap() -> None:
     print("== F6.1b: cap do top e top menor ==")
     jobs = _jobs_realistic(80)
     html = mp.render_minimal_html(jobs, total_eligible=80,
-                                  generated_at="x", top=50)
+                                  generated_at="x", top=50, lang="pt")
     # F11: cap 2/empresa — 80 vagas em 6 empresas -> 12 cards (o corte em
     # ``top`` 50 e o teto de VAGAS EXIBIDAS, nao de entrada).
     check("80 vagas/6 empresas -> 12 cards (cap 2/empresa)",
           html.count("<li class=") == 12)
     html2 = mp.render_minimal_html(jobs[:3], total_eligible=80,
-                                    generated_at="x", top=50)
+                                    generated_at="x", top=50, lang="pt")
     check("3 vagas -> 3 cards", html2.count("<li class=") == 3)
     check("rodape informa o total (80)", "80 vagas elegíveis" in html)
 
@@ -178,11 +180,13 @@ def test_salary_only_when_cited() -> None:
     j = _job(1)
     j["description"] = ("Wir bieten ein monatliches Gehalt von 2.117 €. "
                         "Weitere Aufgaben im Supply Chain Management.")
-    html = mp.render_minimal_html([j], total_eligible=1, generated_at="x")
+    html = mp.render_minimal_html([j], total_eligible=1, generated_at="x",
+                                  lang="pt")
     check("salario citado aparece (F51: €2.117/mês)",
           "€2.117/mês" in html)
     j2 = _job(2)
-    html2 = mp.render_minimal_html([j2], total_eligible=1, generated_at="x")
+    html2 = mp.render_minimal_html([j2], total_eligible=1, generated_at="x",
+                                   lang="pt")
     check("sem salario citado -> sem valor inventado",
           "€" not in html2.split("<body>")[1].split("<ol")[0]
           and 'class="sal"' not in html2)

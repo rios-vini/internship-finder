@@ -187,7 +187,10 @@ def test_title_line_in_card() -> None:
         _job(3, title=None),                          # sem titulo
     ]
     jobs[3]["title"] = None
-    html = mp.render_minimal_html(jobs, total_eligible=4, generated_at="x")
+    # F46: default do render virou EN (decisão do dono 15/10); esta suíte valida
+    # o chrome pt da era pré-F46 — fixtures forçam lang="pt" (contrato (b) F46).
+    html = mp.render_minimal_html(jobs, total_eligible=4, generated_at="x",
+                                  lang="pt")
     check("linha EN presente no card DE", 'class="en">EN: Internship Logistics<' in html)
     check("titulo DE original preservado", "Praktikum Logistik" in html)
     check("so UMA linha EN (ja-EN/fora-do-dicionario nao ganham)",
@@ -210,7 +213,8 @@ def test_title_line_in_card() -> None:
 
 def test_glossary_footer() -> None:
     section("T4: glossário estático (F51: dentro da legenda única)")
-    html = mp.render_minimal_html([_job(0)], total_eligible=1, generated_at="x")
+    html = mp.render_minimal_html([_job(0)], total_eligible=1, generated_at="x",
+                           lang="pt")
     check("glossario presente", "Glossário DE→EN:" in html)
     for de, en in mp.GLOSSARY_TERMS:
         check(f"termo {de} = {en}", f"{de} = {en}" in html)
@@ -269,19 +273,21 @@ def test_snippet_en_render() -> None:
     cache = {"t0": {"en": "Working student role in logistics and procurement",
                     "ts": 1.0}}
     html = mp.render_minimal_html(jobs, total_eligible=2, generated_at="x",
-                                  translation_cache=cache)
+                                  translation_cache=cache, lang="pt")
     check("snippet EN marcado (EN · )", "EN · Working student role" in html)
     check("snippet EN com classe de traducao", 'class="d en"' in html)
     check("vaga SEM cache mantem snippet DE como hoje",
           "Werkstudent supply chain logistics procurement" in html)
     # sem cache: identico ao render de hoje nos snippets
-    html_no = mp.render_minimal_html(jobs, total_eligible=2, generated_at="x")
+    html_no = mp.render_minimal_html(jobs, total_eligible=2, generated_at="x",
+                           lang="pt")
     check("sem cache -> nenhum marcador EN · ",
           "EN · " not in html_no)
     check("sem cache -> sem classe d en", 'class="d en"' not in html_no)
     check("cache entry para vaga fora do top: ignorada sem erro",
           mp.render_minimal_html(jobs[:1], total_eligible=2, generated_at="x",
-                                 translation_cache={"zzz": {"en": "x"}})
+                                 translation_cache={"zzz": {"en": "x"}},
+                                 lang="pt")
           is not None)
     # from_file com cache em disco (caminho real da ferramenta)
     with tempfile.TemporaryDirectory(prefix="t_f12_ff_") as tmp:
@@ -292,17 +298,17 @@ def test_snippet_en_render() -> None:
         dt.save_translation_cache(cpath, cache)
         html_ff = mp.render_minimal_html_from_file(
             base / "eligible_jobs.json", archive_root=None,
-            translation_cache_path=cpath)
+            translation_cache_path=cpath, lang="pt")
         check("from_file le o cache do disco", "EN · Working student role" in html_ff)
         html_ff2 = mp.render_minimal_html_from_file(
             base / "eligible_jobs.json", archive_root=None,
-            translation_cache_path=base / "nao_existe.json")
+            translation_cache_path=base / "nao_existe.json", lang="pt")
         check("from_file com cache inexistente: snippet DE",
               "Werkstudent supply chain" in html_ff2
               and "EN · " not in html_ff2)
         html_ff3 = mp.render_minimal_html_from_file(
             base / "eligible_jobs.json", archive_root=None,
-            translation_cache_path=None)
+            translation_cache_path=None, lang="pt")
         check("from_file sem translation_cache_path: pagina de hoje",
               "EN · " not in html_ff3)
 
@@ -621,9 +627,9 @@ def test_render_without_cache_identical_today() -> None:
     section("T5: render sem cache = pagina de hoje (snippets DE, nada quebra)")
     jobs = [_job(0), _job(1)]
     html_none = mp.render_minimal_html(jobs, total_eligible=2,
-                                       generated_at="x")
+                                       generated_at="x", lang="pt")
     html_empty = mp.render_minimal_html(jobs, total_eligible=2,
-                                        generated_at="x",
+                                        generated_at="x", lang="pt",
                                         translation_cache={})
     check("cache None == cache {} (nenhum efeito)",
           html_none == html_empty)
@@ -641,7 +647,7 @@ def test_size_budget() -> None:
         j["description"] = ("Werkstudent supply chain logistik beschaffung "
                             "procurement SAP Excel " * 12)
     html = mp.render_minimal_html(jobs, total_eligible=2456,
-                                  generated_at="2026-10-05 09:32")
+                                  generated_at="2026-10-05 09:32", lang="pt")
     size = len(html.encode("utf-8"))
     check("100 cards principais",
           html.split('<ol id="list">')[1].split("</ol>")[0]
@@ -657,7 +663,7 @@ def test_size_budget() -> None:
                              "supply chain with SAP and Excel. " * 3,
                        "ts": 1.0} for i in range(100)}
     html_cache = mp.render_minimal_html(jobs, total_eligible=2456,
-                                        generated_at="x",
+                                        generated_at="x", lang="pt",
                                         translation_cache=cache)
     size_cache = len(html_cache.encode("utf-8"))
     check("com cache EN: marcadores EN · presentes",
@@ -667,7 +673,7 @@ def test_size_budget() -> None:
     check("com cache EN: gate aprova", pp.check_public_safe(html_cache) == [])
     # degradacao size-aware (F11) segue: remonta sem snippets (EN junto)
     html_no_snip = mp.render_minimal_html(jobs, total_eligible=2456,
-                                           generated_at="x",
+                                           generated_at="x", lang="pt",
                                            translation_cache=cache,
                                            with_snippets=False)
     check("sem snippets: sem marcador EN · (traducao vive no snippet)",

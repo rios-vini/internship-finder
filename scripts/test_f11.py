@@ -166,15 +166,18 @@ def test_diff_page_section() -> None:
     section("T1: pagina 🆕 — top 10 + data-new + toggle")
     cur = _distinct_jobs(40)
     new_ids = {f"t{i}" for i in (0, 1, 2, 39, 38, 37, 36, 35, 34, 33, 32, 31)}
+    # F46: default do render virou EN (decisão do dono 15/10); esta suíte valida o chrome pt da fase — fixtures forçam lang="pt" (contrato (b) da F46).
     html = mp.render_minimal_html(cur, total_eligible=40,
-                                  generated_at="x", new_since_ids=new_ids)
+                                  generated_at="x", new_since_ids=new_ids,
+                                  lang="pt")
     check("secao 🆕 com contagem", "🆕 Novas desde ontem — 12 nova(s)" in html)
     check("badge 🆕 nos cards novos", html.count('class="newb"') >= 10)
     check("toggle 'só novas de ontem' presente", 'id="f-new"' in html)
     check("data-new=1 nos cards novos",
           html.count('data-new="1"') >= 10)
     # sem diff: sem secao, sem toggle
-    html_no = mp.render_minimal_html(cur, total_eligible=40, generated_at="x")
+    html_no = mp.render_minimal_html(cur, total_eligible=40,
+                                     generated_at="x", lang="pt")
     check("sem diff: sem secao 🆕", "🆕 Novas desde ontem" not in html_no)
     check("sem diff: sem toggle f-new", 'id="f-new"' not in html_no)
 
@@ -193,20 +196,20 @@ def test_diff_page_via_archive() -> None:
             json.dumps(cur[:12]), encoding="utf-8")
         html = mp.render_minimal_html_from_file(
             base / "eligible_jobs.json", archive_root=arch,
-            include_materials=False)
+            include_materials=False, lang="pt")
         check("diff contra snapshot: 8 novas", "8 nova(s)" in html)
         # snapshot corrompido: skip gracioso, sem secao, sem erro
         (yday / "eligible_jobs.json").write_text("{corrompido",
                                                  encoding="utf-8")
         html2 = mp.render_minimal_html_from_file(
             base / "eligible_jobs.json", archive_root=arch,
-            include_materials=False)
+            include_materials=False, lang="pt")
         check("snapshot corrompido: secao 🆕 omitida (sem erro)",
               "🆕 Novas desde ontem" not in html2)
         # sem archive dir: sem secao, sem erro
         html3 = mp.render_minimal_html_from_file(
             base / "eligible_jobs.json", archive_root=base / "nao_existe",
-            include_materials=False)
+            include_materials=False, lang="pt")
         check("archive inexistente: sem secao, sem erro",
               "🆕 Novas desde ontem" not in html3)
 
@@ -223,7 +226,8 @@ def test_data_de_and_badge() -> None:
         _job(2, de_text=_DE_PLUS),
         _job(3, de_text=_NO_DE),
     ]
-    html = mp.render_minimal_html(jobs, total_eligible=4, generated_at="x")
+    html = mp.render_minimal_html(jobs, total_eligible=4,
+                                  generated_at="x", lang="pt")
     check("data-de=required", 'data-de="required"' in html)
     check("data-de=preferred", 'data-de="preferred"' in html)
     check("data-de=plus", 'data-de="plus"' in html)
@@ -433,7 +437,7 @@ def test_liveness_page_integration() -> None:
     section("T3: mortas descem do top exibido + badge; JSON intocado")
     jobs = _distinct_jobs(20)
     html = mp.render_minimal_html(jobs, total_eligible=20, generated_at="x",
-                                  dead_link_ids={"t0", "t5"})
+                                  dead_link_ids={"t0", "t5"}, lang="pt")
     main_list = html.split('<ol id="list">')[1].split("</ol>")[0]
     check("t0 (morta) fora do ranking principal", "/0<" not in main_list
           and "jobs.example.com/0" not in main_list)
@@ -573,7 +577,7 @@ def test_page_top_100() -> None:
     check("PAGE_TOP = 100", mp.PAGE_TOP == 100)
     jobs = _distinct_jobs(150)
     html = mp.render_minimal_html(jobs, total_eligible=150,
-                                  generated_at="x")
+                                  generated_at="x", lang="pt")
     main_list = html.split('<ol id="list">')[1].split("</ol>")[0]
     check("150 vagas/150 empresas -> 100 cards (cap)",
           main_list.count("<li class=") == 100)
@@ -626,7 +630,7 @@ def test_country_and_new_filters() -> None:
         _job(5, iso="de"),
     ]
     html = mp.render_minimal_html(jobs, total_eligible=6, generated_at="x",
-                                  new_since_ids={"t1", "t3"})
+                                  new_since_ids={"t1", "t3"}, lang="pt")
     for iso in ("de", "nl", "lu", "fi", "be"):
         check(f"data-iso={iso} nos cards", f'data-iso="{iso}"' in html)
     check("select de país presente (5 opções)", 'id="f-country"' in html
@@ -646,7 +650,7 @@ def test_materials_section() -> None:
     ]
     mat = rank_materials_jobs(jobs)[:mp.MATERIALS_SECTION_TOP]
     html = mp.render_minimal_html(jobs, total_eligible=4, generated_at="x",
-                                  materials=mat)
+                                  materials=mat, lang="pt")
     check("seção 🧪 Materials Engineering presente",
           "🧪 Materials Engineering" in html)
     check("header explica perfil alternativo", "perfil alternativo" in html)
@@ -660,13 +664,13 @@ def test_materials_section() -> None:
         (base / "eligible_jobs.json").write_text(json.dumps(jobs),
                                                  encoding="utf-8")
         html2 = mp.render_minimal_html_from_file(
-            base / "eligible_jobs.json", archive_root=None)
+            base / "eligible_jobs.json", archive_root=None, lang="pt")
         check("from_file: seção Materials por default",
               "🧪 Materials Engineering" in html2)
         # include_materials=False desliga
         html3 = mp.render_minimal_html_from_file(
             base / "eligible_jobs.json", archive_root=None,
-            include_materials=False)
+            include_materials=False, lang="pt")
         check("include_materials=False: sem seção",
               "🧪 Materials Engineering" not in html3)
 
@@ -678,7 +682,7 @@ def test_size_budget() -> None:
         j["description"] = ("Werkstudent supply chain logistik beschaffung "
                             "procurement SAP Excel " * 12)
     html = mp.render_minimal_html(jobs, total_eligible=2456,
-                                  generated_at="2026-10-04 09:32")
+                                  generated_at="2026-10-04 09:32", lang="pt")
     size = len(html.encode("utf-8"))
     check("100 cards principais", html.split('<ol id="list">')[1]
           .split("</ol>")[0].count("<li class=") == 100)
@@ -692,7 +696,8 @@ def test_age_badge() -> None:
     from datetime import UTC, datetime, timedelta
     ref_posted = (datetime.now(UTC) - timedelta(days=3)).isoformat()
     jobs = [_job(0, posted=ref_posted), _job(1, posted=None)]
-    html = mp.render_minimal_html(jobs, total_eligible=2, generated_at="x")
+    html = mp.render_minimal_html(jobs, total_eligible=2, generated_at="x",
+                                  lang="pt")
     check("badge '3d' na vaga com posted_at (F51: formato único)",
           ">3d<" in html)
     check("sem badge na vaga sem posted_at", html.count("class=\"age\"") == 1)

@@ -64,6 +64,27 @@ Default ``vitrine=False``: página byte a byte idêntica à pré-F52 (o
 publish liga via ``--vitrine`` explícito, fixando o contrato — padrão
 F13/F15/F43).
 
+F46 (i18n pt-BR/en + RSS estático) adiciona ao render — default do
+RENDER = EN (decisão do dono 15/10):
+
+- **FONTE ÚNICA de strings** (``I18N``): cada chave tem o par
+  pt/en; o pt é VERBATIM o main pré-F46 (constantes referenciadas, não
+  redigidas). Paridade pt↔en travada no test_f46.
+- **``lang="pt"`` = A/B byte a byte com o main** (SHA congelado
+  149203f via subprocesso, padrão test_f51/PR #145): zero attrs, zero
+  toggle, zero JS novo.
+- **``lang="en"`` (default/publish)**: chrome EN + mecanismo do toggle
+  vanilla — texto pt FINAL DO DIA embutido em ``data-i18n-pt*`` (sem
+  re-fetch, UM HTML só), strings criadas por JS via
+  ``window.__I18N_JS``, escolha persistida em
+  ``localStorage("if46lang")``. Zero mudança em cards/dados/ordem/links.
+- **RSS estático** (``render_rss_xml`` / ``--rss PATH``): feed RSS 2.0
+  espelhando o render atual (mesma lista final do sink — ordem,
+  exclusões e corte de orçamento da página), determinístico (o único
+  instante é o carimbo do render), escape XML total, zero dependências.
+  Publicado junto ao index.html pelo publish_pages (o scanner de
+  segredos varre o feed — falha segura, sem push do dia).
+
 Mortos removidos (F6): ``application_deadline`` (F1: validade do FEED,
 nao data real), ``official_page`` (F1: desligado) e os campos de intel do
 enrichment LLM (Fase 3, cookie-walled). Nada disso e renderizado. O
@@ -614,7 +635,7 @@ SECTION16E_MAX_MONTHS = 6
 DURATION_FLAG_TEXT = "duração N meses — acima do teto §16e (6 meses)"
 
 
-def duration_flag_text(job: dict) -> str:
+def duration_flag_text(job: dict, lang: str = "pt") -> str:
     """F29 item 2: duração citada > 6 meses excede o teto do §16e.
 
     Usa ``opportunity_intel.job_duration`` (detector existente — meses
@@ -623,6 +644,8 @@ def duration_flag_text(job: dict) -> str:
     6 — sinal honesto é não flagar); "7 Monate" ou mais = flag. Sem
     duração citada = sem flag (silêncio; a maioria dos anúncios não cita).
     INFORMATIVO: badge no card, nunca exclusão.
+    F46: ``lang`` — pt reproduz VERBATIM a constante (template "N"); en é
+    a tradução do I18N com o MESMO valor de meses.
     """
     try:
         from internship_finder import opportunity_intel
@@ -634,6 +657,8 @@ def duration_flag_text(job: dict) -> str:
     months = int(dur.get("min") or 0)
     if months <= SECTION16E_MAX_MONTHS:
         return ""
+    if lang == "en":
+        return I18N["dur_flag"]["en"].replace("{n}", str(months))
     return DURATION_FLAG_TEXT.replace("N", str(months))
 
 
@@ -652,13 +677,14 @@ _ENROLLMENT_PATTERNS = (
 ENROLLMENT_FLAG_TEXT = "exige matrícula em universidade alemã"
 
 
-def enrollment_flag(job: dict) -> str:
+def enrollment_flag(job: dict, lang: str = "pt") -> str:
     """F29 item 4a: badge quando o anúncio exige matrícula em Hochschule DE.
 
     O dono é aluno de universidade BRASILEIRA — a exigência de
     Einschreibung/Studium an einer deutschen Hochschule (ou enrolled at a
     German university) é incompatível com o perfil e o anúncio raramente
     declara isso no título; por isso o texto varre título E descrição.
+    F46: ``lang`` — pt reproduz VERBATIM a constante; en é a tradução.
     """
     text = " ".join(
         str(x or "") for x in (job.get("title"), job.get("description")))
@@ -667,6 +693,8 @@ def enrollment_flag(job: dict) -> str:
     low = text.casefold()
     for pattern in _ENROLLMENT_PATTERNS:
         if pattern in low:
+            if lang == "en":
+                return I18N["enrollment_flag"]["en"]
             return ENROLLMENT_FLAG_TEXT
     return ""
 
@@ -703,6 +731,351 @@ LEGAL_ZUSTIMMUNG_PHRASE = (
 )
 
 
+# ---------------------------------------------------------------------------
+# F46 — i18n pt-BR/en (DEFAULT DO RENDER = EN, decisão do dono 15/10) + RSS.
+#
+# FONTE ÚNICA de strings: o dicionário ``I18N`` abaixo. Cada chave tem o par
+# {"pt": ..., "en": ...} — o valor pt é VERBATIM a string hardcoded do main
+# pré-F46 (contrato do A/B: render(lang="pt") == main byte a byte; onde o
+# valor pt já existe como constante, a entrada REFERENCIA a constante, sem
+# redigir variação). O valor en é a tradução nova. Paridade pt↔en é travada
+# pelo scripts/test_f46.py.
+#
+# Mecanismo do toggle (vanilla, sem servidor, UM HTML só, sem re-fetch): o
+# render EN embute em cada elemento traduzível o texto pt FINAL DO DIA em
+# ``data-i18n-pt`` (textContent) / ``data-i18n-pt-html`` (bloco HTML) /
+# ``data-i18n-ph`` (placeholder), e o bootstrap JS (_JS_I18N) troca o texto
+# no cliente; a escolha persiste em localStorage("if46lang"). Strings
+# criadas por JS (F53/contador) vão pelo par ``window.__I18N_JS``. O render
+# PT (A/B) NÃO ganha um byte: sem attrs, sem botão, sem JS novo.
+# ---------------------------------------------------------------------------
+I18N_LANGS = ("pt", "en")
+I18N_DEFAULT_LANG = "en"      # decisão do dono 15/10 (supera spec pré-F46)
+LANG_STORAGE_KEY = "if46lang"
+
+I18N: dict[str, dict[str, str]] = {
+    # -- cards (chrome fixo) ------------------------------------------------
+    "apply_btn": {"pt": "candidatar-se ↗", "en": "apply ↗"},
+    "open_btn": {"pt": "abrir vaga ↗", "en": "open job ↗"},
+    "salary_unspecified": {"pt": SALARY_UNSPECIFIED_TEXT,
+                           "en": "salary not listed"},
+    "enrollment_flag": {"pt": ENROLLMENT_FLAG_TEXT,
+                        "en": "requires enrollment at a German university"},
+    "dur_flag": {"pt": DURATION_FLAG_TEXT,
+                 "en": "{n}-month duration — above the §16e cap (6 months)"},
+    # -- barra de filtros ---------------------------------------------------
+    "search_ph": {"pt": "Buscar título, empresa, local…",
+                  "en": "Search title, company, location…"},
+    "f_vf": {"pt": "🛂 só visa friendly", "en": "🛂 visa-friendly only"},
+    "f_de": {"pt": "sem alemão exigido", "en": "no German required"},
+    "country_all": {"pt": "todos os países", "en": "all countries"},
+    "f_new": {"pt": "só novas de ontem", "en": "only new since yesterday"},
+    "f_ws": {"pt": "sem Werkstudent", "en": "no Werkstudent"},
+    "f_data": {"pt": "Data/BI", "en": "Data/BI"},
+    "f_seen": {"pt": "mostrar já vistas", "en": "show already-seen"},
+    "f_app": {"pt": "esconder aplicadas", "en": "hide applied"},
+    # -- cabeçalho / rodapé --------------------------------------------------
+    "title_full": {"pt": "Internship Finder — todas as {n} vagas do dia",
+                   "en": "Internship Finder — all {n} jobs of the day"},
+    "title_top": {"pt": "Internship Finder — top {n} do dia",
+                  "en": "Internship Finder — today's top {n}"},
+    "h1_full": {"pt": "Internship Finder — todas as vagas do dia",
+                "en": "Internship Finder — all of today's jobs"},
+    "h1_top": {"pt": "Internship Finder — top do dia",
+               "en": "Internship Finder — today's top jobs"},
+    "p_line": {"pt": "{stamp} UTC · ordenado pelo score do pipeline · "
+                     "🛂 = empresa com política de visto",
+               "en": "{stamp} UTC · ranked by the pipeline score · "
+                     "🛂 = employer with a stated visa policy"},
+    "footer": {"pt": "{shown} · {n_vf} com 🛂 (empresa com política de "
+                     "visto) · ranking, JSON e CSV completos são gerados "
+                     "pelo pipeline no VPS",
+               "en": "{shown} · {n_vf} with 🛂 (employer with a stated "
+                     "visa policy) · full ranking, JSON and CSV are "
+                     "generated by the pipeline on the VPS"},
+    "shown_full_cut": {"pt": "mostrando {n} de {m} vagas elegíveis "
+                             "(orçamento de página do dia)",
+                       "en": "showing {n} of {m} eligible jobs (page "
+                             "budget of the day)"},
+    "shown_full_all": {"pt": "todas as {n} vagas elegíveis",
+                       "en": "all {n} eligible jobs"},
+    "shown_top": {"pt": "Top {n} de {total} vagas elegíveis",
+                  "en": "Top {n} of {total} eligible jobs"},
+    # -- seções --------------------------------------------------------------
+    "new_h2": {"pt": "🆕 Novas desde ontem — {n} nova(s){extra}",
+               "en": "🆕 New since yesterday — {n} new{extra}"},
+    "new_extra": {"pt": " (+{k} outras novas)", "en": " (+{k} more new)"},
+    "radar_h2": {"pt": "🎯 Empresas-alvo — {line}",
+                 "en": "🎯 Target companies — {line}"},
+    "radar_line": {"pt": "{n} nova(s) nas empresas que você acompanha",
+                   "en": "{n} new jobs at the companies you follow"},
+    "radar_more": {"pt": "+{k} outras vagas de empresas-alvo",
+                   "en": "+{k} more jobs from target companies"},
+    "sweet_h2": {"pt": "⭐ Ponto ótimo — empresas grandes com boa qualidade "
+                       "de trabalho e 🛂",
+                 "en": "⭐ Sweet spot — large employers with good work "
+                       "quality and 🛂"},
+    "sweet_p2": {"pt": "Cruzamento volume × qualidade (Kununu ≥ 4,0 ou "
+                       "GPTW) × política de visto — derivado no build, "
+                       "mapa curado em config/employer_quality.json; "
+                       "critérios na legenda.",
+                 "en": "Volume × quality (Kununu ≥ 4.0 or GPTW) × "
+                       "visa-policy cross-check — derived at build time, "
+                       "curated map in config/employer_quality.json; "
+                       "criteria in the legend."},
+    "sweet_count": {"pt": "{n} vaga{s} eligible",
+                    "en": "{n} eligible job{s}"},
+    "mat_h2": {"pt": "🧪 Materials Engineering — {header} (perfil "
+                     "alternativo)",
+               "en": "🧪 Materials Engineering — {header} (alternative "
+                     "profile)"},
+    "eu_h2": {"pt": "🇪🇺 Fora da Alemanha — {header} (perfil EU non-DE)",
+              "en": "🇪🇺 Outside Germany — {header} (EU non-DE profile)"},
+    "prof_header_top": {"pt": "top 10", "en": "top 10"},
+    "prof_header_fullcut": {"pt": "destaques fora do top {n}",
+                            "en": "highlights outside the top {n}"},
+    "prof_header_mat": {"pt": "destaques do perfil 🧪",
+                        "en": "🧪 profile highlights"},
+    "prof_header_eu": {"pt": "destaques do perfil 🇪🇺",
+                       "en": "🇪🇺 profile highlights"},
+    "prof_header_budget": {"pt": "top {k} de {m} — orçamento de página "
+                                 "do dia",
+                           "en": "top {k} of {m} — page budget of the day"},
+    "mat_note": {"pt": "Ranking próprio para Materials Engineering (pesos "
+                       "distintos dos de Supply Chain; ver "
+                       "docs/f36_non_de_profile.md). Score à esquerda: "
+                       "perfil Materials — os detalhes vivem na legenda.",
+                 "en": "Own ranking for Materials Engineering (weights "
+                       "differ from Supply Chain; see "
+                       "docs/f36_non_de_profile.md). Left score: "
+                       "Materials profile — details live in the legend."},
+    "mat_note_fullcut": {"pt": "Ranking próprio para Materials Engineering "
+                               "(pesos distintos dos de Supply Chain). A "
+                               "lista completa está acima — use a aba 🧪 "
+                               "para reordená-la por este perfil; aqui "
+                               "ficam só os destaques que o top principal "
+                               "não mostra.",
+                         "en": "Own ranking for Materials Engineering "
+                               "(weights differ from Supply Chain). The "
+                               "full list is above — use the 🧪 tab to "
+                               "re-sort it by this profile; only the "
+                               "highlights the main top misses are shown "
+                               "here."},
+    "mat_note_full": {"pt": "Ranking próprio para Materials Engineering "
+                            "(pesos distintos dos de Supply Chain, coluna "
+                            "à esquerda). A lista completa está acima — "
+                            "use a aba 🧪 para reordená-la INTEIRA por "
+                            "este perfil; aqui ficam os 10 destaques do "
+                            "perfil.",
+                      "en": "Own ranking for Materials Engineering "
+                            "(weights differ from Supply Chain, left "
+                            "column). The full list is above — use the 🧪 "
+                            "tab to re-sort ALL of it by this profile; "
+                            "here are the profile's 10 highlights."},
+    "mat_note_budget": {"pt": "Ranking próprio para Materials Engineering "
+                              "(mesmas vagas elegíveis, pesos distintos "
+                              "dos de Supply Chain). O score à esquerda é "
+                              "o do perfil Materials. Página cheia hoje: "
+                              "o restante do top 10 está no JSON/CSV "
+                              "completos.",
+                        "en": "Own ranking for Materials Engineering "
+                              "(same eligible jobs, weights differ from "
+                              "Supply Chain). The left score is the "
+                              "Materials profile one. Page at budget "
+                              "today: the rest of the top 10 is in the "
+                              "full JSON/CSV."},
+    "eu_note": {"pt": "Ranking próprio para o canal secundário (NL/BE/LU/FI "
+                      "— pesos calibrados no estrato; ver "
+                      "docs/f36_non_de_profile.md). Score à esquerda: "
+                      "perfil EU — os detalhes vivem na legenda.",
+                "en": "Own ranking for the secondary channel (NL/BE/LU/FI "
+                      "— weights calibrated on the stratum; see "
+                      "docs/f36_non_de_profile.md). Left score: EU "
+                      "profile — details live in the legend."},
+    "eu_note_fullcut": {"pt": "Ranking próprio para o canal secundário "
+                              "(NL/BE/LU/FI — países-alvo do plano, pesos "
+                              "calibrados no estrato; ver "
+                              "docs/f36_non_de_profile.md). A lista "
+                              "completa está acima — use a aba 🇪🇺 para "
+                              "reordená-la por este perfil; aqui ficam só "
+                              "os destaques que o top principal não "
+                              "mostra.",
+                        "en": "Own ranking for the secondary channel "
+                              "(NL/BE/LU/FI — target countries of the "
+                              "plan, weights calibrated on the stratum; "
+                              "see docs/f36_non_de_profile.md). The full "
+                              "list is above — use the 🇪🇺 tab to re-sort "
+                              "it by this profile; only the highlights "
+                              "the main top misses are shown here."},
+    "eu_note_full": {"pt": "Ranking próprio para o canal secundário "
+                           "(NL/BE/LU/FI — países-alvo do plano, pesos "
+                           "calibrados no estrato; ver "
+                           "docs/f36_non_de_profile.md). A lista completa "
+                           "está acima — use a aba 🇪🇺 para reordená-la "
+                           "INTEIRA por este perfil; aqui ficam os 10 "
+                           "destaques do perfil.",
+                     "en": "Own ranking for the secondary channel "
+                           "(NL/BE/LU/FI — target countries of the plan, "
+                           "weights calibrated on the stratum; see "
+                           "docs/f36_non_de_profile.md). The full list is "
+                           "above — use the 🇪🇺 tab to re-sort ALL of it "
+                           "by this profile; here are the profile's 10 "
+                           "highlights."},
+    "eu_note_budget": {"pt": "Ranking próprio para o canal secundário "
+                             "(NL/BE/LU/FI — países-alvo do plano, pesos "
+                             "calibrados no estrato; ver "
+                             "docs/f36_non_de_profile.md). O score à "
+                             "esquerda é o do perfil EU. Página cheia "
+                             "hoje: o restante do top 10 está no JSON/CSV "
+                             "completos.",
+                       "en": "Own ranking for the secondary channel "
+                             "(NL/BE/LU/FI — target countries of the "
+                             "plan, weights calibrated on the stratum; "
+                             "see docs/f36_non_de_profile.md). The left "
+                             "score is the EU profile one. Page at budget "
+                             "today: the rest of the top 10 is in the "
+                             "full JSON/CSV."},
+    # -- legenda única (F51) -------------------------------------------------
+    "legend_title": {"pt": "ℹ️ Legenda", "en": "ℹ️ Legend"},
+    "glossary_label": {"pt": "Glossário DE→EN:", "en": "Glossary DE→EN:"},
+    # -- frases jurídicas (F29 — pt LITERAL, não redigir variação) -----------
+    "legal_duration": {"pt": LEGAL_DURATION_PHRASE,
+                       "en": "§16e: maximum duration 6 months (AufenthG "
+                             "§16e Sec. 2)."},
+    "legal_zustimmung": {"pt": LEGAL_ZUSTIMMUNG_PHRASE,
+                         "en": "Praktikum under §16e does NOT require "
+                               "Bundesagentur für Arbeit consent (BeschV "
+                               "§15 No. 1) — confirm the current "
+                               "procedure with the consulate/"
+                               "Ausländerbehörde."},
+    # -- strings criadas por JS (F53 + contador) ------------------------------
+    "count_unit": {"pt": "vagas", "en": "jobs"},
+    "f53_seen": {"pt": "✓ já vi", "en": "✓ seen"},
+    "f53_seen_aria": {"pt": "marcar ou desmarcar como já vista",
+                      "en": "mark or unmark as already seen"},
+    "f53_empty": {"pt": "nenhuma vaga corresponde à busca",
+                  "en": "no jobs match your search"},
+    "f53_totop_aria": {"pt": "voltar ao topo", "en": "back to top"},
+    "score_factors": {"pt": "fatores do score: ", "en": "score factors: "},
+    # -- toggle de idioma (F46; render EN) ------------------------------------
+    "lang_aria": {"pt": "mudar idioma", "en": "switch language"},
+    # -- RSS (F46; default EN) -------------------------------------------------
+    "rss_channel_title": {
+        "pt": "Internship Finder — ranking diário de vagas",
+        "en": "Internship Finder — daily job ranking"},
+    "rss_channel_desc": {
+        "pt": "Ranking atualizado diariamente de estágios e vagas "
+              "working-student em procurement e supply chain, com score "
+              "automático de fit, qualidade do empregador e política de "
+              "visto.",
+        "en": "Daily-updated ranking of internship and working-student "
+              "jobs in procurement and supply chain (Germany and target "
+              "EU countries), automatically scored for role fit, "
+              "employer quality and visa policy."},
+    "rss_item_meta": {"pt": "{company} · {location} · score {score}",
+                      "en": "{company} · {location} · score {score}"},
+}
+
+
+def T(key: str, lang: str) -> str:
+    """String de chrome da FONTE ÚNICA (I18N) no idioma pedido."""
+    return I18N[key][lang]
+
+
+def _i18n_pair(key: str, **fmt) -> tuple[str, str]:
+    """(pt, en) da chave com os MESMOS parâmetros — base dos attrs do
+    render EN (o texto pt do dia viaja no data-i18n-pt) e da prova de
+    paridade do test_f46."""
+    return I18N[key]["pt"].format(**fmt), I18N[key]["en"].format(**fmt)
+
+
+def _i18n_attr(pt_text: str) -> str:
+    """Atributo do render EN que carrega o texto pt FINAL DO DIA para o
+    toggle client-side (textContent). Render PT não o emite (A/B)."""
+    return f' data-i18n-pt="{_esc(pt_text)}"'
+
+
+def _i18n_attr_html(pt_html: str) -> str:
+    """Como ``_i18n_attr`` para blocos com markup (innerHTML)."""
+    return f' data-i18n-pt-html="{_esc(pt_html)}"'
+
+
+# ---------------------------------------------------------------------------
+# F46 — legenda única (F51) em pt/en a partir de UMA estrutura. O par pt é
+# VERBATIM o markup/texto do main pré-F46 (contrato A/B); o en é a tradução.
+# ---------------------------------------------------------------------------
+_LEGEND_ITEMS: tuple[tuple[str, str, str, str], ...] = (
+    ('<span aria-hidden="true">🛂</span> política de visto',
+     '<span aria-hidden="true">🛂</span> visa policy',
+     "empresa com política de visto declarada (visa_policy: "
+     "explicit_support ou unclear)",
+     "employer with a stated visa policy (visa_policy: explicit_support "
+     "or unclear)"),
+    ('<span aria-hidden="true">🇩🇪</span> alemão exigido',
+     '<span aria-hidden="true">🇩🇪</span> German required',
+     "anúncio exige alemão (german_level: required)",
+     "posting requires German (german_level: required)"),
+    ('<span aria-hidden="true">🚫</span> inaplicável',
+     '<span aria-hidden="true">🚫</span> inapplicable',
+     "a descrição completa (hidratada do site) revelou requisito "
+     "de alemão ou mestrado — vaga fora do seu perfil, sai do top",
+     "the full description (hydrated from the site) revealed a German "
+     "or master's requirement — job outside your profile, out of the "
+     "top"),
+    ("⭐ N,N", "⭐ N,N",
+     "nota média dos funcionários no portal Kununu (ex.: ⭐ 4,0)",
+     "average employee rating on the Kununu portal (e.g. ⭐ 4.0)"),
+    ("🏆 GPTW", "🏆 GPTW",
+     "prêmio Great Place to Work (ano no mapa curado "
+     "config/employer_quality.json)",
+     "Great Place to Work award (year in the curated map "
+     "config/employer_quality.json)"),
+    ('<span aria-hidden="true">🆕</span> nova',
+     '<span aria-hidden="true">🆕</span> new',
+     "vaga que não existia no snapshot de ontem",
+     "job that did not exist in yesterday's snapshot"),
+    ('<span aria-hidden="true">✅</span> já aplicou',
+     '<span aria-hidden="true">✅</span> already applied',
+     "status do seu tracker pessoal (✅ aplicou · 📞 entrevista · "
+     "🎉 oferta · ❌ rejeitada · 🚫 retirada · 👁️ ignorada)",
+     "your personal tracker status (✅ applied · 📞 interview · "
+     "🎉 offer · ❌ rejected · 🚫 withdrawn · 👁️ ignored)"),
+    ('<span aria-hidden="true">🔗</span> morta',
+     '<span aria-hidden="true">🔗</span> dead',
+     "URL retornou 404/410 no check de vitalidade — vaga "
+     "provavelmente preenchida/removida",
+     "URL returned 404/410 on the liveness check — job probably "
+     "filled/removed"),
+    ("⏳ / ⚠️", "⏳ / ⚠️",
+     "sinais informativos do §16e: duração citada acima do teto de "
+     "6 meses / anúncio exige matrícula ativa em universidade alemã",
+     "informational §16e signals: stated duration above the 6-month "
+     "cap / posting requires active enrollment at a German university"),
+    ("*", "*",
+     "estimativa de mercado: salário NÃO citado no anúncio, "
+     "estimado por categoria do título (praktikum.info, kununu/Indeed; "
+     "curado 2026/10). O valor SEM citado no anúncio é o real",
+     "market estimate: salary NOT stated in the posting, estimated "
+     "from the title category (praktikum.info, kununu/Indeed; curated "
+     "2026/10). The value with * is the estimate"),
+    ("Nd", "Nd",
+     "idade da vaga em dias desde posted_at (>45d destacada)",
+     "job age in days since posted_at (>45d highlighted)"),
+    ("score", "score",
+     "fit do título + qualidade do empregador + política de visto "
+     "− decaimento por idade; abas 💼/🧪/🇪🇺 reordenam por perfis com "
+     "pesos distintos (materials/EU: ver docs/f36_non_de_profile.md)",
+     "title fit + employer quality + visa policy − age decay; the "
+     "💼/🧪/🇪🇺 tabs re-sort by profiles with different weights "
+     "(materials/EU: see docs/f36_non_de_profile.md)"),
+    ("EN:", "EN:",
+     "linha de tradução offline do título (dicionário DE→EN; o "
+     "original DE nunca é substituído)",
+     "offline title translation line (DE→EN dictionary; the DE "
+     "original is never replaced)"),
+)
+
+
 def _tracked_companies_count() -> "int | None":
     """F52 — nº de empresas acompanhadas pelo registry (DO BUILD, nunca
     hardcode). Best-effort total: import falha (pacote ausente em uso
@@ -715,13 +1088,16 @@ def _tracked_companies_count() -> "int | None":
         return None
 
 
-def _about_html(tracked_companies: "int | None", total_eligible: int) -> str:
+def _about_html(tracked_companies: "int | None", total_eligible: int,
+                attr: str = "") -> str:
     """F52 — bloco "About this system" (EN), <details> FECHADO no topo.
 
     Custo vertical para o dono: 1 linha (o summary). Os números vêm DO
     BUILD (registry via ``_tracked_companies_count``, elegíveis do dia do
     ``total_eligible`` — parâmetro que o chamador já passava); texto é
     rascunho revisável (ver relatório da fase). Pura e offline.
+    F46: ``attr`` = attr do toggle i18n (render EN apenas; default ""
+    mantém o markup byte a byte o da F52).
     """
     if tracked_companies is not None:
         sources = (f"a 5M+ job-posting dataset plus {tracked_companies} "
@@ -729,7 +1105,7 @@ def _about_html(tracked_companies: "int | None", total_eligible: int) -> str:
     else:
         sources = "a 5M+ job-posting dataset and tracked employer career pages"
     return (
-        '<details class="about">'
+        f'<details class="about"{attr}>'
         f'<summary>{_ABOUT_SUMMARY}</summary>'
         '<p>This page is my own daily job-ranking system: an automated '
         f'pipeline that scans {sources}, scores each role for fit '
@@ -741,17 +1117,40 @@ def _about_html(tracked_companies: "int | None", total_eligible: int) -> str:
     )
 
 
-def _legal_footer_html() -> str:
+def _about_html_pt(tracked_companies: "int | None", total_eligible: int) -> str:
+    """F46 — variante pt do bloco about (só viaja no attr do render EN
+    para o toggle client-side; o about SERVER-SIDE é o EN da F52 nos
+    DOIS renders — o main pré-F46 tem about EN, e o A/B pt == main)."""
+    if tracked_companies is not None:
+        sources = (f"um dataset de 5M+ anúncios de vagas e {tracked_companies} "
+                   f"páginas de carreiras de empresas acompanhadas")
+    else:
+        sources = "um dataset de 5M+ anúncios de vagas e páginas de carreiras acompanhadas"
+    return (
+        '<details class="about">'
+        f'<summary>{_ABOUT_SUMMARY}</summary>'
+        '<p>Esta página é o meu próprio sistema diário de ranking de vagas: um '
+        f'pipeline automatizado que varre {sources}, dá score a cada vaga '
+        '(fit de procurement / supply chain), qualidade do empregador e '
+        f'política de visto, e republica esta lista toda manhã — {total_eligible} '
+        f'vaga{"s" if total_eligible != 1 else ""} elegível(is) hoje. '
+        f'<a href="{REPO_URL}">Código-fonte no GitHub</a>.</p>'
+        '</details>'
+    )
+
+
+def _legal_footer_html(lang: str = "pt") -> str:
     """F29 item 7: rodapé com as frases jurídicas LITERAIS do §16e.
 
     Estáticas, offline, sempre presentes na página pública (a estimativa
-    de duração e o countdown do visto vivem nelas).
+    de duração e o countdown do visto vivem nelas). F46: ``lang`` — o par
+    pt é VERBATIM o main (constantes literais; ver I18N legal_*).
     """
     return (
         '<p class="legal">ℹ️ '
-        + _esc(LEGAL_DURATION_PHRASE)
+        + _esc(T("legal_duration", lang))
         + " "
-        + _esc(LEGAL_ZUSTIMMUNG_PHRASE)
+        + _esc(T("legal_zustimmung", lang))
         + "</p>"
     )
 
@@ -763,56 +1162,31 @@ def _legal_footer_html() -> str:
 # card. Fecha por padrão; <summary> é focusable (acessibilidade nativa).
 # ---------------------------------------------------------------------------
 
-def _legend_html() -> str:
+def _legend_html(lang: str = "pt", attr: str = "") -> str:
     """F51: <details> com o significado dos badges, do *, do §16e,
     glossário DE→EN, seções de perfil e score — a semântica GLOBAL da
-    página em um bloco único, estático e offline (custo fixo ~2,5KB)."""
-    items = [
-        "<dt><span aria-hidden=\"true\">🛂</span> política de visto</dt>"
-        "<dd>empresa com política de visto declarada (visa_policy: "
-        "explicit_support ou unclear)</dd>",
-        "<dt><span aria-hidden=\"true\">🇩🇪</span> alemão exigido</dt>"
-        "<dd>anúncio exige alemão (german_level: required)</dd>",
-        "<dt><span aria-hidden=\"true\">🚫</span> inaplicável</dt>"
-        "<dd>a descrição completa (hidratada do site) revelou requisito "
-        "de alemão ou mestrado — vaga fora do seu perfil, sai do top</dd>",
-        "<dt>⭐ N,N</dt>"
-        "<dd>nota média dos funcionários no portal Kununu (ex.: ⭐ 4,0)</dd>",
-        "<dt>🏆 GPTW</dt>"
-        "<dd>prêmio Great Place to Work (ano no mapa curado "
-        "config/employer_quality.json)</dd>",
-        "<dt><span aria-hidden=\"true\">🆕</span> nova</dt>"
-        "<dd>vaga que não existia no snapshot de ontem</dd>",
-        "<dt><span aria-hidden=\"true\">✅</span> já aplicou</dt>"
-        "<dd>status do seu tracker pessoal (✅ aplicou · 📞 entrevista · "
-        "🎉 oferta · ❌ rejeitada · 🚫 retirada · 👁️ ignorada)</dd>",
-        "<dt><span aria-hidden=\"true\">🔗</span> morta</dt>"
-        "<dd>URL retornou 404/410 no check de vitalidade — vaga "
-        "provavelmente preenchida/removida</dd>",
-        "<dt>⏳ / ⚠️</dt>"
-        "<dd>sinais informativos do §16e: duração citada acima do teto de "
-        "6 meses / anúncio exige matrícula ativa em universidade alemã</dd>",
-        "<dt>*</dt>"
-        "<dd>estimativa de mercado: salário NÃO citado no anúncio, "
-        "estimado por categoria do título (praktikum.info, kununu/Indeed; "
-        "curado 2026/10). O valor SEM citado no anúncio é o real</dd>",
-        "<dt>Nd</dt>"
-        "<dd>idade da vaga em dias desde posted_at (>45d destacada)</dd>",
-        "<dt>score</dt>"
-        "<dd>fit do título + qualidade do empregador + política de visto "
-        "− decaimento por idade; abas 💼/🧪/🇪🇺 reordenam por perfis com "
-        "pesos distintos (materials/EU: ver docs/f36_non_de_profile.md)</dd>",
-        "<dt>EN:</dt>"
-        "<dd>linha de tradução offline do título (dicionário DE→EN; o "
-        "original DE nunca é substituído)</dd>",
-    ]
+    página em um bloco único, estático e offline (custo fixo ~2,5KB).
+
+    F46: ``lang`` escolhe o idioma; "pt" reproduz VERBATIM o bloco do
+    main pré-F46 (contrato A/B — itens de ``_LEGEND_ITEMS`` e frases
+    jurídicas literais); "en" é a tradução da mesma estrutura. O render
+    EN usa o bloco pt como conteúdo do attr ``data-i18n-pt-html`` (via
+    ``_legend_html("pt")`` no chamador). ``attr`` = attr do toggle
+    (render EN apenas; default "" mantém o markup byte a byte o da F51).
+    """
+    items = []
+    for dt_pt, dt_en, dd_pt, dd_en in _LEGEND_ITEMS:
+        if lang == "en":
+            items.append(f"<dt>{dt_en}</dt><dd>{dd_en}</dd>")
+        else:
+            items.append(f"<dt>{dt_pt}</dt><dd>{dd_pt}</dd>")
     gloss = " · ".join(f"{_esc(de)} = {_esc(en)}" for de, en in GLOSSARY_TERMS)
     return (
-        '<details class="legend"><summary>ℹ️ Legenda</summary>'
+        f'<details class="legend"{attr}><summary>{T("legend_title", lang)}</summary>'
         "<dl>" + "".join(items) + "</dl>"
-        f"<p>Glossário DE→EN: {gloss}</p>"
-        '<p>' + _esc(LEGAL_DURATION_PHRASE) + " "
-        + _esc(LEGAL_ZUSTIMMUNG_PHRASE) + "</p>"
+        f'<p>{T("glossary_label", lang)} {gloss}</p>'
+        "<p>" + _esc(T("legal_duration", lang)) + " "
+        + _esc(T("legal_zustimmung", lang)) + "</p>"
         "</details>"
     )
 
@@ -923,7 +1297,9 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           profile_ranks: dict | None = None,
           profile_attrs: bool = False,
           f53: bool = False,
-          factors_attr: str = "") -> str:
+          factors_attr: str = "",
+          lang: str = "pt",
+          duration_flag_pt: str = "") -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -991,10 +1367,20 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     if is_new:
         badge_bits.append(' <span class="newb"><span aria-hidden="true">🆕</span></span>')
     if duration_flag:
-        badge_bits.append(f' <span class="dur">⏳ {_esc(duration_flag)}</span>')
+        if lang == "en":
+            badge_bits.append(
+                f' <span class="dur"{_i18n_attr(duration_flag_pt)}>⏳ '
+                f'{_esc(duration_flag)}</span>')
+        else:
+            badge_bits.append(f' <span class="dur">⏳ {_esc(duration_flag)}</span>')
     if enrollment_red_flag:
-        badge_bits.append(
-            f' <span class="flag">⚠️ {_esc(enrollment_red_flag)}</span>')
+        if lang == "en":
+            badge_bits.append(
+                f' <span class="flag"{_i18n_attr(ENROLLMENT_FLAG_TEXT)}>⚠️ '
+                f'{_esc(enrollment_red_flag)}</span>')
+        else:
+            badge_bits.append(
+                f' <span class="flag">⚠️ {_esc(enrollment_red_flag)}</span>')
     badge_bits.append(personal_status_badge(personal_status))
     if dead:
         badge_bits.append(
@@ -1013,7 +1399,12 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         # detectado (nunca ambos — o elif garante na raiz).
         meta_bits.append(f'<span class="est">{_esc(salary_estimate)}</span>')
     elif salary_unspecified_flag(job):
-        meta_bits.append(f'<span class="nsal">{_esc(SALARY_UNSPECIFIED_TEXT)}</span>')
+        if lang == "en":
+            meta_bits.append(
+                f'<span class="nsal"{_i18n_attr(SALARY_UNSPECIFIED_TEXT)}>'
+                f'{_esc(T("salary_unspecified", lang))}</span>')
+        else:
+            meta_bits.append(f'<span class="nsal">{_esc(SALARY_UNSPECIFIED_TEXT)}</span>')
     if age:
         age_cls = "age age-stale" if age_stale else "age"
         meta_bits.append(f'<span class="{age_cls}">{_esc(age)}</span>')
@@ -1022,9 +1413,15 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
                       else job.get("score"))
     btn = ""
     if apply_href and apply_href != job_href:
-        btn = f'<a class="btn" href="{_esc(apply_href)}" target="_blank" rel="noopener">candidatar-se ↗</a>'
+        apply_txt = T("apply_btn", lang)
+        _attr = _i18n_attr(I18N["apply_btn"]["pt"]) if lang == "en" else ""
+        btn = (f'<a class="btn"{_attr} href="{_esc(apply_href)}" '
+               f'target="_blank" rel="noopener">{_esc(apply_txt)}</a>')
     elif job_href and not apply_href:
-        btn = f'<a class="btn" href="{_esc(job_href)}" target="_blank" rel="noopener">abrir vaga ↗</a>'
+        open_txt = T("open_btn", lang)
+        _attr = _i18n_attr(I18N["open_btn"]["pt"]) if lang == "en" else ""
+        btn = (f'<a class="btn"{_attr} href="{_esc(job_href)}" '
+               f'target="_blank" rel="noopener">{_esc(open_txt)}</a>')
     if snippet and snippet_is_en:
         snip = f'<p class="d en">{_esc("EN · " + snippet)}</p>'
     elif snippet:
@@ -1236,7 +1633,7 @@ li.style.display=ok?'':'none';if(ok)c++;});if(n)n.textContent=c;}q.addEventListe
 # lazy-render. O NÚCLEO puro do lazy (``f43LazyInit``) é executado em node
 # pelo test_f43; o wrapper com IntersectionObserver real fica em
 # _JS_LAZY_IO — não-testável offline (sem DOM/viewport no node).
-_JS_PROFILE = """(function(){var tabs=document.querySelectorAll('#tabs button'),lis=document.querySelectorAll('#list li.c');if(!tabs.length)return;
+_JS_PROFILE_TPL = """(function(){var tabs=document.querySelectorAll('#tabs button'),lis=document.querySelectorAll('#list li.c');if(!tabs.length)return;
 var q=document.getElementById('q'),vf=document.getElementById('f-vf'),de=document.getElementById('f-de'),co=document.getElementById('f-country'),nw=document.getElementById('f-new'),ws=document.getElementById('f-ws'),da=document.getElementById('f-data');
 var se=document.getElementById('f-seen'),ap=document.getElementById('f-app');
 var state={q:'',vf:false,de:false,iso:'',nw:false,ws:false,da:false,prof:'business',vis:{},seenshow:false,hideapp:false};
@@ -1264,7 +1661,7 @@ var ol=document.getElementById('list');
 for(var j=0;j<boxes.length;j++){ol.appendChild(boxes[j][2]);boxes[j][2].style.display=boxes[j][3]?'':'none';}
 for(var m=0;m<tabs.length;m++){var on=tabs[m].getAttribute('data-prof')===p;tabs[m].className=on?'on':'';tabs[m].setAttribute('aria-selected',on?'true':'false');}
 var cnt=0;for(var n2=0;n2<boxes.length;n2++)if(boxes[n2][3])cnt++;
-var el=document.getElementById('n');if(el)el.textContent=cnt+' vagas';
+var el=document.getElementById('n');if(el)el.textContent=cnt+@@CNT@@;
 var emp=document.getElementById('empty');if(emp)emp.style.display=cnt?'none':'';}
 function onFilter(){syncFilters();applyProfile(state.prof);}
 for(var t=0;t<tabs.length;t++){tabs[t].addEventListener('click',function(ev){var el=ev.target;while(el&&!el.getAttribute('data-prof'))el=el.parentNode;if(el)applyProfile(el.getAttribute('data-prof'));});}
@@ -1341,7 +1738,7 @@ if(window.__F43apply)window.__F43apply(state.prof);})();
 # ---------------------------------------------------------------------------
 _JS_F53_CORE = """function f53Top(y){return y>600;}
 """
-_JS_F53 = """(function(){
+_JS_F53_TPL = """(function(){
 var P='if53seen:';
 function lsGet(k){try{return window.localStorage.getItem(k);}catch(e){return null;}}
 function lsSet(k,v){try{if(v===null)window.localStorage.removeItem(k);else window.localStorage.setItem(k,v);}catch(e){}}
@@ -1349,21 +1746,93 @@ var lis=document.querySelectorAll('li.c[data-jid]');
 function setSeen(jid,on){for(var n=0;n<lis.length;n++){var l=lis[n];if(l.getAttribute('data-jid')===jid){if(on)l.setAttribute('data-seen','1');else l.removeAttribute('data-seen');var sb=l.querySelector('.seenb');if(sb)sb.className=on?'seenb on':'seenb';}}}
 for(var i=0;i<lis.length;i++){var li=lis[i],jid=li.getAttribute('data-jid');
 if(lsGet(P+jid))li.setAttribute('data-seen','1');
-var b=document.createElement('button');b.type='button';b.className='seenb'+(li.getAttribute('data-seen')?' on':'');b.textContent='✓ já vi';
-b.setAttribute('aria-label','marcar ou desmarcar como já vista');
+var b=document.createElement('button');b.type='button';b.className='seenb'+(li.getAttribute('data-seen')?' on':'');b.textContent=@@SEEN@@;
+b.setAttribute('aria-label',@@SEEN_ARIA@@);
 (function(jid,btn){btn.addEventListener('click',function(){var on=lsGet(P+jid)==='1';lsSet(P+jid,on?null:'1');setSeen(jid,!on);if(window.__F43apply)window.__F43apply(window.__F43.prof);});})(jid,b);
 var bd=li.querySelector('.bd');(bd||li).appendChild(b);
 var s=li.querySelector('.s'),f=s?s.getAttribute('data-factors'):null;
-if(s&&f)s.setAttribute('title','fatores do score: '+f);}
+if(s&&f)s.setAttribute('title',@@FACTORS@@+f);}
 var list=document.getElementById('list');
-if(list){var emp=document.createElement('p');emp.className='empty';emp.id='empty';emp.style.display='none';emp.textContent='nenhuma vaga corresponde à busca';list.parentNode.insertBefore(emp,list);}
-var topb=document.createElement('button');topb.type='button';topb.id='totop';topb.textContent='↑';topb.setAttribute('aria-label','voltar ao topo');
+if(list){var emp=document.createElement('p');emp.className='empty';emp.id='empty';emp.style.display='none';emp.textContent=@@EMPTY@@;list.parentNode.insertBefore(emp,list);}
+var topb=document.createElement('button');topb.type='button';topb.id='totop';topb.textContent='↑';topb.setAttribute('aria-label',@@TOTOP_ARIA@@);
 topb.addEventListener('click',function(){window.scrollTo(0,0);});
 (document.body||document.documentElement).appendChild(topb);
 function syncTop(){var y=window.pageYOffset||document.documentElement.scrollTop||0;topb.style.display=f53Top(y)?'':'none';}
 window.addEventListener('scroll',syncTop);syncTop();
 if(window.__F43apply)window.__F43apply(window.__F43.prof);
 })();
+"""
+
+def _js_fill(tpl: str, lang: str) -> str:
+    """F46 — preenche os placeholders de strings do I18N num template JS.
+
+    FONTE ÚNICA: os valores vêm SEMPRE do dict ``I18N`` — nenhum literal
+    traduzido vive no código JS. O build pt reproduz VERBATIM o JS do
+    main pré-F46 (contrato A/B byte a byte).
+    """
+    return (tpl
+            .replace("@@CNT@@", "' " + T("count_unit", lang) + "'")
+            .replace("@@SEEN@@", "'" + T("f53_seen", lang) + "'")
+            .replace("@@SEEN_ARIA@@", "'" + T("f53_seen_aria", lang) + "'")
+            .replace("@@EMPTY@@", "'" + T("f53_empty", lang) + "'")
+            .replace("@@TOTOP_ARIA@@", "'" + T("f53_totop_aria", lang) + "'")
+            .replace("@@FACTORS@@", "'" + T("score_factors", lang) + "'"))
+
+
+# Builds pt no import: as constantes ``_JS_PROFILE``/``_JS_F53`` mantêm os
+# valores byte a byte do main pré-F46 (test_f43/test_f53 as executam em
+# node e travam as strings pt); o render EN usa ``_js_fill(tpl, "en")``.
+_JS_PROFILE = _js_fill(_JS_PROFILE_TPL, "pt")
+_JS_F53 = _js_fill(_JS_F53_TPL, "pt")
+
+# ---------------------------------------------------------------------------
+# F46 — bootstrap do toggle de idioma (SÓ entra no render EN; o render PT
+# não ganha um byte). Mecânica: localStorage("if46lang") guarda a escolha;
+# ``apply(lang)`` troca textContent/innerHTML/placeholder dos elementos
+# marcados com data-i18n-pt* (o texto pt FINAL DO DIA viaja no attr) e
+# re-aplica as strings criadas por JS (F53/contador) via window.__I18N_JS.
+# O conteúdo EN original é stashado em memória no 1º apply (zero bytes
+# extras no HTML para voltar ao EN).
+# ---------------------------------------------------------------------------
+_JS_I18N = """(function(){
+var D=window.__I18N_JS,KEY='if46lang',st=[],done=false;
+function $(s){return document.querySelectorAll(s);}
+function stash(){if(done)return;done=true;var els=$('[data-i18n-pt],[data-i18n-pt-html],[data-i18n-ph]');for(var i=0;i<els.length;i++){var e=els[i];st.push([e,e.hasAttribute('data-i18n-pt-html')?e.innerHTML:e.textContent,e.getAttribute('data-i18n-ph')]);}}
+function swapPt(){var els=$('[data-i18n-pt]');for(var i=0;i<els.length;i++)els[i].textContent=els[i].getAttribute('data-i18n-pt');
+var h=$('[data-i18n-pt-html]');for(var j=0;j<h.length;j++)h[j].innerHTML=h[j].getAttribute('data-i18n-pt-html');
+var p=$('[data-i18n-ph]');for(var k=0;k<p.length;k++)p[k].setAttribute('placeholder',p[k].getAttribute('data-i18n-ph'));}
+function restoreEn(){for(var i=0;i<st.length;i++){var e=st[i][0];if(e.hasAttribute('data-i18n-pt-html'))e.innerHTML=st[i][1];else e.textContent=st[i][1];if(st[i][2]!==null)e.setAttribute('placeholder',st[i][2]);}}
+function jsbits(l){var d=D&&D[l]||{};var sb=$('.seenb');for(var i=0;i<sb.length;i++)sb[i].textContent=d.f53_seen||'';var em=document.getElementById('empty');if(em)em.textContent=d.f53_empty||'';var tt=document.getElementById('totop');if(tt)tt.setAttribute('aria-label',d.f53_totop_aria||'');
+var sen=$('.s[title]');for(var m=0;m<sen.length;m++){var t=sen[m].getAttribute('title')||'';var q=(D&&D.pt&&D.pt.score_factors)||'';if(q&&t.indexOf(q)===0)t=t.slice(q.length);q=(D&&D.en&&D.en.score_factors)||'';if(q&&t.indexOf(q)===0)t=t.slice(q.length);sen[m].setAttribute('title',(d.score_factors||'')+t);}
+var c=0,lis=$('li.c');for(var n=0;n<lis.length;n++)if(lis[n].style.display!=='none')c++;var el=document.getElementById('n');if(el)el.textContent=c+' '+(d.count_unit||'');}
+function btnLabel(l){var b=document.getElementById('lang-toggle');if(b)b.textContent=(l==='en')?'PT':'EN';}
+function apply(l){window.__I18N_LANG=l;stash();if(l==='pt')swapPt();else restoreEn();jsbits(l);btnLabel(l);}
+var tb=document.getElementById('lang-toggle');
+if(tb)tb.addEventListener('click',function(){var nl=(window.__I18N_LANG==='en')?'pt':'en';try{localStorage.setItem(KEY,nl);}catch(e){}apply(nl);});
+var saved=null;try{saved=localStorage.getItem(KEY);}catch(e){}
+if(saved==='pt')apply('pt');else btnLabel('en');
+})();
+"""
+
+
+def _js_i18n_script() -> str:
+    """F46 — <script> do bootstrap i18n (render EN apenas): embute
+    ``window.__I18N_JS`` (par pt/en das strings criadas por JS — contador
+    F43 e F53) e o corpo do toggle. O texto pt dos elementos server-side
+    viaja nos data-i18n-pt*; este map cobre só o que o JS cria."""
+    js_map = {k: dict(I18N[k]) for k in (
+        "count_unit", "f53_seen", "f53_seen_aria", "f53_empty",
+        "f53_totop_aria", "score_factors")}
+    payload = json.dumps(js_map, ensure_ascii=False, sort_keys=True)
+    return (f"<script>window.__I18N_JS={payload};"
+            f"window.__I18N_LANG='en';{_JS_I18N}</script>")
+
+
+# F46 — CSS do toggle de idioma (render EN apenas; o light espelha a
+# família F52). Render PT não o emite (byte a byte o main).
+_CSS_F46 = """.langb{margin-left:auto;padding:6px 12px;border:1px solid #2a343e;border-radius:999px;background:#192027;color:#c8d3dd;font-size:.8rem;cursor:pointer}
+.langb:hover{border-color:#4da3ff;color:#e6edf3}
+@media(prefers-color-scheme:light){.langb{background:#f4f6f8;border-color:#c6ccd2;color:#1f2328}}
 """
 
 # F53 — CSS do regime full (vive SEPARADO de _CSS/_CSS_F43 pela mesma
@@ -1391,7 +1860,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     profile_maps: dict | None = None,
                     skip_ids: set[str] | None = None,
                     display_aliases: dict | None = None,
-                    f53: bool = False) -> list[str]:
+                    f53: bool = False,
+                    lang: str = "pt") -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -1527,8 +1997,10 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             quality_entry=q_entry,
             inapplicable=jid in inapplicable_ids,
             salary_estimate=salary_est,
-            duration_flag=duration_flag_text(job),
-            enrollment_red_flag=enrollment_flag(job),
+            duration_flag=duration_flag_text(job, lang),
+            duration_flag_pt=(duration_flag_text(job, "pt")
+                              if lang == "en" else ""),
+            enrollment_red_flag=enrollment_flag(job, lang),
             profile_scores=(profile_scores_map.get(jid) or {}) if profile_attrs
             else None,
             profile_ranks=(profile_ranks_map.get(jid) or {}) if profile_attrs
@@ -1537,6 +2009,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             f53=f53,
             factors_attr=(_score_factors_attr(job, score_key)
                           if f53 else ""),
+            lang=lang,
         ))
     return rows
 
@@ -1568,8 +2041,16 @@ def render_minimal_html(
     full_limit: int | None = None,
     vitrine: bool = False,
     display_aliases: dict | None = None,
+    lang: str = I18N_DEFAULT_LANG,
+    sink: dict | None = None,
 ) -> str:
     """HTML minimo do top do dia (self-contained; ~90-100 KB tipico).
+
+    F46 (i18n + RSS): ``lang`` escolhe o idioma do chrome (default EN,
+    decisão do dono 15/10; "pt" reproduz VERBATIM o main pré-F46 —
+    contrato A/B byte a byte, sem toggle/attrs/JS novos). ``sink`` (dict
+    opcional) recebe ``sink["shown"]`` = a lista FINAL exibida do render
+    devolvido — o RSS (``--rss``) espelha o render atual por esse sink.
 
     F36 (fix de bomba-relógio da F29): ``now_ref`` permite fixar o
     instante de referência dos badges de idade ("postada há N dias") —
@@ -1697,6 +2178,10 @@ def render_minimal_html(
         shown = apply_company_cap(alive, limit=top)
     # F43 — ids da lista única (fonte do dedupe das seções no caso cortado).
     shown_ids = {str(j.get("id") or "") for j in shown}
+    # F46 — sink do RSS: a lista FINAL exibida (cada montagem sobrescreve;
+    # o valor que restar é o do render devolvido).
+    if sink is not None:
+        sink["shown"] = list(shown)
     new_ids = set(new_since_ids or set())
     entry_cache: dict = {}
     body = "\n".join(_cards_section(
@@ -1710,6 +2195,7 @@ def render_minimal_html(
         profile_maps=profile_maps,
         display_aliases=display_aliases,
         f53=full_list,
+        lang=lang,
     ))
     n_vf = sum(1 for j in shown if _visa_friendly(
         j, entry_cache.get(str(j.get("id") or ""))))
@@ -1721,9 +2207,13 @@ def render_minimal_html(
         new_jobs = [j for j in alive if str(j.get("id") or "") in new_ids]
         new_section_jobs = new_jobs[:NEW_SINCE_SECTION_TOP]
         if len(new_ids) > len(new_section_jobs):
-            extra = f" (+{len(new_ids) - len(new_section_jobs)} outras novas)"
+            k = len(new_ids) - len(new_section_jobs)
+            extra_pt = I18N["new_extra"]["pt"].format(k=k)
+            extra_en = I18N["new_extra"]["en"].format(k=k)
         else:
-            extra = ""
+            extra_pt = extra_en = ""
+        n_h2_pt = I18N["new_h2"]["pt"].format(n=len(new_ids), extra=extra_pt)
+        n_h2_en = I18N["new_h2"]["en"].format(n=len(new_ids), extra=extra_en)
         new_cards = "\n".join(_cards_section(
             new_section_jobs, company_intel_map=company_intel_map,
             new_ids=new_ids, dead_ids=dead_ids, ref=ref,
@@ -1736,9 +2226,11 @@ def render_minimal_html(
             profile_maps=profile_maps if full_list else None,
             display_aliases=display_aliases,
             f53=full_list,
+            lang=lang,
         ))
         new_section = (
-            f'<h2>🆕 Novas desde ontem — {len(new_ids)} nova(s){extra}</h2>'
+            f'<h2{_i18n_attr(n_h2_pt) if lang == "en" else ""}>'
+            f'{n_h2_en if lang == "en" else n_h2_pt}</h2>'
             f'{new_cards}'
         )
 
@@ -1774,15 +2266,25 @@ def render_minimal_html(
             profile_maps=profile_maps if full_list else None,
             display_aliases=display_aliases,
             f53=full_list,
+            lang=lang,
         ))
-        total_line = f'{len(watchlist_events)} nova(s) nas empresas que você acompanha'
+        radar_pt = I18N["radar_line"]["pt"].format(n=len(watchlist_events))
+        radar_en = I18N["radar_line"]["en"].format(n=len(watchlist_events))
         if radar_omitted:
-            extra_radar = (f' <span class="radar-more">+{radar_omitted} outras '
-                           f'vagas de empresas-alvo</span>')
+            extra_radar_pt = I18N["radar_more"]["pt"].format(k=radar_omitted)
+            total_line = f' <span class="radar-more">{extra_radar_pt}</span>'
+            extra_radar_en = (f' <span class="radar-more">'
+                              f'{I18N["radar_more"]["en"].format(k=radar_omitted)}'
+                              f'</span>')
         else:
-            extra_radar = ""
+            total_line = ""
+            extra_radar_en = ""
+        radar_h2_pt = I18N["radar_h2"]["pt"].format(line=radar_pt + total_line)
+        radar_h2_en = I18N["radar_h2"]["en"].format(line=radar_en
+                                                    + extra_radar_en)
         watch_section = (
-            f'<h2>🎯 Empresas-alvo — {total_line}{extra_radar}</h2>'
+            f'<h2{_i18n_attr_html(radar_h2_pt) if lang == "en" else ""}>'
+            f'{radar_h2_en if lang == "en" else radar_h2_pt}</h2>'
             f'{wl_cards}'
         )
 
@@ -1795,6 +2297,7 @@ def render_minimal_html(
     sweet_section = ""
     if sweet_spot_rows:
         lines = []
+        lines_en: list[str] = []
 
         # F54.1 — o painel usa OUTRA fonte de nomes (sweet_spot_rows
         # derivadas do dataset inteiro, fora do _cards_section): sem
@@ -1825,20 +2328,34 @@ def render_minimal_html(
             else:
                 continue
             n = r["eligible"]
+            sc_pt = I18N["sweet_count"]["pt"].format(
+                n=n, s="s" if n != 1 else "")
+            sc_en = I18N["sweet_count"]["en"].format(
+                n=n, s="s" if n != 1 else "")
             lines.append(
-                f"{_panel_display(r.get('company'))} · {quality} · "
-                f"{n} vaga{'s' if n != 1 else ''} eligible")
+                f"{_panel_display(r.get('company'))} · {quality} · {sc_pt}")
+            lines_en.append(
+                f"{_panel_display(r.get('company'))} · {quality} · {sc_en}")
         if lines:
-            sweet_section = (
-                '<h2>⭐ Ponto ótimo — empresas grandes com boa qualidade '
-                'de trabalho e 🛂</h2>'
-                '<p class="p2">Cruzamento volume × qualidade (Kununu ≥ 4,0 '
-                'ou GPTW) × política de visto — derivado no build, mapa '
-                'curado em config/employer_quality.json; critérios na '
-                'legenda.</p>'
-                + '<ul class="spot">' + "".join(
-                    f"<li>{_esc(l)}</li>" for l in lines) + "</ul>"
-            )
+            s_h2_pt = I18N["sweet_h2"]["pt"]
+            s_h2_en = I18N["sweet_h2"]["en"]
+            s_p2_pt = I18N["sweet_p2"]["pt"]
+            s_p2_en = I18N["sweet_p2"]["en"]
+            if lang == "en":
+                sweet_section = (
+                    f'<h2{_i18n_attr(s_h2_pt)}>{_esc(s_h2_en)}</h2>'
+                    f'<p class="p2"{_i18n_attr(s_p2_pt)}>{_esc(s_p2_en)}</p>'
+                    + '<ul class="spot">' + "".join(
+                        f'<li{_i18n_attr(pt)}>{_esc(en)}</li>'
+                        for pt, en in zip(lines, lines_en)) + "</ul>"
+                )
+            else:
+                sweet_section = (
+                    f'<h2>{_esc(s_h2_pt)}</h2>'
+                    f'<p class="p2">{_esc(s_p2_pt)}</p>'
+                    + '<ul class="spot">' + "".join(
+                        f"<li>{_esc(l)}</li>" for l in lines) + "</ul>"
+                )
 
     # F43 — comentário do bloco 🧪 atualizado (o corte em si é o original
     # da F36.1; no full o dedupe tira as duplicatas da lista única).
@@ -1868,13 +2385,10 @@ def render_minimal_html(
             skip_ids=(shown_ids if (full_list and full_limit is not None)
                       else None),
             f53=full_list,
+            lang=lang,
         ))
-        mat_header = "top 10"
-        mat_note = (
-            '<p class="p2">Ranking próprio para Materials Engineering '
-            '(pesos distintos dos de Supply Chain; ver '
-            'docs/f36_non_de_profile.md). Score à esquerda: perfil '
-            'Materials — os detalhes vivem na legenda.</p>')
+        mat_header_pt, mat_header_en = _i18n_pair("prof_header_top")
+        mat_note_pt, mat_note_en = _i18n_pair("mat_note")
         if full_list:
             # F43 — a lista única é a FONTE DA VERDADE (universo inteiro);
             # a seção segue como DESTAQUE do perfil (os mesmos top-10 do
@@ -1883,33 +2397,23 @@ def render_minimal_html(
             # única foi CORTADA pelo orçamento (``full_limit``), o atalho
             # passa a mostrar só o que o corte deixou de fora (dedupe).
             if full_limit is not None:
-                mat_header = f"destaques fora do top {len(shown_ids)}"
-                mat_note = (
-                    '<p class="p2">Ranking próprio para Materials Engineering '
-                    '(pesos distintos dos de Supply Chain). A lista completa '
-                    'está acima — use a aba 🧪 para reordená-la por este '
-                    'perfil; aqui ficam só os destaques que o top principal '
-                    'não mostra.</p>')
+                mat_header_pt, mat_header_en = _i18n_pair(
+                    "prof_header_fullcut", n=len(shown_ids))
+                mat_note_pt, mat_note_en = _i18n_pair("mat_note_fullcut")
             else:
-                mat_header = "destaques do perfil 🧪"
-                mat_note = (
-                    '<p class="p2">Ranking próprio para Materials Engineering '
-                    '(pesos distintos dos de Supply Chain, coluna à esquerda). '
-                    'A lista completa está acima — use a aba 🧪 para '
-                    'reordená-la INTEIRA por este perfil; aqui ficam os 10 '
-                    'destaques do perfil.</p>')
+                mat_header_pt, mat_header_en = _i18n_pair("prof_header_mat")
+                mat_note_pt, mat_note_en = _i18n_pair("mat_note_full")
         if profile_limit and len(materials) > len(mat_list):
-            mat_header = (
-                f"top {len(mat_list)} de {len(materials)} — orçamento de página do dia")
-            mat_note = (
-                '<p class="p2">Ranking próprio para Materials Engineering '
-                '(mesmas vagas elegíveis, pesos distintos dos de Supply '
-                'Chain). O score à esquerda é o do perfil Materials. '
-                'Página cheia hoje: o restante do top 10 está no JSON/CSV '
-                'completos.</p>')
+            mat_header_pt, mat_header_en = _i18n_pair(
+                "prof_header_budget", k=len(mat_list), m=len(materials))
+            mat_note_pt, mat_note_en = _i18n_pair("mat_note_budget")
+        mat_h2_pt = I18N["mat_h2"]["pt"].format(header=mat_header_pt)
+        mat_h2_en = I18N["mat_h2"]["en"].format(header=mat_header_en)
         materials_section = (
-            f'<h2>🧪 Materials Engineering — {mat_header} (perfil alternativo)</h2>'
-            + mat_note
+            f'<h2{_i18n_attr(mat_h2_pt) if lang == "en" else ""}>'
+            f'{mat_h2_en if lang == "en" else mat_h2_pt}</h2>'
+            f'<p class="p2"{_i18n_attr(mat_note_pt) if lang == "en" else ""}>'
+            f'{mat_note_en if lang == "en" else mat_note_pt}</p>'
             + mat_cards
         )
 
@@ -1933,45 +2437,31 @@ def render_minimal_html(
             skip_ids=(shown_ids if (full_list and full_limit is not None)
                       else None),
             f53=full_list,
+            lang=lang,
         ))
-        eu_header = "top 10"
-        eu_note = (
-            '<p class="p2">Ranking próprio para o canal secundário '
-            '(NL/BE/LU/FI — pesos calibrados no estrato; ver '
-            'docs/f36_non_de_profile.md). Score à esquerda: perfil EU '
-            '— os detalhes vivem na legenda.</p>')
+        eu_header_pt, eu_header_en = _i18n_pair("prof_header_top")
+        eu_note_pt, eu_note_en = _i18n_pair("eu_note")
         if full_list:
             # F43 — mesmo contrato do destaque 🧪 (aba 🇪🇺 reordena a lista
             # completa por eu_score; dedupe só no caso cortado).
             if full_limit is not None:
-                eu_header = f"destaques fora do top {len(shown_ids)}"
-                eu_note = (
-                    '<p class="p2">Ranking próprio para o canal secundário '
-                    '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
-                    'estrato; ver docs/f36_non_de_profile.md). A lista completa '
-                    'está acima — use a aba 🇪🇺 para reordená-la por este '
-                    'perfil; aqui ficam só os destaques que o top principal '
-                    'não mostra.</p>')
+                eu_header_pt, eu_header_en = _i18n_pair(
+                    "prof_header_fullcut", n=len(shown_ids))
+                eu_note_pt, eu_note_en = _i18n_pair("eu_note_fullcut")
             else:
-                eu_header = "destaques do perfil 🇪🇺"
-                eu_note = (
-                    '<p class="p2">Ranking próprio para o canal secundário '
-                    '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
-                    'estrato; ver docs/f36_non_de_profile.md). A lista completa '
-                    'está acima — use a aba 🇪🇺 para reordená-la INTEIRA por '
-                    'este perfil; aqui ficam os 10 destaques do perfil.</p>')
+                eu_header_pt, eu_header_en = _i18n_pair("prof_header_eu")
+                eu_note_pt, eu_note_en = _i18n_pair("eu_note_full")
         if profile_limit and len(eu) > len(eu_list):
-            eu_header = (
-                f"top {len(eu_list)} de {len(eu)} — orçamento de página do dia")
-            eu_note = (
-                '<p class="p2">Ranking próprio para o canal secundário '
-                '(NL/BE/LU/FI — países-alvo do plano, pesos calibrados no '
-                'estrato; ver docs/f36_non_de_profile.md). O score à esquerda '
-                'é o do perfil EU. Página cheia hoje: o restante do top 10 '
-                'está no JSON/CSV completos.</p>')
+            eu_header_pt, eu_header_en = _i18n_pair(
+                "prof_header_budget", k=len(eu_list), m=len(eu))
+            eu_note_pt, eu_note_en = _i18n_pair("eu_note_budget")
+        eu_h2_pt = I18N["eu_h2"]["pt"].format(header=eu_header_pt)
+        eu_h2_en = I18N["eu_h2"]["en"].format(header=eu_header_en)
         eu_section = (
-            f'<h2>🇪🇺 Fora da Alemanha — {eu_header} (perfil EU non-DE)</h2>'
-            + eu_note
+            f'<h2{_i18n_attr(eu_h2_pt) if lang == "en" else ""}>'
+            f'{eu_h2_en if lang == "en" else eu_h2_pt}</h2>'
+            f'<p class="p2"{_i18n_attr(eu_note_pt) if lang == "en" else ""}>'
+            f'{eu_note_en if lang == "en" else eu_note_pt}</p>'
             + eu_cards
         )
 
@@ -1979,19 +2469,18 @@ def render_minimal_html(
     # É o universo); legado = "Top N de N" + cap 2/empresa (se aplicou).
     if full_list:
         if full_limit is not None and len(shown) < len(alive):
-            shown_note = (f"mostrando {len(shown)} de {len(alive)} vagas "
-                          f"elegíveis (orçamento de página do dia)")
+            shown_pt, shown_en = _i18n_pair(
+                "shown_full_cut", n=len(shown), m=len(alive))
         else:
-            shown_note = f"todas as {len(shown)} vagas elegíveis"
+            shown_pt, shown_en = _i18n_pair("shown_full_all", n=len(shown))
     else:
         # F43: o regime top-N legado mantém o rodapé EXATO da F11 (a
         # contagem honesta com "mostrando X de Y" é do regime full).
-        shown_note = f"Top {len(shown)} de {total_eligible} vagas elegíveis"
-    footer_note = (
-        f"{shown_note} · {n_vf} com 🛂 "
-        "(empresa com política de visto) · ranking, JSON e CSV completos "
-        "são gerados pelo pipeline no VPS"
-    )
+        shown_pt, shown_en = _i18n_pair(
+            "shown_top", n=len(shown), total=total_eligible)
+    footer_pt = I18N["footer"]["pt"].format(shown=shown_pt, n_vf=n_vf)
+    footer_en = I18N["footer"]["en"].format(shown=shown_en, n_vf=n_vf)
+    footer_note = footer_en if lang == "en" else footer_pt
     # F51 — glossário e frases §16e vivem DENTRO da legenda única (zero
     # duplicação de rodapé; o custo é fixo, não por card).
     # Select de pais SEM bandeiras: o contrato da F7 e "DE e o default visual
@@ -2013,10 +2502,27 @@ def render_minimal_html(
     extra_js = ""
     # F53 — toggles da interatividade (SÓ no regime full; o legado segue
     # byte a byte o da F51 — o \n inicial vive NO VALOR, nunca no template).
-    f53_bar = (
-        '\n<label><input type="checkbox" id="f-seen"> mostrar já vistas</label>'
-        '\n<label><input type="checkbox" id="f-app"> esconder aplicadas</label>'
-    ) if full_list else ""
+    # F53 — toggles da interatividade (SÓ no regime full; o legado segue
+    # byte a byte o da F51 — o \n inicial vive NO VALOR, nunca no template).
+    # F46 — labels via I18N; no render EN o texto vira <span data-i18n-pt>
+    # (o swap client-side troca o span, nunca o input).
+    if full_list:
+        seen_pt, seen_en = _i18n_pair("f_seen")
+        app_pt, app_en = _i18n_pair("f_app")
+        if lang == "en":
+            f53_bar = (
+                f'\n<label><input type="checkbox" id="f-seen">'
+                f'<span{_i18n_attr(seen_pt)}>{_esc(seen_en)}</span></label>'
+                f'\n<label><input type="checkbox" id="f-app">'
+                f'<span{_i18n_attr(app_pt)}>{_esc(app_en)}</span></label>'
+            )
+        else:
+            f53_bar = (
+                f'\n<label><input type="checkbox" id="f-seen"> {seen_pt}</label>'
+                f'\n<label><input type="checkbox" id="f-app"> {app_pt}</label>'
+            )
+    else:
+        f53_bar = ""
     if full_list:
         tabs_html = (
             '<span id="n" class="count" aria-live="polite"></span>\n'
@@ -2031,28 +2537,52 @@ def render_minimal_html(
         )
         # F53 — o bloco de interatividade roda DEPOIS do núcleo/abas/lazy
         # (usa window.__F43*; sem eles, guarda e não quebra).
+        # F46 — os templates JS recebem as strings do I18N no idioma do
+        # render (pt = VERBATIM o main; en = tradução da FONTE ÚNICA).
         extra_js = (
-            _JS_LAZY_CORE + _JS_PROFILE
+            _JS_LAZY_CORE + _js_fill(_JS_PROFILE_TPL, lang)
             + _JS_LAZY_IO % (LAZY_INITIAL_CARDS, LAZY_ROOT_MARGIN)
-            + _JS_F53_CORE + _JS_F53
+            + _JS_F53_CORE + _js_fill(_JS_F53_TPL, lang)
         )
     _css_f43 = _CSS_F43 if full_list else ""
     _css_f53 = _CSS_F53 if full_list else ""
-    # F43 — o bloco JS extra (núcleo lazy + abas) só existe no regime full;
-    # na página legada o HTML segue byte a byte o da F11 (nenhuma tag vazia).
     _script_f43 = f"<script>{extra_js}</script>" if extra_js else ""
-    page_title = (
-        f"Internship Finder — todas as {len(shown)} vagas do dia"
-        if full_list else f"Internship Finder — top {len(shown)} do dia"
-    )
-    h1_title = (
-        "Internship Finder — todas as vagas do dia"
-        if full_list else "Internship Finder — top do dia"
-    )
+    # F46 — toggle de idioma + bootstrap i18n + link RSS: SÓ no render EN
+    # (o render PT não ganha um byte — contrato A/B).
+    _css_f46 = _CSS_F46 if lang == "en" else ""
+    _meta_f46 = (
+        f'\n<link rel="alternate" type="application/rss+xml"'
+        f' title="{_esc(T("rss_channel_title", lang))}"'
+        f' href="{SITE_URL}rss.xml">'
+    ) if lang == "en" else ""
+    _toggle = (
+        f'<button type="button" id="lang-toggle" class="langb"'
+        f' aria-label="{_esc(T("lang_aria", lang))}">PT</button>'
+    ) if lang == "en" else ""
+    _script_i18n = _js_i18n_script() if lang == "en" else ""
+    if lang == "en":
+        title_key, h1_key = ("title_full", "h1_full") if full_list \
+            else ("title_top", "h1_top")
+        page_title = I18N[title_key]["en"].format(n=len(shown))
+        h1_title = I18N[h1_key]["en"]
+        title_pt = I18N[title_key]["pt"].format(n=len(shown))
+        h1_pt = I18N[h1_key]["pt"]
+    else:
+        page_title = (
+            f"Internship Finder — todas as {len(shown)} vagas do dia"
+            if full_list else f"Internship Finder — top {len(shown)} do dia"
+        )
+        h1_title = (
+            "Internship Finder — todas as vagas do dia"
+            if full_list else "Internship Finder — top do dia"
+        )
+        title_pt, h1_pt = page_title, h1_title
     # F52 — vitrine recruiter (default OFF: nada disto existe na página
     # legada — byte a byte pré-F52). Head: meta description + OG (sem
     # og:image) + favicon data-URI + color-scheme honesto (dark default +
     # light via media query). Corpo: bloco about com números DO BUILD.
+    # F46 — o about server-side é o EN da F52 NOS DOIS renders (o main
+    # pré-F46 tem about EN); a tradução pt viaja só no attr do render EN.
     _meta_f52 = ""
     _about = ""
     _css_f52 = ""
@@ -2074,32 +2604,54 @@ def render_minimal_html(
         # O \n inicial vive NO VALOR (não na linha do template): com
         # vitrine=False o HTML é byte a byte o pré-F52 (nenhuma linha
         # vazia fantasma no <head>/corpo).
-        _about = "\n" + _about_html(_tracked_companies_count(),
-                                    total_eligible)
+        tracked = _tracked_companies_count()
+        _about = "\n" + _about_html(tracked, total_eligible)
+        if lang == "en":
+            _about = ("\n" + _about_html(
+                tracked, total_eligible,
+                attr=_i18n_attr_html(_about_html_pt(tracked, total_eligible))))
         _css_f52 = _CSS_F52
+    # F46 — chrome do cabeçalho/barra via FONTE ÚNICA (pt verbatim do main).
+    p_line = (I18N["p_line"]["en"] if lang == "en"
+              else I18N["p_line"]["pt"]).format(stamp=_esc(generated_at))
+    p_line_pt = I18N["p_line"]["pt"].format(stamp=_esc(generated_at))
+    vf_pt, vf_en = _i18n_pair("f_vf")
+    de_pt, de_en = _i18n_pair("f_de")
+    ca_pt, ca_en = _i18n_pair("country_all")
+    nw_pt, nw_en = _i18n_pair("f_new")
+    ws_pt, ws_en = _i18n_pair("f_ws")
+    da_pt, da_en = _i18n_pair("f_data")
+    sph_pt, sph_en = _i18n_pair("search_ph")
+    _en = lang == "en"
+
+    def _lbl(pt: str, en: str) -> str:
+        return (f'<span{_i18n_attr(pt)}>{_esc(en)}</span>' if _en
+                else pt)
+
+    _legend_attr = _i18n_attr_html(_legend_html("pt")) if _en else ""
     return f"""<!doctype html>
-<html lang="pt-BR">
+<html lang="{'en' if _en else 'pt-BR'}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="{'dark light' if vitrine else 'dark'}">
-<title>{page_title}</title>{_meta_f52}
-<style>{_CSS}{_css_f43}{_css_f53}{_css_f52}</style>
+<title{_i18n_attr(title_pt) if _en else ''}>{page_title}</title>{_meta_f52}{_meta_f46}
+<style>{_CSS}{_css_f43}{_css_f53}{_css_f52}{_css_f46}</style>
 </head>
 <body>
 <main>
-<h1>{h1_title}</h1>{_about}
-<p class="p">{_esc(generated_at)} UTC · ordenado pelo score do pipeline · 🛂 = empresa com política de visto</p>
+<h1{_i18n_attr(h1_pt) if _en else ''}>{h1_title}</h1>{_about}
+<p class="p"{_i18n_attr(p_line_pt) if _en else ''}>{p_line}</p>
 <div class="bar">
-<input id="q" type="search" placeholder="Buscar título, empresa, local…">
-<label><input type="checkbox" id="f-vf"> 🛂 só visa friendly</label>
-<label><input type="checkbox" id="f-de"> sem alemão exigido</label>
-<select id="f-country"><option value="">todos os países</option>{country_opts}</select>
-{'<label><input type="checkbox" id="f-new"> só novas de ontem</label>' if new_ids else ''}
-<label><input type="checkbox" id="f-ws"> sem Werkstudent</label>
-<label><input type="checkbox" id="f-data"> Data/BI</label>{f53_bar}
+<input id="q" type="search" placeholder="{sph_en if _en else sph_pt}"{_i18n_attr(sph_pt) if _en else ''}>
+<label><input type="checkbox" id="f-vf"> {_lbl(vf_pt, vf_en)}</label>
+<label><input type="checkbox" id="f-de"> {_lbl(de_pt, de_en)}</label>
+<select id="f-country"><option value=""{_i18n_attr(ca_pt) if _en else ''}>{ca_en if _en else ca_pt}</option>{country_opts}</select>
+{'<label><input type="checkbox" id="f-new"> ' + _lbl(nw_pt, nw_en) + '</label>' if new_ids else ''}
+<label><input type="checkbox" id="f-ws"> {_lbl(ws_pt, ws_en)}</label>
+<label><input type="checkbox" id="f-data"> {_lbl(da_pt, da_en)}</label>{f53_bar}{_toggle}
 </div>{tabs_html}
-{_legend_html()}
+{_legend_html(lang, attr=_legend_attr)}
 <ol id="list">
 {body}
 </ol>
@@ -2108,9 +2660,9 @@ def render_minimal_html(
 {materials_section}
 {eu_section}
 {sweet_section}
-<p class="f">{_esc(footer_note)}</p>
+<p class="f"{_i18n_attr(footer_pt) if _en else ''}>{_esc(footer_note)}</p>
 </main>
-<script>{_JS}</script>{_script_f43}
+<script>{_JS}</script>{_script_f43}{_script_i18n}
 </body>
 </html>
 """
@@ -2138,6 +2690,8 @@ def render_size_aware(
     profile_maps: dict | None = None,
     vitrine: bool = False,
     display_aliases: dict | None = None,
+    lang: str = I18N_DEFAULT_LANG,
+    sink: dict | None = None,
 ) -> str:
     """``render_minimal_html`` com degradacao progressiva de tamanho (F11+F20).
 
@@ -2208,6 +2762,7 @@ def render_size_aware(
         full_list=full_list, profile_maps=profile_maps,
         vitrine=vitrine,
         display_aliases=display_aliases,
+        lang=lang, sink=sink,
     )
     if len(html.encode("utf-8")) > target:
         html = render_minimal_html(
@@ -2224,6 +2779,7 @@ def render_size_aware(
             full_list=full_list, profile_maps=profile_maps,
             vitrine=vitrine,
             display_aliases=display_aliases,
+            lang=lang, sink=sink,
         )
     # F20 (item 4) — orçamento 🎯: só quando a montagem mais enxuta AINDA
     # estoura o cap duro. A 🎯 é aparada (top RADAR_TOP_N por prioridade)
@@ -2246,6 +2802,7 @@ def render_size_aware(
             full_list=full_list, profile_maps=profile_maps,
             vitrine=vitrine,
             display_aliases=display_aliases,
+            lang=lang, sink=sink,
         )
         print(f"pages: orçamento 🎯 ativo — seção aparada p/ top-{RADAR_TOP_N} "
               f"de {len(watchlist_events)} eventos; página agora "
@@ -2274,6 +2831,7 @@ def render_size_aware(
                 full_list=full_list, profile_maps=profile_maps,
                 vitrine=vitrine,
                 display_aliases=display_aliases,
+                lang=lang, sink=sink,
             )
             print(f"pages: orçamento 🧪/🇪🇺 ativo — seções de perfil "
                   f"degradadas p/ top-{PROFILE_SECTION_BUDGET_TOP} "
@@ -2310,6 +2868,7 @@ def render_size_aware(
                 full_list=True, profile_maps=profile_maps, full_limit=mid,
                 vitrine=vitrine,
                 display_aliases=display_aliases,
+                lang=lang, sink=sink,
             )
             if len(trial.encode("utf-8")) <= hard_cap:
                 best, best_n, lo = trial, mid, mid + 1
@@ -2389,6 +2948,97 @@ def _previous_snapshot(archive_root: Path) -> list[dict] | None:
         return None
 
 
+def _rfc822(dt: datetime) -> str:
+    """Datetime UTC -> data RFC-822 (pubDate/lastBuildDate do RSS)."""
+    from email.utils import format_datetime
+    return format_datetime(dt)
+
+
+def render_rss_xml(
+    jobs: list[dict],
+    *,
+    total_eligible: int,
+    generated_at: str,
+    lang: str = I18N_DEFAULT_LANG,
+    display_aliases: dict | None = None,
+    link: str = SITE_URL,
+) -> str:
+    """Feed RSS 2.0 ESTÁTIVO da página pública (F46).
+
+    Espelha o RENDER ATUAL: ``jobs`` é a lista FINAL exibida (a lista
+    ``shown`` do sink — mesma ordem de score, mesmas exclusões de
+    mortas/inaplicáveis e o mesmo corte de orçamento da página). Sem
+    relógio: o único instante do feed vem do ``generated_at`` do render
+    (mesmo carimbo do rodapé) — mesmo input -> mesmos BYTES.
+
+    Escape XML total via ``_esc``; zero dependências novas; sem CDATA.
+    Item: título (view de display F54), link = URL da vaga (safe),
+    guid = id do dataset, pubDate = posted_at (RFC-822; ausente = sem
+    pubDate — nunca inventado), description = meta + snippet EN de
+    título quando existir (F12, display-only).
+    """
+    items: list[str] = []
+    for job in jobs:
+        dview = job
+        try:
+            from internship_finder import display_hygiene
+            dview = display_hygiene.display_job_view(
+                job, display_aliases or {})
+        except Exception:  # noqa: BLE001 — view best-effort, nunca erro
+            dview = job
+        title = str(dview.get("title") or "(sem título)")
+        company = str(dview.get("company") or "—")
+        location = _short_location(job)
+        try:
+            score = _fmt_score(job.get("score"))
+        except Exception:  # noqa: BLE001
+            score = "0.0"
+        meta = I18N["rss_item_meta"][lang].format(
+            company=company, location=location, score=score)
+        bits = [meta]
+        en_line = _title_en_line(dview)
+        if en_line:
+            # linha EN da F12 (texto puro entre as tags .en — sem markup)
+            bits.append(re.sub(r"<[^>]+>", "", en_line).strip())
+        raw = job.get("raw") if isinstance(job.get("raw"), dict) else {}
+        job_href = _safe_url(job.get("url"))
+        apply_href = _safe_url(raw.get("apply_url"))
+        link_href = apply_href or job_href
+        snippet, _ = _snippet_en_fallback(job, None)
+        if snippet:
+            bits.append(snippet)
+        desc = _esc(" — ".join(b for b in bits if b))
+        pub = _parse_posted_at(job.get("posted_at"))
+        item = ["<item>", f"<title>{_esc(title)}</title>"]
+        if job_href:
+            item.append(f"<link>{_esc(job_href)}</link>")
+        item.append(f'<guid isPermaLink="false">{_esc(str(job.get("id") or ""))}</guid>')
+        if pub is not None:
+            item.append(f"<pubDate>{_rfc822(pub)}</pubDate>")
+        item.append(f"<description>{desc}</description>")
+        item.append("</item>")
+        items.append("".join(item))
+    build_dt = None
+    try:
+        build_dt = datetime.strptime(
+            generated_at.strip(), "%Y-%m-%d %H:%M").replace(tzinfo=UTC)
+    except (TypeError, ValueError):
+        build_dt = None
+    channel_bits = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<rss version="2.0"><channel>',
+        f"<title>{_esc(T('rss_channel_title', lang))}</title>",
+        f"<link>{_esc(link)}</link>",
+        f"<description>{_esc(T('rss_channel_desc', lang))}</description>",
+    ]
+    if build_dt is not None:
+        channel_bits.append(f"<lastBuildDate>{_rfc822(build_dt)}</lastBuildDate>")
+    channel_bits.append(f"<generator>internship-finder minimal_page (F46)</generator>")
+    channel_bits.append("".join(items))
+    channel_bits.append("</channel></rss>")
+    return "".join(channel_bits)
+
+
 def render_minimal_html_from_file(
     path: Path, *, top: int = PAGE_TOP,
     company_intel_map: dict | None = None,
@@ -2406,6 +3056,8 @@ def render_minimal_html_from_file(
     generated_at: str | None = None,
     vitrine: bool = False,
     display_aliases_path: Path | str | None = None,
+    lang: str = I18N_DEFAULT_LANG,
+    sink: dict | None = None,
 ) -> str:
     """Le o eligible_jobs.json e devolve o HTML minimo do topo.
 
@@ -2521,6 +3173,8 @@ def render_minimal_html_from_file(
                 display_aliases_path)
         except Exception:  # noqa: BLE001 — F54 é best-effort, nunca erro
             display_aliases = {}
+    if sink is not None:
+        sink["aliases"] = display_aliases  # F46 — o RSS usa o MESMO mapa
 
     new_ids: set[str] | None = None
     watchlist_events: list[dict] | None = None
@@ -2577,6 +3231,7 @@ def render_minimal_html_from_file(
         full_list=full, profile_maps=profile_maps,
         vitrine=vitrine,
         display_aliases=display_aliases,
+        lang=lang, sink=sink,
     )
     # F15 §4 — a seção Ponto ótimo só permanece se a página COM ela
     # couber no cap duro (150KB); a MEDIÇÃO é no render FINAL (com todas
@@ -2602,6 +3257,7 @@ def render_minimal_html_from_file(
             full_list=full, profile_maps=profile_maps,
             vitrine=vitrine,
             display_aliases=display_aliases,
+            lang=lang, sink=sink,
         )
         print(f"pages: seção ⭐ Ponto ótimo OMITIDA — página com ela "
               f"({size_with} bytes) estoura o cap de {hard_cap} "
@@ -2704,6 +3360,16 @@ def main(argv: list[str] | None = None) -> int:
                              "prefers-color-scheme, meta description + OG "
                              "no head e favicon data-URI. Default: OFF "
                              "(página byte a byte a pré-F52).")
+    parser.add_argument("--lang", default=I18N_DEFAULT_LANG,
+                        choices=list(I18N_LANGS), metavar="LANG",
+                        help="F46: idioma do chrome do render (default: "
+                             f"{I18N_DEFAULT_LANG}, decisão do dono 15/10; "
+                             "'pt' reproduz byte a byte o main pré-F46).")
+    parser.add_argument("--rss", default=None, metavar="PATH",
+                        help="F46: escreve também o feed RSS 2.0 ESTÁTICO "
+                             "no PATH (espelha o render atual: mesma "
+                             "lista/ordem/cortes; determinístico — o "
+                             "único instante vem do carimbo do render).")
     args = parser.parse_args(argv)
 
     if args.top <= 0:
@@ -2750,6 +3416,10 @@ def main(argv: list[str] | None = None) -> int:
     display_aliases_path = (
         Path(args.display_aliases) if args.display_aliases else None
     )
+    # F46 — carimbo ÚNICO compartilhado por página + feed (determinismo do
+    # par: nenhum relógio além deste stamp).
+    stamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+    rss_sink: dict | None = {} if args.rss else None
     page = render_minimal_html_from_file(
         Path(args.input), top=args.top, company_intel_map=company_intel_map,
         archive_root=archive_root, dead_link_ids=dead_ids,
@@ -2763,6 +3433,9 @@ def main(argv: list[str] | None = None) -> int:
         full_list=args.full_list,
         vitrine=args.vitrine,
         display_aliases_path=display_aliases_path,
+        lang=args.lang,
+        sink=rss_sink,
+        generated_at=stamp,
     )
     if args.output == "-":
         sys.stdout.write(page)
@@ -2773,6 +3446,24 @@ def main(argv: list[str] | None = None) -> int:
         out.write_text(page, encoding="utf-8")
         print(f"pagina minima gerada: {out.resolve()} "
               f"({len(page.encode('utf-8'))} bytes)")
+    # F46 — feed RSS estático espelhando o render (mesma lista final do
+    # sink; determinístico: nenhum relógio além do carimbo do render).
+    if args.rss:
+        assert rss_sink is not None
+        shown_jobs = rss_sink.get("shown")
+        if shown_jobs is None:
+            raise RuntimeError("sink do RSS vazio — render não devolveu a "
+                               "lista exibida (bug F46)")
+        rss = render_rss_xml(
+            shown_jobs, total_eligible=len(shown_jobs),
+            generated_at=stamp, lang=args.lang,
+            display_aliases=rss_sink.get("aliases"))
+        rss_path = Path(args.rss)
+        if rss_path.parent != Path(""):
+            rss_path.parent.mkdir(parents=True, exist_ok=True)
+        rss_path.write_text(rss, encoding="utf-8")
+        print(f"feed rss gerado: {rss_path.resolve()} "
+              f"({len(rss.encode('utf-8'))} bytes, {len(shown_jobs)} itens)")
     return 0
 
 
