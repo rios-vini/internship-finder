@@ -112,6 +112,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from internship_finder.health import build_health_report  # reuso — sem camada nova
+from internship_finder.ranking import rescore_hydrated_jobs  # F56 — re-score pós-hidratação
 from internship_finder.storage.sqlite_backup import (  # backup do jobs.db (P3)
     BACKUP_DIR_NAME,
     backup_jobs_db,
@@ -1810,6 +1811,7 @@ def main(argv: list[str] | None = None) -> int:
                 # re-avalia aplicabilidade com as regras da F18.
                 inapplicable_ids: set[str] = set()
                 hydrated_jobs = 0
+                hydrated_ids: set[str] = set()  # F56 — ids efetivamente hidratados
                 for job in top_shown:
                     jid = str(job.get("id") or "")
                     new_desc = hydrated_bodies.get(jid)
@@ -1818,6 +1820,7 @@ def main(argv: list[str] | None = None) -> int:
                         job["description_source"] = HYDRATION_SOURCE
                         job["description_hydrated_at"] = utcnow_iso()
                         hydrated_jobs += 1
+                        hydrated_ids.add(jid)
                         reason = _reassess_hydrated_applicability(job)
                         if reason:
                             job[HYDRATION_INAPPLICABLE_FLAG] = reason
@@ -1826,6 +1829,28 @@ def main(argv: list[str] | None = None) -> int:
                                 "hidratacao: %s revelou %s — desce do "
                                 "top exibido (fica no JSON)", jid, reason)
                 if hydrated_jobs:
+                    # F56 — re-score pós-hidratação ANTES de persistir: este
+                    # estágio enriquece a description DEPOIS do rank_jobs da
+                    # coleta; sem recompute o score gravado fica congelado no
+                    # estado pré-hidratação (achado F55 §4: language 0.0
+                    # gravado vs +1.5 recomputado; hidratada sobe de rank).
+                    # Recomputa SOMENTE as hidratadas (causa real: a descrição
+                    # mudou), com o MESMO desempate do rank_jobs, e reordena
+                    # a lista — publish e digest leem ESTE arquivo. now aware
+                    # como a coleta usa (F38). Idempotente: no run seguinte a
+                    # descrição hidratada deixa de ser candidata (texto
+                    # longo), então não há nova hidratação nem oscilação.
+                    # Best-effort: falha NUNCA derruba o run (JSON segue com
+                    # os scores pré-hidratação, semântica anterior à F56).
+                    try:
+                        rescored = rescore_hydrated_jobs(
+                            ranking, hydrated_ids, now=datetime.now(UTC))
+                        log.info("F56: score recomputado para %d vaga(s) "
+                                 "hidratada(s) pos-hidratacao", rescored)
+                    except Exception as exc:  # noqa: BLE001 — re-score nunca derruba o run
+                        log.warning("F56: re-score pos-hidratacao falhou (JSON "
+                                    "segue com scores pre-hidratacao): %s: %s",
+                                    type(exc).__name__, exc)
                     # Persiste a hidratacao no eligible_jobs.json (o
                     # publish renderiza por subprocesso que LE o arquivo).
                     # Escrita atomica reusando a funcao do CLI; a rotacao
@@ -1835,8 +1860,19 @@ def main(argv: list[str] | None = None) -> int:
                     # NUNCA derruba o run (a pagina publica simplesmente
                     # fica com as descricoes originais).
                     try:
-                        from internship_finder.cli import _write_json_atomic
-                        _write_json_atomic(ranking, data_dir / "eligible_jobs.json")
+                        from internship_finder.cli import (_write_json_atomic,
+                                                           _write_atomic,
+                                                           _dump_csv)
+                        _write_json_atomic(
+                            ranking, data_dir / "eligible_jobs.json")
+                        # F56 — ``score`` ESTÁ em CSV_COLUMNS: o CSV derivado
+                        # precisa acompanhar o re-score (o argumento "o CSV
+                        # não muda" vale para description, fora do contrato
+                        # ACH-18; score é coluna do contrato). Mesma escrita
+                        # atômica do save_outputs.
+                        _write_atomic(
+                            (data_dir / "eligible_jobs.json").with_suffix(".csv"),
+                            lambda fh: _dump_csv(fh, ranking))
                         log.info("hidratacao: %d descricao(oes) persistida(s) "
                                  "em %s", hydrated_jobs,
                                  data_dir / "eligible_jobs.json")

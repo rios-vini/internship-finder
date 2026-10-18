@@ -525,3 +525,63 @@ def rank_jobs(
         )
     )
     return out
+
+
+def rescore_hydrated_jobs(
+    jobs: list[dict[str, Any]],
+    hydrated_ids: "set[str] | frozenset[str]",
+    *,
+    now: Any = None,
+) -> int:
+    """F56 — re-score APENAS das vagas hidratadas pós-hidratação, in place.
+
+    Causa raiz (achado de proveniência da F55 §4): a hidratação do estágio
+    F20 do refresh diário (``scripts/refresh_daily.py`` — liveness do top
+    exibido) enriquece a ``description`` DEPOIS do ``rank_jobs`` da coleta,
+    e o estágio F25 re-avalia o backlog hidratado sem tocar em score — o
+    ``score``/``score_breakdown`` gravados no ``eligible_jobs.json`` ficam
+    congelados no estado PRÉ-hidratação. Medido no snapshot 15/10:
+    ``language`` 0.0 gravado vs +1.5 recomputado ("englisch" só existe na
+    descrição depois do score); hidratadas sobem de rank quando re-scoreadas.
+
+    Contrato:
+
+    - Recomputa ``score_job`` SOMENTE para os ids em ``hydrated_ids`` (a
+      causa real — a descrição mudou). Vaga não hidratada NÃO é tocada:
+      mantém o score da coleta do próprio run byte-identical.
+    - Re-ordena a lista IN PLACE com o MESMO desempate determinístico do
+      ``rank_jobs`` (score desc -> título casefold -> empresa -> id), para
+      que a ordem do arquivo continue sendo a ordem oficial do score.
+    - ``now`` repassado ao ``score_job`` (mesma semântica F38 do pipeline;
+      o chamador passa datetime aware como a coleta faz). Idempotente:
+      mesmos dados + mesmo ``now`` -> mesmo score; e no run SEGUINTE a
+      descrição hidratada deixa de ser candidata F20 (texto longo >= limite),
+      então não há nova hidratação nem nova oscilação de score.
+    - Alternativa REJEITADA (b): re-ordenar no publish lendo score
+      recomputado on-the-fly — espalharia a recomputação por N consumidores
+      (site, digest, assist) e divergiria a ordem publicada do JSON gravado.
+
+    Retorna o número de vagas re-scoreadas. Sem ids presentes a função é
+    no-op byte-identical (nenhum dict mutado, nenhuma reordenação).
+    """
+    rescored = 0
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("id") or "") not in hydrated_ids:
+            continue
+        score = score_job(item, now=now)
+        item["score"] = score.total
+        item["score_breakdown"] = score.breakdown
+        rescored += 1
+    if rescored:
+        # Mesmo desempate do rank_jobs (chave total — id único).
+        jobs.sort(
+            key=lambda j: (
+                -j["score"],
+                str(j.get("title") or "").casefold(),
+                str(j.get("company") or "").casefold(),
+                str(j.get("id") or ""),
+            )
+        )
+    return rescored
