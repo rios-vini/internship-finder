@@ -16,8 +16,10 @@ com vagas elegiveis > 0 em runs ok (exit 0) OU parciais com falhas perifericas
 de fontes individuais (exit 2); dataset vazio, run truncado (exit 124) ou exit
 inesperado nunca publicam (a pagina anterior permanece). A geracao acontece em
 diretorio temporario e o artefato so entra no clone via ``os.replace`` (mesmo
-filesystem); o push contem apenas ``index.html``. Nenhum ranking, peso ou
-filtro e alterado — isto publica o snapshot exatamente como o run o gerou.
+filesystem); o push contem ``index.html`` + ``rss.xml`` (feed estático F46,
+sob o MESMO gate de segredos — falha segura, sem push do dia). Nenhum
+ranking, peso ou filtro e alterado — isto publica o snapshot exatamente como
+o run o gerou.
 
 O clone de deploy vive FORA do repo (default ``~/internship-finder-ghpages``,
 por isso ele nunca e contaminado por outras branches nem vaza nos commits do
@@ -43,6 +45,7 @@ from pathlib import Path
 
 PAGES_BRANCH = "gh-pages"
 INDEX_NAME = "index.html"
+RSS_NAME = "rss.xml"          # F46 — feed estático publicado junto ao index
 
 # "Todas as vagas" para a publicacao: o default do interface.py (--top 25) e o
 # topo rapido do uso local; a pagina publica mostra o ranking completo.
@@ -188,6 +191,7 @@ def render_ranking_html(
     root: Path, output_path: Path, *, top: int = PUBLIC_TOP, timeout: float = 300.0,
     dead_link_ids: set[str] | None = None,
     inapplicable_ids: set[str] | None = None,
+    rss_path: Path | None = None,
 ) -> str:
     """Gera o HTML do ranking publico (F6: pagina MÍNIMA mobile-first).
 
@@ -254,6 +258,13 @@ def render_ranking_html(
     JUNTO do sanitizer mojibake no render (higienização display-only —
     dataset e match de intel intocados). Loader tolerante: ausente/
     ilegível -> nomes ORIGINAIS, nunca quebra.
+
+    F46: ``rss_path`` (opcional) — o MESMO subprocesso do render escreve
+    também o feed RSS 2.0 estático (espelha o render atual: mesma lista
+    final, ordem e cortes; determinístico). O retorno continua sendo o
+    HTML (contrato intocado); o feed fica no ``rss_path`` para o
+    chamador ler e publicar junto. Chrome do render = EN (default da
+    F46, decisão do dono 15/10).
     """
     script = root / "scripts" / "minimal_page.py"
     if not script.exists():
@@ -272,6 +283,8 @@ def render_ranking_html(
         "--vitrine",
         "--display-aliases", "config/display_aliases.json",
     ]
+    if rss_path is not None:
+        cmd += ["--rss", str(rss_path)]
     if dead_link_ids:
         dead_tmp = output_path.parent / ".dead_ids.txt"
         dead_tmp.parent.mkdir(parents=True, exist_ok=True)
@@ -326,15 +339,24 @@ def minimal_page_top() -> int:
         return 50
 
 
-def publish_html(html: str, deploy_dir: Path, *, run_id: str, log=None) -> bool:
-    """Publica ``index.html`` no clone de deploy; ``False`` = nada mudou.
+def publish_html(html: str, deploy_dir: Path, *, run_id: str, log=None,
+                 rss: str | None = None) -> bool:
+    """Publica ``index.html`` (+ ``rss.xml`` da F46) no clone de deploy;
+    ``False`` = nada mudou.
 
-    Sequencia: gate de seguranca (Parte D) -> escrita atomica (temp no MESMO
-    diretorio + ``os.replace``, nunca parcial) -> commit + push da branch
-    ``gh-pages``. Se o conteudo e identico ao publicado, nao ha commit nem
-    push (evita ruido no historico da branch).
+    Sequencia: gate de seguranca (Parte D) no HTML E no feed (o scanner
+    varre os DOIS artefatos — falha segura: nada entra no clone, sem
+    push do dia) -> escrita atomica (temp no MESMO diretorio +
+    ``os.replace``, nunca parcial) -> commit + push da branch
+    ``gh-pages``. Se o conteudo e identico ao publicado, nao ha commit
+    nem push (evita ruido no historico da branch).
+
+    F46: ``rss`` (texto do feed; None = publica so o index.html —
+    comportamento pré-F46 preservado para chamadores antigos).
     """
     problems = check_public_safe(html)
+    if rss is not None:
+        problems += [f"rss.xml: {p}" for p in check_public_safe(rss)]
     if problems:
         raise RuntimeError(
             "conteudo inseguro para publicacao: " + "; ".join(problems)
@@ -343,13 +365,21 @@ def publish_html(html: str, deploy_dir: Path, *, run_id: str, log=None) -> bool:
     tmp = deploy_dir / f".{INDEX_NAME}.{os.getpid()}.tmp"
     tmp.write_text(html, encoding="utf-8")
     os.replace(tmp, final)  # atomico: o index.html nunca fica pela metade
-    status = _git(deploy_dir, "status", "--porcelain", "--", INDEX_NAME)
+    if rss is not None:
+        rss_final = deploy_dir / RSS_NAME
+        rss_tmp = deploy_dir / f".{RSS_NAME}.{os.getpid()}.tmp"
+        rss_tmp.write_text(rss, encoding="utf-8")
+        os.replace(rss_tmp, rss_final)  # atomico, mesmo mecanismo
+    files = [INDEX_NAME] + ([RSS_NAME] if rss is not None else [])
+    status = _git(deploy_dir, "status", "--porcelain", "--", *files)
     if not status:
-        _log(log, "pages: index.html identico ao publicado; nada a fazer")
+        _log(log, "pages: artefatos identicos ao publicado; nada a fazer")
         return False
-    _git(deploy_dir, "add", "--", INDEX_NAME)
+    _git(deploy_dir, "add", "--", *files)
     safe_run = re.sub(r"[^A-Za-z0-9._:-]", "-", str(run_id)) or "unknown"
-    _git(deploy_dir, "commit", "-m", f"deploy(run {safe_run}): atualiza ranking publico")
+    msg = (f"deploy(run {safe_run}): atualiza ranking publico"
+           + (" + feed RSS" if rss is not None else ""))
+    _git(deploy_dir, "commit", "-m", msg)
     _git(deploy_dir, "push", "-q", "origin", f"HEAD:{PAGES_BRANCH}")
     _log(log, "pages: deploy publicado (commit %s)",
          _git(deploy_dir, "rev-parse", "--short", "HEAD"))
@@ -393,10 +423,17 @@ def publish_ranking(
     origin_url = _git(root, "config", "--get", "remote.origin.url")
     ensure_deploy_clone(deploy_dir, origin_url, root=root, log=log)
     with tempfile.TemporaryDirectory(prefix="if_pages_") as td:
+        # F46 — o MESMO subprocesso do render escreve o feed rss.xml (o
+        # retorno continua sendo só o HTML; o feed é lido do temp e
+        # publicado junto, sob o MESMO gate de segredos).
+        rss_path = Path(td) / RSS_NAME
         html = render_ranking_html(
             root, Path(td) / INDEX_NAME, top=top, dead_link_ids=dead_link_ids,
-            inapplicable_ids=inapplicable_ids)
-        return publish_html(html, deploy_dir, run_id=run_id, log=log)
+            inapplicable_ids=inapplicable_ids, rss_path=rss_path)
+        rss = (rss_path.read_text(encoding="utf-8")
+               if rss_path.exists() else None)
+        return publish_html(html, deploy_dir, run_id=run_id, log=log,
+                            rss=rss)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -432,8 +469,17 @@ def main(argv: list[str] | None = None) -> int:
         problems: list[str] = []
         with tempfile.TemporaryDirectory(prefix="if_pages_dry_") as td:
             out = Path(td) / INDEX_NAME
-            html = render_ranking_html(root, out, top=args.top)
+            rss_out = Path(td) / RSS_NAME
+            html = render_ranking_html(root, out, top=args.top,
+                                       rss_path=rss_out)
             problems = check_public_safe(html)
+            rss_text = (rss_out.read_text(encoding="utf-8")
+                        if rss_out.exists() else None)
+            if rss_text is not None:
+                # F46 — o scanner varre o feed TAMBÉM no dry-run (mesmo
+                # gate do push: falha segura, nada sai do dia).
+                problems += [f"rss.xml: {p}"
+                             for p in check_public_safe(rss_text)]
             if problems:
                 print("CONTEUDO INSEGURO — publicacao bloqueada:")
                 for p in problems:
@@ -442,7 +488,15 @@ def main(argv: list[str] | None = None) -> int:
             dry = Path("/tmp/interface_pages_dryrun.html")
             dry.write_text(html, encoding="utf-8")
             print(f"dry-run OK: ranking renderizado e verificado — {len(html)} bytes")
-            print(f"(artefato de inspecao: {dry}; NADA foi publicado.)")
+            if rss_text is not None:
+                dry_rss = Path("/tmp/interface_pages_dryrun.rss.xml")
+                dry_rss.write_text(rss_text, encoding="utf-8")
+                print(f"dry-run OK: feed rss verificado — "
+                      f"{len(rss_text.encode('utf-8'))} bytes")
+                print(f"(artefatos de inspecao: {dry}, {dry_rss}; "
+                      f"NADA foi publicado.)")
+            else:
+                print(f"(artefato de inspecao: {dry}; NADA foi publicado.)")
         if problems:
             return 2
         return 0
