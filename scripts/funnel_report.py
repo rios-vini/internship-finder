@@ -333,9 +333,10 @@ def _fmt_int(value: int | None) -> str:
     return "—" if value is None else f"{value:,}".replace(",", ".")
 
 
-def format_report(report: dict, *, max_reasons: int = 12,
+def format_report(report: dict | None, *, max_reasons: int = 12,
                   max_windows: int = 10) -> list[str]:
-    """Linhas de texto do relatório (stdout). Pura sobre ``report``."""
+    """Linhas de texto do relatório (stdout). Pura sobre ``report``
+    (None -> "(sem dados)", nunca lança)."""
     if not report:
         return ["(sem dados)"]
     lines: list[str] = ["== Funil de candidaturas (F45) =="]
