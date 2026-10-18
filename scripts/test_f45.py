@@ -902,19 +902,35 @@ def test_wiring() -> None:
           and "collection_metrics.jsonl" in src
           and "application_events.jsonl" in src
           and "eligible_jobs.json" in src)
-    check("splice da 📅 ANTES do link, após as pessoais",
-          "digest_lines[:-1] + fn_lines + [digest_lines[-1]]" in src)
-    # semântica do splice em fixture: link continua último
-    digest = ["", "🎯 Empresas-alvo (watchlist) — 1 nova(s)",
-              "  🎯 Bosch: Werkstudent", "",
-              "⏰ Follow-up — candidaturas sem resposta — 1 pendente(s)",
-              "  1. Daimler — há 12 dias", "",
-              "🔗 Ranking completo: https://x"]
-    fn = ["", rg.FUNNEL_SECTION_PREFIX + " (último run 17/10) — 6 janelas"]
-    digest = digest[:-1] + fn + [digest[-1]]
-    check("splice deixa a 📅 como última seção antes do 🔗",
-          digest[-1].startswith("🔗")
-          and digest[-2].startswith(rg.FUNNEL_SECTION_PREFIX))
+    check("splice da 📅 via helper ANTES do link (blank re-criado)",
+          "_splice_section_before_link(digest_lines," in src)
+    # comportamento REAL do splice (helper é o código de produção):
+    # caso 1: digest com blank pré-link (digest_sections puro)
+    fn = ["", rg.FUNNEL_SECTION_PREFIX + " (último run 17/10) — 6 janelas",
+          "  ✂ alemão exigido: 10"]
+    digest1 = ["🎯 Empresas-alvo (watchlist) — 1 nova(s)", "  🎯 Bosch",
+               "", "🔗 Ranking completo: https://x"]
+    out1 = rd._splice_section_before_link(digest1, fn)
+    check("blank pré-link consumido (nunca duplicado) + blank re-criado",
+          out1 == ["🎯 Empresas-alvo (watchlist) — 1 nova(s)", "  🎯 Bosch",
+                   "", rg.FUNNEL_SECTION_PREFIX + " (último run 17/10) — 6 janelas",
+                   "  ✂ alemão exigido: 10", "", "🔗 Ranking completo: https://x"],
+          detail=str(out1))
+    check("extrator NÃO engole a 🔗 no digest montado pelo wiring",
+          rg.funnel_section_lines(out1) == fn[1:]
+          and out1[-1].startswith("🔗") and out1[-2] == "")
+    # caso 2: digest SEM blank pré-link (pessoais splicadas antes — o
+    # último bloco pessoal colado no link)
+    digest2 = ["⏰ Follow-up — 1 pendente(s)", "  1. Daimler",
+               "🔗 Ranking completo: https://x"]
+    out2 = rd._splice_section_before_link(digest2, fn)
+    check("sem blank pré-link: seção entra com o SEU blank, link separado",
+          out2 == ["⏰ Follow-up — 1 pendente(s)", "  1. Daimler"]
+          + fn + ["", "🔗 Ranking completo: https://x"])
+    check("nenhum bloco em branco duplicado nos dois casos",
+          "\n\n\n" not in "\n".join(out1) and "\n\n\n" not in "\n".join(out2))
+    check("seção vazia -> digest intacto (best-effort)",
+          rd._splice_section_before_link(digest1, []) == digest1)
     rg_src = Path(rg.__file__).read_text(encoding="utf-8")
     check("extrator delega ao _section_by_prefix (padrão F44)",
           "return _section_by_prefix(digest_lines, FUNNEL_SECTION_PREFIX)"

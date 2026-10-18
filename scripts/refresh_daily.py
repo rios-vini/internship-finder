@@ -957,6 +957,26 @@ def build_message(
 
 # --- telegram --------------------------------------------------------------
 
+def _splice_section_before_link(digest_lines: list[str],
+                                section_lines: list[str]) -> list[str]:
+    """Insere ``section_lines`` antes do link (última linha do digest),
+    RE-CRIANDO o separador blank do link (F45).
+
+    O extrator do compact (``_section_by_prefix``) para no blank depois
+    do corpo — sem o blank re-criado a 🔗 seria ENGOLIDA pela seção (link
+    duplicado na mensagem compacta). O blank pré-link existente é
+    CONSUMIDO pela seção (blank inicial dela), nunca duplicado. Usada
+    pelo splice da seção 📅 no main (best-effort: listas vazias ->
+    devolve o digest intacto).
+    """
+    if not section_lines or not digest_lines:
+        return digest_lines
+    head = list(digest_lines[:-1])
+    if head and not str(head[-1]).strip():
+        head = head[:-1]
+    return head + list(section_lines) + ["", digest_lines[-1]]
+
+
 def telegram_url(token: str) -> str:
     """URL do sendMessage para um token (testavel sem rede)."""
     return TELEGRAM_API.format(token=token)
@@ -2010,7 +2030,8 @@ def main(argv: list[str] | None = None) -> int:
                 eligible_path=data_dir / "eligible_jobs.json",
             )
             if fn_lines and digest_lines:
-                digest_lines = digest_lines[:-1] + fn_lines + [digest_lines[-1]]
+                digest_lines = _splice_section_before_link(digest_lines,
+                                                           fn_lines)
         except Exception as exc:  # noqa: BLE001 — F45 nunca derruba o run
             log.warning("secao F45 (funil & sazonalidade) nao montada "
                         "(run segue normal): %s", exc)
