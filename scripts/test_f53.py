@@ -70,7 +70,16 @@ REPO = Path(__file__).resolve().parent.parent
 # da abertura da branch; minimal_page.py IDÊNTICO entre e0d75c2 e 1b548c1
 # — o byte-identity do legado é o mesmo, só a âncora se move p/ o pai
 # direto, que também valida a pré-condição src/).
-_AB_BASELINE_SHA = "1b548c1"
+# F56 (18/10): src/ moveu de novo (rescore_hydrated_jobs em ranking.py) —
+# mas pós-merge da F53 a âncora única não pode mais servir aos 3 papéis:
+# a pré-condição src/ precisa do estado ATUAL (move por fase que toca
+# src/), enquanto o render legado precisa do minimal_page.py PRÉ-F53
+# (permanente — 1b548c1 é o último main sem as features F53). SPLIT:
+# _AB_BASELINE_SHA = estado src/ (pré-condição; move com a fase);
+# _AB_LEGACY_PAGE_SHA = minimal_page.py pré-F53 (render legado + medida
+# do _JS_PROFILE; fixo em 1b548c1, que vive no main para sempre).
+_AB_BASELINE_SHA = "451a21f"
+_AB_LEGACY_PAGE_SHA = "1b548c1"
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
@@ -318,10 +327,15 @@ def test_application_state() -> None:
 # ---------------------------------------------------------------------------
 
 def _baseline_source() -> str | None:
-    """Fonte do minimal_page.py PRÉ-F53 (SHA congelado) — lida 1×."""
+    """Fonte do minimal_page.py PRÉ-F53 (SHA congelado) — lida 1×.
+
+    F56: lê de ``_AB_LEGACY_PAGE_SHA`` (página pré-F53, permanente) e não
+    mais de ``_AB_BASELINE_SHA`` (que virou a âncora do estado src/ da
+    pré-condição e, pós-merge da F53, já carrega as features F53).
+    """
     try:
         return subprocess.run(
-            ["git", "show", f"{_AB_BASELINE_SHA}:scripts/minimal_page.py"],
+            ["git", "show", f"{_AB_LEGACY_PAGE_SHA}:scripts/minimal_page.py"],
             capture_output=True, text=True, cwd=str(REPO), check=True,
         ).stdout
     except Exception:  # noqa: BLE001
