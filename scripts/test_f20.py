@@ -440,16 +440,20 @@ def test_regression() -> None:
 
     # render: página SEM eventos 🎯 é byte a byte a pré-F20
     jobs = [_simple_job(i) for i in range(30)]
+    # F46: default do render virou EN (decisão do dono 15/10); esta suíte
+    # valida o chrome/bytes pt da era pré-F46 — lang="pt" (contrato (b)).
     html_a = mp.render_minimal_html(jobs, total_eligible=30,
-                                    generated_at="x", watchlist_events=None)
+                                    generated_at="x", watchlist_events=None,
+                                    lang="pt")
     html_b = mp.render_minimal_html(jobs, total_eligible=30,
-                                    generated_at="x", watchlist_events=[])
+                                    generated_at="x", watchlist_events=[],
+                                    lang="pt")
     check("render sem eventos 🎯: None == [] (byte a byte)",
           html_a == html_b)
     # radar_limit irrelevante sem eventos
     html_c = mp.render_minimal_html(jobs, total_eligible=30,
                                     generated_at="x", watchlist_events=[],
-                                    radar_limit=mp.RADAR_TOP_N)
+                                    radar_limit=mp.RADAR_TOP_N, lang="pt")
     check("radar_limit é no-op sem eventos (byte a byte)",
           html_a == html_c)
 
@@ -527,7 +531,7 @@ def test_radar_budget() -> None:
         html = mp.render_size_aware(
             jobs, total_eligible=len(jobs), generated_at="x", top=100,
             watchlist_events=events40,
-            sweet_spot_rows=big_rows, quality_map=None)
+            sweet_spot_rows=big_rows, quality_map=None, lang="pt")
     b = len(html.encode("utf-8"))
     sec = html[html.find("Empresas-alvo"):]
     n_cards = sec[:sec.find("</ol>")].count('<li class="c') \
@@ -550,7 +554,7 @@ def test_radar_budget() -> None:
         html2 = mp.render_size_aware(
             jobs, total_eligible=len(jobs), generated_at="x", top=100,
             watchlist_events=events40[:8],
-            sweet_spot_rows=big_rows, quality_map=None)
+            sweet_spot_rows=big_rows, quality_map=None, lang="pt")
     check("poucos eventos: todos exibidos",
           html2.count("Empresa-Alvo") >= 8)
     check("poucos eventos: SEM '+X outras' e SEM aviso",
@@ -567,7 +571,7 @@ def test_radar_budget() -> None:
         html3 = mp.render_size_aware(
             jobs, total_eligible=len(jobs), generated_at="x", top=100,
             watchlist_events=events40,
-            quality_map=None, sweet_spot_rows=huge_rows)
+            quality_map=None, sweet_spot_rows=huge_rows, lang="pt")
     b3 = len(html3.encode("utf-8"))
     check(f"mesmo aparada estourando: dentro do cap ({b3} bytes)",
           b3 <= mp.PAGE_HARD_CAP_BYTES)
@@ -585,11 +589,11 @@ def test_radar_budget() -> None:
     html5 = mp.render_size_aware(
         jobs, total_eligible=len(jobs), generated_at="x", top=100,
         watchlist_events=None,
-        sweet_spot_rows=big_rows, quality_map=None)
+        sweet_spot_rows=big_rows, quality_map=None, lang="pt")
     html6 = mp.render_size_aware(
         jobs, total_eligible=len(jobs), generated_at="x", top=100,
         watchlist_events=[],
-        sweet_spot_rows=big_rows, quality_map=None)
+        sweet_spot_rows=big_rows, quality_map=None, lang="pt")
     check("sem eventos 🎯: size_aware None == [] (byte a byte)",
           html5 == html6)
 
@@ -620,7 +624,8 @@ def test_f15_gate_compat() -> None:
     with redirect_stdout(buf):
         html = mp.render_minimal_html(
             jobs, total_eligible=len(jobs), generated_at="x", top=100,
-            sweet_spot_rows=big_rows, quality_map=None, with_snippets=False)
+            sweet_spot_rows=big_rows, quality_map=None, with_snippets=False,
+            lang="pt")
     out = buf.getvalue()
     check("gate F15: aviso verbatim preservado quando dispara via from_file",
           "OMITIDA" in out or "Ponto ótimo" in html)
