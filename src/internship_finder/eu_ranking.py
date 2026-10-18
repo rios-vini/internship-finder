@@ -37,7 +37,7 @@ Composição do score (constantes de módulo):
     area      = MESMOS detectores/pesos do business (filters.area_score,
                 título 2.0 / descrição 0.0 — a descrição continua entrando
                 por skills+language)
-    skills    = MESMOS do business (+0.75 por competência na descrição)
+    skills    = MESMOS do business (F55: +1.0 por competência na descrição)
     language  = MESMO do business (EN +1.5; DE required −2.0 / preferred −0.5)
     type      = marcador forte de tipo no título (+1.0, reusa filters)
     location  = país-alvo do PROJETO (iso em countries.TARGET_COUNTRIES

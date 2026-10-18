@@ -97,10 +97,11 @@ WEIGHT_AREA_DESC = 0.0  # area da DESCRICAO (mantido: 0 — experimento F5 nao a
 # business (medias otima 1.31 > aceitavel 0.56 > boa 0.41): a "boa" média é
 # vaga de campo sem descrição rica e a "aceitável" média é Controlling/BI com
 # template cheio de termos — o peso fraco deixava o template ganhar do
-# conteúdo. Nos 40 rotulados: tau business 0.438 -> 0.505 (com fn/core),
-# ZERO inversões novas criadas; EU compartilha o peso (reuso _skills_score)
-# e mantém 0.652. Skills é o sinal do CONTEUDO real da vaga — peso de termo
-# único continua (1 termo = 1.0, nunca por ocorrência).
+# conteúdo. Nos 40 rotulados: tau business +0.505 (fn+core, G6a) ->
+# +0.524 com skills 1.0 (final, ZERO inversões novas criadas, 12 resolvidas);
+# EU compartilha o peso (reuso _skills_score) e mantém 0.652. Skills é o
+# sinal do CONTEUDO real da vaga — peso de termo único continua (1 termo =
+# 1.0, nunca por ocorrência).
 WEIGHT_SKILL = 1.0  # por competencia do perfil na descricao (F55: 0.75 -> 1.0)
 WEIGHT_LANG_EN = 1.5  # ingles essencial (qualquer evidencia no titulo/descricao)
 PENALTY_LANG_DE_REQUIRED = -2.0  # "German required", "fließende Deutschkenntnisse"...
