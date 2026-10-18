@@ -15,6 +15,9 @@ Contratos testados:
   Daimler Buses) e zum; ranges YMY/MMY/DMY ("1 July 2027 – June 30th
   2028" — caso real Bosch Breda; "June 30" NUNCA vira ano 30); negativos
   (AWS, sofortige, "Bewerbung bis <data>" — deadline não é sazonalidade);
+  A6 (F57): bare month-year MEDIDO e REJEITADO (88,6% < 90% no eligible
+  real — decisão de design mantida; "Bewerbungsfrist März 2027" não é
+  início; GAP BDO do título aceito e travado);
   canônico: semester > range > start > imediato; determinismo.
 - B (funil): escada collected→filtered→dedup→inaplicáveis→eligible com
   os MOTIVOS de morte do record ``type: run`` REAL da produção; identidade
@@ -344,6 +347,35 @@ def test_labels_calendar() -> None:
           detail=str(cal))
     check("calendário: texto sem janela não conta",
           sea.seasonality_calendar(["nada", ""]) == [])
+
+
+def test_f57_bare_mmy_decision() -> None:
+    section("A6 — F57: bare month-year MEDIDO e REJEITADO (design mantido)")
+    # Decisão F57 (18/10, medição no eligible real de produção — 736 vagas):
+    # 88 hits novos, 78 legítimos (88,6% < 90% exigido pela card) — o ruído
+    # (notícia/registro de empresa/lei/marco de processo + boilerplate
+    # stale) é irrecuperável por regex e exigiria relógio que o parser
+    # puro não tem. Mês-ano SEM prefixo segue fora; o GAP BDO (título com
+    # bare MMY, 7/7 legítimos na medição) é aceito e travado aqui.
+    # Relatório: handoff F57 (relatorio_fase_f57.md).
+    for txt in ("Stage Data Analytics février 2027",   # probe verbatim da card
+                "Internship Deals & Data Analytics Advisor Bruxelles "
+                "(février 2027)",                      # caso BDO REAL (18/10)
+                "Internship March 2027",               # probe EN da verificação
+                "Praktikum Februar 2027"):             # probe DE da verificação
+        check(f"bare MMY fora (design F57): {txt[:46]!r}",
+              sea.canonical_seasonality(txt) is None)
+    check("contra-caso da card: 'Bewerbungsfrist März 2027' NÃO é início",
+          sea.canonical_seasonality("Bewerbungsfrist März 2027") is None)
+    check("deadline com data numérica solta também não é início",
+          sea.canonical_seasonality("Bewerbungsfrist: 15. März 2027") is None)
+    can = sea.canonical_seasonality(
+        "Stage Data Analytics à partir de février 2027")
+    check("janela segue entrando COM prefixo (à partir de février 2027)",
+          bool(can) and can["kind"] == "start" and can["start"] == "2027-02")
+    src = Path(sea.__file__).read_text(encoding="utf-8")
+    check("decisão F57 documentada no docstring do parser",
+          "F57" in src and "88,6%" in src)
 
 
 # ---------------------------------------------------------------------------
@@ -994,6 +1026,7 @@ def main() -> int:
     test_ranges()
     test_negatives_priority()
     test_labels_calendar()
+    test_f57_bare_mmy_decision()
     test_pipeline_funnel()
     test_labels_trend()
     test_application_and_report()
