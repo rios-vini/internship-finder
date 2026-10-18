@@ -29,6 +29,21 @@ O QUE É DETECTADO (escopo F45 — medido sobre o eligible real de produção):
   2027`` (padrão FR), ``January-June 2027`` (traço).
 - Imediato: ``ab sofort / sofort / immediately`` — sinal sem datas.
 
+F57 (18/10) — bare month-year (mês + ano SEM prefixo: ``Internship March
+2027``, BDO ``... Advisor Bruxelles (février 2027)``) foi MEDIDO sobre o
+eligible real (736 vagas) e REJEITADO: 88 hits novos, 78 legítimos
+(88,6% < 90% exigido pela card). O ruído é irrecuperável por regex e sem
+relógio/mundo — data de notícia (``On 22 September 2025, CANAL+
+confirmed``), registro de empresa (``registered in March 2024``), citação
+de lei (``law of 23 July 2016``), marco de processo (``Offer extended to
+the successful candidate by December 2026``) e boilerplate stale
+(``Start date: December/January 2024``). Decisão: data solta continua
+fora — mês-ano sem prefixo segue AMBÍGUO por design (``Bewerbungsfrist
+März 2027`` NÃO é início; trava no test_f45 A6). GAP aceito: título com
+bare MMY (7/7 legítimos na medição, caso BDO) continua sem janela —
+variante "bare MMY só no título" documentada como opção futura no
+relatório F57 (exigiria passar o título separado ao parser).
+
 PRIORIDADE DO CANÔNICO (1 hit por vaga; decisões F45):
 
     semester > range > start > imediato

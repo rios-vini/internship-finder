@@ -456,7 +456,11 @@ jobs:
           # cadeia pré-F45 congelada do e0d75c2 como gabarito do
           # compact) e seção 📅 no digest (colapso pós-⏰Intel,
           # exibição pós-⏰Follow-up; cauda F41 via application_log).
-          # 131 checks, 100% offline, sockets bloqueados.
+          # F57 (18/10): seção A6 no test_f45 — bare month-year MEDIDO e
+          # REJEITADO (88 hits novos, 78 legítimos = 88,6% < 90% no
+          # eligible real; decisão de design mantida; GAP BDO do título
+          # aceito e travado). Nenhum arquivo novo -> array intacto.
+          # 139 checks, 100% offline, sockets bloqueados.
                     # F49 (18/10): test_f49 — agregado de falha crônica no digest
           # (CHRONIC_FAILURE_RUNS=15; papel de parede medido 15-17/10:
           # ~800 chars/4096, só o contador mudava; 16/10 a 38 chars do
