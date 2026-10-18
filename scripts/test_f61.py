@@ -252,7 +252,17 @@ def test_real_scenario_0310() -> None:
                        "https://rios-vini.github.io/internship-finder/"))
     check("base operacional integra (problemas detalhados presentes)",
           "Problemas detectados" in msg and "Lidl" in msg
-          and "recorrente há 30 runs" in msg)
+          # F49 (18/10) — edição CONSCIENTE de contrato vizinho (padrão
+          # F36.1): crônicas (runs_seq >= CHRONIC_FAILURE_RUNS=15) colapsam
+          # em 1 linha agregada com nomes+contadores (Lidl 30, KN 18,
+          # SMA 17); a linha individual "recorrente há 30 runs" não existe
+          # mais. Regressão (AkzoNobel, não-crônica) e zero_return (SH)
+          # mantêm linha própria com detalhe.
+          and "fontes em falha crônica (≥15 runs seguidos): Lidl (30 runs), "
+              "Kuehne+Nagel (18 runs), SMA (17 runs)" in msg
+          and "recorrente há 30 runs" not in msg
+          and "antes funcionava (21 runs ok e agora falhou)" in msg
+          and "voltou a zero (empty) após 22 runs com vagas (último ok: 6)" in msg)
     # F36.1 — contrato vizinho, edição CONSCIENTE (comentário de fase):
     # as seções de perfil 🧪/🇪🇺 passaram a COLAPSAR ao header no compact
     # (pattern F13 — nunca mais dropadas inteiras; antes o header 🧪 nem
@@ -286,9 +296,12 @@ def test_giant_base_problems() -> None:
     # MESMA serie (source, company) das falhas: no cenario real os alertas
     # health reincidem sobre as series que falharam no run (dedup no
     # build_message — aqui cada falha gera 1 linha, nao 2).
+    # F49 (18/10): runs_seq=2 (falha FRESCA) — o propósito deste teste é o
+    # colapso nivel 2 da lista de problemas; com runs_seq>=15 as séries
+    # seriam crônicas e colapsariam no agregado F49 ANTES do nivel 2.
     alerts = [
         _alert("recurring_error", "successfactors:tenant",
-               f"Empresa Gigante {i}", runs_seq=30)
+               f"Empresa Gigante {i}", runs_seq=2)
         for i in range(n_prob)]
     digest = ["", "🎯 Perfil e critérios ativos"] \
         + [f"linha de perfil {i} — " + "x" * 120 for i in range(12)] \
@@ -377,7 +390,10 @@ def test_giant_top5() -> None:
         + ["", "🔗 Ranking completo: https://x/"]
     summary60 = _summary(n_fail=60)
     summary60["error"] = [("s", f"E{i}", "HTTP_500") for i in range(60)]
-    alerts60 = [_alert("recurring_error", f"s{i}", f"E{i}", runs_seq=30)
+    # F49 (18/10): runs_seq=2 (falha fresca) — base gigante intencional;
+    # com runs_seq>=30 as 60 séries colapsariam no agregado crônico F49
+    # e o nivel 3 não seria exercitado.
+    alerts60 = [_alert("recurring_error", f"s{i}", f"E{i}", runs_seq=2)
                 for i in range(60)]
     with mock.patch.object(rg, "TOP5_TITLE_LIMIT", 1500):
         msg_g = rd.build_message(summary60, alerts60, 2, always_notify=True,

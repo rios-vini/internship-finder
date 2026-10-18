@@ -526,6 +526,27 @@ ERROR_CODE_TEXT = {
     "UNKNOWN": "erro desconhecido",
 }
 
+# F49 (18/10) — falha CRÔNICA: recurring_error com >= CHRONIC_FAILURE_RUNS
+# runs consecutivos colapsa em 1 linha agregada no bloco "Problemas
+# detectados" (proporcionalidade). Medição que motivou o limiar: o digest
+# real de 15-17/10 repetia as mesmas ~7 linhas de problemas (~800 chars =
+# 20% do teto de 4096), com o contador como ÚNICA mudança diária — papel de
+# parede que esconde problema novo atrás de falha conhecida. Em 16/10 a
+# mensagem inteira ficou a 38 chars do teto (4058/4096): 1 linha nova e o
+# compactador F6.1 nivel 2 apagaria TODOS os problemas para "⚠️ N problemas
+# (ver ranking)" — link que não carrega os detalhes. 15 runs consecutivos
+# = 2+ semanas de cron diário: falha mais nova segue com linha própria
+# (sinal de estado); a crônica vira 1 linha com nomes + contador por série
+# (a decisão por fonte vive no relatório de fontes F49 e no JSONL).
+CHRONIC_FAILURE_RUNS = 15
+
+# F49 — quantos NOMES a linha agregada lista antes do "+N outras": com
+# muitas séries crônicas a própria linha viraria um muro (test_f61-c mediu
+# 60 séries => ~1.3k chars com nome+contador para todas). O total de fontes
+# segue no começo da linha ("N fontes em falha crônica"); o estado por
+# série vive no JSONL e no relatório de fontes.
+CHRONIC_NAMES_SHOWN = 5
+
 
 def _error_text(code: str | None) -> str:
     """Traduz um codigo de erro estruturado em linguagem natural."""
@@ -669,9 +690,33 @@ def build_message(
 
     problems: list[str] = []
     seen: set[tuple[str, str]] = set()
+    # F49 — séries em falha crônica (recurring_error com runs_seq >=
+    # CHRONIC_FAILURE_RUNS): (nome, runs_seq), colapsadas em 1 linha
+    # agregada no fim do bloco (proporcionalidade; ver a constante).
+    chronic: list[tuple[str, int]] = []
+
+    def _chronic_seq(rec: dict | None) -> int | None:
+        """runs_seq do alerta recorrente quando >= CHRONIC_FAILURE_RUNS."""
+        if rec is None:
+            return None
+        try:
+            seq = int(rec.get("runs_seq") or 0)
+        except (TypeError, ValueError):
+            return None
+        return seq if seq >= CHRONIC_FAILURE_RUNS else None
+
     for src, company, code in failures:
-        text = f"• {_friendly_source(src, source_names, company)} — {_error_text(code)}"
         rec = _recurring_for(src or "", company or "")
+        seq = _chronic_seq(rec)
+        if seq is not None:
+            # F49: crônica — sem linha própria (papel de parede medido:
+            # as mesmas linhas por 19-32 runs; só o contador mudava).
+            # ``seen`` marca a série: os alertas regression/zero_return
+            # dela não renderizam linha duplicada (dedup existente).
+            chronic.append((company or src, seq))
+            seen.add((src or "", company or ""))
+            continue
+        text = f"• {_friendly_source(src, source_names, company)} — {_error_text(code)}"
         if rec is not None:
             text += f" · recorrente há {rec.get('runs_seq', '?')} runs"
         reg = regression_by_key.get((src or "", company or ""))
@@ -709,10 +754,35 @@ def build_message(
                 f"e falhou ({_error_text(a.get('error_code'))})"
             )
         else:  # recurring sem falha correspondente no run atual
+            seq = _chronic_seq(a)
+            if seq is not None:
+                # F49: crônica pelo caminho do alerta (sem falha no resumo
+                # do run) — mesmo tratamento do caminho de falha acima.
+                chronic.append((company or src, seq))
+                seen.add((src, company))
+                continue
             problems.append(
                 f"• {_friendly_source(src, source_names, company)} — erro recorrente "
                 f"({a.get('runs_seq')} runs consecutivos)"
             )
+    if chronic:
+        # F49 — 1 linha agregada (proporcionalidade): nomes + contador por
+        # série, a mais antiga primeiro; a decisão por fonte (manter/
+        # consertar/remover) vive no relatório de fontes F49 e o estado
+        # bruto no JSONL de métricas. Nomes limitados a CHRONIC_NAMES_SHOWN
+        # (com muitas séries a linha viria ela própria um muro — provado no
+        # test_f61-c com 60 séries; o total segue no começo da linha).
+        chronic.sort(key=lambda item: -item[1])
+        shown = chronic[:CHRONIC_NAMES_SHOWN]
+        parts = ", ".join(f"{name} ({seq} runs)" for name, seq in shown)
+        extra = len(chronic) - len(shown)
+        if extra > 0:
+            parts += f" +{extra} outras"
+        plural = "" if len(chronic) == 1 else "s"
+        problems.append(
+            f"• {len(chronic)} fonte{plural} em falha crônica "
+            f"(≥{CHRONIC_FAILURE_RUNS} runs seguidos): {parts}"
+        )
     if problems:
         lines.append("")
         lines.append("⚠️ Problemas detectados:")
