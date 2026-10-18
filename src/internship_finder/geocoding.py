@@ -22,6 +22,16 @@ Regras de seguranca:
 - Nunca levanta excecao: cache corrompido vira cache vazio; geocoder com
   erro/timeout/HTTP != 200 devolve ``None`` e registra warning.
 - Nao usa API com key. HTTP via ``requests`` (dependencia DECLARADA).
+
+F50 (18/10) — reparo das DUAS pontas mortas do canal Nominatim (medidas ao
+vivo, flag continua OFF por default): (1) a consulta agora pede
+``addressdetails=1`` e le ``address.country_code`` — o formato antigo lia
+um campo que a API nunca devolve, logo 0/12 locations alemas resolviam
+(com o reparo: 15/20); (2) o resolver constroi o geocoder LAZILY quando a
+flag esta ON — antes ninguem o construia e a flag ligada nao consultava
+nada. Decisao F50: MANTER DESLIGADA por valor (do pool de 487 candidatas
+alemas None-ISO so 3 sobrevivem aos filtros, 0,4% do eligible); o canal
+reparado fica disponivel para reabertura futura via env var.
 """
 
 from __future__ import annotations
@@ -313,13 +323,41 @@ class NominatimGeocoder:
             return None
 
     def country_code(self, location: str) -> str | None:
-        """ISO (minusculo) do pais da ``location``; ``None`` se inseguro/sem resultado."""
+        """ISO (minusculo) do pais da ``location``; ``None`` se inseguro/sem resultado.
+
+        F50 (18/10) — reparo de canal morto, com evidencia medida ao vivo:
+        o ``/search`` do Nominatim so devolve ``country_code`` DENTRO do
+        bloco ``address``, e o bloco so existe com ``addressdetails=1``. A
+        versao anterior nao pedia ``addressdetails`` e lia o campo no TOPO
+        do resultado — campo que a API nao devolve nesse formato — logo
+        TODA consulta retornava ``None`` (probe 18/10: 0/12 locations
+        alemas reconhecidas, incl. Cologne/Munich; com o reparo, 15/20
+        resolveram p/ DE e os controles cn/nl/br/ph continuam fora). So e
+        chamado com a flag ON — OFF nunca constroi nem consulta nada.
+        """
         results = self._query(
-            {"q": location, "format": "json", "accept-language": "en", "limit": 1}
+            {
+                "q": location,
+                "format": "json",
+                "accept-language": "en",
+                "limit": 1,
+                "addressdetails": "1",
+            }
         )
-        if not results:
+        if not isinstance(results, list) or not results:
             return None
-        cc = (results[0].get("country_code") or "").strip().lower()
+        top = results[0]
+        if not isinstance(top, dict):
+            return None
+        # country_code vive no bloco ``address`` (addressdetails=1); o topo
+        # so e lido como fallback defensivo, nunca como fonte primaria.
+        address = top.get("address")
+        cc_raw = None
+        if isinstance(address, dict):
+            cc_raw = address.get("country_code")
+        if cc_raw is None:
+            cc_raw = top.get("country_code")
+        cc = str(cc_raw or "").strip().lower()
         return "de" if cc == "de" else None
 
 
@@ -355,8 +393,15 @@ class CountryResolver:
             return self.cache.get(loc)
 
         # 3. Geocoder: SOMENTE com flag ON.
-        if not is_geocoding_enabled() or self.geocoder is None:
+        if not is_geocoding_enabled():
             return None
+        # F50 (18/10): o resolver padrao nasce sem geocoder e NENHUM codigo
+        # de producao o construia — com a flag ON a consulta morria aqui
+        # (segunda ponta morta do canal, alem do bug de addressdetails).
+        # Construcao LAZY e deliberadamente DEPOIS do gate: com a flag OFF
+        # nada e construido, nada e consultado, nada muda (never-worsens).
+        if self.geocoder is None:
+            self.geocoder = NominatimGeocoder()
 
         iso = self.geocoder.country_code(loc)
         # Escopo confiado ao resolver: so devolve ``de`` quando a evidencia e
