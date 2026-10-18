@@ -37,7 +37,7 @@ Composição do score (constantes de módulo):
     area      = MESMOS detectores/pesos do business (filters.area_score,
                 título 2.0 / descrição 0.0 — a descrição continua entrando
                 por skills+language)
-    skills    = MESMOS do business (+0.75 por competência na descrição)
+    skills    = MESMOS do business (F55: +1.0 por competência na descrição)
     language  = MESMO do business (EN +1.5; DE required −2.0 / preferred −0.5)
     type      = marcador forte de tipo no título (+1.0, reusa filters)
     location  = país-alvo do PROJETO (iso em countries.TARGET_COUNTRIES
@@ -73,10 +73,13 @@ from typing import Any
 
 from internship_finder.countries import TARGET_COUNTRIES, infer_country_iso
 from internship_finder.filters import (
-    AREA_PRIMARY,
+    NON_TARGET_FUNCTION_PATTERNS,  # noqa: F401  (re-export; compat teste F36)
+    PENALTY_NON_TARGET_FUNCTION,  # noqa: F401  (re-export; compat teste F36)
     STUDENT_TYPE_PATTERNS,
+    function_penalty_nontarget,
 )
 from internship_finder.ranking import (
+    CORE_BUSINESS_PATTERNS,
     Score,
     _apply_decay,
     _area_score,
@@ -102,6 +105,15 @@ WEIGHT_TARGET_COUNTRY = 1.0
 WEIGHT_WATCHLIST_INTEREST = 0.5
 # Função não-alvo no título, sem termo primário de área (gate).
 PENALTY_NON_TARGET_FUNCTION = -2.5
+
+# ---------------------------------------------------------------------------
+# F55 — núcleo de negócio no TÍTULO (mesmo componente do business)
+# ---------------------------------------------------------------------------
+# Mesma justificativa (ranking.WEIGHT_CORE_BUSINESS): ótimas de SC/procurement
+# do estrato não-DE perdiam para templates de analytics (DSP Nestlé ótima #11
+# sob "Management Information" aceitável no v4). Peso próprio 1.5 (mesmo k do
+# business; grade F55: tau EU 0.478 -> 0.652 com ZERO inversões novas).
+WEIGHT_CORE_EU = 1.5
 
 # ---------------------------------------------------------------------------
 # Watchlist F13 (config/company_watchlist.json) — lazy singleton tolerante
@@ -186,26 +198,19 @@ _FN_RE = [
     for pats in NON_TARGET_FUNCTION_PATTERNS.values()
     for p in pats
 ]
-# Gate: termo PRIMÁRIO de área no título protege a vaga (híbridos de dados).
-_AREA_PRIMARY_RE = [re.compile(p, re.IGNORECASE) for p in AREA_PRIMARY]
 
 
 def _fn_penalty_score(title: str) -> float:
-    """Penalidade por função não-alvo no TÍTULO, com gate de área primária.
+    """Penalidade por função não-alvo no TÍTULO (F55: delega a filters).
 
-    O v2 mostrou os "ruim" do estrato subindo por "Operations"/"Analyst"
-    em títulos de marketing/BD/HR (40% do estrato). A penalidade só vale
-    quando o título NÃO carrega termo primário de área: "HR Analytics
-    Intern" e "Sales Development and Analytics" são vagas de DADOS
-    (15/777 casos medidos) e ficam protegidos — o sinal de dados vence a
-    função organizacional, mesmo espírito do milestone 2 do principal
-    (marcador forte vence senioridade).
+    A regra é a MESMA para business e EU (casa canônica em
+    ``filters.function_penalty_nontarget``), com a correção medida no v4:
+    a categoria HR é checada ANTES do gate de área primária ("HR Rewards
+    Analytics" é RH com template de dados — rotulada RUIM pelo dono,
+    ficava acima de ótimas de supply chain). Híbridos das demais
+    categorias ("Sales Analytics") continuam protegidos pelo gate.
     """
-    if any(rx.search(title) for rx in _AREA_PRIMARY_RE):
-        return 0.0
-    if any(rx.search(title) for rx in _FN_RE):
-        return PENALTY_NON_TARGET_FUNCTION
-    return 0.0
+    return function_penalty_nontarget(title, ungated_hr=True)
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +261,13 @@ def eu_score_job(job: dict[str, Any] | Any, *, now: Any = None) -> Score:
     interest = watchlist_interest(d.get("company"))
     penalties = _penalty_score(title.lower(), d.get("employment_type"))
     fn = _fn_penalty_score(title)
+    # F55 — núcleo de negócio no título (mesma lente do business; o peso é
+    # próprio do perfil: WEIGHT_CORE_EU).
+    core = (
+        WEIGHT_CORE_EU
+        if _matches_any(CORE_BUSINESS_PATTERNS, title)
+        else 0.0
+    )
 
     breakdown = {
         "area": round(area, 2),
@@ -266,6 +278,7 @@ def eu_score_job(job: dict[str, Any] | Any, *, now: Any = None) -> Score:
         "interest": round(interest, 2),
         "penalties": round(penalties, 2),
         "fn": round(fn, 2),
+        "core": round(core, 2),
     }
     total = round(sum(breakdown.values()), 2)
     # F38 — freshness decay: MESMA fórmula dos outros perfis (meia-vida
