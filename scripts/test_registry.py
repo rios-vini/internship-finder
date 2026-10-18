@@ -161,7 +161,7 @@ def test_cli_bridge() -> None:
     # fontes novas tem suites proprias (test_f3/test_f4).)
     with patch.object(cli, "collect_company", side_effect=_collect_track):
         rc = cli.main(["--registry", "--companies", "SAP,Bosch", "--no-dataset",
-                       "--no-direct-fetch",
+                       "--no-direct-fetch", "--no-research-sources",
                        "--output", f"{tmp}/j1.json",
                        "--filter-output", f"{tmp}/e1.json",
                        "--metrics", metrics])
@@ -174,6 +174,7 @@ def test_cli_bridge() -> None:
     called.clear()
     with patch.object(cli, "collect_company", side_effect=_collect_track):
         rc = cli.main(["--registry", "--no-dataset", "--no-direct-fetch",
+                       "--no-research-sources",
                        "--output", f"{tmp}/j2.json",
                        "--filter-output", f"{tmp}/e2.json",
                        "--metrics", f"{tmp}/m2.jsonl"])

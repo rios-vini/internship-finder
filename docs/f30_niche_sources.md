@@ -82,3 +82,15 @@ Duas fontes entram **DESLIGADAS por default** (`F30_DEFAULT_OFF_SOURCES`; env CS
 - A soma viva das 4 fontes é ~27 s (amazon 11,5 s; jobmensa 0,8 s; absolventa 7,6 s; praktikum_info 7,4 s) — dentro do orçamento de 300 s com folga.
 - `praktikum_info` default OFF significa custo real hoje: amazon (5 req) + absolventa (≤5 req) = ~10 requests/dia novos.
 - Não alteramos nada da coleta existente (registry/dataset/direct_fetch/refresh); nenhum payload de vaga commitado (fixtures do teste são snippets mínimos verbatim).
+
+## F47 (17/10) — Religação das duas fontes default-OFF (decisão do dono)
+
+O universo pós-exclusões F37/F48 pediu mais fontes (card kanban F47; "custo mínimo — 1 linha" confirmado pelo revisor). `F30_DEFAULT_OFF_SOURCES` ficou **VAZIO** — jobmensa e praktikum_info voltam a coletar no cron diário **SEM mudar crontab/env**. O mecanismo default-off e o kill switch env CSV (`INTERNSHIP_FINDER_RESEARCH_SOURCES_OFF`) permanecem: desligar uma fonte por default = adicionar o nome ao set (1 linha); a env desliga qualquer fonte por cima de tudo.
+
+A evidência §5/§6 acima **não é invalidada** — segue como expectativa honesta:
+
+- **jobmensa**: zero-yield medido (0 eligible) — custo 1 request/dia (sitemap .gz), risco nulo de digest. A religação é o safe default do revisor: custo trivial e a fonte pode passar a entregar se o board mudar.
+- **praktikum_info**: ganho líquido só onde a dedup chave (c) company+title+location colapsa o par (quando location existe — probe offline F47 com as fixtures da F30: 2/2 cards colapsam); sem location o par passa reto (dupla exibição residual pequena, risco documentado). O mirror-dedup F38 **não** cobre: candidato exige mesmo tenant (source) e os hosts são distintos.
+- **Expectativa líquida das duas: ~+7 vagas/dia** (as "+129/dia" citadas eram a soma de amazon +81 e absolventa +48, que já estavam ON; praktikum_info traz +23 brutas / +7 líquidas pós-dedup chave (c); jobmensa +0 — ver §5).
+- Cobertura: `scripts/test_f47.py` (24 checks) no array do ci.yml no mesmo commit (89º script); `test_f21/f30/f31` evoluídos para o default ON com fetchers fake **completos** (zero rede garantida — com default ON total, fonte sem fake chamaria o fetcher real).
+- Primeiro cron que valida: o próximo run diário 09:00 UTC após o merge (digest maior esperado em ~+7 vagas/dia; contadores por fonte no registro `research_sources` do JSONL para auditar yield real).

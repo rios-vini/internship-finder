@@ -8,12 +8,14 @@ Trava o que a fase F30 entregou (13/10):
   publico ANNUNCIADO no robots.txt, prefilter por slug, sem detail),
   ``absolventa`` (canal materialwirtschaft + positions[]=praktikum+
   werkstudent server-side, cards uno), ``praktikum_info`` (mesma
-  plataforma/DB da ABSOLVENTA — adapter existe, DEFAULT OFF).
-- DEFAULTS HONESTOS (spec §6): ``jobmensa`` (zero-yield estrutural: 100%
-  dos sobreviventes de area sao Werkstudent PURO, morto pela
-  aplicabilidade F18) e ``praktikum_info`` (dupla contagem estrutural da
-  mesma DB da ABSOLVENTA) entram DESLIGADAS por default via
-  ``F30_DEFAULT_OFF_SOURCES``; env CSV continua o kill switch total.
+  plataforma/DB da ABSOLVENTA — adapter existe; F47: religada).
+- DEFAULTS (evolução F47, 17/10): ``jobmensa`` e ``praktikum_info``
+  voltaram a coletar por decisão do dono (universo pós-exclusões pede
+  fontes) — ``F30_DEFAULT_OFF_SOURCES`` VAZIO = default ON total; a
+  evidência A/B 13/10 que motivou o OFF permanece documentada em
+  docs/f30_niche_sources.md §5/§6; env CSV continua o kill switch total.
+  As regras da religação (default ON, mecanismo default-off preservado,
+  kill switch, fail-soft, A/B offline) ficam no ``test_f47.py``.
 - Fail-soft por fonte (falha = registro failed, run segue), id estavel,
   idempotencia, dedup cross-fonte (URL/external_id/chave (c)), zero HTTP
   (fixtures verbatim dos probes 13/10, padrao test_f21).
@@ -350,21 +352,26 @@ def test_stage() -> None:
     check("E2. fontes F30 registradas",
           {"amazon_jobs", "jobmensa", "absolventa", "praktikum_info"} <= names)
 
-    # default OFF: jobmensa + praktikum_info (evidencia A/B 13/10)
+    # F47 (17/10): default ON total — set vazio, nenhuma fonte desligada
+    # (a evidencia 13/10 que motivou o OFF segue documentada em
+    # docs/f30_niche_sources.md §6; as regras da religacao estao em
+    # test_f47.py).
     disabled = rs.disabled_research_sources(env={})
-    check("E3. defaults honestos: jobmensa + praktikum_info OFF sem env",
-          disabled == {"jobmensa", "praktikum_info"}, f"disabled={disabled}")
+    check("E3. default ON (F47): nenhuma fonte OFF sem env (set vazio)",
+          disabled == set(), f"disabled={disabled}")
 
     # env CSV desliga QUALQUER fonte por cima (kill switch manual)
     d2 = rs.disabled_research_sources(env={rs.RESEARCH_SOURCES_OFF_ENV: "absolventa"})
-    check("E4. env desliga absolventa por cima dos defaults",
-          d2 == {"jobmensa", "praktikum_info", "absolventa"})
+    check("E4. env desliga absolventa por cima do default ON (F47)",
+          d2 == {"absolventa"})
 
     # nome desconhecido: aviso + ignorado
     d3 = rs.disabled_research_sources(env={rs.RESEARCH_SOURCES_OFF_ENV: "nao_existe"})
-    check("E5. fonte desconhecida ignorada (sem crash)", d3 == {"jobmensa", "praktikum_info"})
+    check("E5. fonte desconhecida ignorada (sem crash)", d3 == set())
 
     # estagio completo com fetchers fake: fail-soft das F30 + defaults
+    # (COMPLETOS: com o default ON total da F47, fonte sem fake cairia no
+    # fetcher REAL = rede; a suite e zero-HTTP por construcao)
     def fetcher_ok(**kw):
         return _mk_jobs(1, "x"), {"source": "x", "status": "ok", "jobs": 1}
 
@@ -373,17 +380,15 @@ def test_stage() -> None:
 
     fetchers = {n: fetcher_ok for n, _ in rs.RESEARCH_SOURCE_ORDER}
     fetchers["amazon_jobs"] = fetcher_dead
-    fetchers["absolventa"] = fetcher_ok
     jobs, summary = rs.collect_research_sources(fetchers=fetchers, env={})
     s = summary["sources"]
-    check("E6. amazon morta -> failed NO summary; jobmensa/praktikum_info "
-          "skipped_disabled; run segue (partial)",
+    check("E6. amazon morta -> failed NO summary; TODAS as 11 executam "
+          "(default ON F47); run segue (partial)",
           s["amazon_jobs"]["status"] == "failed"
-          and s["jobmensa"]["status"] == "skipped_disabled"
-          and s["praktikum_info"]["status"] == "skipped_disabled"
-          and s["absolventa"]["status"] == "ok"
+          and all(s[n]["status"] == "ok"
+                  for n, _ in rs.RESEARCH_SOURCE_ORDER if n != "amazon_jobs")
           and summary["status"] == "partial"
-          and len(jobs) == 8,
+          and len(jobs) == 10,
           f"jobs={len(jobs)} status={summary['status']}")
 
     # TODAS mortas -> failed geral, run NAO crasha

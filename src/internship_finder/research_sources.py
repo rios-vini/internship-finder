@@ -70,13 +70,14 @@ fonte, evidencia em docs/f30_niche_sources.md):
 11. ``praktikum_info`` — Praktikum.info: MESMA plataforma/DB da
                       ABSOLVENTA (probe 13/10: IDs de card identicos
                       18/20, mesmos assets uno-production.imgix.net,
-                      badge 2.473 ⊂ 2.554). DESLIGADA por default via
-                      env (dupla contagem sem ganho — a dedup existente
-                      NAO colapsa cross-host: chave (a) e escopada por
-                      source, chave (b) por URL de host diferente; so a
-                      chave (c) company+title+location funde, e nem toda
-                      vaga tem location). Adapter existe para ligar sob
-                      demanda; evidencia no relatorio.
+                      badge 2.473 ⊂ 2.554). F47 (17/10): LIGADA por
+                      decisao do dono (a dedup chave (c)
+                      company+title+location funde o par quando
+                      location existe; sem location passa reto —
+                      dupla exibicao residual pequena, risco
+                      documentado no set F30_DEFAULT_OFF_SOURCES).
+                      Adapter existente desde a F30; evidencia no
+                      relatorio.
 
 Regras da fase (spec §0/§2):
 
@@ -206,30 +207,31 @@ BME_MAX_PAGES = 8
 # Details por run (JSON-LD JobPosting: description, datePosted, validThrough,
 # jobLocation). 10/rodada — o prefilter por titulo da listagem ja escolhe.
 BME_MAX_DETAILS = 10
-# F30 — fontes DESLIGADAS por default (honestidade da spec §6: fonte sem
-# yield consistente de estagios DE, ou duplicata estrutural de outra
-# fonte, entra OFF por default):
+# F47 (17/10) — RELIGADAS por decisao do dono (universo pos-exclusoes
+# F37/F48 pede fontes; card kanban F47): o set fica VAZIO — jobmensa e
+# praktikum_info coletam de novo no cron diario SEM mudar crontab/env.
+# A religacao NAO invalida a evidencia de 13/10, que continua valendo
+# como expectativa honesta (docs/f30_niche_sources.md §5/§6):
 #
-# - ``praktikum_info``: MESMA plataforma/DB da ABSOLVENTA (probe 13/10:
-#   IDs de card identicos 18/20 entre as duas listagens; mesmos assets
-#   uno-production.imgix.net; badge 2.473 ⊂ 2.554 da ABSOLVENTA). Ligar as
-#   duas = dupla contagem (a dedup existente nao colapsa cross-host: chave
-#   (a) escopada por source, chave (b) por URL de host distinto).
-# - ``jobmensa``: A/B real 13/10 (docs/f30_niche_sources.md): 1785 URLs de
-#   vaga -> 187 passam no prefilter de estagio -> 0 eligible — 100% dos
-#   sobreviventes de area (22) sao Werkstudent PURO por titulo, morto pela
-#   aplicabilidade F18 (board da agencia jobvalley: emprega o estudante e
-#   coloca em clientes; nao ha Praktikum direto). Zero-yield estrutural,
-#   nao acidental — OFF com evidencia.
+# - ``jobmensa``: zero-yield MEDIDO (1785 URLs -> 187 kept -> 0 eligible;
+#   100% Werkstudent puro morto pela aplicabilidade F18). Custo: 1
+#   request/dia (sitemap .gz); risco nulo de digest.
+# - ``praktikum_info``: MESMA DB da ABSOLVENTA (badge 2.473 ⊂ 2.554).
+#   Ganho liquido so onde a dedup colapsa mal: a chave (c)
+#   company+title+location funde o par quando location existe (probe
+#   F47 offline: 2/2 cards uno colapsam); SEM location (ou company/title
+#   divergentes) o par passa reto — a dedup mirror F38 NAO ajuda
+#   (candidato exige mesmo tenant/source, e os hosts sao distintos).
+#   Custo: <=5 requests/dia; risco: dupla exibicao residual pequena.
+# - Expectativa liquida das duas: ~+7 vagas/dia (A/B 13/10: +137 novas
+#   unicas nas 4 fontes; −81 amazon ja ON; −49 absolventa ja ON). O
+#   "+129/dia" citado no pedido era o total das 4 fontes F30.
 #
-# Mecanismo: este set e o DEFAULT de configuracao (nivel de codigo, 1
-# linha); a env CSV ``RESEARCH_SOURCES_OFF_ENV`` continua sendo o kill
-# switch manual por cima de TUDO (qualquer fonte, on ou off por default).
-# Ligar uma fonte default-OFF = remover o nome do set (deploy trivial).
-F30_DEFAULT_OFF_SOURCES: frozenset[str] = frozenset({
-    "praktikum_info",
-    "jobmensa",
-})
+# Mecanismo: este set e o DEFAULT de configuracao (nivel de codigo); a
+# env CSV ``RESEARCH_SOURCES_OFF_ENV`` continua sendo o kill switch
+# manual por cima de TUDO (qualquer fonte, on ou off por default).
+# Desligar uma fonte por default = adicionar o nome neste set (1 linha).
+F30_DEFAULT_OFF_SOURCES: frozenset[str] = frozenset()
 
 # F30 — endpoints (robots verificados 13/10: nenhum path-alvo bloqueado,
 # sem Crawl-delay; evidencia em docs/f30_niche_sources.md):
@@ -1759,11 +1761,12 @@ def disabled_research_sources(
     tolerante. Item desconhecido gera log de aviso (visivel) e e
     ignorado — nunca crasha o run. Sem a var (ou vazia): conjunto vazio.
 
-    F30: ``F30_DEFAULT_OFF_SOURCES`` junta-se ao resultado — fontes com
-    yield/duplicidade estrutural documentada (hoje: ``praktikum_info``,
-    mesma DB da ABSOLVENTA) entram OFF por default; a env CSV desliga
-    QUALQUER fonte por cima (kill switch manual). Retomada de uma fonte
-    default-OFF = remove-la do set (1 linha, deploy trivial).
+    F47 (17/10): ``F30_DEFAULT_OFF_SOURCES`` esta VAZIO — jobmensa e
+    praktikum_info voltaram a coletar por decisao do dono (universo
+    pos-exclusoes F37/F48 pede fontes). O mecanismo PERMANECE: fontes
+    adicionadas ao set entram OFF por default; a env CSV desliga
+    QUALQUER fonte por cima (kill switch manual). Desligar uma fonte
+    por default = adiciona-la ao set (1 linha, deploy trivial).
     """
     if env is None:
         env = dict(os.environ)
