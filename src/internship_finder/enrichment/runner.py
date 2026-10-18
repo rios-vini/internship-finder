@@ -62,9 +62,36 @@ DEFAULT_LIMIT = 24
 DEFAULT_TOP_N = 30
 DEFAULT_SLEEP_FETCH = 2.0
 
+# F50 (18/10) — reasoning_effort por chamada no call-site do enrichment.
+# O endpoint NIM aplica default "max" quando o parametro nao e enviado: e o
+# modo que queimou o run de 5h38/0 extracoes (zumbi F1, 29-30/09) e que a
+# F34 mediu no apply-assist (max = corte do gateway em ~504s vs low = 23s
+# na MESMA carta). "low" e o novo default do enrichment; a env ajusta sem
+# deploy. So interage com o caminho LIGADO (gate F1 INTERNSHIP_FINDER_
+# ENRICHMENT + --enrichment): com o enrichment desligado o subprocesso
+# nunca roda e a saida e byte-identical ao main (never-worsens da F50).
+REASONING_EFFORT_ENV = "INTERNSHIP_FINDER_ENRICHMENT_REASONING_EFFORT"
+DEFAULT_REASONING_EFFORT = "low"
+
 # Lock de concorrencia (spec secao 14): flock do SO no diretorio do store —
 # processo morto libera sozinho, sem stale lock, sem cleanup manual.
 LOCK_FILE_NAME = ".enrichment.lock"
+
+
+def reasoning_effort() -> str | None:
+    """``reasoning_effort`` do call-site do enrichment (F50, fix F34).
+
+    - env ausente -> ``"low"`` (nunca mais o default ``max`` do endpoint);
+    - env com valor -> o valor verbatim (ex.: ``high``/``max``, sem validacao
+      local — o endpoint rejeita o que nao conhece);
+    - env VAZIA -> ``None`` = NAO enviar o parametro (comportamento
+      historico pre-F50, mantido como escape p/ A/B e emergencia).
+    """
+    value = os.environ.get(REASONING_EFFORT_ENV)
+    if value is None:
+        return DEFAULT_REASONING_EFFORT
+    value = value.strip()
+    return value or None
 
 # Health da camada (spec secao 12): um JSON ao lado do store, escrita atomica.
 STATUS_FILE_NAME = "enrichment_status.json"
@@ -336,8 +363,14 @@ def run_incremental(
         )
         try:
             prompt = llm.build_prompt(company, title, content)
+            # F50: reasoning_effort EXPLICITO em toda chamada (default
+            # "low" — fix F34 aplicado ao call-site do enrichment).
             parsed, usage, latency, attempts, error = llm.extract(
-                key, prompt, transport=transport, backoff=backoff
+                key,
+                prompt,
+                transport=transport,
+                backoff=backoff,
+                reasoning_effort=reasoning_effort(),
             )
             counts["llm_calls"] += 1
             counts["llm_retries"] += max(0, attempts - 1)
