@@ -152,7 +152,18 @@ REPO = Path(__file__).resolve().parent.parent
 # _AB_LEGACY_PAGE_SHA congelado), e excluir o pacote cegaria o
 # check p/ qualquer fase futura em enrichment/. O A/B pré-F53
 # (byte-identity + orçamento) segue lendo 1b548c1 — inalterado.
-_AB_BASELINE_SHA = "f604fe3d0b5478d1088c4ad7e3d517d7241fc7cb"
+# F66 (19/10): src/ moveu de novo (cross_source_dedup.py — alias de
+# identidade tenant-label→empresa real: load_company_aliases +
+# canonical_company consumidos pelo _pair_ok do estágio cross-fonte
+# F48; mapa versionado config/dedup_company_aliases.json, match exato
+# casefold antes da tokenização; dedup/ranking/display seguem pela
+# string ORIGINAL). Padrão F56/F59/F60/F61/F63: âncora move para o
+# commit da fase que tocou src/ (5ea23e0 = commit F66 1/2; o commit
+# 2/2 edita SÓ este teste — src/ idêntico, o que mantém o diff vazio
+# na branch, no CI raso ([SKIP]) e no main pós-squash). O render
+# legado: a F66 NÃO toca minimal_page.py — o byte a byte (módulo o
+# strip F60) segue idêntico.
+_AB_BASELINE_SHA = "5ea23e0f43613b306596932022ece3ba6c5a04cf"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
