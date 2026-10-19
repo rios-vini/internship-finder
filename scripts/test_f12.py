@@ -44,6 +44,7 @@ import minimal_page as mp  # noqa: E402
 import publish_pages as pp  # noqa: E402
 import translate_description as td  # noqa: E402
 from internship_finder import display_translate as dt  # noqa: E402
+from internship_finder.enrichment import llm as _llm  # noqa: E402
 from internship_finder.enrichment.fetch import RequestsTransport  # noqa: E402
 
 FAILURES: list[str] = []
@@ -354,7 +355,8 @@ def test_tool_happy_path() -> None:
               "integrate.api.nvidia.com" in url)
         check("Authorization Bearer com a key",
               headers.get("Authorization") == "Bearer test-key-abcdef123456")
-        check("model GLM 5.3 flash", payload["model"] == "z-ai/glm-5.3-flash")
+        check("model == llm.MODEL (contrato enrichment; default F50.1 = normal)",
+              payload["model"] == _llm.MODEL and _llm.MODEL == "z-ai/glm-5.3")
         check("temperature 0", payload["temperature"] == 0)
 
 
