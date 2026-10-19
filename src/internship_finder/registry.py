@@ -157,6 +157,18 @@ SEED = [
     RegistryEntry(name="STIHL", ats="successfactors", tenant="successfactors:jobs"),
     RegistryEntry(name="Simon-Kucher", ats="cornerstone", tenant="cornerstone:simon-kucher"),
     RegistryEntry(name="bahagag", ats="successfactors", tenant="successfactors:bahagag"),
+    # F59 (19/10) — BCG: o widget BambooHR (embed2.php) passou a servir JSON
+    # PURO (probe ao vivo 19/10: HTTP 200, 623 bytes, Accept-agnóstico) com
+    # as MESMAS vagas Remote dentro (departments[].positions[]); o parser
+    # HTML do pacote upstream (marcador bhrPositionID_) acha 0 vagas =
+    # "empty" silencioso desde 08/10. Quebra de PARSE, não fim das vagas.
+    # Conserto na camada do defeito (decisão F49 §2.6): PR #300 no upstream
+    # kalil0321/ats-scrapers — parser tolerante ao JSON (detecção
+    # content-based), mesmo formato de saída do caminho HTML; NENHUM fork
+    # local do parser. O zero_return do health é a EXPECTATIVA HONESTA até
+    # o upstream mergear + release instalar: o alerta cessa sozinho no
+    # primeiro run pós-fix com vagas (documentado no health.py,
+    # _detect_zero_return). Evidência: relatório F49 §2.6 + F59.
     RegistryEntry(name="BCG", ats="bamboohr", tenant="bamboohr:bcg"),
     RegistryEntry(name="mediasatur", ats="successfactors", tenant="successfactors:mediasatur"),
     RegistryEntry(name="Tchibo", ats="successfactors", tenant="successfactors:jobs"),

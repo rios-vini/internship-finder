@@ -293,6 +293,14 @@ def _detect_zero_return(rows: list[dict]) -> list[dict]:
     ENCHIA de vagas e passa a responder 0 sugere regressao de cobertura (site
     quebrado, mudanca de filtro, tenant reposicionado) — nao apenas mercado:
     por isso o gate de historico, para nao alarmar em flutuacao.
+
+    Condicao conhecida (F59, 19/10): ``bamboohr:bcg`` serve JSON puro no
+    embed2.php desde 08/10 — o parser HTML do pacote upstream (ats_scrapers)
+    le 0 vagas, entao este alerta dispara LEGITIMAMENTE a cada run ate o
+    upstream kalil0321/ats-scrapers mergear o PR #300 (parser tolerante ao
+    JSON) e um release instalar. O alerta e a expectativa honesta (quebra
+    REAL de parse, nao regressao nova) e cessa sozinho no primeiro run
+    pos-fix com vagas. Documentado tambem no registry.py (entry BCG).
     """
     last = rows[-1]
     if last["status"] != "empty":
