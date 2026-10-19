@@ -162,33 +162,60 @@ def main() -> int:
           bool(out) and out["min"] == 1500 and out["period"] == "month")
 
     # ------------------------------------------------------------------ D
-    print("== D: year ==")
+    print("== D: year (F63: anual explícito >6k converte p/ mensal) ==")
     out = _sal(description="Gross annual salary (full-time): 40.000 - 46.000 €")
     check("D1 BASF EN: 'Gross annual salary … 40.000 - 46.000 €' -> "
-          "40000-46000 year (era month)",
-          bool(out) and out["min"] == 40000 and out["max"] == 46000
-          and out["period"] == "year")
+          "F63 converte p/ mensal 3333.33-3833.33 provenance (era "
+          "40000-46000 month pré-J; '/ano' entre J e F63)",
+          bool(out) and abs(out["min"] - 40000 / 12) < 1e-9
+          and abs(out["max"] - 46000 / 12) < 1e-9
+          and out["period"] == "month"
+          and out.get("provenance") == "anual convertido p/ mensal")
     out = _sal(description="Bruttojahresgehalt (Vollzeit): 35.000 - 39.000 €")
     check("D2 BASF DE: 'Bruttojahresgehalt … 35.000 - 39.000 €' -> "
-          "35000-39000 year (era None)",
-          bool(out) and out["min"] == 35000 and out["max"] == 39000
-          and out["period"] == "year")
+          "F63 converte p/ mensal 2916.67-3250 provenance (era None "
+          "pré-J; '/ano' entre J e F63)",
+          bool(out) and abs(out["min"] - 35000 / 12) < 1e-9
+          and abs(out["max"] - 39000 / 12) < 1e-9
+          and out["period"] == "month"
+          and out.get("provenance") == "anual convertido p/ mensal")
     out = _sal(description="Salary: €50,000/year")
-    check("D3 '€50,000/year' -> 50000 year (limitação G fechada)",
-          bool(out) and out["min"] == 50000 and out["period"] == "year")
+    check("D3 '€50,000/year' -> F63 converte p/ mensal 4166.67 "
+          "provenance (limitação G fechada na J; '/ano' até a F63)",
+          bool(out) and abs(out["min"] - 50000 / 12) < 1e-9
+          and out["period"] == "month"
+          and out.get("provenance") == "anual convertido p/ mensal")
     out = _sal(description="Jahresgehalt: 60.000 €")
-    check("D4 'Jahresgehalt: 60.000 €' -> 60000 year",
-          bool(out) and out["min"] == 60000 and out["period"] == "year")
+    check("D4 'Jahresgehalt: 60.000 €' -> F63 converte p/ mensal 5000 "
+          "provenance (era 60000 year)",
+          bool(out) and abs(out["min"] - 60000 / 12) < 1e-9
+          and out["period"] == "month"
+          and out.get("provenance") == "anual convertido p/ mensal")
     out = _sal(description="Vergütung: 50.000 € pro Jahr")
-    check("D5 '50.000 € pro Jahr' (sufixo) -> 50000 year",
-          bool(out) and out["min"] == 50000 and out["period"] == "year")
+    check("D5 '50.000 € pro Jahr' (sufixo) -> F63 converte p/ mensal "
+          "4166.67 provenance (era 50000 year)",
+          bool(out) and abs(out["min"] - 50000 / 12) < 1e-9
+          and out["period"] == "month"
+          and out.get("provenance") == "anual convertido p/ mensal")
     out = _sal(description="Gehalt: pro Jahr 50.000 €")
-    check("D6 'pro Jahr' ANTES do valor: mantém month default (limitação "
-          "documentada — marcador só casa como SUFIXO)",
-          bool(out) and out["min"] == 50000 and out["period"] == "month")
+    check("D6 'pro Jahr' ANTES do valor: F63 flag 'unidade não "
+          "confirmada' com period=None (era month default — limitação "
+          "documentada: marcador só casa como SUFIXO; o valor citado "
+          "permanece, a unidade nunca é afirmada)",
+          bool(out) and out["min"] == 50000 and out["period"] is None
+          and out.get("provenance") == "unidade não confirmada")
     out = _sal(description="Annual compensation: 45,000 €")
-    check("D7 'Annual compensation' (família EN completa) -> 45000 year",
-          bool(out) and out["min"] == 45000 and out["period"] == "year")
+    check("D7 'Annual compensation' (família EN completa) -> F63 "
+          "converte p/ mensal 3750 provenance (era 45000 year)",
+          bool(out) and abs(out["min"] - 45000 / 12) < 1e-9
+          and out["period"] == "month"
+          and out.get("provenance") == "anual convertido p/ mensal")
+    out = _sal(description="Jahresgehalt: 3.600 €")
+    check("D8 F63: 'Jahresgehalt: 3.600 €' (anual ≤6k) -> 3600 year "
+          "INTOCADO — a detecção year permanece observável e anuais "
+          "pequenos não convertem",
+          bool(out) and out["min"] == 3600 and out["period"] == "year"
+          and "provenance" not in out)
 
     # ------------------------------------------------------------------ E
     print("== E: hourly composto ==")

@@ -125,7 +125,18 @@ REPO = Path(__file__).resolve().parent.parent
 # diff vazio na branch, no CI raso ([SKIP]) e no main pós-squash).
 # O render legado: a F61 NÃO toca minimal_page.py — o byte a byte
 # (módulo o strip F60) segue idêntico.
-_AB_BASELINE_SHA = "fc709b0"
+# F63 (19/10): src/ moveu de novo (opportunity_intel.py — heurística
+# anual×mensal display-only: _apply_salary_plausibility com
+# provenance "anual convertido p/ mensal" / "unidade não confirmada"
+# para bounds > €6.000; fix rsplit do period group "per year" colado;
+# _YEARLY_LABEL_RE += "Jährliche Vergütung"). Padrão F56/F59/F60/F61:
+# âncora move para o commit da fase que tocou src/ (cbcbac1 = commit
+# F63 1/2, SÓ src/; o commit 2/2 edita testes/scripts/ci — src/
+# idêntico). O render legado: a F63 altera o minimal_page ATUAL
+# (_fmt_salary consome provenance) mas as fixtures da F53 NÃO citam
+# salário implausível — suíte local verde sem strip adicional (o
+# byte a byte módulo F60 segue idêntico).
+_AB_BASELINE_SHA = "cbcbac1c14093dd768d90e07d317088ae960dcd2"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):

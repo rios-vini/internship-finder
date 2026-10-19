@@ -142,8 +142,13 @@ def test_salary_structured() -> None:
     job2 = _job(raw={"salary_min": 16480.0, "salary_max": 21203.0,
                      "salary_currency": "EUR", "salary_period": "MONTH"})
     got2 = oi.job_salary(job2)
-    check("salary_period MONTH -> month (preservado)",
-          got2 is not None and got2["period"] == "month"
+    check("salary_period MONTH com magnitude anual (16480-21203): F63 não "
+          "afirma unidade — period=None + provenance 'unidade não "
+          "confirmada' (era 'month preservado' pré-F63; a declaração da "
+          "fonte contradiz a magnitude de estágio €300–4.000; min/max "
+          "citados intactos)",
+          got2 is not None and got2["period"] is None
+          and got2.get("provenance") == "unidade não confirmada"
           and got2["min"] == 16480.0 and got2["max"] == 21203.0)
     # moeda ausente no raw
     job3 = _job(raw={"salary_min": 10.0, "salary_max": 20.0})
