@@ -99,7 +99,18 @@ SEED = [
     RegistryEntry(name="DATEV", ats="workday"),
     RegistryEntry(name="Statista", ats="ashby", tenant="ashby:statista"),
     RegistryEntry(name="Scout24", ats="greenhouse", tenant="greenhouse:scout24"),
-    RegistryEntry(name="Siemens Healthineers", ats="avature"),
+    # F58 (18/10): Siemens Healthineers MIGROU de ATS (Avature -> Phenom,
+    # ~fim 09/2026 — F49 secao 2.5: a URL avature responde 302 para
+    # careers.siemens-healthineers.com/global/en e o scraper antigo parseia
+    # 0 vagas = "empty" silencioso por 19+ runs, com a empresa viva e
+    # contratando). Tenant phenom VALIDADO AO VIVO com fetch real pelo
+    # caminho exato do pipeline (823 vagas em ~3s, defaults do scraper).
+    # O manifest upstream AINDA resolve so a linha avature morta (verificado
+    # ao vivo 18/10), entao a coleta usa o override de migracao
+    # TENANT_ATS_OVERRIDES (collectors/ats_scraper.py) — remove-lo quando o
+    # upstream atualizar a linha. Evidencias e A/B: relatorio F58
+    # (~/.hermes/handoff/f58-siemens-phenom/).
+    RegistryEntry(name="Siemens Healthineers", ats="phenom", tenant="phenom:https://careers.siemens-healthineers.com"),
     RegistryEntry(name="Zeiss Group", ats="workday", tenant="workday:zeissgroup/external"),
     RegistryEntry(name="draegerP", ats="successfactors", tenant="successfactors:draegerP"),
     RegistryEntry(name="Uniper", ats="successfactors", tenant="successfactors:jobs"),
