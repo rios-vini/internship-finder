@@ -37,6 +37,17 @@ Causa raiz (diagnóstico com caminhos/linhas, medido no snapshot 15/10):
   OBS.: os scores gravados de NÃO-hidratados NÃO são comparados ao
   ``score_job`` atual — a fórmula evoluiu (F55); o contrato do helper é não
   TOCAR neles, não reproduzi-los.
+- F60 (19/10): o detector de alemão aprendeu o ``gut`` BARE, o verbo 2ª
+  pessoa ``sprichst`` e ``deutschsprachig`` por advérbio/janela reversa —
+  a FRASE VERBATIM da MOLEQLAR ("Du sprichst sehr gut Deutsch, da unser
+  Arbeitsalltag hauptsächlich deutschsprachig ist.") passa de menção nua
+  para REQUIRED. Exatamente a falha que motivou a F60: re-medidos com o
+  detector F60 (mesma fixture, mesmo NOW_REF): Würth INALTERADO (15.0,
+  language +1.5, #2 — sem evidência de alemão no texto); MOLEQLAR 13.0
+  (language -0.5 = +1.5 inglês -2.0 alemão required) aterrando #12 no
+  slice (sai do pódio #3); deslocados top-25 SEGUEM 21 (a cascata de
+  vizinhos troca de forma, mesmo tamanho). Expecteds congelados com a
+  fórmula F60 — o freeze move com a fórmula (lição F56 aplicada à F60).
 
 Uso:  .venv/bin/python scripts/test_f56.py
 """
@@ -69,16 +80,19 @@ NOW_REF = datetime(2026, 10, 15, 9, 38, 19, tzinfo=timezone.utc)
 WURTH = "Würth Industrie Service GmbH & Co. KG|absolventa:13251590"
 MOLEQLAR = "MOLEQLAR GmbH|absolventa:13258677"
 F56_PAIR = {WURTH, MOLEQLAR}
-# Ordem esperada do topo do slice após o re-score (medida e congelada).
+# Ordem esperada do topo do slice após o re-score.
+# F60: re-medida com o detector F60 — a MOLEQLAR (agora 13.0, alemão
+# required pela frase verbatim da fase) SAI do topo-8; KPMG 927796101
+# (a vaga da classe B, texto intro-only) entra em #8. Congelada.
 EXPECTED_TOP8 = [
     "BoschGroup|smartrecruiters:BoschGroup:744000141914929",
     WURTH,
-    MOLEQLAR,
     "BoschGroup|smartrecruiters:BoschGroup:744000136455353",
     "Bayer|successfactors:jobs:1429117133",
     "BoschGroup|sf_dataset:smartrecruiters:744000147439805",
     "Bayer AG Pharmaceuticals|sf_dataset:bundesagentur:12708-1623235-1-S",
     "teampicnic|greenhouse:teampicnic:6337034",
+    "KPMG International Cooperative|sf_dataset:successfactors:927796101",
 ]
 
 print("=== F56 — score pós-hidratação (recompute quando F20/F25 enriquece a descrição) ===")
@@ -108,11 +122,18 @@ check({j["id"] for j in ranking if j.get("description_source") == "hydrated_topn
 
 # ---------------------------------------------------------------- bloco B
 print("[B] mecanismo — re-score fresco da dupla (fórmula atual, NOW_REF 15/10)")
-for nome, rec in (("Würth", wurth), ("MOLEQLAR", moleq)):
+# F60: Würth INALTERADO (+1.5/15.0 — sem evidência de alemão no texto);
+# MOLEQLAR vira required pela frase verbatim da F60 ("Du sprichst sehr
+# gut Deutsch...") — language -0.5 (inglês +1.5, alemão required -2.0),
+# total 13.0. Re-medido com o detector F60; congelado.
+for nome, rec, exp_lang, exp_total in (
+        ("Würth", wurth, 1.5, 15.0),
+        ("MOLEQLAR", moleq, -0.5, 13.0)):
     fresh = score_job(rec, now=NOW_REF)
-    check(fresh.breakdown.get("language") == 1.5,
-          f"{nome}: language recomputado 0.0 -> +1.5")
-    check(fresh.total == 15.0, f"{nome}: score recomputado 12.0 -> 15.0 (medido)")
+    check(fresh.breakdown.get("language") == exp_lang,
+          f"{nome}: language recomputado 0.0 -> {exp_lang:+} (F60)")
+    check(fresh.total == exp_total,
+          f"{nome}: score recomputado 12.0 -> {exp_total} (medido F60)")
 
 # ---------------------------------------------------------------- bloco C
 print("[C] rescore_hydrated_jobs — end-to-end no ranking do fixture")
@@ -123,12 +144,15 @@ check(isinstance(n, int) and branch[0]["id"] == EXPECTED_TOP8[0],
       "helper muta a lista IN PLACE (retorno = contagem, sem trocar a lista)")
 br_w = next(j for j in branch if j["id"] == WURTH)
 br_m = next(j for j in branch if j["id"] == MOLEQLAR)
-check(branch.index(br_w) == 1 and branch.index(br_m) == 2,
-      f"Würth aterra #2 e MOLEQLAR #3 (medido; antes #21/#22)")
+# F60: Würth #2 (igual); MOLEQLAR desce do pódio #3 para #12 — o
+# alemão required (frase verbatim da F60) tira exatamente os -2.0 que a
+# colocavam empatada com o topo. Medido com o detector F60; congelado.
+check(branch.index(br_w) == 1 and branch.index(br_m) == 11,
+      "Würth aterra #2 e MOLEQLAR #12 (medido F60; antes #21/#22)")
 check(br_w["score"] == 15.0 and br_w["score_breakdown"]["language"] == 1.5,
       "Würth: score 15.0 + language 1.5 gravados no dict")
-check(br_m["score"] == 15.0 and br_m["score_breakdown"]["language"] == 1.5,
-      "MOLEQLAR: score 15.0 + language 1.5 gravados no dict")
+check(br_m["score"] == 13.0 and br_m["score_breakdown"]["language"] == -0.5,
+      "MOLEQLAR: score 13.0 + language -0.5 gravados no dict (F60)")
 check([j["id"] for j in branch[:8]] == EXPECTED_TOP8,
       "ordem do topo pós-fix == ordem medida (congelada)")
 displaced = sum(1 for i in range(len(branch)) if branch[i]["id"] != ranking[i]["id"])

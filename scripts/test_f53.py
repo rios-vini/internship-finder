@@ -103,8 +103,43 @@ REPO = Path(__file__).resolve().parent.parent
 # Padrão F56/F50/F59: âncora move para o head da fase que tocou src/
 # (7e4f708). O render legado permanece congelado em _AB_LEGACY_PAGE_SHA
 # (1b548c1 — minimal_page.py intocado pela F59.1).
-_AB_BASELINE_SHA = "7e4f708"
+# F60 (19/10): src/ moveu de novo (app_intel.py — 'gut' BARE no
+# qualificador de intensidade + verbo 2ª pessoa 'sprichst' +
+# 'deutschsprachig' advérbio/janela reversa + eixo francês
+# french_level, SINAL nunca exclusão). Padrão F56/F59: âncora move
+# para o commit da fase que tocou src/ (406c8cd = commit F60 do
+# app_intel.py; o commit seguinte só edita TESTES — src/ idêntico, o
+# que mantém o diff vazio na branch, no CI raso ([SKIP]) e no main
+# pós-squash). O render legado: a F60 é a PRIMEIRA fase pós-F53 que
+# ADICIONA bytes ao legado pt (data-fr por card + item de legenda 🇫🇷
+# + badge FR + CSS .fr quando há francês qualificado) — o byte a byte
+# pré-F53 passa a valer MÓDULO o delta F60 determinístico (strip
+# cirúrgico no ``_strip_f60``; qualquer OUTRA divergência de byte
+# continua FAIL).
+_AB_BASELINE_SHA = "406c8cd"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
+
+# F60 — adições determinísticas da fase ao render (todas as línguas):
+# 1. ``data-fr="..."`` por card (sinal de francês; NUNCA consumido por
+#    filtro JS); 2. badge ``<span class="fr">…🇫🇷…</span>`` quando a
+#    menção é qualificada (required/preferred); 3. item da legenda
+#    única (dt/dd) explicando o sinal. O strip remove EXATAMENTE essas
+#    três peças para os A/B byte a byte pré-F53/pré-F46 continuarem
+#    verificando regressão de TODO o resto.
+_F60_ATTR_RE = re.compile(r' data-fr="[^"]*"')
+_F60_BADGE_HTML = ' <span class="fr"><span aria-hidden="true">🇫🇷</span></span>'
+_F60_LEGEND_RE = re.compile(
+    r'<dt><span aria-hidden="true">🇫🇷</span>.*?</dt><dd>.*?</dd>', re.DOTALL)
+# CSS do badge FR (light + dark) — parte do delta F60 no <style>.
+_F60_CSS_RE = re.compile(r'\.fr\{[^}]*\}\n')
+
+
+def _strip_f60(html: str) -> str:
+    """Remove as adições F60 do render (A/B byte a byte módulo F60)."""
+    out = _F60_ATTR_RE.sub("", html)
+    out = out.replace(_F60_BADGE_HTML, "")
+    out = _F60_LEGEND_RE.sub("", out)
+    return _F60_CSS_RE.sub("", out)
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
@@ -475,8 +510,13 @@ def test_nojs_and_legacy_ab() -> None:
     if base is None:
         print("  [SKIP] A/B legado indisponível (git show falhou)")
         return
-    cur_sha = hashlib.sha256(legacy.encode("utf-8")).hexdigest()
-    check("legado BYTE A BYTE igual ao pré-F53 (sha256)",
+    # F60 — o legado pt carrega as adições da fase (data-fr + legenda
+    # 🇫🇷 + badge FR); o byte a byte pré-F53 vale módulo esse delta
+    # determinístico (strip cirúrgico; qualquer outro byte divergente
+    # continua FAIL).
+    legacy_f60 = _strip_f60(legacy)
+    cur_sha = hashlib.sha256(legacy_f60.encode("utf-8")).hexdigest()
+    check("legado BYTE A BYTE igual ao pré-F53 módulo adições F60 (sha256)",
           cur_sha == base[1], f"{base[0]}B, sha {base[1][:12]}…")
 
 
@@ -785,14 +825,23 @@ def test_budget() -> None:
                    if base_profile is not None else 0)
     expected_lo = total_chrome + profile_ext
     expected_hi = expected_lo + sum(per_card) + 200  # margem de esc
+    # F60 — as adições da fase (data-fr por card + legenda 🇫🇷 + badge
+    # FR) saem do delta antes do orçamento: ele continua verificando
+    # APENAS o chrome F53 + extensão do _JS_PROFILE + fatores, como na
+    # fase. O delta F60 é medido no PRÓPRIO render (strip cirúrgico),
+    # não hardcoded.
+    f60_add = len(cur.encode("utf-8")) - len(_strip_f60(cur).encode("utf-8"))
+    delta_net = delta - f60_add
     print(f"       A/B full: pré {base[0]}B -> pós {len(cur.encode())}B "
-          f"(delta {delta:+d}B; previsto chrome {total_chrome}B + "
-          f"ext._JS_PROFILE {profile_ext}B + fatores {sum(per_card)}B)")
+          f"(delta {delta:+d}B = F60 {f60_add}B + líquido {delta_net:+d}B; "
+          f"previsto chrome {total_chrome}B + ext._JS_PROFILE "
+          f"{profile_ext}B + fatores {sum(per_card)}B)")
     check("A/B full: pós > pré (features existem)", delta > 0,
           f"{delta:+d}B")
     check("A/B full: delta dentro do orçamento previsto",
-          expected_lo <= delta <= expected_hi,
-          f"{delta:+d}B vs [{expected_lo}..{expected_hi}]")
+          expected_lo <= delta_net <= expected_hi,
+          f"líquido {delta_net:+d}B vs [{expected_lo}..{expected_hi}] "
+          f"(F60: +{f60_add}B)")
 
 
 # ---------------------------------------------------------------------------
