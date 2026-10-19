@@ -116,7 +116,16 @@ REPO = Path(__file__).resolve().parent.parent
 # pré-F53 passa a valer MÓDULO o delta F60 determinístico (strip
 # cirúrgico no ``_strip_f60``; qualquer OUTRA divergência de byte
 # continua FAIL).
-_AB_BASELINE_SHA = "406c8cd"
+# F61 (19/10): src/ moveu de novo (filters.py — detector
+# requires_existing_permit_for_non_eu wired em
+# applicability_exclusion_reason sob visa_blocked; §16e primeira
+# entrada, MAHLE verbatim). Padrão F56/F59/F60: âncora move para o
+# commit da fase que tocou src/ (fc709b0 = commit F61 do filters.py;
+# o commit seguinte só edita TESTES — src/ idêntico, o que mantém o
+# diff vazio na branch, no CI raso ([SKIP]) e no main pós-squash).
+# O render legado: a F61 NÃO toca minimal_page.py — o byte a byte
+# (módulo o strip F60) segue idêntico.
+_AB_BASELINE_SHA = "fc709b0"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
