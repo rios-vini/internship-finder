@@ -1731,6 +1731,12 @@ def personal_sections(db_path: str | Path, current_path: str | Path, *,
 # header, nunca por emoji (padrão F44/F14/F13).
 FUNNEL_SECTION_PREFIX = "📅 Funil & sazonalidade"
 
+# F62 — rótulo do início imediato no calendário da F45 (o badge da página
+# e o calendário 📆 usam a MESMA fonte; este espelho é PINADO em teste
+# contra seasonality.seasonality_label(kind=immediate) — se o parser
+# mudar o rótulo, o test_f62 acusa antes de divergirem em silêncio).
+IMMEDIATE_LABEL = "ab sofort"
+
 # Cap de exemplos por bloco (motivos de morte / janelas do calendário) —
 # o header carrega as CONTAGENS, os exemplos são ilustrativos (padrão
 # "cap 5" da F13/F44).
@@ -1761,11 +1767,15 @@ def funnel_seasonality_lines(
           ✂ alemão exigido: 1.189 · werkstudent puro: 705 · ... (+7 outros motivos)
           📈 elegíveis: 871 hoje vs 779 há 7 runs (+92)
           📆 jan–jul/2027: 48 · ab sofort: 37 · ... (+19 outras janelas)
+          ⚠ início imediato (ab sofort): 37 vagas — conflita com jan/2027
           📌 candidaturas (log F41): 12 eventos · 8 vagas — aplicadas 5 · ...
 
-    Bloco ausente quando o dado ausente (sem trend, sem eventos F41,
-    sem janelas). Nunca lança; nunca escreve; nunca lê arquivo (a pureza
-    é o contrato de teste — I/O fica no loader ``funnel_seasonality_section``).
+    F62: a linha ⚠ (acima da 📌) existe SÓ quando o calendário tem vagas
+    de início imediato — display-only, sem imediatas a seção é byte a
+    byte a da F45. Bloco ausente quando o dado ausente (sem trend, sem
+    eventos F41, sem janelas). Nunca lança; nunca escreve; nunca lê
+    arquivo (a pureza é o contrato de teste — I/O fica no loader
+    ``funnel_seasonality_section``).
     """
     if not report:
         return []
@@ -1830,6 +1840,19 @@ def funnel_seasonality_lines(
         if len(cal) > max_windows:
             txt += f" (+{len(cal) - max_windows} outras janelas)"
         lines.append(f"  📆 {txt}")
+
+    # F62 — ⚠ sinal de conflito: as vagas de início imediato ("ab sofort"
+    # do calendário acima, MESMA fonte) conflitam com a meta do dono
+    # (início jan/2027). Linha INFORMATIVA (display-only): nunca mexe em
+    # score/ranking; janelas FUTURAS (SoSe 2027, jan–jul/2027) seguem
+    # positivas e NÃO ganham aviso. Sem imediatas -> linha AUSENTE e o
+    # digest é byte a byte o de antes (never-worsens).
+    imm = next((int(item["count"]) for item in cal
+                if item.get("label") == IMMEDIATE_LABEL), 0)
+    if imm > 0:
+        lines.append(f"  ⚠ início imediato ({IMMEDIATE_LABEL}): {imm} "
+                     f"{'vaga' if imm == 1 else 'vagas'} — conflita com "
+                     f"jan/2027")
 
     # 📌 cauda pessoal (event log F41) — só quando existem eventos.
     if app:

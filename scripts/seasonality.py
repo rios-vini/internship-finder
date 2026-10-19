@@ -439,6 +439,17 @@ def seasonality_calendar(texts: Iterable[str]) -> list[tuple[str, int]]:
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
 
 
+def job_window_text(job: dict) -> str:
+    """F62: texto canônico de janela de início de UMA vaga — FONTE ÚNICA
+    da composição ``título — descrição``. O calendário da F45
+    (``funnel_report.seasonality_summary``) e o badge de conflito da F62
+    (``minimal_page.ab_sofort_flag``) varrem o MESMO texto; mudar a
+    composição aqui muda os DOIS juntos (nunca uma segunda tabela).
+    Pura: só lê o dict, nunca I/O."""
+    return (f"{(job.get('title') or '')} — "
+            f"{(job.get('description') or '')}")
+
+
 if __name__ == "__main__":  # uso manual: echo de hits de um texto
     import sys as _sys
     for hit in parse_seasonality(" ".join(_sys.argv[1:])):

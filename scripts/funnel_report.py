@@ -279,11 +279,11 @@ def application_funnel(events: list[dict]) -> dict | None:
 
 def seasonality_summary(jobs: list[dict]) -> dict:
     """Calendário = hit canônico por vaga (título + descrição), agregado
-    por rótulo. ``scanned``/``with_window`` carregam as contagens."""
-    texts = [
-        f"{(j.get('title') or '')} — {(j.get('description') or '')}"
-        for j in jobs
-    ]
+    por rótulo. ``scanned``/``with_window`` carregam as contagens.
+
+    F62: a composição do texto vive em ``seasonality.job_window_text``
+    (FONTE ÚNICA — o badge da página varre o MESMO texto)."""
+    texts = [seasonality.job_window_text(j) for j in jobs]
     calendar = seasonality.seasonality_calendar(texts)
     return {
         "scanned": len(jobs),

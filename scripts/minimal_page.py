@@ -721,6 +721,49 @@ def enrollment_flag(job: dict, lang: str = "pt") -> str:
     return ""
 
 
+# F62 — sinal de conflito de início: "ab sofort" ↔ meta jan/2027 do dono.
+# DISPLAY-ONLY (regra never-worsens): badge no card, NUNCA score/ranking/
+# filtro. A fonte é o parser de sazonalidade da F45 (scripts/seasonality.py)
+# — NENHUM parser novo: o badge acende quando o hit CANÔNICO da vaga é
+# kind=immediate ("ab sofort"/"sofort"/"immediately"), a MESMA regra que
+# alimenta a linha "ab sofort: N" do calendário 📆 do digest. Vagas com
+# janela FUTURA (SoSe 2027, jan–jul/2027…) NÃO ganham badge — semestre >
+# range > início > imediato (prioridade F45 testada): Liebherr "ab sofort
+# ODER Sommersemester 2027" canoniza SoSe 2027 e fica positiva, como hoje.
+# Medição real do run 17/10 (relatório F62): 37 canônicos — 26 janelas
+# declaradas de verdade ("Ab sofort für 6 Monate", "Beginn: ab sofort",
+# "START IMMEDIATELY…"), 11 falsos-positivos do parser em prosa (7×
+# Lidl "steigt sofort in die Arbeitswelt ein", 2× rodapé Medtronic,
+# 1× boas, 1× OLAM). Badge permanece determinístico (fonte única);
+# apertar o parser é decisão da F45, não daqui.
+AB_SOFORT_FLAG_TEXT = "início imediato — conflita com jan/2027"
+
+
+def ab_sofort_flag(job: dict, lang: str = "pt") -> str:
+    """F62: badge quando a janela de início canônica da vaga é imediata.
+
+    Consome ``seasonality.canonical_seasonality`` sobre o texto canônico
+    ``seasonality.job_window_text`` (FONTE ÚNICA da composição — o
+    calendário 📆 do digest varre o MESMO texto, N números divergentes).
+    Best-effort de view: import/parse falhou -> '' (a página nunca quebra
+    por causa de um badge). F46: ``lang`` — pt é a constante VERBATIM; en
+    é a tradução do I18N (o texto pt do dia viaja no attr do toggle).
+    """
+    try:
+        _sd = Path(__file__).resolve().parent
+        if str(_sd) not in sys.path:
+            sys.path.insert(0, str(_sd))
+        import seasonality  # parser puro da F45 (zero I/O)
+        hit = seasonality.canonical_seasonality(
+            seasonality.job_window_text(job))
+        if not hit or hit.get("kind") != "immediate":
+            return ""
+    except Exception:  # noqa: BLE001 — display best-effort, nunca erro
+        return ""
+    return (I18N["ab_sofort_flag"]["en"] if lang == "en"
+            else AB_SOFORT_FLAG_TEXT)
+
+
 # F29 item 4b — red-flag honesta: remuneração não citada no anúncio.
 SALARY_UNSPECIFIED_TEXT = "remuneração não citada"
 
@@ -785,6 +828,9 @@ I18N: dict[str, dict[str, str]] = {
                         "en": "requires enrollment at a German university"},
     "dur_flag": {"pt": DURATION_FLAG_TEXT,
                  "en": "{n}-month duration — above the §16e cap (6 months)"},
+    # F62 — badge de conflito de início (display-only; fonte: parser F45).
+    "ab_sofort_flag": {"pt": AB_SOFORT_FLAG_TEXT,
+                       "en": "immediate start — conflicts with Jan/2027"},
     # -- barra de filtros ---------------------------------------------------
     "search_ph": {"pt": "Buscar título, empresa, local…",
                   "en": "Search title, company, location…"},
@@ -1329,7 +1375,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           f53: bool = False,
           factors_attr: str = "",
           lang: str = "pt",
-          duration_flag_pt: str = "") -> str:
+          duration_flag_pt: str = "",
+          start_conflict_flag: str = "") -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -1358,6 +1405,14 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     ``enrollment_red_flag`` = badge "exige matrícula em universidade
     alemã" (padrões DE/EN no título/descrição).
 
+    F62 (``start_conflict_flag``, INFORMATIVO — nunca exclusão): badge
+    "⚠️ início imediato — conflita com jan/2027" quando a janela de início
+    canônica da vaga é imediata (kind=immediate do parser F45 — MESMA
+    fonte do "ab sofort: N" do calendário 📆). Vagas com janela futura
+    (SoSe 2027, jan–jul/2027) NÃO ganham badge — seguem positivas, como
+    hoje. No render EN o attr do toggle carrega o ⚠️ junto (o swap
+    client-side reproduz o badge pt nativo byte a byte).
+
     F53 (interatividade, SÓ no regime full — ``f53=True``; o regime
     top-N legado permanece byte a byte o da F51): ``data-ps`` = status
     pessoal com badge (o MESMO estado do event log F41 que alimenta o
@@ -1376,8 +1431,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
             quality_text = employer_quality.badge_text(quality_entry)
         except Exception:  # noqa: BLE001 — view best-effort
             quality_text = ""
-    # F51 item 7 — ordem FIXA: 🛂 → 🇩🇪/🇫🇷(F60 sinal) → 🚫 → ⭐/🏆 → 🆕 → sinais F29 →
-    # ✅(pessoal) → 🔗. Emojis com aria-hidden="true": o leitor de tela lê
+    # F51 item 7 — ordem FIXA: 🛂 → 🇩🇪/🇫🇷(F60 sinal) → 🚫 → ⭐/🏆 → 🆕 → sinais F29
+    # → ⚠️ F62 (conflito de início) → ✅(pessoal) → 🔗. Emojis com aria-hidden="true": o leitor de tela lê
     # o texto VISÍVEL do badge (🇩🇪, 🚫, 🏆, ⭐ 4,0, 🔗); a semântica
     # completa de cada um vive UMA vez na legenda (details/summary
     # focusable). Os title= saíram dos badges (custo por card) — a
@@ -1416,6 +1471,19 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         else:
             badge_bits.append(
                 f' <span class="flag">⚠️ {_esc(enrollment_red_flag)}</span>')
+    # F62 — conflito de início imediato ↔ jan/2027 (display-only). O attr
+    # do toggle carrega o ⚠️ JUNTO ao texto pt (diferença consciente do
+    # padrão enrollment acima, cujo swap perde o emoji): o toggle EN→pt
+    # reproduz o badge pt nativo byte a byte.
+    if start_conflict_flag:
+        if lang == "en":
+            badge_bits.append(
+                f' <span class="flag"'
+                f'{_i18n_attr("⚠️ " + AB_SOFORT_FLAG_TEXT)}>⚠️ '
+                f'{_esc(start_conflict_flag)}</span>')
+        else:
+            badge_bits.append(
+                f' <span class="flag">⚠️ {_esc(start_conflict_flag)}</span>')
     badge_bits.append(personal_status_badge(personal_status))
     if dead:
         badge_bits.append(
@@ -2040,6 +2108,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             duration_flag_pt=(duration_flag_text(job, "pt")
                               if lang == "en" else ""),
             enrollment_red_flag=enrollment_flag(job, lang),
+            start_conflict_flag=ab_sofort_flag(job, lang),
             profile_scores=(profile_scores_map.get(jid) or {}) if profile_attrs
             else None,
             profile_ranks=(profile_ranks_map.get(jid) or {}) if profile_attrs
