@@ -69,13 +69,54 @@ LIMITE DOCUMENTADO (conservador por construcao, mesmo trade-off da F5): o
 titulo do par precisa convergir na chave DE/EN; conteudo fora do dicionario
 minimo (ex.: "Betriebswirtschaft" vs "Business Administration") NAO funde —
 um dup perdido e mais barato que uma fusao errada.
+
+F66 — ALIASES DE IDENTIDADE (tenant-label x empresa real; 19/10)
+-----------------------------------------------------------------
+BURACO FECHADO (medido na varredura do eligible 19/10: 25 pares suspeitos):
+fontes de dataset carregam o ``company`` como o LABEL DO TENANT do ATS — o
+feed SuccessFactors da Lidl Stiftung vem com ``company="lidlstiftup2"`` (90
+vagas), o SmartRecruiters da Robert Bosch GmbH com ``"BoschGroup"`` (17), o
+registro cornerstone com o hostname ``"ebmpapst"``. Quando a MESMA vaga
+aparece em outra fonte pelo NOME REAL ("Lidl Stiftung & Co. KG" no
+praktikum_info/absolventa), ``company_identity`` compara
+``{lidlstiftup2}`` x ``{lidl, stiftung}`` e o par NAO funde — o twin fica
+no funil (o registro de desfechos do dono pegou 3 manualmente; a varredura
+achou 20 colapsaveis hoje, 17 deles da familia Lidl).
+
+MECANISMO: mapa versionado ``config/dedup_company_aliases.json``
+(``load_company_aliases``) resolve o label -> nome canonico da empresa real
+ANTES da tokenizacao (``canonical_company``; match EXATO casefold, nunca
+substring; passo unico). O dominio e o DEDUP — e NAO o display: o alias de
+display da F54 (``config/display_aliases.json``) mapeia para nomes de MARCA
+curtos ("lidlstiftup2" -> "Lidl" -> ``{lidl}``) que NAO igualam a identidade
+do nome real e, por contrato, nunca contaminam o pipeline. Mapa proprio,
+fonte unica do sub-mecanismo.
+
+CURADORIA (regra Levio/TYTAN, licao F9/F10): so entra no mapa a string cujo
+label tem UM UNICO empregador real por tras — auditado pelos slugs/hosts das
+URLs da varredura. String multi-empregador ("Levio" = tenant Bertelsmann
+com RTL/Arvato/BFS) e nome juridico real de holding ("Würth Group", vagas
+da subsidiaria Würth Industrie Service) NUNCA ganham alias: fundiriam
+empresas distintas. ``aliases={}`` desliga (braço baseline do A/B);
+arquivo ausente/corrompido/ambiguo -> ``{}`` (degradacao graciosa, nunca
+crasha o estagio).
+
+LIMITES RESTANTES (documentados, medidos nos 3 pares do registro de
+desfechos — fixtures verbatim no test_f64/test_f66): o twin Wuerth
+(absolventa) nao funde porque a localizacao dele e VAZIA (guardrail
+location-aware: sem cidade nao ha chave de agrupamento) e a subsidiaria nao
+e aliasavel; o twin Bosch Strategic (arbeitsagentur) nao funde porque a bag
+DE/EN do TITULO diverge (empresa resolvida pelo alias, titulo trava) — um
+dup perdido continua mais barato que uma fusao errada.
 """
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any
 
 # Reuso deliberado da MESMA chave de titulo do tier DE/EN (F5) e da regra de
@@ -89,6 +130,14 @@ KEY_CROSS_SOURCE = "cross_source_mirror"
 
 # Campo de provenance gravado no registro NAO-canonico (que sai do eligible).
 DUPLICATE_OF_FIELD = "duplicate_of"
+
+# F66 — mapa de aliases de identidade (tenant-label -> empresa real),
+# versionado no repo. Caminho PADRAO relativo a raiz do repo (mesma
+# convencao de ``opportunity_intel.DEFAULT_COMPANY_INTEL_PATH``): producao
+# roda o cli com cwd=raiz (refresh_daily usa ``cwd=repo_root()``) e o CI
+# roda do checkout — em qualquer outro cwd o arquivo nao e achado e o
+# estagio segue SEM aliases (degradacao graciosa, nunca erro).
+DEFAULT_DEDUP_COMPANY_ALIASES_PATH = Path("config/dedup_company_aliases.json")
 
 # Prefixo das fontes de DATASET (F3: fonte primaria do universo).
 _DATASET_SOURCE_PREFIX = "sf_dataset:"
@@ -163,6 +212,65 @@ def company_identity(company: str | None) -> frozenset[str]:
     return frozenset(tokens)
 
 
+def load_company_aliases(
+    path: str | Path | None = None,
+) -> dict[str, str]:
+    """Mapa de aliases de identidade da F66 (chave casefold -> nome canonico).
+
+    Le ``config/dedup_company_aliases.json`` (ou ``path`` explicito). O
+    arquivo e OPCIONAL por design — ausente/ilegivel/corrompido/estrutura
+    invalida -> ``{}`` e o estagio segue SEM aliases (degradacao graciosa,
+    mesma disciplina do ``load_watchlist`` da F13; nunca crasha o run).
+
+    Validacoes fail-closed (curadoria ambigua rejeita INTEIRA -> ``{}``):
+    (1) ``aliases`` precisa ser dict nao-vazio de str->str;
+    (2) duas chaves que colidem no casefold com valores distintos;
+    (3) chave ou valor vazio/so-espacos;
+    (4) auto-alias (chave == valor no casefold) e descartado no-op.
+    """
+    target = Path(path) if path is not None else DEFAULT_DEDUP_COMPANY_ALIASES_PATH
+    try:
+        raw = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    aliases = raw.get("aliases")
+    if not isinstance(aliases, dict) or not aliases:
+        return {}
+    out: dict[str, str] = {}
+    for key, value in aliases.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            return {}
+        k = key.strip().casefold()
+        v = value.strip()
+        if not k or not v:
+            return {}
+        if k == v.casefold():
+            continue  # auto-alias: no-op silencioso
+        if k in out and out[k] != v:
+            return {}  # colisao casefold com valores distintos: ambiguo
+        out[k] = v
+    return out
+
+
+def canonical_company(
+    company: str | None,
+    aliases: dict[str, str] | None = None,
+) -> str | None:
+    """Resolve o LABEL DO TENANT no nome canonico da empresa real (F66).
+
+    Match EXATO casefold sobre a string inteira — NUNCA substring ("Lidl
+    GmbH" nao toca o alias de "lidlstiftup2"). Passo UNICO: o valor nunca e
+    re-resolvido (mapa plano por contrato). Sem mapa (``None``/``{}``) a
+    string volta INTACTA — a funcao nunca inventa empresa.
+    """
+    if not aliases or not company:
+        return company
+    key = str(company).strip().casefold()
+    return aliases.get(key, company)
+
+
 def salary_value(job: dict[str, Any]) -> tuple[float, str | None] | None:
     """Valor canonico do campo ``salary`` (quando parseavel), senao ``None``.
 
@@ -233,14 +341,24 @@ def _canonical_prefer(candidate: dict[str, Any], current: dict[str, Any]) -> boo
     return _prefer(candidate, current)
 
 
-def _pair_ok(job_a: dict[str, Any], job_b: dict[str, Any]) -> bool:
+def _pair_ok(
+    job_a: dict[str, Any],
+    job_b: dict[str, Any],
+    aliases: dict[str, str] | None = None,
+) -> bool:
     """Os dois lados do par candidato sao a MESMA vaga? (guardrails).
 
-    Requer identidade de empresa IGUAL e nao vazia; reprova ``country``
-    divergente e ``salary`` divergente quando ambos presentes/parseaveis.
+    Requer identidade de empresa IGUAL e nao vazia — com o label do tenant
+    resolvido pelo alias da F66 (``canonical_company``) ANTES da
+    tokenizacao, o par "lidlstiftup2" x "Lidl Stiftung & Co. KG" converge
+    para a MESMA identidade; reprova ``country`` divergente e ``salary``
+    divergente quando ambos presentes/parseaveis.
     """
-    identity_a = company_identity(job_a.get("company"))
-    if not identity_a or identity_a != company_identity(job_b.get("company")):
+    identity_a = company_identity(canonical_company(job_a.get("company"), aliases))
+    if (
+        not identity_a
+        or identity_a != company_identity(canonical_company(job_b.get("company"), aliases))
+    ):
         return False
     country_a, country_b = job_a.get("country"), job_b.get("country")
     if country_a and country_b and str(country_a).lower() != str(country_b).lower():
@@ -269,6 +387,7 @@ def _source(job: dict[str, Any]) -> str:
 
 def deduplicate_cross_source(
     jobs: list[dict[str, Any]] | list[Any],
+    aliases: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int], list[tuple[dict[str, Any], dict[str, Any], str]]]:
     """Remove espelhos CROSS-FONTE da mesma vaga (F48) — campos estruturados.
 
@@ -282,11 +401,19 @@ def deduplicate_cross_source(
     - ``removidas``: lista ``(canonico, duplicata, rotulo)`` para auditoria —
       a duplicata carrega ``duplicate_of = <id do canonico>``.
 
+    ``aliases`` (F66): mapa tenant-label -> empresa real. ``None`` carrega o
+    padrao ``config/dedup_company_aliases.json`` (producao/CI rodam da raiz
+    do repo); ``{}`` desliga o sub-mecanismo (braço baseline do A/B —
+    comportamento pre-F66 exato). O label e resolvido SO na chave de
+    identidade do par: o campo ``company`` exibido/rankeado NUNCA muda.
+
     Determinismo: iteracao na ordem de entrada; para cada vaga a PRIMEIRA
     posicao compativel ja vista na mesma (cidade, titulo) decide a fusao;
     o canonico segue ``_canonical_prefer``. Idempotente: apos o estagio nao
     sobra nenhum par cross-fonte compativel (re-rodar e no-op).
     """
+    if aliases is None:
+        aliases = load_company_aliases()
     normalized = [item.to_dict() if hasattr(item, "to_dict") else item for item in jobs]
 
     out: list[dict[str, Any]] = []
@@ -308,7 +435,7 @@ def deduplicate_cross_source(
             resident = out[pos]
             if not _source(resident) or _source(resident) == _source(job):
                 continue  # mesmo tenant/origem: nao e este o buraco
-            if _pair_ok(resident, job):
+            if _pair_ok(resident, job, aliases):
                 matched_pos = pos
                 break
 

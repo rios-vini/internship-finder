@@ -26,12 +26,13 @@ Contrato da fase:
    (inclui os imports de materials/eu_ranking).
 4. DEDUP F48 (bonus da card): os 3 PARES REAIS rotulados pelo dono como
    mesma vaga em outra fonte entram como fixtures VERBATIM (campos
-   estruturais ipsis literis do archive 18/10). Comportamento MEDIDO hoje:
-   NENHUM funde (Wuerth: cidade vazia + empresa filial; Bosch: bag DE/EN +
-   'boschgroup'; Lidl re-post: SO identidade de empresa). CANARY: se uma
-   fase futura melhorar o dedup e fundir algum par, ESTE teste falha DE
-   PROPOSITO — atualize as expectativas conscientemente (a fusao e uma
-   MELHORIA; ver relatorio F64 §dedup) e nunca "conserte" o teste as cegas.
+   estruturais ipsis literis do archive 18/10). CANARY ATUALIZADO PELA F66
+   (19/10, comemoracao prevista aqui): o par Lidl re-post AGORA FUNDE via
+   alias de identidade tenant-label (lidlstiftup2 -> Lidl Stiftung & Co.
+   KG); Wuerth (cidade vazia + filial) e Bosch Strategic (bag DE/EN do
+   titulo) seguem NAO fundindo — bloqueios restantes documentados. Nunca
+   "conserte" o teste as cegas: toda mudanca de expectativa e consciente
+   (ver relatorio F64 §dedup e o test_f66, que e o dono do mecanismo).
 5. ``.github/workflows/ci.yml`` contem test_f64 no array ``tests=``
    (uniao RELATIVA: >= 101 suites — assert relativo, regra da casa).
 """
@@ -49,10 +50,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from internship_finder import ranking_benchmark  # noqa: E402
 from internship_finder.cross_source_dedup import (  # noqa: E402
+    KEY_CROSS_SOURCE,
     _de_en_title_key,
+    canonical_company,
     city_key,
     company_identity,
     deduplicate_cross_source,
+    load_company_aliases,
 )
 
 import f64_outcomes as h  # noqa: E402
@@ -270,25 +274,44 @@ LIDL_REPOST = _fix("Lidl Stiftung & Co. KG|praktikum_info:13231277", "Lidl Stift
                    "Praktikum Controlling International - SAP BI Reporting",
                    "74167 Neckarsulm", "praktikum_info")
 
-for label, a, b in (("Wuerth SF x absolventa", WUERTH_SF, WUERTH_TWIN),
-                    ("Bosch Strategic SR x arbeitsagentur", BOSCH_SR, BOSCH_TWIN),
-                    ("Lidl SAP BI x re-post praktikum_info", LIDL_SF, LIDL_REPOST)):
-    _out, _stats, removed = deduplicate_cross_source([dict(a), dict(b)])
-    # CANARY: os 3 pares sao a MESMA vaga rotulada pelo dono e HOJE nao fundem.
-    # Se um dia fundirem (melhoria do dedup), este assert falha DE PROPOSITO:
-    # atualize conscientemente (e comemore) — ver comentario do modulo.
-    check(f"G4 par real '{label}': NAO funde hoje (gap documentado)", not removed, str(_stats))
+# F66 (19/10): o canario foi atualizado COMEMORANDO — o par Lidl re-post
+# agora FUNDE via alias de identidade tenant-label (lidlstiftup2 ->
+# "Lidl Stiftung & Co. KG" em config/dedup_company_aliases.json, consumido
+# pelo estagio cross-fonte F48). Os outros dois pares seguem NAO fundindo
+# com os bloqueios RESTANTES documentados abaixo (a fusao deles exige
+# mecanismos que NAO sao o mapa de tenant-label — ver test_f66 F6-F9).
+_ALIASES_F66 = load_company_aliases(ROOT / "config" / "dedup_company_aliases.json")
 
-check("G4 Wuerth: bloqueio = cidade vazia (absolventa) + empresa filial; titulo casaria",
+for label, a, b in (("Wuerth SF x absolventa", WUERTH_SF, WUERTH_TWIN),
+                    ("Bosch Strategic SR x arbeitsagentur", BOSCH_SR, BOSCH_TWIN)):
+    _out, _stats, removed = deduplicate_cross_source(
+        [dict(a), dict(b)], aliases=_ALIASES_F66)
+    check(f"G4 par real '{label}': NAO funde (bloqueio restante pos-F66)",
+          not removed, str(_stats))
+
+_out_l, _stats_l, removed_l = deduplicate_cross_source(
+    [dict(LIDL_SF), dict(LIDL_REPOST)], aliases=_ALIASES_F66)
+check("G4 par real 'Lidl SAP BI x re-post praktikum_info': FUNDE "
+      "(F66 fecha o gap 'SO identidade de empresa' — canario atualizado comemorando)",
+      len(removed_l) == 1 and _stats_l == {KEY_CROSS_SOURCE: 1}, str(_stats_l))
+check("G4 Lidl re-post fundido: canonico = registro do DATASET, twin sai com duplicate_of",
+      removed_l[0][0]["id"] == LIDL_SF["id"]
+      and removed_l[0][1].get("duplicate_of") == LIDL_SF["id"])
+
+check("G4 Wuerth: bloqueio restante = cidade vazia (absolventa) + filial sem alias "
+      "(regra Levio/TYTAN: 'Wuerth Group' e nome real de holding); titulo casaria",
       city_key(WUERTH_SF["location"]) == "bad mergentheim" and city_key(WUERTH_TWIN["location"]) == ""
       and company_identity(WUERTH_SF["company"]) == frozenset({"wurth"})
       and company_identity(WUERTH_TWIN["company"]) == frozenset({"service", "wurth", "industrie"})
       and _de_en_title_key(WUERTH_SF["title"]) == _de_en_title_key(WUERTH_TWIN["title"]))
-check("G4 Bosch: bloqueio = bag DE/EN divergente + 'boschgroup' vs robert bosch; cidade casa",
+check("G4 Bosch: bloqueio restante = SO bag DE/EN do titulo (empresa RESOLVIDA pelo "
+      "alias F66: BoschGroup -> Robert Bosch GmbH); cidade casa",
       city_key(BOSCH_SR["location"]) == city_key(BOSCH_TWIN["location"]) == "stuttgart"
-      and company_identity(BOSCH_SR["company"]) != company_identity(BOSCH_TWIN["company"])
+      and company_identity(canonical_company(BOSCH_SR["company"], _ALIASES_F66))
+      == company_identity(canonical_company(BOSCH_TWIN["company"], _ALIASES_F66))
       and _de_en_title_key(BOSCH_SR["title"]) != _de_en_title_key(BOSCH_TWIN["title"]))
-check("G4 Lidl re-post: bloqueio = SO identidade de empresa (lidlstiftup2 x {lidl, stiftung}); cidade+titulo casam",
+check("G4 Lidl re-post: identidade BRUTA diverge (company_identity pura preservada); "
+      "alias F66 resolve; cidade+titulo casam",
       city_key(LIDL_SF["location"]) == city_key(LIDL_REPOST["location"]) == "neckarsulm"
       and _de_en_title_key(LIDL_SF["title"]) == _de_en_title_key(LIDL_REPOST["title"])
       and company_identity(LIDL_SF["company"]) == frozenset({"lidlstiftup2"})
