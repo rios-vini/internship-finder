@@ -73,6 +73,27 @@ STAMP = "2026-10-18 04:00"
 # móvel (lição PR #145 — pós-merge o A/B mediria a F46 contra ela mesma).
 _AB_BASELINE_SHA = "149203f"
 
+# F60 — adições determinísticas da fase ao render (data-fr por card —
+# sinal de francês, NUNCA consumido por filtro JS; badge
+# ``<span class="fr">…🇫🇷…</span>`` para menção qualificada; item da
+# legenda única dt/dd explicando o sinal). O A/B "pt == main pré-F46"
+# passa a valer MÓDULO esse delta (strip cirúrgico): qualquer OUTRA
+# divergência de byte continua FAIL.
+_F60_ATTR_RE = re.compile(r' data-fr="[^"]*"')
+_F60_BADGE_HTML = ' <span class="fr"><span aria-hidden="true">🇫🇷</span></span>'
+_F60_LEGEND_RE = re.compile(
+    r'<dt><span aria-hidden="true">🇫🇷</span>.*?</dt><dd>.*?</dd>', re.DOTALL)
+# CSS do badge FR (light + dark) — parte do delta F60 no <style>.
+_F60_CSS_RE = re.compile(r'\.fr\{[^}]*\}\n')
+
+
+def _strip_f60(html: str) -> str:
+    """Remove as adições F60 do render (A/B byte a byte módulo F60)."""
+    out = _F60_ATTR_RE.sub("", html)
+    out = out.replace(_F60_BADGE_HTML, "")
+    out = _F60_LEGEND_RE.sub("", out)
+    return _F60_CSS_RE.sub("", out)
+
 
 def check(name: str, ok: bool, detail: str = "") -> None:
     global N
@@ -208,9 +229,17 @@ def group_b_ab() -> None:
             jobs, total_eligible=len(jobs), generated_at=STAMP,
             top=(mp.PAGE_TOP_FULL if full else mp.PAGE_TOP),
             full_list=full, vitrine=True, lang="pt")
-        check(f"B{1 if not full else 2} pt == main byte a byte ({regime})",
-              cur == head,
-              f"{len(cur.encode('utf-8'))}B vs {len(head.encode('utf-8'))}B")
+        # F60 — o render pt ganhou adições determinísticas da fase
+        # (data-fr por card + item de legenda 🇫🇷 + badge FR quando há
+        # francês qualificado); o contrato "pt == main pré-F46" vale
+        # MÓDULO esse delta (strip cirúrgico — qualquer OUTRA
+        # divergência de byte continua FAIL).
+        cur_net = _strip_f60(cur)
+        check(f"B{1 if not full else 2} pt == main byte a byte "
+              f"módulo adições F60 ({regime})",
+              cur_net == head,
+              f"{len(cur_net.encode('utf-8'))}B vs "
+              f"{len(head.encode('utf-8'))}B")
 
 
 # ---------------------------------------------------------------------------
