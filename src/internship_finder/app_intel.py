@@ -54,6 +54,22 @@ Idioma (novo tratamento — Fase 6):
   "deutsche Gesellschaft", empresa "Deutsche Bahn" nao indicam idioma);
   "german" e word-bounded (nao pega "Germany"); "gutes Praktikum" nao
   qualifica lingua porque exige termo de lingua/kenntnisse logo apos.
+
+F60 — lacunas verificadas no registro de desfechos 10/2026 (3 classes):
+
+- **Classe A (detector)**: o qualificador de intensidade agora aceita o
+  "gut" BARE ("sehr gut Deutsch", caso MOLEQLAR verbatim) alem das
+  flexoes gut/gute/guter/gutes/guten/gutem; verbo de comunicacao na 2a
+  pessoa ("Du sprichst ... Deutsch" / "sprichst du ... Deutsch") e
+  required; "deutschsprachig" qualificado por adverbio
+  ("hauptsächlich/überwiegend/mehrheitlich ... deutschsprachig") ou por
+  substantivo ANTES ("Arbeitsalltag ... deutschsprachig" — janela
+  reversa; o pattern original so via o substantivo DEPOIS) e required.
+- **Classe A2 (frances como SINAL)**: ``french_level`` classifica
+  menções a frances (french/französisch/français) com os mesmos
+  qualificadores de evidencia (required/preferred/plus). E SINAL puro
+  (badge/campo) — NUNCA exclusao ou penalidade no score; vaga fora dos
+  mercados-alvo e outro filtro (caso CANAL+ verbatim).
 """
 
 from __future__ import annotations
@@ -159,11 +175,36 @@ _GERMAN_QUALS: list[tuple[str, str]] = [
         r"environment|kunden|raum)\b",
         "verb",
     ),
-    # Qualificador de intensidade DIRETAMENTE ligado a lingua/kenntnisse.
+    # F60 — comunicacao na 2a pessoa ("Du sprichst ... Deutsch", "sprichst
+    # du ... Deutsch"): exigencia DIRETA ao candidato (caso MOLEQLAR
+    # verbatim). A janela [\w\s,&()-] nao atravessa ponto/virgula.
     (
-        r"(sehr\s+)?(gute|guter|gutes|solide|solider|fundierte|fundierter|"
-        r"exzellente|ausgezeichnete|umfassende|sicher(er|e)?|excellent|"
-        r"very good|good|advanced|strong)\s+[\w\s,&()-]{0,26}\b"
+        r"\b(du\s+)?sprichst\b[\w\s,&()-]{0,40}\b(deutsch\w*|german)\b|"
+        r"\bsprichst\s+du\b[\w\s,&()-]{0,40}\b(deutsch\w*|german)\b",
+        "verb",
+    ),
+    # F60 — "deutschsprachig" QUALIFICADO por adverbio ("hauptsächlich
+    # deutschsprachig", caso MOLEQLAR verbatim: "Arbeitsalltag
+    # hauptsächlich deutschsprachig") ou por substantivo ANTES (janela
+    # reversa — o pattern acima so via o substantivo DEPOIS: "unser Team
+    # ist deutschsprachig"). "deutschsprachig" SOLTO segue plus (regra
+    # Fase 6 preservada).
+    (
+        r"\b(hauptsächlich|hauptsaechlich|überwiegend|ueberwiegend|"
+        r"mehrheitlich|vorrangig|primär|primaer)\s+deutschsprachig\w*|"
+        r"\b(arbeitsalltag|arbeitsumfeld|arbeitsumgebung|arbeitswelt|"
+        r"umfeld|umgebung|alltag|team|abteilung)\b[\w\s]{0,25}"
+        r"\bdeutschsprachig\w*",
+        "verb",
+    ),
+    # Qualificador de intensidade DIRETAMENTE ligado a lingua/kenntnisse.
+    # F60: "gut" BARE entra na lista ("sehr gut Deutsch", caso MOLEQLAR —
+    # "gute/guter/gutes" nao casavam "gut"); negacoes seguem vencendo pela
+    # regra `negated` acima.
+    (
+        r"(sehr\s+)?(gut|gutem|gute|guter|gutes|solide|solider|fundierte|"
+        r"fundierter|exzellente|ausgezeichnete|umfassende|sicher(er|e)?|"
+        r"excellent|very good|good|advanced|strong)\s+[\w\s,&()-]{0,26}\b"
         r"(deutsch\w*|\bgerman\b|kenntnisse\w*|sprachkenntnisse\w*|"
         r"sprachliche\w*|sprache\b|skills\b)\b",
         "qual",
@@ -240,7 +281,7 @@ def has_german_mention(text: str | None) -> bool:
 # sobre a Power Platform a 12 chars, caso MTU) NÃO pode rebaixar.
 _GLUE_SAFE_MID = r"[\w\s&()-]{0,20}"
 _GLUED_INTENSITY_RE = re.compile(
-    r"\b((sehr\s+)?(gute[rsn]?|guten|exzellente[rsn]?|"
+    r"\b((sehr\s+)?(gut(?:e[rsn]?|m)?|exzellente[rsn]?|"
     r"ausgezeichnete[rsn]?|fundierte[rsn]?|umfassende[rsn]?|"
     r"sicher(e|er|es|en)?|solide[rsn]?|excellent|very good|good|"
     r"advanced|strong|fluent|flie(ss|ß)end|verhandlungssicher\w*))\s+"
@@ -371,6 +412,134 @@ def german_level(text: str | None) -> GermanLevel | None:
         if _LEVEL_PRIO[local] > _LEVEL_PRIO[best_level]:
             best_level, best_reason = local, reason
     return GermanLevel(level=best_level, reason=best_reason)
+
+
+# ---------------------------------------------------------------------------
+# Idioma — francês (F60: SINAL, nunca exclusão)
+# ---------------------------------------------------------------------------
+
+# F60 — tokens de menção a francês COMO IDIOMA (word-bounded). Menção nua
+# ("Founded as a French subscription-TV channel", "French overseas
+# jurisdictions", caso CANAL+ verbatim) fica em ``plus`` — só o
+# QUALIFICADOR na janela ±45 promove a menção.
+FRENCH_TOKEN_PATTERNS: list[str] = [
+    r"\bfrench\b",
+    r"\bfranzösisch\w*",
+    r"\bfranzoesisch\w*",  # transliterado (ö -> oe)
+    r"\bfrançais\b",
+    r"\bfrancais\b",
+]
+_FRENCH_TOKEN_RE = [re.compile(p, re.IGNORECASE) for p in FRENCH_TOKEN_PATTERNS]
+
+# Qualificadores (pattern, kind) — janela ±45 em volta do token; ordem de
+# prioridade (a primeira que casa define a classe local), espelhando a
+# semântica do alemão (mesmo vocabulário de exigência/soft/negação).
+_FRENCH_QUALS: list[tuple[str, str]] = [
+    # Negação explícita -> plus ("no French required").
+    (
+        r"\b(no|not|kein\w*|ohne)\b[\w\s,()-]{0,22}\b"
+        r"(required|requirement|vorausgesetzt|erforderlich|n"
+        r"ötig|noetig|notwendig|pflicht|needed|need)\b",
+        "negated",
+    ),
+    # Verbo de exigência na ORDEM DIRETA ("French required",
+    # "Französisch erforderlich").
+    (
+        r"\b(french|französisch\w*|franzoesisch\w*|français|francais)\b"
+        r"[\w\s,()-]{0,35}\b"
+        r"(required|essential|mandatory|must|fluent|fluency|native|pflicht|"
+        r"erforderlich|vorausgesetzt|erwartet|zwingend|notwendig)\b",
+        "verb_direct",
+    ),
+    # Qualificador de intensidade diretamente ligado à língua
+    # ("fluent French", "gute Französischkenntnisse" — inclui o "gut"
+    # BARE da F60).
+    (
+        r"(sehr\s+)?(gut|gutem|gute|guter|gutes|solide|exzellente|"
+        r"ausgezeichnete|umfassende|sicher(e|er|es|en)?|excellent|"
+        r"very good|good|advanced|strong|fluent|flie(ss|ß)end|"
+        r"verhandlungssicher\w*)\s+[\w\s,&()-]{0,26}\b"
+        r"(französisch\w*|franzoesisch\w*|\bfrench\b|français|francais)\b",
+        "qual",
+    ),
+    # Verbo de exigência na ORDEM INVERSA ("We require French") — com a
+    # MESMA guarda do alemão: ignorado quando há soft na janela
+    # ("English required, French valued" não é exigência de francês).
+    (
+        r"\b(required|essential|mandatory|must|fluent|fluency|native|"
+        r"fließend|fliessend|verhandlungssicher)\w*[\w\s,()-]{0,30}\b"
+        r"(french|französisch\w*|franzoesisch\w*|français|francais)\b",
+        "verb_rev",
+    ),
+    # Palavra branda -> preferred (CANAL+ verbatim: "French strongly
+    # valued"; "Französisch von Vorteil").
+    (
+        r"\b(plus|preferred|desirable|an asset|a plus|valued|advantage|"
+        r"beneficial|advantageous|nice to have|von vorteil|wünschenswert|"
+        r"wunschenswert|bevorzugt|idealerweise|gerne gesehen|ein plus|"
+        r"good to have)\b",
+        "soft",
+    ),
+]
+_FRENCH_QUALS_RE = [(re.compile(p, re.IGNORECASE), kind) for p, kind in _FRENCH_QUALS]
+
+FRENCH_LEVELS = ("required", "preferred", "plus")
+
+
+@dataclass(frozen=True)
+class FrenchLevel:
+    """Nível de menção a francês + razão (F60: SINAL, nunca exclusão)."""
+
+    level: str
+    reason: str
+
+
+def french_level(text: str | None) -> FrenchLevel | None:
+    """Nível de menção a francês no título+descrição; None = sem menção.
+
+    F60 — SINAL puro (badge/campo de exibição): o ranking NÃO consome este
+    valor e nenhum filtro exclui vaga por francês; "vaga fora dos
+    mercados-alvo" é outro filtro. Mecânica espelhada no alemão: janela
+    ±45 por menção, o primeiro qualificador que casa define a classe
+    local, o sinal mais forte vence (required > preferred > plus);
+    ``verb_rev`` é ignorado quando há soft na janela (guarda do alemão:
+    a exigência vizinha provavelmente é do inglês). Caso CANAL+ verbatim:
+    "Fluent in English (written and spoken) required; French strongly
+    valued" -> preferred/soft (o "required" do inglês fica do outro lado
+    do ponto-e-vírgula e não vaza).
+    """
+    if not text:
+        return None
+    text = normalize_text(text)
+    tokens: list[re.Match] = []
+    for rx in _FRENCH_TOKEN_RE:
+        tokens.extend(rx.finditer(text))
+    if not tokens:
+        return None
+    best_level, best_reason = "plus", "bare"
+    for m in tokens:
+        win = text[max(0, m.start() - 45): min(len(text), m.end() + 45)]
+        soft_in_win = any(
+            rx.search(win) for rx, kind in _FRENCH_QUALS_RE if kind == "soft"
+        )
+        local, reason = "plus", "bare"
+        for qrx, kind in _FRENCH_QUALS_RE:
+            if not qrx.search(win):
+                continue
+            if kind == "negated":
+                local, reason = "plus", "negated"
+                break
+            if kind == "verb_rev" and soft_in_win:
+                continue  # a exigência provavelmente é do inglês
+            if kind in ("verb_direct", "qual", "verb_rev"):
+                local, reason = "required", kind
+                break
+            if kind == "soft":
+                local, reason = "preferred", kind
+                break
+        if _LEVEL_PRIO[local] > _LEVEL_PRIO[best_level]:
+            best_level, best_reason = local, reason
+    return FrenchLevel(level=best_level, reason=best_reason)
 
 
 # ---------------------------------------------------------------------------

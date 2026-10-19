@@ -12,6 +12,11 @@ F11 (funil de aplicacao) adiciona ao render:
 - **data-de por card** (nivel de alemao via ``app_intel.german_level``;
   None -> "none") + badge "🇩🇪 DE exigido" quando required + toggle
   client-side "sem alemão exigido" (mesmo padrao do checkbox 🛂 F5).
+- **data-fr por card** (F60: nivel de frances via
+  ``app_intel.french_level``) + badge "🇫🇷" quando a menção é qualificada
+  (required/preferred). SINAL puro: NENHUM filtro JS consome data-fr —
+  frances nunca exclui vaga (vaga fora dos mercados-alvo é outro
+  filtro).
 - **Regra de EXIBICAO max 2 vagas por empresa** no top (ordem oficial de
   score; a 3a+ ocorrencia da empresa e pulada e o corte e refeito com as
   seguintes). Nao mexe em score nem no JSON/CSV.
@@ -569,6 +574,23 @@ def _german_level_attr(job: dict) -> str:
         return "none"
 
 
+def _french_level_attr(job: dict) -> str:
+    """data-fr do card: 'required'|'preferred'|'plus'|'none' (F60).
+
+    SINAL puro (app_intel.french_level sobre titulo+descricao) — NUNCA
+    exclusao: nenhum filtro JS consome este atributo (a decisao de
+    "vaga fora dos mercados-alvo" e outro filtro). Best-effort: falha
+    de import/parse -> 'none' (nunca derruba o render).
+    """
+    try:
+        from internship_finder import app_intel
+        text = f"{job.get('title') or ''} {job.get('description') or ''}"
+        fl = app_intel.french_level(text)
+        return fl.level if fl is not None else "none"
+    except Exception:  # noqa: BLE001 — view best-effort
+        return "none"
+
+
 def _parse_posted_at(value) -> datetime | None:
     """posted_at ISO (com Z ou offset) -> datetime UTC-aware; None em falha."""
     if not value:
@@ -1015,6 +1037,14 @@ _LEGEND_ITEMS: tuple[tuple[str, str, str, str], ...] = (
      '<span aria-hidden="true">🇩🇪</span> German required',
      "anúncio exige alemão (german_level: required)",
      "posting requires German (german_level: required)"),
+    ('<span aria-hidden="true">🇫🇷</span> francês (sinal)',
+     '<span aria-hidden="true">🇫🇷</span> French (signal)',
+     "anúncio menciona francês qualificado (french_level: required ou "
+     "preferred) — SINAL informativo, nunca exclusão; vaga fora dos "
+     "mercados-alvo é outro filtro",
+     "posting mentions qualified French (french_level: required or "
+     "preferred) — informative signal, never an exclusion; off-target "
+     "market is a separate filter"),
     ('<span aria-hidden="true">🚫</span> inaplicável',
      '<span aria-hidden="true">🚫</span> inapplicable',
      "a descrição completa (hidratada do site) revelou requisito "
@@ -1283,7 +1313,7 @@ def is_data_bi_title(job: dict) -> bool:
 
 def _card(rank: int, job: dict, *, visa: bool, salary: str,
           snippet: str, apply_href: str | None, job_href: str | None,
-          de_level: str, age: str, dead: bool = False,
+          de_level: str, fr_level: str = "none", age: str, dead: bool = False,
           is_new: bool = False, score_override=None,
           en_title_html: str = "", snippet_is_en: bool = False,
           personal_status: str | None = None,
@@ -1346,7 +1376,7 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
             quality_text = employer_quality.badge_text(quality_entry)
         except Exception:  # noqa: BLE001 — view best-effort
             quality_text = ""
-    # F51 item 7 — ordem FIXA: 🛂 → 🇩🇪/🚫 → ⭐/🏆 → 🆕 → sinais F29 →
+    # F51 item 7 — ordem FIXA: 🛂 → 🇩🇪/🇫🇷(F60 sinal) → 🚫 → ⭐/🏆 → 🆕 → sinais F29 →
     # ✅(pessoal) → 🔗. Emojis com aria-hidden="true": o leitor de tela lê
     # o texto VISÍVEL do badge (🇩🇪, 🚫, 🏆, ⭐ 4,0, 🔗); a semântica
     # completa de cada um vive UMA vez na legenda (details/summary
@@ -1359,6 +1389,11 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     if de_level == "required":
         badge_bits.append(
             ' <span class="de"><span aria-hidden="true">🇩🇪</span></span>')
+    # F60 — francês é SINAL (não exclusão): badge quando a menção é
+    # qualificada (required/preferred); menção nua (plus) não ganha ícone.
+    if fr_level in ("required", "preferred"):
+        badge_bits.append(
+            ' <span class="fr"><span aria-hidden="true">🇫🇷</span></span>')
     if inapplicable:
         badge_bits.append(
             ' <span class="dead"><span aria-hidden="true">🚫</span></span>')
@@ -1468,6 +1503,7 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         f' data-s="{score}"'
         f' data-vf="{1 if visa else 0}"'
         f' data-de="{_esc(de_level)}"'
+        f' data-fr="{_esc(fr_level)}"'
         f' data-iso="{_esc(str(job.get("country_iso") or "").strip().lower())}"'
         f' data-new="{1 if is_new else 0}"'
         f' data-ws="{1 if is_werkstudent_title(job) else 0}"'
@@ -1501,6 +1537,7 @@ a.t:visited{color:#c8d3dd}
 a.t:hover{text-decoration:underline}
 .vf{font-size:.8rem}
 .de{font-size:.72rem;color:#e8cf8a}
+.fr{font-size:.72rem;color:#9db7d8}
 .dead{font-size:.72rem;color:#d98282}
 .newb{font-size:.72rem}
 .pt{font-size:.72rem}
@@ -1600,6 +1637,7 @@ li.c{border-bottom-color:#e6e9ec}
 .s{color:#116326}
 .vf{color:#116326}
 .de{color:#7a5d00}
+.fr{color:#3f6698}
 .dead{color:#a12622}
 .newb{color:#116326}
 .pt{color:#116326}
@@ -1988,6 +2026,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             snippet=snippet, snippet_is_en=snippet_is_en,
             apply_href=apply_href, job_href=job_href,
             de_level=_german_level_attr(job),
+            fr_level=_french_level_attr(job),
             age=age_badge_text(job, ref), age_stale=age_is_stale(job, ref),
             dead=jid in dead_ids, is_new=jid in new_ids,
             score_override=(job.get(score_key)
