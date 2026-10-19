@@ -203,6 +203,32 @@ HYDRATION_SOURCE = "hydrated_topn"
 HYDRATION_INAPPLICABLE_FLAG = "hydration_inapplicable"
 
 # ---------------------------------------------------------------------------
+# F65 — hidratacao ALEM do top exibido (janela estendida), flag-gated com
+# TETO de fetches/dia. A F20 cobre so o top exibido (apply_company_cap);
+# vagas com description curta/vazia fora dessa janela ficam CEGAS aos
+# detectores (idioma/visto/sazonalidade/salario — medido pela F60:
+# classe B, caso Lidl praktikum_info:13308116, score 9.0, pagina viva com
+# JSON-LD de 2524 chars que o pipeline nunca viu). A passagem estendida
+# reusa o MESMO passe GET do url_liveness (liveness + parse JSON-LD F22,
+# 1 fetch sequencial por vaga) sobre as vagas de description curta FORA
+# do top exibido, EM ORDEM DE SCORE (as melhores primeiro), ate o teto
+# diario. Regra 9: default OFF — budget 0/ausente/invalido = zero
+# mudanca de comportamento (nenhum fetch, JSON byte-identical).
+# ---------------------------------------------------------------------------
+# Teto diario de fetches da janela estendida (env OU .env, padrao F1):
+# INTERNSHIP_FINDER_HYDRATION_BUDGET=N com N inteiro >= 1 liga o estagio;
+# 0/ausente/invalido = OFF. O dono decide o custo (relatorio F65 §budget:
+# ~2.5s/fetch medidos; N=120 cobre o backlog atual de ~126 cegas).
+HYDRATION_BUDGET_ENV_FLAG = "INTERNSHIP_FINDER_HYDRATION_BUDGET"
+# Provenance distinta da top-N (HYDRATION_SOURCE): distingue no JSON de
+# onde veio o texto e mantem a F25 (backlog "hydration") intocada.
+HYDRATION_SOURCE_EXTENDED = "hydrated_extended"
+# Teto TOTAL do estagio estendido (rede de patologia: timeout por vaga =
+# ~5.2s pior caso; 600s cobre ~110 vagas no pior caso e ~240 na media
+# medida — truncacao e logada pelo url_liveness, nunca derruba o run).
+EXTENDED_HYDRATION_DEADLINE_S = 600.0
+
+# ---------------------------------------------------------------------------
 # F39 — remoção automática de hard-dead. Critério de "confirmado": o
 # veredito JÁ EXISTENTE do estágio de vitalidade — HTTP 404/410
 # (url_liveness.DEAD_STATUS), a MESMA resposta que marcava o badge F11;
@@ -1505,6 +1531,251 @@ def _sync_personal_ranking(root: Path, data_dir: Path) -> None:
                     proc.returncode, (proc.stderr or proc.stdout).strip()[:200])
 
 
+# ---------------------------------------------------------------------------
+# F65 — hidratacao estendida (alem do top exibido) com teto de fetches/dia
+# ---------------------------------------------------------------------------
+
+
+def _hydration_budget(config_path: Path | str | None) -> int:
+    """F65 — teto diario de fetches da hidratacao estendida (pura).
+
+    Fonte (mesmo padrao do gate F1 ``ENRICHMENT_ENV_FLAG``): env herdada
+    ``INTERNSHIP_FINDER_HYDRATION_BUDGET`` OU a MESMA chave no ``.env``
+    (``load_env_config``); a env tem precedencia sobre o arquivo. Parse
+    FAIL-SAFE: ausente, vazia, nao-inteira ou negativa => ``0`` (OFF).
+    Default OFF (regra 9): zero mudanca de comportamento ate o dono
+    ligar — ``0`` = o estagio nem le o JSON (byte-identical garantido).
+    """
+    raw = os.environ.get(HYDRATION_BUDGET_ENV_FLAG)
+    if raw is None and config_path is not None:
+        try:
+            raw = load_env_config(config_path).get(HYDRATION_BUDGET_ENV_FLAG)
+        except Exception:  # noqa: BLE001 — .env ilegivel => OFF, nunca derruba
+            return 0
+    if raw is None:
+        return 0
+    try:
+        return max(0, int(str(raw).strip()))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _extended_hydration_candidates(
+    ranking: list,
+    shown_ids: "set[str]",
+    *,
+    short_description_limit: int = HYDRATION_SHORT_LIMIT,
+) -> list:
+    """F65 — candidatas da janela estendida (pura, offline-testavel).
+
+    Ordem OFICIAL do ranking preservada (a lista vem ordenada do
+    ``rank_jobs``/F56 = score desc) — hidratacao "as melhores primeiro"
+    (spec F65). Candidata = vaga FORA do top exibido (``shown_ids``) com
+    description curta/vazia (< ``short_description_limit`` chars, o MESMO
+    limite da F20). O topo nunca entra: o passe F20 ja gastou 1 fetch nele
+    neste run — a janela estendida e exatamente "tudo que a F20 NAO cobre"
+    (sem double fetch, sem re-decidir o corte do topo).
+    """
+    candidates: list[dict] = []
+    for job in ranking:
+        if not isinstance(job, dict):
+            continue
+        jid = str(job.get("id") or "")
+        if not jid or jid in shown_ids:
+            continue
+        desc = job.get("description")
+        if desc is None or len(str(desc)) < short_description_limit:
+            candidates.append(job)
+    return candidates
+
+
+def _run_extended_hydration(
+    data_dir: Path,
+    metrics_path: Path,
+    *,
+    run_id: str | None = None,
+    config_path: Path | str | None = None,
+    log=None,
+    opener=None,
+) -> dict:
+    """F65 — estagio de hidratacao estendida (alem do top exibido).
+
+    Fecha a classe B da F60: vagas com description curta/vazia fora da
+    janela F20 (top exibido) ficavam CEGAS aos detectores F60/F61 mesmo
+    com a pagina viva expondo o texto (caso Lidl ``praktikum_info:
+    13308116``). Este estagio reusa o passe GET do ``url_liveness``
+    (liveness + parse JSON-LD F22, 1 fetch sequencial por vaga, timeout/
+    delay/UA herdados) sobre as candidatas em ordem de score, ate o teto
+    ``INTERNSHIP_FINDER_HYDRATION_BUDGET`` fetches/dia.
+
+    Contrato:
+
+    - **Flag-gated + kill switch (regra 9)**: budget 0/ausente/invalido
+      => UMA linha de log e retorno imediato — nenhum fetch, nenhuma
+      leitura de arquivo, JSON byte-identical (comportamento F20 exato).
+    - **Provenance**: vaga hidratada ganha ``description_source=
+      "hydrated_extended"`` + ``description_hydrated_at`` (distinta da
+      top-N ``"hydrated_topn"``; a F25 do backlog "hydration" nao toca).
+    - **Re-avaliacao honesta**: a MESMA ``_reassess_hydrated_applicability``
+      da F20 roda sobre o texto revelado — german_required acende e a
+      varredura F37.3 (que roda DEPOIS deste estagio no main) remove do
+      JSON; outros motivos so demovem do top exibido (semantica F25).
+    - **F56**: score recomputado SOMENTE das hidratadas (a causa real —
+      a descricao mudou) e lista reordenada com o desempate oficial.
+    - **Mortas NAO sao marcadas aqui**: o veredito de morte do passe
+      estendido e apenas CONTADO (``dead_seen``) — a semantica de morte
+      (badge/remocao F39) pertence a janela do topo; a janela estendida
+      so hidrata (o corpo morto nunca hidrata, pelo proprio gate do
+      url_liveness). Vagas 410 voltam a ser candidatas amanha (o slice
+      diario recria o JSON) — custo limitado pelo budget, documentado.
+    - **Best-effort TOTAL**: qualquer falha vira log/retorno parcial; o
+      exit code do refresh NUNCA muda por causa deste estagio. Escrita
+      atomica (JSON+CSV) reusando o padrao da F20 (store atomico).
+    - ``opener`` injetavel (testes/CI sem rede; default urlopen).
+
+    Devolve o dict de contadores gravado na metrica ``extended_hydration``
+    (``{"budget", "blind_candidates", "fetched", "hydrated", ...}``);
+    ``{"budget": 0, "status": "off"}`` quando desligado.
+    """
+    def _info(msg: str, *args) -> None:
+        if log is not None:
+            log.info(msg, *args)
+        else:
+            print("F65: " + (msg % args if args else msg))
+
+    def _warn(msg: str, *args) -> None:
+        if log is not None:
+            log.warning(msg, *args)
+        else:
+            print("F65(WARN): " + (msg % args if args else msg))
+
+    budget = _hydration_budget(config_path)
+    if budget <= 0:
+        _info("hidratacao estendida DESLIGADA (default OFF; ligue com %s=N "
+              "no .env — N fetches/dia, regra 9: budget 0 = comportamento "
+              "F20 exato)", HYDRATION_BUDGET_ENV_FLAG)
+        return {"budget": 0, "status": "off"}
+
+    eligible_path = data_dir / "eligible_jobs.json"
+    try:
+        ranking = json.loads(
+            eligible_path.read_text(encoding="utf-8")
+        ) if eligible_path.exists() else []
+    except Exception as exc:  # noqa: BLE001 — JSON ilegivel => estagio pula
+        _warn("hidratacao estendida: %s ilegivel (%s: %s) — estagio pulado",
+              eligible_path, type(exc).__name__, exc)
+        return {"budget": budget, "status": "unreadable_eligible"}
+
+    shown_ids = {
+        str(j.get("id") or "")
+        for j in minimal_page.apply_company_cap(ranking)
+        if isinstance(j, dict)
+    } - {""}
+    candidates = _extended_hydration_candidates(ranking, shown_ids)
+    fetched = candidates[:budget]
+
+    t0 = time.monotonic()
+    record = {
+        "type": "extended_hydration",
+        "run_id": run_id or utcnow_iso(),
+        "timestamp": utcnow_iso(),
+        "budget": budget,
+        "blind_candidates": len(candidates),
+        "fetched": len(fetched),
+        "hydrated": 0,
+        "hydration_failed": 0,
+        "dead_seen": 0,
+        "newly_inapplicable": 0,
+        "by_reason": {},
+        "duration_s": 0.0,
+    }
+    if fetched:
+        dead_ext, bodies, liveness_stats = url_liveness.check_liveness_v2(
+            fetched,
+            deadline_s=EXTENDED_HYDRATION_DEADLINE_S,
+            log=log,
+            opener=opener,
+            want_bodies=True,
+            short_description_limit=HYDRATION_SHORT_LIMIT,
+        )
+        hydrated_ids: set[str] = set()
+        by_reason: dict[str, int] = {}
+        for job in fetched:
+            jid = str(job.get("id") or "")
+            new_desc = bodies.get(jid)
+            if not new_desc:
+                continue
+            job["description"] = new_desc
+            job["description_source"] = HYDRATION_SOURCE_EXTENDED
+            job["description_hydrated_at"] = utcnow_iso()
+            hydrated_ids.add(jid)
+            reason = _reassess_hydrated_applicability(job)
+            if reason:
+                job[HYDRATION_INAPPLICABLE_FLAG] = reason
+                by_reason[reason] = by_reason.get(reason, 0) + 1
+                _info("hidratacao estendida revelou %s em %s — desce do "
+                      "topo exibido (german_required sai na varredura "
+                      "F37.3 deste run)", reason, jid)
+        # Mortas do passe estendido NUNCA sao marcadas (janela do topo e
+        # dona da semantica de morte) — so contadas para o relatorio.
+        record.update({
+            "hydrated": len(hydrated_ids),
+            "hydrated_ids": sorted(hydrated_ids),
+            "hydration_failed": int(liveness_stats.get(
+                "hydration_failed", 0) or 0),
+            "dead_seen": len(dead_ext),
+            "newly_inapplicable": sum(by_reason.values()),
+            "by_reason": by_reason,
+            "duration_s": round(time.monotonic() - t0, 1),
+        })
+        if hydrated_ids:
+            # F56 — re-score APENAS das hidratadas estendidas (mesma causa
+            # real da F20: a descricao mudou) + reordenacao oficial.
+            try:
+                rescored = rescore_hydrated_jobs(
+                    ranking, hydrated_ids, now=datetime.now(UTC))
+                _info("F56: score recomputado para %d vaga(s) hidratada(s) "
+                      "pela janela estendida", rescored)
+            except Exception as exc:  # noqa: BLE001 — re-score nunca derruba
+                _warn("F65: re-score pos-hidratacao falhou (JSON segue com "
+                      "scores pre-hidratacao): %s: %s",
+                      type(exc).__name__, exc)
+            # Persistencia atomica (padrao F20): JSON + CSV (score e coluna
+            # do contrato CSV — mesmo cuidado da F56 top-N). Falha de
+            # escrita NUNCA derruba o run.
+            try:
+                from internship_finder.cli import (_write_json_atomic,
+                                                   _write_atomic,
+                                                   _dump_csv)
+                _write_json_atomic(ranking, eligible_path)
+                _write_atomic(
+                    eligible_path.with_suffix(".csv"),
+                    lambda fh: _dump_csv(fh, ranking))
+                _info("F65: %d descricao(oes) estendida(s) persistida(s) "
+                      "em %s", len(hydrated_ids), eligible_path)
+            except Exception as exc:  # noqa: BLE001
+                _warn("F65: hidratacao estendida nao persistida (JSON "
+                      "segue com descricoes originais): %s: %s",
+                      type(exc).__name__, exc)
+        _info("estagio F65 (hidratacao estendida): budget=%d, %d cega(s), "
+              "%d fetch(es), %d hidratada(s), %d inaplicavel(is) novo(s), "
+              "%d morta(s) vista(s) (nao marcadas), %.1fs",
+              budget, len(candidates), record["fetched"], record["hydrated"],
+              record["newly_inapplicable"], record["dead_seen"],
+              record["duration_s"])
+    else:
+        _info("hidratacao estendida: 0 candidata(s) cega(s) fora do top "
+              "exibido neste run (budget %d intocado)", budget)
+
+    try:
+        from internship_finder.metrics import write_metrics
+        write_metrics(metrics_path, [record])
+    except Exception as exc:  # noqa: BLE001 — metrica e best-effort
+        _warn("F65: metrica extended_hydration nao gravada: %s: %s",
+              type(exc).__name__, exc)
+    return record
+
+
 def run_enrichment(root: Path, exit_code: int, eligible: int, limit: int,
                    top_n: int, config: dict | None,
                    max_secs: float = DEFAULT_ENRICHMENT_MAX_SECS) -> None:
@@ -1896,6 +2167,31 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001 — vitalidade nunca derruba o run
             log.warning("estagio de vitalidade falhou (publish segue sem "
                         "marcas): %s: %s", type(exc).__name__, exc)
+
+        # F65 — hidratacao estendida: as vagas de description curta/vazia
+        # FORA do top exibido (cegas a F20 — classe B da F60, caso Lidl
+        # praktikum_info:13308116), em ordem de score, ate o teto diario
+        # INTERNSHIP_FINDER_HYDRATION_BUDGET (default 0 = OFF, regra 9:
+        # nenhuma mudanca ate o dono ligar). MESMO gate de publicacao da
+        # F20 (so roda com --pages-dir); best-effort TOTAL; mortas do
+        # passe estendido NUNCA sao marcadas (so contadas) — a janela do
+        # topo e dona da semantica de morte. Roda ANTES da F25/F37.3
+        # para que os german_required revelados pelo texto hidratado
+        # sejam removidos do JSON pela varredura F37.3 DESTE run.
+        try:
+            extended_hydration_stats = _run_extended_hydration(
+                data_dir, metrics_path,
+                run_id=summary.get("run_id"),
+                config_path=config_path,
+                log=log)
+            if extended_hydration_stats.get("hydrated"):
+                log.info("F65 resumo: %d vaga(s) sairam da cegueira "
+                         "(janela estendida)",
+                         extended_hydration_stats["hydrated"])
+        except Exception as exc:  # noqa: BLE001 — F65 nunca derruba o run
+            log.warning("F65: hidratacao estendida falhou (run segue, "
+                        "exit %d preservado): %s: %s",
+                        exit_code, type(exc).__name__, exc)
 
     # F25 — reavaliacao de aplicabilidade do BACKLOG hidratado: TODA vaga
     # com description_source=="hydration" que ainda nao tem o marcador
