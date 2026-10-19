@@ -136,7 +136,23 @@ REPO = Path(__file__).resolve().parent.parent
 # (_fmt_salary consome provenance) mas as fixtures da F53 NÃO citam
 # salário implausível — suíte local verde sem strip adicional (o
 # byte a byte módulo F60 segue idêntico).
-_AB_BASELINE_SHA = "cbcbac1c14093dd768d90e07d317088ae960dcd2"
+# F65.1 (19/10): F50.1 (#164) tocou src/ (enrichment/llm.py — MODEL
+# flash→normal + env override INTERNSHIP_FINDER_ENRICHMENT_MODEL) e NÃO
+# moveu a âncora — landmine pós-merge da MESMA classe do F58 (diff
+# cbcbac1..main = llm.py; main quebrado 91/92, CI imune por [SKIP]
+# no checkout raso; achado da F65, fix roteado no card F65.1). Padrão
+# F56/F59/F60/F61/F63: âncora move para o estado src/ da fase que
+# tocou src/ — F50.1 = ab2c230. Confirmado o origin/main do dia:
+# f604fe3 (F65 #165 mergeou entretanto, SÓ scripts/ci.yml — src/
+# byte-idêntico a ab2c230, diff vazio conferido), então a âncora
+# apoia no main do dia = base da branch, que carrega exatamente o
+# estado src/ pós-F50.1. Decisão consciente (escopo do card): MOVER
+# em vez de excluir enrichment/ do escopo do diff — desde o split
+# F56 esta âncora serve SÓ à pré-condição src/ (o render legado lê
+# _AB_LEGACY_PAGE_SHA congelado), e excluir o pacote cegaria o
+# check p/ qualquer fase futura em enrichment/. O A/B pré-F53
+# (byte-identity + orçamento) segue lendo 1b548c1 — inalterado.
+_AB_BASELINE_SHA = "f604fe3d0b5478d1088c4ad7e3d517d7241fc7cb"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
