@@ -1,16 +1,24 @@
-"""Cliente GLM-5.3-Flash (API NVIDIA integrate) para extracao estruturada.
+"""Cliente GLM-5.3 (API NVIDIA integrate) para extracao estruturada.
 
-Fatos medidos no spike 24/09 (NAO reabrir sem evidencia nova):
+Fatos medidos (historia completa, NAO reabrir sem evidencia nova):
 
-- Endpoint ``https://integrate.api.nvidia.com/v1/chat/completions``; model
-  ``z-ai/glm-5.3-flash``. NUNCA ``z-ai/glm-5.3`` para JSON estrito: queima
-  TODO o max_tokens em raciocinio interno e devolve resposta vazia (A/B
-  5/5 falhas; flags de thinking ignoradas). Flash: parse OK, 16-290s/vaga.
+- Endpoint ``https://integrate.api.nvidia.com/v1/chat/completions``.
+- **19/10/2026 (calibracao F50, payload real, ordem do dono)**:
+  ``z-ai/glm-5.3`` (normal) + ``reasoning_effort="low"`` = PARSED OK em 1
+  tentativa, 53,4s/vaga, tokens in 2.679 / out 584, ZERO burn de max_tokens
+  (evidencia + script: ~/.hermes/handoff/f50-enrichment-flags/). O normal e o
+  MODEL default desde entao (o flash estava murado: hang 000 / 429 desde
+  18/10). Sweep de 24 vagas ~ 21min, cabe no teto 1800s.
+- **spike 24/09 (SUPERSEDED pelo fix F50 ``reasoning_effort``)**: glm-5.3
+  SEM reasoning_effort queimava TODO o max_tokens em raciocinio interno
+  (A/B 5/5 falhas; flags de thinking da epoca ignoradas). Com o fix low o
+  normal funciona — medido 19/10. Flash: parse OK, 16-290s/vaga (mais
+  rapido ~23s quando saudavel — voltar a ele so se o normal voltar a
+  queimar, com evidencia).
 - ``temperature: 0``, ``max_tokens: 8000``, timeout ~290s.
 - Parser tolerante obrigatorio: blocos de raciocinio "think" removidos,
   code fences removidos, texto antes do primeiro ``{`` descartado,
-  ``raw_decode`` no resto; invalido -> erro claro (parse_error e retryavel —
-  o spike viu JSON picado em janela degradada).
+  ``raw_decode`` no resto; invalido -> erro claro (parse_error e retryavel).
 - A key vem EXCLUSIVAMENTE de ``NVIDIA_API_KEY`` (env var). NUNCA default,
   nunca em arquivo, nunca em log/erro/artefato (todas as mensagens de erro
   passam por ``_sanitize``).
@@ -31,7 +39,14 @@ from internship_finder.enrichment.fetch import RequestsTransport, Transport
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 CHAT_COMPLETIONS_URL = f"{NVIDIA_BASE_URL}/chat/completions"
 MODELS_URL = f"{NVIDIA_BASE_URL}/models"
-MODEL = "z-ai/glm-5.3-flash"
+# F50.1 (19/10, ordem do dono "troque o flash pelo normal"): default = normal
+# (calibrado: +reasoning_effort=low -> 53s/vaga, zero burn). Override sem
+# deploy via env (padrao REASONING_EFFORT_ENV): valor preenchido -> usado
+# verbatim; vazio/ausente -> default do modulo (model e OBRIGATORIO na API —
+# nao existe "nao enviar"). Flash voltar a ser default exige evidencia de
+# queima do normal (docstring acima).
+MODEL_ENV = "INTERNSHIP_FINDER_ENRICHMENT_MODEL"
+MODEL = os.environ.get(MODEL_ENV) or "z-ai/glm-5.3"
 
 LLM_TIMEOUT_S = 290
 MAX_TOKENS = 8000

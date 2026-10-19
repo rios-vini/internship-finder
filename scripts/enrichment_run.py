@@ -26,7 +26,7 @@ Uso:
 
 A key vem EXCLUSIVAMENTE da env var ``NVIDIA_API_KEY`` (nunca em arquivo,
 nunca em log). Sem key (exceto ``--dry-run``): mensagem clara + exit 1.
-Modelo fixo ``z-ai/glm-5.3-flash`` (o 5.3 queima todo o max_tokens em
+Modelo = ``llm.MODEL`` (F50.1 19/10: default z-ai/glm-5.3 normal, calibrado com reasoning_effort=low — ver llm.py; o 5.3 SEM low queimava todo o max_tokens em
 raciocinio interno — medido no spike A/B 5/5 falhas; NAO trocar).
 
 Concorrencia (spec secao 14): o modo real adquire flock exclusivo em

@@ -93,9 +93,12 @@ class FakeLLMTransport:
 class FakeModelsTransport:
     """Transport falso para validate_model (GET /v1/models)."""
 
-    def __init__(self, status=200, ids=("z-ai/glm-5.3-flash",)):
+    def __init__(self, status=200, ids=None):
+        # F50.1: default = llm.MODEL (o contrato do modulo) — o literal
+        # hard-pinned quebrava a cada troca de model (licao dos asserts exatos)
+        from internship_finder.enrichment import llm as _llm
         self.status = status
-        self.ids = list(ids)
+        self.ids = list(ids) if ids is not None else [_llm.MODEL]
 
     def get(self, url, headers, timeout):
         body = json.dumps({"data": [{"id": i} for i in self.ids]})
@@ -586,8 +589,8 @@ check("llm: timeout de rede esgota 3 tentativas",
 payload = tracked.calls[0]["payload"] if tracked.calls else {}
 check("llm: payload temperature=0", payload.get("temperature") == 0)
 check("llm: payload max_tokens=8000", payload.get("max_tokens") == 8000)
-check("llm: model fixo z-ai/glm-5.3-flash",
-      payload.get("model") == "z-ai/glm-5.3-flash" and llm.MODEL == "z-ai/glm-5.3-flash")
+check("llm: model do payload == llm.MODEL (contrato) e default F50.1 = normal",
+      payload.get("model") == llm.MODEL and llm.MODEL == "z-ai/glm-5.3")
 
 # ---------------------------------------------------------------------------
 # 8. Persistencia atomica + upsert + preservacao + load tolerante
@@ -1034,7 +1037,7 @@ with tempfile.TemporaryDirectory() as tmp:
     runner._write_run_status(out, 0, s1, s1["duration_s"], s1.get("last_error"))
     status = json.loads(runner.status_path_for(out).read_text(encoding="utf-8"))
     check("fase2: status file com health da secao 12",
-          status["last_exit_code"] == 0 and status["model"] == "z-ai/glm-5.3-flash"
+          status["last_exit_code"] == 0 and status["model"] == llm.MODEL
           and status["last_success_at"] is not None
           and status["counts"]["llm_calls"] == 1)
     # falha de setup: last_success_at preservado
