@@ -1847,8 +1847,17 @@ def funnel_seasonality_lines(
     # score/ranking; janelas FUTURAS (SoSe 2027, jan–jul/2027) seguem
     # positivas e NÃO ganham aviso. Sem imediatas -> linha AUSENTE e o
     # digest é byte a byte o de antes (never-worsens).
-    imm = next((int(item["count"]) for item in cal
-                if item.get("label") == IMMEDIATE_LABEL), 0)
+    # F67 — o SINAL ficou mais estrito: a contagem agora vem do campo
+    # ``immediate_context`` do summary (imediatos COM contexto de início
+    # — fonte única ``seasonality.immediate_context_count``), não mais
+    # do lookup por rótulo, que contava também os 11 FPs em prosa
+    # (slogan Lidl, rodapé anti-fraude Medtronic, processo boas, lab
+    # OLAM — medição F62 §2). O calendário 📆 acima segue contando
+    # TODOS os hits no rótulo "ab sofort" (decisão F67: a contagem
+    # textual do calendário é preservada; só o sinal aperta). Report
+    # SEM o campo (formato pré-F67) = sem sinal apertado = linha
+    # AUSENTE (best-effort honesto: nunca volta a contar prosa).
+    imm = int(sea.get("immediate_context") or 0)
     if imm > 0:
         lines.append(f"  ⚠ início imediato ({IMMEDIATE_LABEL}): {imm} "
                      f"{'vaga' if imm == 1 else 'vagas'} — conflita com "

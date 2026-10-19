@@ -44,6 +44,30 @@ bare MMY (7/7 legítimos na medição, caso BDO) continua sem janela —
 variante "bare MMY só no título" documentada como opção futura no
 relatório F57 (exigiria passar o título separado ao parser).
 
+F67 (19/10) — CONTEXTO DE INÍCIO para o imediato. A medição F62 §2 (run
+17/10, a olho) splitou os 37 canônicos ``ab sofort`` em 26 janelas
+declaradas de verdade (``Beginn: ab sofort``, ``Ab sofort für 6
+Monate``, ``STARTING IMMEDIATELY … FOR 6 MONTHS``) e 11
+falsos-positivos em prosa (7× slogan Lidl ``steigt sofort in die
+Arbeitswelt ein``, 2× rodapé anti-fraude Medtronic ``contact us
+immediately``, 1× processo boas ``join us immediately``, 1× lab OLAM
+``measuring … immediately after production``). A diferença observável:
+os reais vêm com um MARCADOR DE CONTEXTO DE INÍCIO colado ao termo
+(``_IMMEDIATE_CONTEXT_RE`` — Beginn/Start/Wann/Zeitraum/zu besetzen/
+Suchen/duração ``N Monate``/``als Praktikant``); a prosa, não. Todo
+hit imediato agora carrega ``"context"``: True quando um marcador
+aparece na janela ``_IMMEDIATE_CONTEXT_WINDOW`` (±60 chars — o real
+mais distante dos 37 mede 45; os 11 FPs não têm NENHUM marcador a
+±250). Sem contexto o hit CONTINUA no calendário 📆 com o rótulo
+``ab sofort`` (contagem preservada — decisão F67: o parser segue
+honesto sobre o TEXTO; quem fica mais estrito é o SINAL de imediato)
+mas deixa de ser IMEDIATO: o badge da F62 (``ab_sofort_flag``) e a
+linha ⚠ do digest (``immediate_context`` do summary) só acendem com
+``context=True``. Canônico: entre hits imediatos do MESMO texto, um
+COM contexto vence um em prosa (proteção contra vaga futura com
+slogan + janela real no mesmo texto — nos runs medidos não existe
+vaga com 2 hits imediatos, delta 0).
+
 PRIORIDADE DO CANÔNICO (1 hit por vaga; decisões F45):
 
     semester > range > start > imediato
@@ -194,6 +218,26 @@ _END_ZUM_RE = re.compile(
 _IMMEDIATE_RE = re.compile(
     r"(?<!\w)(?:ab\s+sofort|sofort|immediately)(?!\w)",
     re.IGNORECASE)
+
+# F67 — marcadores de CONTEXTO DE INÍCIO: o hit imediato só é janela
+# declarada quando um destes aparece colado ao termo. Calibrado nos 37
+# canônicos do run 17/10 (tábua F62 §2): os 26 reais têm marcador a
+# <=45 chars; os 11 FPs em prosa (slogan Lidl, rodapé Medtronic,
+# processo boas, lab OLAM) não têm NENHUM a ±250. Word-aware:
+# "start" NÃO casa "startet" (verbo do slogan Lidl), mas casa
+# "START IMMEDIATELY" e "Start: ab sofort"; "starting" cobre o DHL EN.
+_IMMEDIATE_CONTEXT_RE = re.compile(
+    r"(?i)\b(?:"
+    r"beginn\w*|beginning|start|starts|starting|einstieg"
+    r"|wann|zeitraum|dauer|duration|zu\s+besetzen|besetzung"
+    r"|suchen|gesucht"
+    r"|monate|monaten|monatig\w*|months|mois"
+    r"|als\s+praktikant|als\s+werkstudent"
+    r")\b")
+
+# F67 — janela de contexto: ±60 chars do termo (folga de 15 sobre o
+# real mais distante medido, 45; FPs limpos até ±250).
+_IMMEDIATE_CONTEXT_WINDOW = 60
 
 # Prioridade do canônico (menor = mais específico).
 _KIND_RANK = {"semester": 0, "range": 1, "start": 2, "immediate": 3}
@@ -363,11 +407,30 @@ def _start_hits(text: str) -> list[dict]:
     return hits
 
 
+def _immediate_has_context(text: str, start: int, end: int) -> bool:
+    """F67: há marcador de contexto de início na janela ±60 do termo?
+
+    Pura; janela clampada ao texto (termo no início/fim não lança).
+    """
+    lo = max(0, start - _IMMEDIATE_CONTEXT_WINDOW)
+    hi = min(len(text), end + _IMMEDIATE_CONTEXT_WINDOW)
+    return _IMMEDIATE_CONTEXT_RE.search(text, lo, hi) is not None
+
+
 def _immediate_hits(text: str) -> list[dict]:
-    return [{
-        "kind": "immediate", "semester": None, "term": m.group(0).strip(),
-        "start": None, "end": None, "year": None, "pos": m.start(),
-    } for m in _IMMEDIATE_RE.finditer(text)]
+    hits: list[dict] = []
+    for m in _IMMEDIATE_RE.finditer(text):
+        hits.append({
+            "kind": "immediate", "semester": None,
+            "term": m.group(0).strip(),
+            "start": None, "end": None, "year": None,
+            "pos": m.start(),
+            # F67: contexto de início colado ao termo (True = janela
+            # declarada; False = prosa — permanece no calendário 📆,
+            # mas NÃO é sinal de início imediato).
+            "context": _immediate_has_context(text, m.start(), m.end()),
+        })
+    return hits
 
 
 # ---------------------------------------------------------------------------
@@ -379,9 +442,12 @@ def parse_seasonality(text: str) -> list[dict]:
     """Todos os hits de sazonalidade do texto, ordenados por (prioridade,
     posição). Determinístico; texto vazio/None -> [].
 
-    Cada hit: ``{"kind", "semester", "term", "start", "end", "year", "pos"}``
-    — ``start``/``end`` em ``YYYY-MM`` (None quando desconhecido), ``term``
-    é o trecho literal casado, ``pos`` a posição no texto.
+    Cada hit: ``{"kind", "semester", "term", "start", "end", "year",
+    "pos", "context"}`` — ``start``/``end`` em ``YYYY-MM`` (None quando
+    desconhecido), ``term`` é o trecho literal casado, ``pos`` a
+    posição no texto e ``context`` (F67, só no kind=immediate) diz se
+    há marcador de contexto de início colado ao termo (True = janela
+    declarada; False = prosa).
     """
     if not text:
         return []
@@ -396,9 +462,25 @@ def parse_seasonality(text: str) -> list[dict]:
 
 def canonical_seasonality(text: str) -> dict | None:
     """UM hit por texto (prioridade: semester > range > start > imediato;
-    empate: primeiro na ordem de leitura). None quando nada detectado."""
+    empate: primeiro na ordem de leitura). None quando nada detectado.
+
+    F67 — desempate DENTRO do imediato: se o canônico seria um hit
+    imediato SEM contexto (prosa) mas o texto também tem um hit
+    imediato COM contexto (janela declarada), o COM contexto vence.
+    Proteção contra vaga futura com slogan e janela real no mesmo
+    texto; nos runs medidos (17–19/10) nenhuma vaga tem 2 hits
+    imediatos — delta zero. Outros kinds: intocados.
+    """
     hits = parse_seasonality(text)
-    return hits[0] if hits else None
+    if not hits:
+        return None
+    if hits[0].get("kind") == "immediate" and not hits[0].get("context"):
+        with_ctx = next(
+            (h for h in hits
+             if h.get("kind") == "immediate" and h.get("context")), None)
+        if with_ctx is not None:
+            return with_ctx
+    return hits[0]
 
 
 def seasonality_label(hit: dict | None) -> str | None:
@@ -437,6 +519,23 @@ def seasonality_calendar(texts: Iterable[str]) -> list[tuple[str, int]]:
         if label:
             counts[label] = counts.get(label, 0) + 1
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def immediate_context_count(texts: Iterable[str]) -> int:
+    """F67: nº de textos cujo canônico é imediato COM contexto de início
+    (janela declarada de verdade — "Ab sofort für 6 Monate", "Beginn: ab
+    sofort"). FONTE ÚNICA da contagem apertada: a linha ⚠ do digest
+    (``ranking_digest``) e o A/B da F67 consomem este número; o badge da
+    página consome o MESMO sinal por vaga (``hit["context"]``). O
+    calendário 📆 NÃO usa isto — ele preserva TODOS os hits imediatos
+    no rótulo ``ab sofort`` (decisão F67: contagem textual intacta).
+    Pura; determinística; nunca lança (texto inválido -> sem hit)."""
+    n = 0
+    for t in texts:
+        hit = canonical_seasonality(t)
+        if hit and hit.get("kind") == "immediate" and hit.get("context"):
+            n += 1
+    return n
 
 
 def job_window_text(job: dict) -> str:
