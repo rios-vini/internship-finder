@@ -13,8 +13,6 @@ import multiprocessing as mp
 import time
 from queue import Empty as _Empty
 
-from ats_scrapers.scrapers import get_scraper
-
 from internship_finder.adapters.ats import AtsJobAdapter
 from internship_finder.collectors.company import CompanyCollector
 from internship_finder.errors import (
@@ -28,6 +26,7 @@ from internship_finder.errors import (
 from internship_finder.geocoding import flush_cache
 from internship_finder.models.company import Company
 from internship_finder.models.job import Job
+from internship_finder.upstream_patches.bamboohr import get_patched_scraper
 
 log = logging.getLogger(__name__)
 
@@ -162,7 +161,13 @@ def fetch_worker(
     """
     try:
         try:
-            scraper = get_scraper(
+            # F59.1: ponto de uso do patch BambooHR auto-removível — o
+            # factory decide (auto-detect contra o fixture BCG) entre o
+            # pacote puro e o parser vendored; para TODO outro ATS é
+            # ``get_scraper`` puro (inércia). Hidratação (get_description,
+            # detail API) segue ``get_scraper`` direto — o PR #300 não
+            # toca esse caminho.
+            scraper = get_patched_scraper(
                 company.ats,
                 scraper_slug(company),
                 timeout=timeout,

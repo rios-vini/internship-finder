@@ -121,12 +121,14 @@ def test_fetch_worker_payload() -> None:
     q = queue_mod.Queue()
 
     # 2a. SUCESSO: payload continua ("ok", result)
+    # F59.1: o seam de fetch_worker é o factory get_patched_scraper (o
+    # get_scraper puro saiu do coletador — auto-detect BambooHR).
     job_dict = {"id": "s:1", "source": "smartrecruiters:acme", "title": "Intern"}
     fake_scraper = MagicMock()
     fake_scraper.fetch.return_value = [object()]  # to_job e mockado abaixo
     fake_adapter = MagicMock()
     fake_adapter.to_job.return_value.to_dict.return_value = job_dict
-    with patch.object(ats_scraper, "get_scraper", return_value=fake_scraper), \
+    with patch.object(ats_scraper, "get_patched_scraper", return_value=fake_scraper), \
          patch.object(ats_scraper, "AtsJobAdapter", return_value=fake_adapter), \
          patch.object(ats_scraper, "flush_cache"):
         ats_scraper.fetch_worker(company, timeout=10, include_descriptions=False, queue=q)
@@ -138,7 +140,7 @@ def test_fetch_worker_payload() -> None:
     q = queue_mod.Queue()
     fake_scraper = MagicMock()
     fake_scraper.fetch.side_effect = RuntimeError("boom")
-    with patch.object(ats_scraper, "get_scraper", return_value=fake_scraper), \
+    with patch.object(ats_scraper, "get_patched_scraper", return_value=fake_scraper), \
          patch.object(ats_scraper, "AtsJobAdapter", return_value=MagicMock()), \
          patch.object(ats_scraper, "flush_cache"):
         ats_scraper.fetch_worker(company, timeout=10, include_descriptions=False, queue=q)
@@ -156,7 +158,7 @@ def test_fetch_worker_payload() -> None:
     fake_scraper.fetch.return_value = [object()]
     fake_adapter = MagicMock()
     fake_adapter.to_job.side_effect = ValueError("campo inesperado")
-    with patch.object(ats_scraper, "get_scraper", return_value=fake_scraper), \
+    with patch.object(ats_scraper, "get_patched_scraper", return_value=fake_scraper), \
          patch.object(ats_scraper, "AtsJobAdapter", return_value=fake_adapter), \
          patch.object(ats_scraper, "flush_cache"):
         ats_scraper.fetch_worker(company, timeout=10, include_descriptions=False, queue=q)

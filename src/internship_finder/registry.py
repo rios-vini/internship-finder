@@ -164,11 +164,18 @@ SEED = [
     # "empty" silencioso desde 08/10. Quebra de PARSE, não fim das vagas.
     # Conserto na camada do defeito (decisão F49 §2.6): PR #300 no upstream
     # kalil0321/ats-scrapers — parser tolerante ao JSON (detecção
-    # content-based), mesmo formato de saída do caminho HTML; NENHUM fork
-    # local do parser. O zero_return do health é a EXPECTATIVA HONESTA até
-    # o upstream mergear + release instalar: o alerta cessa sozinho no
-    # primeiro run pós-fix com vagas (documentado no health.py,
-    # _detect_zero_return). Evidência: relatório F49 §2.6 + F59.
+    # content-based), mesmo formato de saída do caminho HTML.
+    # F59.1 (19/10): o parser do PR #300 está VENDADO em
+    # upstream_patches/bamboohr.py — patch SELF-REMOVÍVEL (auto-detect no
+    # ponto de uso: o pacote INSTALADO é sondado contra o fixture BCG
+    # verbatim; pacote com fix = bypass total, sem fix = patch ativo;
+    # kill switch INTERNSHIP_FINDER_UPSTREAM_PATCH_BAMBOOHR, default ON).
+    # Janela de divergência com o upstream: ZERO. O zero_return do health
+    # cessa no 1º cron pós-merge DESTE repo (a coleta volta a achar as
+    # vagas); quando o upstream mergear+release+upgrade, o patch vira
+    # no-op sozinho e o canário (d) da suíte test_f59_1 força a remoção
+    # (checklist no topo do módulo). Evidência: relatório F49 §2.6 + F59
+    # + F59.1.
     RegistryEntry(name="BCG", ats="bamboohr", tenant="bamboohr:bcg"),
     RegistryEntry(name="mediasatur", ats="successfactors", tenant="successfactors:mediasatur"),
     RegistryEntry(name="Tchibo", ats="successfactors", tenant="successfactors:jobs"),

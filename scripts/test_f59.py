@@ -35,6 +35,11 @@ trava SÓ o registro e a documentação (escopos 3-4 da card F59):
    (gate de histórico; buraco documentado na F49 §2.6).
 5. SEM FORK LOCAL: nenhum módulo bamboohr em src/internship_finder — o
    scraper continua vindo do pacote upstream ats_scrapers.
+   [F59.1, 19/10: este item EVOLUI — o parser do PR #300 passou a ser
+   VENDADO em upstream_patches/bamboohr.py (auto-removível, por ordem
+   do dono); o check C1 abaixo trava que a camada vendored é o ÚNICO
+   módulo bamboo local. O resto da suíte (registro, documentação,
+   expectativa do zero_return) segue válido.]
 
 ZERO REDE: fixtures verbatim de data/collection_metrics.jsonl (linhas
 type:tenant reais, campos mínimos, copiadas sem invenção — extração de
@@ -453,25 +458,39 @@ check(
 # C. Sem fork local do parser — conserto na camada do defeito (upstream)
 # ---------------------------------------------------------------------------
 
+# F59.1 (19/10) — o contrato C1 EVOLUI por decisão do dono ("aplicar a
+# solução no meu projeto... ao invés de deixar defasado esperando
+# semanas"): o parser do PR #300 agora é VENDADO em
+# upstream_patches/bamboohr.py — camada própria, auto-removível
+# (auto-detect: pacote com fix = bypass total) e flag-gated. O assert
+# segue travando o essencial: (1) o ÚNICO módulo bamboo local é a
+# camada vendored (nenhum parser espalhado fora dela); (2) o coletador
+# consome o factory do patch, não um scraper importado por caminho.
 _local_bamboo = sorted(str(p) for p in ROOT.glob("src/internship_finder/**/bamboo*.py"))
+_vendored_layer = str(
+    ROOT / "src" / "internship_finder" / "upstream_patches" / "bamboohr.py"
+)
 _collector_src = (
     ROOT / "src" / "internship_finder" / "collectors" / "ats_scraper.py"
 ).read_text(encoding="utf-8")
 check(
-    "C1 NENHUM fork local: 0 módulos bamboohr em src/internship_finder e o "
-    "coletador importa o scraper do pacote upstream "
-    "(ats_scrapers...get_scraper)",
-    not _local_bamboo
-    and "from ats_scrapers.scrapers import get_scraper" in _collector_src,
+    "C1 fork local = SÓ a camada vendored auto-removível (F59.1: "
+    "upstream_patches/bamboohr.py, PR #300) e o coletador consome o "
+    "factory get_patched_scraper (auto-detect no ponto de uso)",
+    _local_bamboo == [_vendored_layer]
+    and (
+        "from internship_finder.upstream_patches.bamboohr "
+        "import get_patched_scraper"
+    ) in _collector_src,
     f"locals={_local_bamboo}",
 )
 
 from ats_scrapers.scrapers import BambooHRScraper  # noqa: E402
 
 check(
-    "C2 o pacote upstream instalado provê BambooHRScraper (a classe vem do "
-    "ats_scrapers; o fix do JSON entra por release do upstream, não por "
-    "patch local)",
+    "C2 o pacote upstream instalado provê BambooHRScraper (a camada "
+    "vendored SUBCLASSE a classe do pacote — o fix definitivo continua "
+    "sendo o release do upstream, que dá bypass sozinho no auto-detect)",
     BambooHRScraper is not None,
 )
 
