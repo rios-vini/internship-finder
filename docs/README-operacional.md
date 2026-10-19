@@ -150,7 +150,10 @@ de cobertura 15/09 + 6 da auditoria 16/09 + 9 da auditoria próxima fronteira
 17/09 + 5 da última onda de cobertura 18/09: Sungrow EMEA, AutoScout24, Huawei
 Research Center Germany, EAT HAPPY GROUP, VDI Technologiezentrum GmbH + 9 da
 onda de fontes F16 08/10: Brenntag, ALTANA, Atlas Copco, SKF, Decathlon
-Digital, DSV, Heidelberg Materials, Sandvik, Rhe — ver
+Digital, DSV, Heidelberg Materials, Sandvik, Rhenus + 17 da onda F32 Hidden
+Champions 13/10: Blickle, Bundesdruckerei, Delo, EBM-Papst, ElringKlinger,
+Freudenberg, Karlstorz, KAESER, Körber, Multivac, Ottobock, Mapal, LEMKEN,
+Grammer, Leoni, Walter, Rational — ver
 `docs/` e MASTER_PLAN #23 e o
 Log de mudanças) vivem em **codigo**, no `SEED` de
 `src/internship_finder/registry.py` — a

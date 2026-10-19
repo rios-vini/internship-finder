@@ -19,7 +19,7 @@ Por que o fetch direto vale as 2 fontes:
 - BA: 14,3k rows PRAKTIKUM_TRAINEE ao vivo; a fatia dataset (1M rows) tem
   27.870 linhas casando ``praktikum`` mas o prefilter F3 das fatias ve o
   TITULO + pais da row — rows recentemente publicadas podem nao estar na
-  fatia do dia (atualiza ~05h UTC). O fetch direto pega as mais novas
+  fatia do dia (atualiza ~14:30 UTC). O fetch direto pega as mais novas
   (sortierung veroeffdatum) e ganha description via detail v4.
 - EURES: 35.486 rows DE com "Praktikum" (EVERYWHERE) vs 4.649 linhas
   ``praktikum|internship`` na fatia (prefilter por titulo so); a busca por

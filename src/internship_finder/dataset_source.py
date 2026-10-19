@@ -2,7 +2,7 @@
 
 O pacote `ats-scrapers` 0.3.0 expoe DUAS camadas: (1) um dataset HOSPEDADO
 (Cloudflare R2, manifest publico em ``https://storage.stapply.ai/jobhive/v1/manifest.json``,
-atualizacao diaria ~05h UTC, sem API key) com ~5,1M jobs / 80.390 empresas /
+atualizacao diaria ~14:30 UTC, sem API key) com ~5,1M jobs / 80.390 empresas /
 63 fontes; (2) scrapers per-ATS que a coleta do registry usa. Esta fonte
 consome a camada (1) pela borda correta e ALIMENTA o MESMO fluxo
 filtros -> dedup -> ranking.
@@ -49,7 +49,7 @@ Volume: o prefilter reduz ~5,1M rows globais para ~21,6k antes de qualquer
 restantes viram ``skipped_budget``).
 
 O registry NAO participa da entrada (a inversao arquitetural da F3): a
-lista de 101 empresas vira componente ``registry`` no RANKING
+lista de 127 empresas vira componente ``registry`` no RANKING
 (``ranking.WEIGHT_REGISTRY_INTEREST``), nunca filtro de existencia.
 
 Jobs do dataset NAO entram no lifecycle SQLite (invariante §7.8): a fonte

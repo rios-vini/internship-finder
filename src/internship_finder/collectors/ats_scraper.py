@@ -79,7 +79,7 @@ def scraper_slug(company: Company) -> str:
 
 
 # F58 (18/10/2026): override de MIGRACAO de ATS por empresa. O inventario
-# upstream (ats-companies, manifest atualizado ~05h UTC) e a fonte canonica
+# upstream (ats-companies, manifest atualizado ~14:30 UTC) e a fonte canonica
 # de tenants, mas nao acompanha migracoes de plataforma em tempo real:
 # enquanto a linha antiga nao sai do manifest, a coleta pelo nome resolve o
 # tenant MORTO, o scraper antigo segue o redirect para o site novo, parseia
