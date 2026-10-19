@@ -84,7 +84,20 @@ REPO = Path(__file__).resolve().parent.parent
 # âncora da pré-condição src/ move para o head da fase que tocou src/; o
 # render legado permanece congelado em _AB_LEGACY_PAGE_SHA (minimal_page.py
 # intocado pela F50 — byte-identity do legado inalterado).
-_AB_BASELINE_SHA = "4f2815c"
+# F58 (18/10, retroativo — detectado na F59): a F58 tocou src/
+# (collectors/ats_scraper.py TENANT_ATS_OVERRIDES + health.py
+# SERIES_STALE_HOURS + registry.py re-point) e NÃO moveu a âncora; o CI
+# dela passou porque 4f2815c (head de branch pré-squash) não resolve no
+# checkout raso do runner ([SKIP]) — mas na VPS, com história completa,
+# o pós-merge do main ficou FALHANDO neste check (diff 4f2815c..main
+# = os 3 arquivos da F58). Landmine da F58, não da fase atual.
+# F59 (19/10): src/ moveu de novo (registry.py comentário BCG + health.py
+# docstring _detect_zero_return — só documentação de condição
+# conhecida, zero mudança de comportamento). Padrão F56: âncora move
+# para o head da fase que tocou src/ (69585ce) — o que também cura o
+# landmine da F58 (a âncora agora carrega o estado src/ pós-F58). O
+# render legado permanece congelado em _AB_LEGACY_PAGE_SHA (1b548c1).
+_AB_BASELINE_SHA = "69585ce"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 
