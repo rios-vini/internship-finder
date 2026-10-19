@@ -97,7 +97,13 @@ REPO = Path(__file__).resolve().parent.parent
 # para o head da fase que tocou src/ (69585ce) — o que também cura o
 # landmine da F58 (a âncora agora carrega o estado src/ pós-F58). O
 # render legado permanece congelado em _AB_LEGACY_PAGE_SHA (1b548c1).
-_AB_BASELINE_SHA = "69585ce"
+# F59.1 (19/10): src/ moveu de novo (upstream_patches/ NOVO — parser
+# BambooHR do PR #300 vendado, auto-removível; collectors/ats_scraper.py
+# factory no fetch_worker; registry.py/health.py comentários F59.1).
+# Padrão F56/F50/F59: âncora move para o head da fase que tocou src/
+# (7e4f708). O render legado permanece congelado em _AB_LEGACY_PAGE_SHA
+# (1b548c1 — minimal_page.py intocado pela F59.1).
+_AB_BASELINE_SHA = "7e4f708"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 

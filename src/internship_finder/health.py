@@ -298,9 +298,16 @@ def _detect_zero_return(rows: list[dict]) -> list[dict]:
     embed2.php desde 08/10 — o parser HTML do pacote upstream (ats_scrapers)
     le 0 vagas, entao este alerta dispara LEGITIMAMENTE a cada run ate o
     upstream kalil0321/ats-scrapers mergear o PR #300 (parser tolerante ao
-    JSON) e um release instalar. O alerta e a expectativa honesta (quebra
-    REAL de parse, nao regressao nova) e cessa sozinho no primeiro run
-    pos-fix com vagas. Documentado tambem no registry.py (entry BCG).
+    JSON) e um release instalar. F59.1 (19/10): o parser do PR #300 esta
+    VENDADO em upstream_patches/bamboohr.py (patch self-removivel:
+    auto-detect contra o fixture BCG no ponto de uso; kill switch
+    INTERNSHIP_FINDER_UPSTREAM_PATCH_BAMBOOHR, default ON) — o zero_return
+    CESSA no 1o cron pos-merge DESTE repo, com a coleta voltando a achar
+    as vagas. Ate la, cada disparo e a expectativa honesta (quebra REAL
+    de parse em producao, nao regressao nova) — e quando o upstream
+    mergear+release+upgrade, o bypass liga sozinho e o canario (d) da
+    suite test_f59_1 forca a remocao da camada vendored. Documentado
+    tambem no registry.py (entry BCG).
     """
     last = rows[-1]
     if last["status"] != "empty":

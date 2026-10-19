@@ -157,7 +157,8 @@ def test_timeout() -> None:
     saw_timeout = False
     try:
         # margem 0.5s + timeout 0.5s => deadline ~1s (rapido p/ teste)
-        with patch.object(ats_scraper, "get_scraper", side_effect=slow_scraper):
+        # F59.1: seam do coletador agora é o factory get_patched_scraper
+        with patch.object(ats_scraper, "get_patched_scraper", side_effect=slow_scraper):
             _captured_fetch_with_timeout(company, timeout=0.5,
                                          include_descriptions=False, margin=0.5)
     except CollectionError as exc:
@@ -189,7 +190,7 @@ def test_worker_dead() -> None:
     t0 = time.monotonic()
     saw_dead = False
     try:
-        with patch.object(ats_scraper, "get_scraper", side_effect=dead_scraper):
+        with patch.object(ats_scraper, "get_patched_scraper", side_effect=dead_scraper):
             _captured_fetch_with_timeout(company, timeout=10,
                                          include_descriptions=False, margin=25)
     except CollectionError as exc:
@@ -222,7 +223,7 @@ def test_worker_error() -> None:
     t0 = time.monotonic()
     saw_error = False
     try:
-        with patch.object(ats_scraper, "get_scraper", side_effect=boom_scraper):
+        with patch.object(ats_scraper, "get_patched_scraper", side_effect=boom_scraper):
             _captured_fetch_with_timeout(company, timeout=5,
                                          include_descriptions=False, margin=1)
     except CollectionError as exc:
@@ -256,7 +257,7 @@ def test_success() -> None:
     fa = MagicMock()
     fa.to_job.return_value.to_dict.return_value = job_dict
 
-    with patch.object(ats_scraper, "get_scraper", return_value=fs), \
+    with patch.object(ats_scraper, "get_patched_scraper", return_value=fs), \
          patch.object(ats_scraper, "AtsJobAdapter", return_value=fa), \
          patch.object(ats_scraper, "flush_cache"):
         res, pid = _captured_fetch_with_timeout(company, timeout=5,
@@ -286,7 +287,7 @@ def test_no_orphans_loop() -> None:
     active_before = {p.pid for p in mp.active_children()}
     pids: list[int] = []
     for i in range(5):
-        with patch.object(ats_scraper, "get_scraper", return_value=fs), \
+        with patch.object(ats_scraper, "get_patched_scraper", return_value=fs), \
              patch.object(ats_scraper, "AtsJobAdapter", return_value=fa), \
              patch.object(ats_scraper, "flush_cache"):
             res, pid = _captured_fetch_with_timeout(
