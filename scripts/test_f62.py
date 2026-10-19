@@ -427,6 +427,10 @@ def test_digest_line():
         "trend": {"eligible_last": 871, "eligible_then": 779,
                   "window": 7, "delta": 92},
         "seasonality": {"scanned": 5, "with_window": 3,
+                        # F67: campo obrigatório do sinal ⚠ (imediatos
+                        # COM contexto; antes deste campo a contagem
+                        # vinha do lookup por rótulo no calendar).
+                        "immediate_context": 2,
                         "calendar": [{"label": "ab sofort", "count": 2},
                                      {"label": "SoSe 2027 (abr–set/2027)",
                                       "count": 1}]},
@@ -441,6 +445,7 @@ def test_digest_line():
               "  📆 ab sofort: 2 · SoSe 2027 (abr–set/2027): 1") + 1)
     single = json.loads(json.dumps(report))
     single["seasonality"] = {"scanned": 2, "with_window": 2,
+                             "immediate_context": 1,  # F67 (campo do ⚠)
                              "calendar": [{"label": "ab sofort", "count": 1},
                                           {"label": "mar/2027", "count": 1}]}
     check("D2 singular: 1 vaga — 'conflita' (texto honesto)",

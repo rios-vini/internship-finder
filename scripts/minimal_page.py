@@ -731,23 +731,24 @@ def enrollment_flag(job: dict, lang: str = "pt") -> str:
 # F62 — sinal de conflito de início: "ab sofort" ↔ meta jan/2027 do dono.
 # DISPLAY-ONLY (regra never-worsens): badge no card, NUNCA score/ranking/
 # filtro. A fonte é o parser de sazonalidade da F45 (scripts/seasonality.py)
-# — NENHUM parser novo: o badge acende quando o hit CANÔNICO da vaga é
-# kind=immediate ("ab sofort"/"sofort"/"immediately"), a MESMA regra que
-# alimenta a linha "ab sofort: N" do calendário 📆 do digest. Vagas com
-# janela FUTURA (SoSe 2027, jan–jul/2027…) NÃO ganham badge — semestre >
-# range > início > imediato (prioridade F45 testada): Liebherr "ab sofort
-# ODER Sommersemester 2027" canoniza SoSe 2027 e fica positiva, como hoje.
-# Medição real do run 17/10 (relatório F62): 37 canônicos — 26 janelas
-# declaradas de verdade ("Ab sofort für 6 Monate", "Beginn: ab sofort",
-# "START IMMEDIATELY…"), 11 falsos-positivos do parser em prosa (7×
-# Lidl "steigt sofort in die Arbeitswelt ein", 2× rodapé Medtronic,
-# 1× boas, 1× OLAM). Badge permanece determinístico (fonte única);
-# apertar o parser é decisão da F45, não daqui.
+# — NENHUM parser novo. F67 (19/10): o badge acende quando o hit CANÔNICO
+# da vaga é kind=immediate COM CONTEXTO DE INÍCIO (marcador Beginn/Start/
+# Wann/Zeitraum/duração/Suchen colado ao termo — hit["context"]=True):
+# das 37 canônicas "ab sofort" da medição F62 §2, as 26 janelas declaradas
+# ("Ab sofort für 6 Monate", "Beginn: ab sofort", "STARTING IMMEDIATELY…")
+# acendem; os 11 FPs em prosa (7× slogan Lidl "steigt sofort in die
+# Arbeitswelt ein", 2× rodapé Medtronic, 1× processo boas, 1× lab OLAM)
+# ficam no calendário 📆 (rótulo "ab sofort" preservado — contagem
+# textual intacta) mas NÃO acendem mais. Vagas com janela FUTURA (SoSe
+# 2027, jan–jul/2027…) NÃO ganham badge — semestre > range > início >
+# imediato (prioridade F45 testada): Liebherr "ab sofort ODER
+# Sommersemester 2027" canoniza SoSe 2027 e fica positiva, como hoje.
 AB_SOFORT_FLAG_TEXT = "início imediato — conflita com jan/2027"
 
 
 def ab_sofort_flag(job: dict, lang: str = "pt") -> str:
-    """F62: badge quando a janela de início canônica da vaga é imediata.
+    """F62/F67: badge quando a janela de início canônica da vaga é
+    imediata E declarada (contexto de início colado ao termo).
 
     Consome ``seasonality.canonical_seasonality`` sobre o texto canônico
     ``seasonality.job_window_text`` (FONTE ÚNICA da composição — o
@@ -763,7 +764,11 @@ def ab_sofort_flag(job: dict, lang: str = "pt") -> str:
         import seasonality  # parser puro da F45 (zero I/O)
         hit = seasonality.canonical_seasonality(
             seasonality.job_window_text(job))
-        if not hit or hit.get("kind") != "immediate":
+        # F67: kind=immediate E contexto de início declarado. Sem
+        # contexto (prosa — slogan/rodapé/processo/lab) o hit segue no
+        # calendário 📆 mas NÃO acende badge.
+        if (not hit or hit.get("kind") != "immediate"
+                or not hit.get("context")):
             return ""
     except Exception:  # noqa: BLE001 — display best-effort, nunca erro
         return ""

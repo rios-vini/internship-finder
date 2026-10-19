@@ -282,13 +282,19 @@ def seasonality_summary(jobs: list[dict]) -> dict:
     por rótulo. ``scanned``/``with_window`` carregam as contagens.
 
     F62: a composição do texto vive em ``seasonality.job_window_text``
-    (FONTE ÚNICA — o badge da página varre o MESMO texto)."""
+    (FONTE ÚNICA — o badge da página varre o MESMO texto).
+
+    F67: ``immediate_context`` = imediatos COM contexto de início
+    (janela declarada); é o número da linha ⚠ do digest. O calendário
+    preserva TODOS os hits imediatos no rótulo ``ab sofort``
+    (contagem textual intacta — o aperto é do SINAL, não do texto)."""
     texts = [seasonality.job_window_text(j) for j in jobs]
     calendar = seasonality.seasonality_calendar(texts)
     return {
         "scanned": len(jobs),
         "with_window": sum(n for _, n in calendar),
         "calendar": [{"label": label, "count": n} for label, n in calendar],
+        "immediate_context": seasonality.immediate_context_count(texts),
     }
 
 
