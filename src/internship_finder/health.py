@@ -34,6 +34,7 @@ de cada uma). Sao arbitrarios por natureza — registrar como limitacao.
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timedelta
 from typing import Any
 
 # --- Constantes de limiar / gate -------------------------------------------
@@ -79,6 +80,26 @@ MIN_OK_HISTORY_FOR_ZERO_RETURN = 3
 # funcionou (falha desde o 1o run) NUNCA alerta por essa regra — esse estado
 # persistente ja e coberto pelo ``recurring_error``.
 MIN_OK_HISTORY_FOR_REGRESSION = 3
+
+
+# F58 (18/10): janela maxima (em horas) entre o registro mais recente do
+# relatorio e o ultimo registro de uma serie para que ela ainda gere ALERTAS
+# de estado. Uma serie para de receber registros quando o pipeline deixa de
+# resolve-la — a empresa migrou de ATS (override F58, ex.: Siemens
+# Healthineers Avature->Phenom) ou a linha saiu do inventario upstream. Se o
+# ultimo registro dela ficou em ``empty``/``error``, os alertas de estado
+# (zero_return/regression/recurring_error/drop) disparariam PARA SEMPRE sobre
+# um fantasma: o "estado atual" de uma serie fora do universo corrente de
+# coleta nao e observavel. Serie cujo ultimo registro esta a mais de
+# SERIES_STALE_HOURS do registro mais recente do arquivo esta APOSENTADA e
+# nao alerta (o resumo por serie segue listando o historico — o gate e so
+# sobre alertas). 36h = 1 ciclo e meio do cron diario (24h): aposenta a
+# serie no SEGUNDO cron apos a migracao (no primeiro o gap e ~23,5h e o
+# alerta dispara uma ultima vez — honesto com a transicao), com folga para
+# que runs parciais/manuais no mesmo dia (+6h) nao aposentem series vivas.
+# Fail-open: datas nao-parseaveis ou naive/aware mistas deixam a serie
+# elegivel a alertas — o gate nunca esconde alerta por erro de parsing.
+SERIES_STALE_HOURS = 36
 
 
 def _normalize_duration(value: Any) -> float | None:
@@ -176,6 +197,40 @@ def _sort_key(rec: dict) -> tuple:
     if rec.get("run_id") is not None:
         return (0, rec["run_id"])
     return (1, rec.get("timestamp") or "")
+
+
+def _parse_sort_dt(value: Any) -> datetime | None:
+    """Parseia o valor de ordenacao ISO (``run_id``/``timestamp``) em datetime.
+
+    Fail-open (F58): valor ausente/nao-string/nao-ISO devolve ``None`` — o
+    chamador trata a serie como NAO aposentada; o gate de serie aposentada
+    nunca esconde um alerta por erro de parsing.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _series_is_stale(rows: list[dict], latest_dt: datetime | None) -> bool:
+    """True se a serie esta APOSENTADA (F58, ``SERIES_STALE_HOURS``).
+
+    Compara o ultimo registro da serie (ja ordenada por ``_sort_key``) com o
+    registro mais recente de TODO o relatorio: uma serie que o pipeline nao
+    coleta ha mais de 36h esta fora do universo corrente (migracao de ATS /
+    linha removida do inventario upstream) — seu estado final nao e regressao
+    observavel e os alertas de estado nao se aplicam a ela. Sem
+    ``latest_dt`` (nenhuma data parseavel no arquivo) ou com datas
+    naive/aware mistas devolve ``False`` (fail-open: alerta normalmente).
+    """
+    if latest_dt is None:
+        return False
+    last_dt = _parse_sort_dt(_sort_key(rows[-1])[1])
+    if last_dt is None or last_dt.tzinfo is None or latest_dt.tzinfo is None:
+        return False
+    return (latest_dt - last_dt) > timedelta(hours=SERIES_STALE_HOURS)
 
 
 def _summary_per_source(rows: list[dict]) -> dict:
@@ -349,16 +404,32 @@ def build_health_report(
     for rows in by_series.values():
         rows.sort(key=_sort_key)
 
+    # F58: referencia temporal do relatorio — registro mais recente de TODO o
+    # arquivo (parseavel). Series cujo ultimo registro fica a mais de
+    # SERIES_STALE_HOURS dessa referencia estao aposentadas (fora do universo
+    # corrente de coleta) e nao geram alertas de estado.
+    latest_dt: datetime | None = None
+    for rec in tenants:
+        rec_dt = _parse_sort_dt(_sort_key(rec)[1])
+        if rec_dt is not None and (latest_dt is None or rec_dt > latest_dt):
+            latest_dt = rec_dt
+
     sources = []
     for (src, company) in sorted(by_series):
         rows = by_series[(src, company)]
         s = _summary_per_source(rows)
-        s["alerts"] = (
-            _detect_drops(rows)
-            + _detect_consecutive_failures(rows)
-            + _detect_zero_return(rows)
-            + _detect_regression(rows)
-        )
+        if _series_is_stale(rows, latest_dt):
+            # Serie aposentada (F58): o fim dela e intencional (migracao de
+            # ATS / remocao upstream), nao regressao observavel. O resumo
+            # acima continua listando o historico — so os alertas silenciam.
+            s["alerts"] = []
+        else:
+            s["alerts"] = (
+                _detect_drops(rows)
+                + _detect_consecutive_failures(rows)
+                + _detect_zero_return(rows)
+                + _detect_regression(rows)
+            )
         sources.append(s)
 
     alert_sources = [a for s in sources for a in s["alerts"]]

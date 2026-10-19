@@ -78,6 +78,63 @@ def scraper_slug(company: Company) -> str:
         return company.url
     return company.slug
 
+
+# F58 (18/10/2026): override de MIGRACAO de ATS por empresa. O inventario
+# upstream (ats-companies, manifest atualizado ~05h UTC) e a fonte canonica
+# de tenants, mas nao acompanha migracoes de plataforma em tempo real:
+# enquanto a linha antiga nao sai do manifest, a coleta pelo nome resolve o
+# tenant MORTO, o scraper antigo segue o redirect para o site novo, parseia
+# 0 vagas e o health ve ``empty`` — quebra SILENCIOSA (F49 secao 2.5: 19+
+# runs "empty" com a empresa viva e contratando). Este mapa reescreve o
+# tenant RESOLVIDO para a plataforma nova no ponto exato onde a resolucao
+# entra no fluxo (``collect_company``, logo apos ``find_company``), pela
+# MESMA chave de identidade do ``TENANT_URL_OVERRIDES`` (Fase I): (ats,
+# slug) + nome EXATO da empresa resolvida (``Company.name`` da base). O
+# valor e o (ats, slug) novos — para ATS de URL-como-slug (URL_SLUG_ATS) o
+# slug e a URL completa de careers, usada direto pelo scraper e pelo
+# ``Company.source`` (``ats:slug``). ``Company.url`` e setado junto: o
+# ``scraper_slug`` e a hidratacao leem a URL de la.
+#
+# Remocao: quando o upstream atualizar a linha no manifest/CSV (a linha
+# avature sair e/ou a phenom entrar), remover a entrada (e o teste
+# correspondente) — o mapa e auto-contido e a ausencia de override restaura
+# o comportamento puro do inventario. Ate la, o registry declara o tenant
+# NOVO como referencia (consistencia registry x runtime verde) e a coleta
+# usa este override.
+TENANT_ATS_OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
+    # Siemens Healthineers: Avature -> Phenom (~fim 09/2026). Probe F49
+    # 18/10: jobs.siemens-healthineers.com/en_US/searchjobs/SearchJobs
+    # responde 302 -> careers.siemens-healthineers.com/global/en
+    # (plataforma Phenom: cdn.phenompeople.com, csrfToken + POST /widgets).
+    # Validado AO VIVO 18/10 (F58) com o caminho EXATO do pipeline
+    # (PhenomScraper, defaults locale en_us/country us): 823 vagas em ~3s
+    # (111 na Alemanha; 39 student-pattern+DE — Werkstudent Erlangen/
+    # Forchheim/Rudolstadt). Manifest upstream verificado ao vivo 18/10:
+    # find_company("Siemens Healthineers") ainda resolve SO a linha avature.
+    (
+        "avature",
+        "https://jobs.siemens-healthineers.com/en_US/searchjobs/SearchJobs",
+        "Siemens Healthineers",
+    ): ("phenom", "https://careers.siemens-healthineers.com"),
+}
+
+
+def resolve_tenant_migration(company: Company) -> Company:
+    """Reescreve o tenant de uma empresa cujo ATS migrou (F58).
+
+    A reescrita acontece ANTES de qualquer consumo (``has_scraper`` /
+    ``scraper_slug`` / adaptador / metricas): todo o downstream ve o tenant
+    novo, com ``source``/``id`` honestos da plataforma real — nada do tenant
+    morto permanece no fluxo. Empresas fora do mapa seguem 100% o
+    comportamento puro do inventario (a ausencia de entrada e a inercia).
+    """
+    key = (company.ats, company.slug, (company.name or "").strip())
+    override = TENANT_ATS_OVERRIDES.get(key)
+    if not override:
+        return company
+    ats, slug = override
+    return company.model_copy(update={"ats": ats, "slug": slug, "url": slug})
+
 # Margem (segundos) somada ao ``timeout`` do scraper antes de declarar o
 # subprocesso travado (ACH-07). Parametrizavel via ``fetch_with_timeout(...,
 # margin=...)`` — os testes usam uma margem pequena para timeout rapido sem
@@ -287,6 +344,10 @@ def collect_company(
 
     jobs: list[Job] = []
     for company in companies:
+        # F58: ATS migrado (manifest upstream ainda traz a linha morta) —
+        # reescreve o tenant resolvido para a plataforma validada ANTES de
+        # qualquer consumo; empresas fora do mapa seguem o inventario puro.
+        company = resolve_tenant_migration(company)
         if not collector.has_scraper(company):
             log.warning("[%s] %s sem scraper registrado; pulando", name, company.source)
             summary["skipped"].append(company.source)
