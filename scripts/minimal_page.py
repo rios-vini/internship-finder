@@ -310,6 +310,11 @@ def _fmt_salary(salary: dict | None) -> str:
     F51 item 2: formato compacto alemão ``€2.280/mês`` (milhar com
     ponto; período traduzido para PT quando conhecido — o VALOR e a
     UNIDADE vêm do anúncio, apenas a exibição é localizada).
+    F63: provenance do parser vém nota entre parênteses — "anual
+    convertido p/ mensal" (range anual explícito, exibido em mensal)
+    e "unidade não confirmada" (range implausível sem contexto anual
+    no anúncio; NENHUM sufixo de período é impresso — o bug reportado
+    era "€17.200–€28.700/mês" num anúncio que nunca declara unidade).
     """
     if not salary:
         return ""
@@ -318,11 +323,13 @@ def _fmt_salary(salary: dict | None) -> str:
         period = _PERIOD_DISPLAY.get(str(period).strip().lower(),
                                      str(period))
     suffix = f"/{period}" if period else ""
+    note = str(salary.get("provenance") or "").strip()
+    note_part = f" ({note})" if note else ""
     if salary.get("min") is not None and salary.get("max") is not None:
         if float(salary["min"]) == float(salary["max"]):
-            return f"€{_fmt_eur(salary['min'])}{suffix}"
+            return f"€{_fmt_eur(salary['min'])}{suffix}{note_part}"
         return (f"€{_fmt_eur(salary['min'])}–€{_fmt_eur(salary['max'])}"
-                f"{suffix}")
+                f"{suffix}{note_part}")
     return ""
 
 

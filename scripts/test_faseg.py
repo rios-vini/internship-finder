@@ -123,12 +123,19 @@ def main() -> int:
     out = _sal(description="Gehalt: €1,400/month")
     check("D2 '€1,400/month' -> 1400 (igual antes)", bool(out) and out["min"] == 1400.0)
     out = _sal(description="Gehalt: €50,000/year")
-    check("D3 '€50,000/year' -> 50000 (igual antes; period=month pré-existente "
-          "documentado como limitação — period group não captura '/year')",
-          bool(out) and out["min"] == 50000.0)
+    check("D3 '€50,000/year' -> F63: anual explícito (sufixo '/year' "
+          "detectado pelo _YEARLY_AFTER_RE) + >6k converte p/ mensal "
+          "4166.67 com provenance (era 50000 period=month — limitação "
+          "do period group documentada pré-F63)",
+          bool(out) and abs(out["min"] - 50000.0 / 12) < 1e-9
+          and out["period"] == "month"
+          and out.get("provenance") == "anual convertido p/ mensal")
     out = _sal(description="Gehalt: €50,000.00/year")
-    check("D4 '€50,000.00/year' -> 50000.00 (antes: 50000 — decimal .00 agora "
-          "capturado, mesmo valor real)", bool(out) and out["min"] == 50000.0)
+    check("D4 '€50,000.00/year' -> F63: idem D3 com decimal .00 "
+          "(4166.67 month provenance; era 50000)",
+          bool(out) and abs(out["min"] - 50000.0 / 12) < 1e-9
+          and out["period"] == "month"
+          and out.get("provenance") == "anual convertido p/ mensal")
     out = _sal(description="Gehalt: 2.117 €/Monat")
     check("D5 '2.117 €/Monat' -> 2117 (igual antes)", bool(out)
           and out["min"] == 2117.0 and out["period"] == "month")
@@ -170,8 +177,21 @@ def main() -> int:
           and out["currency"] == "EUR" and out["period"] is None)
     out = _sal_raw(raw={"salary_min": 16480.0, "salary_max": 21203.0,
                         "salary_currency": "EUR", "salary_period": "MONTH"})
-    check("E10 recruitee salary_period=MONTH -> month (nunca inferido)",
-          bool(out) and out["period"] == "month")
+    check("E10 recruitee MONTH com magnitude anual (16480-21203): F63 não "
+          "afirma unidade — period=None + provenance 'unidade não "
+          "confirmada' (era 'month nunca inferido' pré-F63; a declaração "
+          "da fonte contradiz a magnitude de estágio €300–4.000, o valor "
+          "citado permanece)",
+          bool(out) and out["period"] is None
+          and out.get("provenance") == "unidade não confirmada"
+          and out["min"] == 16480.0 and out["max"] == 21203.0)
+    out = _sal_raw(raw={"salary_min": 1400.0, "salary_max": 1500.0,
+                        "salary_currency": "EUR", "salary_period": "MONTH"})
+    check("E10b recruitee MONTH plausível (1400-1500) -> month preservado "
+          "SEM provenance (o 'nunca inferido' segue vivo: só magnitude "
+          "implausível dispara a F63)",
+          bool(out) and out["period"] == "month" and "provenance" not in out
+          and (out["min"], out["max"]) == (1400.0, 1500.0))
     out = _sal_raw(raw={"salary_min": 0, "salary_max": -5,
                         "salary_currency": "EUR"},
                    description="Gehalt: 2.117 €/Monat")
