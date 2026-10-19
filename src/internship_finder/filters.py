@@ -500,6 +500,11 @@ from internship_finder.countries import (
 # mesmo mecanismo da F37): erasmus_program (programa de mobilidade
 # estudantil Erasmus+; perfil do dono = visto §16e candidatura direta) e
 # spontaneous_pool (candidatura espontânea/pool, título-only).
+# F61 (19/10): NENHUM motivo novo — ``visa_blocked`` ganha critério
+# TEXTUAL (exigência de título de residência JÁ VÁLIDO dirigida a
+# não-UE, MAHLE verbatim) além do critério de intel; o contador existente
+# passa a contar os dois caminhos. Reversível: ``--no-applicability``
+# desliga o estágio inteiro (comportamento pré-F18).
 APPLICABILITY_EXCLUSION_REASONS = (
     "german_required",
     "visa_blocked",
@@ -919,6 +924,94 @@ def requires_master(title: str | None, description: str | None) -> bool:
     return any(rx.search(cleaned) for rx in _MASTER_DEGREE_RES)
 
 
+# ---------------------------------------------------------------------------
+# F61 — Visa §16e (19/10): exigência TEXTUAL de título de residência JÁ
+# VÁLIDO dirigida a cidadãos não-UE. O dono emigra com visto §16e de
+# PRIMEIRA ENTRADA (jan/2027) — não possui Aufenthaltstitel antes de
+# emigrar; posting que o exige como pré-requisito é bloqueio (eliminação
+# manual atestada no REGISTRO-AVALIACOES-VAGAS 10/2026: MAHLE Lead-Buying
+# score 4.5, eliminada pelo dono com esse motivo).
+#
+# Medição pré-implementação (archive 20261018T090001Z, estágio de
+# aplicabilidade = 3.121 vagas): o classificador WA de TEXTO
+# (app_intel.work_authorization) JÁ devolve ``existing_required`` para a
+# description MAHLE — o buraco era a CADEIA: ``visa_blocked`` era
+# intel-only e a MAHLE é ``unclear`` na curadoria F9, então o sinal
+# textual nunca era consultado. Este detector fecha o buraco pelo padrão
+# ESPECÍFICO (endereçado-a-não-UE + qualificador de exigência), NÃO pelo
+# estado genérico ``existing_required``: os patterns _WA_EXISTING incluem
+# alternativas sem qualificador (``EU-Bürger`` bare casa o pattern [3])
+# e ligar o estado inteiro à exclusão bloquearia vagas que apenas
+# MENCIONAM o tema.
+#
+# A DIREÇÃO é o discriminador semântico (anti-FP medido): o padrão exige
+# nicht-eu/non-eu ANTES do documento. VW Praktikum ("Ggf. Arbeits- und
+# Aufenthaltserlaubnis inkl. Zusatzblatt für Nicht-EU-Bürgerinnen /
+# -Bürger" — condicional ggf., ordem INVERTIDA) e STIHL ("wenn vorliegend
+# ... deine gültige Arbeits- und Aufenthaltserlaubnis") NÃO casam. Guard
+# de negação no span casado: "kein gültiger Aufenthaltstitel erforderlich"
+# / "residence permit not required" não bloqueiam.
+#
+# Patrocínio OFERECIDO (contra-casos medidos no universo 18/10:
+# the-exploration-company "including visa sponsorship where applicable",
+# internations "support with your visa application", teampicnic "sponsor
+# your Visa", MediaMarktSaturn "we'll assist you with the visa process")
+# não tem a forma endereçada-a-não-UE + exigência → nunca bloqueia.
+# ---------------------------------------------------------------------------
+_NON_EU_PERMIT_RES = [
+    # MAHLE DE verbatim — 12 registros no estágio 18/10: "Für
+    # Nicht-EU-Bürger: gültiger Aufenthaltstitel erforderlich"
+    re.compile(
+        r"(für\s+)?nicht-eu[^\n]{0,40}aufenthaltstitel[^\n]{0,20}"
+        r"(erforderlich|notwendig|vorausgesetzt)",
+        re.IGNORECASE,
+    ),
+    # MAHLE EN verbatim — 16 registros: "For non-EU citizens: Valid
+    # residence permit required"
+    re.compile(
+        r"(for\s+)?non-eu[^\n]{0,40}residence\s+permits?[^\n]{0,20}"
+        r"(required|necessary|needed)",
+        re.IGNORECASE,
+    ),
+    # Variantes estruturais equivalentes (0 ocorrências no universo 18/10;
+    # mesma forma endereçada-a-não-UE + qualificador — sem generalização
+    # além do evidenciado: o composto "Aufenthalts- und Arbeitserlaubnis"
+    # NÃO é coberto por não existir na forma bloqueante no universo).
+    re.compile(
+        r"(for\s+)?non-eu[^\n]{0,40}(work|working)\s+permits?[^\n]{0,20}"
+        r"(required|necessary|needed)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(für\s+)?nicht-eu[^\n]{0,40}aufenthaltserlaubnis[^\n]{0,20}"
+        r"(erforderlich|notwendig|vorausgesetzt)",
+        re.IGNORECASE,
+    ),
+]
+# Negação DENTRO do span casado invalida a exigência (guard F61). ``\bno\b``
+# não casa "non-EU" (em "non" não há boundary após "no").
+_NON_EU_PERMIT_NEGATION_RE = re.compile(r"\b(kein\w*|not|no)\b", re.IGNORECASE)
+
+
+def requires_existing_permit_for_non_eu(
+    title: str | None, description: str | None
+) -> bool:
+    """F61 — o texto exige permit/título de residência JÁ VÁLIDO a não-UE?
+
+    Pura, case-insensitive, DE+EN. ``True`` SOMENTE na forma
+    endereçada-a-não-UE + documento + qualificador de exigência — a
+    direção nicht-eu→documento é o discriminador (a ordem invertida
+    documento→nicht-eu é checklist condicional e NÃO bloqueia) e negação
+    no span casado ("kein ... erforderlich", "not required") também não.
+    """
+    text = f"{title or ''} {description or ''}"
+    for rx in _NON_EU_PERMIT_RES:
+        m = rx.search(text)
+        if m and not _NON_EU_PERMIT_NEGATION_RE.search(m.group(0)):
+            return True
+    return False
+
+
 def applicability_exclusion_reason(
     job: dict, *, intel_map: dict[str, dict] | None = None
 ) -> str | None:
@@ -933,11 +1026,19 @@ def applicability_exclusion_reason(
     - ``german_required``: ``app_intel.german_level(título+descrição)`` ==
       ``required`` (classificador F18 — o dataset não carrega o nível; a
       exclusão chama a MESMA função pura do render/digest).
-    - ``visa_blocked``: Company Intelligence da empresa com
-      ``visa_policy`` == ``candidate_must_have_authorization`` (match
-      exato via ``opportunity_intel``). Não-mentionadas e ``unclear``
-      FICAM (unclear é a aposta do projeto). Sem ``intel_map`` o critério
-      não aplica (função pura — nunca lê arquivos).
+    - ``visa_blocked``: (F61) EXIGÊNCIA TEXTUAL de permit/título de
+      residência JÁ VÁLIDO dirigida a não-UE
+      (``requires_existing_permit_for_non_eu`` — MAHLE verbatim "Für
+      Nicht-EU-Bürger: gültiger Aufenthaltstitel erforderlich"; o dono
+      emigra com §16e de primeira entrada e não tem título antes de
+      emigrar) OU Company Intelligence da empresa com ``visa_policy``
+      == ``candidate_must_have_authorization`` (match exato via
+      ``opportunity_intel``). Não-mentionadas e ``unclear`` FICAM no
+      critério de INTEL (unclear é a aposta do projeto); o critério
+      TEXTUAL independe de intel_map — por isso a re-avaliação
+      pós-hidratação (F20/F25, chamada sem intel_map) também o aplica
+      e ``flagged_visa_blocked`` do registro type:applicability passa
+      a ser alcançável (antes: sempre 0).
     - ``thesis_title``: ``abschlussarbeit|thesis`` no título (F37:
       estendido a ``Bachelorarbeit``/``Masterarbeit`` puros via
       ``is_thesis_title_strict``).
@@ -979,6 +1080,13 @@ def applicability_exclusion_reason(
     gl = german_level(text)
     if gl is not None and gl.level == "required":
         return "german_required"
+
+    # F61: exigência TEXTUAL de permit já válido dirigida a não-UE —
+    # independe de intel_map (a re-avaliação pós-hidratação F20/F25 chama
+    # esta função SEM intel_map; a MAHLE é ``unclear`` na curadoria F9 e o
+    # texto é o único sinal dela).
+    if requires_existing_permit_for_non_eu(title, description):
+        return "visa_blocked"
 
     if intel_map:
         from internship_finder.opportunity_intel import (
@@ -1050,8 +1158,11 @@ def select_eligible(
     (``opportunity_intel.load_company_intel``). Quando fornecido, o motivo
     ``visa_blocked`` exclui empresas com ``visa_policy`` ==
     ``candidate_must_have_authorization`` (não-mentionadas e unclear
-    FICAM). Quando ``None``, o critério de visto NÃO aplica (a função é
-    pura — nunca lê arquivos; o pipeline do CLI injeta o mapa).
+    FICAM nesse critério). O ``visa_blocked`` também tem critério
+    TEXTUAL (F61 — exigência de permit já válido dirigida a não-UE,
+    ``requires_existing_permit_for_non_eu``) que independe de
+    ``intel_map`` (a função é pura — nunca lê arquivos; o pipeline do
+    CLI injeta o mapa).
 
     Retorna ``(selecionados, contagens)`` com o total acumulado a cada
     etapa: ``{"total", "tipo", "area", "pais", "aplicabilidade"}``
