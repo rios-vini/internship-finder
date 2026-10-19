@@ -306,11 +306,20 @@ _HOURLY_AFTER_RE = re.compile(
 # ---------------------------------------------------------------------------
 
 # Marcador anual ANTES do valor ("Bruttojahresgehalt:", "annual salary:").
-# Compostos alemães via `\w*jahresgehalt\b`; família EN com o mesmo escopo
+# Compostos alemães via `\w*jahresgehalt`; família EN com o mesmo escopo
 # de substantivos do _SALARY_LABEL (salary|compensation|pay|wage).
+#
+# F63 (10/2026): adjectival alemã ANTES do substantivo — "Jährliche
+# Vergütung: 50.000 €" era invisível (o label só conhecia os compostos
+# *jahresgehalt*; "jährlich" adjetivo não casa). Varredura do universo do
+# dia: 165 cláusulas implausíveis com "jährlich…" a até 200 chars do
+# valor. A forma exige o substantivo de salário colado ao adjetivo —
+# "jährlich" solto (férias anuais etc.) na janela NÃO é contexto anual.
 _YEARLY_LABEL_RE = re.compile(
     r"\w*jahresgehalt\b|\w*jahresvergütung\b"
-    r"|\b(?:annual|yearly)\s+(?:salary|compensation|pay|wage)\b",
+    r"|\b(?:annual|yearly)\s+(?:salary|compensation|pay|wage)\b"
+    r"|\b(?:jährlich|jaehrlich)\w*\s+"
+    r"(?:\w*gehalt\b|vergütung|verguetung|bezahlung|salary|compensation|pay|wage)\b",
     re.IGNORECASE,
 )
 # Marcador anual DEPOIS do valor ("/year", "per year", "pro Jahr",
@@ -378,6 +387,72 @@ def _is_yearly_clause(text: str, start: int, end: int) -> bool:
     return bool(_YEARLY_LABEL_RE.search(before) or _YEARLY_AFTER_RE.match(after))
 
 
+# ---------------------------------------------------------------------------
+# Salário POR ANO×MÊS — F63: heurística de plausibilidade (display-only).
+#
+# Bug real (LexisNexis R119275, registro do dono 10/2026): "Primary
+# Location Base Pay Range: Germany - Karlsruhe €17,200 - €28,700." —
+# range anual exibido como "€17.200–€28.700/mês" na página pública: o
+# default Fase 7 (period="month" sem período declarado) AFIRMOU uma
+# unidade que o anúncio nunca diz. Anúncios Workday (LexisNexis/Citi)
+# citam "Base Pay Range"/"Full Time Salary Range" sem unidade — a
+# magnitude (€17.200–28.700; €48.000–72.000) é anual por plausibilidade
+# (mensal de estágio no dataset: €300–4.000; €17.200/mês = €206k/ano).
+#
+# Varredura F63 no universo do dia (data/jobs.json, 108.450 records):
+# 6.458 com job_salary; 698 cláusulas implausíveis como mensal
+# (bound > €6.000), das quais 589 têm contexto anual a até ~200 chars:
+# 312 "per year" COLADO (o period group captura " per year", mas a
+# resolução comparava o texto BRUTO contra ("jahr","year") e o prefixo
+# "per " fazia falhar — caiam no default "month"); 165 "jährlich…";
+# 93 "annual…"; 14 "pro Jahr"; 1 "/year"; "p.a." = 0 (sem evidência,
+# não estendemos o padrão a ele).
+#
+# Regra (spec F63, display-only — NUNCA score, NUNCA estimativa):
+#   (a) contexto anual EXPLÍCITO (period="year" resolvido) e bound
+#       > €6.000: dividir por 12 COM provenance "anual convertido p/
+#       mensal" (a unidade que o dono usa para decidir);
+#   (b) SEM contexto anual (period "month"/None) e bound > €6.000: o
+#       valor citado permanece (é evidência real do anúncio), mas a
+#       unidade JAMAIS é afirmada — period=None + provenance
+#       "unidade não confirmada".
+# Anuais ≤ €6.000 (ex.: novemcore €900–1.200/year, anomalia de FONTE
+# documentada na F63) e horários ficam INTOCADOS: a heurística só age
+# quando a magnitude é implausível.
+# ---------------------------------------------------------------------------
+
+SALARY_PLAUSIBLE_MONTH_MAX = 6000.0
+SALARY_YEARLY_TO_MONTHLY = "anual convertido p/ mensal"
+SALARY_UNIT_UNCONFIRMED = "unidade não confirmada"
+
+
+def _apply_salary_plausibility(sal: dict | None) -> dict | None:
+    """F63: plausibilidade anual×mensal aplicada ao resultado do parse.
+
+    Roda UMA vez por ``job_salary`` (não encadeia); determinística.
+    Bounds ≤ €6.000, período horário e anuais pequenos retornam como
+    entraram. O dict é mutado e devolvido (mesma identidade).
+    """
+    if not sal:
+        return sal
+    lo = float(sal.get("min") or 0.0)
+    hi = float(sal.get("max") or 0.0)
+    if lo <= SALARY_PLAUSIBLE_MONTH_MAX and hi <= SALARY_PLAUSIBLE_MONTH_MAX:
+        return sal  # plausível como mensal (ou anual pequeno): intocado
+    if sal.get("period") == "year":
+        sal["min"] = lo / 12.0
+        sal["max"] = hi / 12.0
+        sal["period"] = "month"
+        sal["provenance"] = SALARY_YEARLY_TO_MONTHLY
+    elif sal.get("period") in ("month", None):
+        # Implausível SEM contexto anual: o default Fase 7 ("month")
+        # era uma afirmação sem evidência — o bug reportado. O valor
+        # citado fica; a unidade não é inventada.
+        sal["period"] = None
+        sal["provenance"] = SALARY_UNIT_UNCONFIRMED
+    return sal
+
+
 def job_salary(job: dict) -> dict | None:
     """Salário citado NO ANUNCIO; None sem evidencia (nunca inventa).
 
@@ -389,16 +464,23 @@ def job_salary(job: dict) -> dict | None:
        números > 0, são a evidência mais forte — valor da própria fonte,
        sem parsing. Moeda preservada; periodicidade preservada quando
        presente (``MONTH``/``month``) e ``None`` quando ausente (NUNCA
-       inferida — o upstream recruitee não a publica).
+       inferida — o upstream recruitee não a publica). F63: quando o
+       período declarado é ``year`` e os bounds são implausíveis como
+       mensais, o retorno converte para mensal (/12) com provenance.
     2. **Clausula monetária no texto** (regex ``_MONEY_CLAUSE`` existente):
        fallback quando não há campo estruturado.
 
     Retorna ``{"min", "max", "period", "text", "currency"}`` — ``min``==
     ``max`` para valor único; ``text`` e o trecho exato da fonte (para o
     campo estruturado, a representação canônica do valor); ``currency`` só
-    no caminho estruturado (quando a fonte declara). No caminho textual o
-    comportamento e o MESMO de antes (periodo default ``month`` quando a
-    clausula cita valor sem periodo — regra Fase 7; nunca converte).
+    no caminho estruturado (quando a fonte declara). Periodo default
+    ``month`` quando a clausula cita valor sem periodo (regra Fase 7).
+    F63 (10/2026): bounds acima de ``SALARY_PLAUSIBLE_MONTH_MAX`` nunca
+    sao exibidos como mensais sem evidencia — anual explicito converte
+    para mensal (/12, provenance ``"anual convertido p/ mensal"``) e
+    ranges implausiveis sem contexto anual retornam ``period=None`` +
+    provenance ``"unidade não confirmada"`` (ver
+    ``_apply_salary_plausibility``; display-only, nunca afeta score).
     """
     raw = job.get("raw") if isinstance(job.get("raw"), dict) else {}
     if raw:
@@ -416,8 +498,13 @@ def job_salary(job: dict) -> dict | None:
         text = f"{currency or 'EUR'} {lo:g}–{hi:g}"
         if period:
             text = f"{text} / {period}"
-        return {"min": lo, "max": hi, "period": period,
-                "text": text, "currency": currency}
+        # F63: plausibilidade anual×mensal no retorno estruturado também
+        # (raw.salary_period="YEAR" com bounds implausíveis -> /12 com
+        # provenance; period vazio + bounds implausíveis -> unidade não
+        # confirmada, NUNCA "month" por default).
+        return _apply_salary_plausibility(
+            {"min": lo, "max": hi, "period": period,
+             "text": text, "currency": currency})
     text = " ".join(
         normalize_text(x) for x in (job.get("title"), job.get("description")) if x
     )
@@ -473,12 +560,20 @@ def job_salary(job: dict) -> dict | None:
         period_m = m.group("period")
         # Fase J (J4.7): resolução de período — hourly vence yearly (não há
         # conflito real no dataset); depois sufixo explícito jahr/year; senão
-        # default month (regra Fase 7, nunca convertida).
+        # default month (regra Fase 7). A F63 converte anuais implausíveis
+        # (> SALARY_PLAUSIBLE_MONTH_MAX) no retorno — nunca no parse.
         if is_hourly:
             period = "hour"
         elif is_yearly:
             period = "year"
-        elif period_m and period_m.strip().casefold() in ("jahr", "year"):
+        elif period_m and period_m.strip().casefold().rsplit(None, 1)[-1] \
+                in ("jahr", "year"):
+            # F63: o period group captura o SUFIXO INTEIRO (" per year")
+            # — comparar a PALAVRA FINAL, não o texto bruto. Antes o
+            # prefixo "per " fazia "per year" falhar contra ("jahr",
+            # "year") e 312 records do universo com "per year" explícito
+            # colado ao valor caíam no default "month" (Nestlé/Citi RMK:
+            # "260,000.00 per year" -> month).
             period = "year"
         else:
             period = "month"
@@ -491,7 +586,10 @@ def job_salary(job: dict) -> dict | None:
     if best is None:
         return None
     best.pop("_period", None)
-    return best
+    # F63: heurística de plausibilidade (display-only) no resultado final
+    # — o default "month" da Fase 7 nunca mais afirma unidade para ranges
+    # implausíveis sem contexto anual.
+    return _apply_salary_plausibility(best)
 
 
 # ---------------------------------------------------------------------------
