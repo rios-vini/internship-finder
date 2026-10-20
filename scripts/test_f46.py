@@ -95,6 +95,19 @@ def _strip_f60(html: str) -> str:
     return _F60_CSS_RE.sub("", out)
 
 
+# F83 — sufixo de ocultas da linha do stamp (p_line), anexado quando
+# total_eligible > len(shown) (ex.: cap 2/empresa do regime top-N, que
+# é o caso da fixture B1). Mesma mecânica da F60: o A/B "pt == main
+# pré-F46" vale MÓDULO esse delta (strip cirúrgico); qualquer OUTRA
+# divergência de byte continua FAIL.
+_F83_HIDDEN_RE = re.compile(r" · \d+ ocultas? pelos filtros")
+
+
+def _strip_f83(html: str) -> str:
+    """Remove o delta F83 (sufixo de ocultas da p_line) — A/B módulo F83."""
+    return _F83_HIDDEN_RE.sub("", html)
+
+
 def check(name: str, ok: bool, detail: str = "") -> None:
     global N
     N += 1
@@ -234,9 +247,12 @@ def group_b_ab() -> None:
         # francês qualificado); o contrato "pt == main pré-F46" vale
         # MÓDULO esse delta (strip cirúrgico — qualquer OUTRA
         # divergência de byte continua FAIL).
-        cur_net = _strip_f60(cur)
+        # F83 — idem para o sufixo de ocultas da p_line (B1 top-N tem
+        # hidden=16 pela regra 2/empresa; B2 full tem hidden=0, sufixo
+        # ausente e strip = no-op).
+        cur_net = _strip_f83(_strip_f60(cur))
         check(f"B{1 if not full else 2} pt == main byte a byte "
-              f"módulo adições F60 ({regime})",
+              f"módulo adições F60+F83 ({regime})",
               cur_net == head,
               f"{len(cur_net.encode('utf-8'))}B vs "
               f"{len(head.encode('utf-8'))}B")

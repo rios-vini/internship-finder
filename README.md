@@ -10,6 +10,7 @@ September 2026.**
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-3DA639.svg)](LICENSE)
 [![Live site](https://img.shields.io/badge/site-live-brightgreen)](https://rios-vini.github.io/internship-finder/)
+[![RSS feed](https://img.shields.io/badge/RSS-daily%20feed-orange?logo=rss)](https://rios-vini.github.io/internship-finder/rss.xml)
 
 **→ Live ranking, refreshed every morning at 09:00 UTC:
 [rios-vini.github.io/internship-finder](https://rios-vini.github.io/internship-finder/)**
@@ -175,7 +176,7 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **127 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-| **115** | CI test suites, all green on every push (`.github/workflows/ci.yml`) |
+| **116** | CI test suites, all green on every push (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **227** | commits, one feature PR per change (git log, first-parent) |
 
