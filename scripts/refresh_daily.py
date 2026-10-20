@@ -110,6 +110,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -243,6 +244,41 @@ HYDRATION_SOURCE_EXTENDED = "hydrated_extended"
 # ~5.2s pior caso; 600s cobre ~110 vagas no pior caso e ~240 na media
 # medida — truncacao e logada pelo url_liveness, nunca derruba o run).
 EXTENDED_HYDRATION_DEADLINE_S = 600.0
+
+# ---------------------------------------------------------------------------
+# F87 — flag "não-avaliável" (display + digest, NUNCA exclusão) + liveness
+# no 1º sighting. Princípio: não gastar a análise do dono em coisa que não
+# presta. (a) O flag acende quando a descrição que chegou ao eligible não dá
+# base de julgamento: vazia (0 chars úteis — caso Amazon Koblenz JS-vazio,
+# TYTAN, Impulsgrad), abaixo do limiar medido (caso henkel 89534: 584 chars
+# de SAML wall, sem idioma/início/duração) ou com padrão textual de
+# login-wall/placeholder. É SINAL (badge ⚠️ + linha no digest), não filtro —
+# a vaga segue eligible, visível e ranqueada. Passo 0 (20/10, corpus 704):
+# mediana 2.490 chars, p25 1.469 — limiar 600 (~26% do p25) pega a wall do
+# henkel sem incendiar o corpus (136/704 com desc < 600, 103 delas vazias).
+# A hidratação CURA: F20/F65 trazendo texto >= limiar sem wall => o flag
+# apaga (a anotação recomputa TODO run). (b) Candidatas NOVAS (primeira
+# aparição do ID contra o snapshot arquivado — MESMO diff do digest, que
+# cobre sf_dataset:/direct: que nunca passam pelo SQLite) ganham 1 fetch
+# barato do url_liveness ANTES da janela de análise; 404/410 => mecanismo
+# F39 de remoção do JSON; 200-falso textual (Festo "bereits besetzt") =>
+# morta para display (🔗 + desce do top; fica no JSON, semântica F20);
+# timeout/rede NUNCA prova morte (nada de falso-positivo). Budget: teto
+# diário HERDADO do F65 (MESMO knob INTERNSHIP_FINDER_HYDRATION_BUDGET; o
+# que o intake gasta abate do F65 no mesmo run — um só poço). Default OFF
+# (budget 0 = regra 9: nenhuma mudança até o dono ligar).
+# ---------------------------------------------------------------------------
+NOT_ASSESSABLE_FLAG = "not_assessable"
+ASSESSABLE_MIN_CHARS = 600
+# Padrões de login-wall/placeholder (Passo 0: saml/anmelden/"required…sign
+# in" = 0 hits no corpus 704 — defensivos, zero FP medido; "please add a
+# text" = 1 hit real, placeholder literal do template henkel 89300).
+# "sign in"/"login" NUS: 16 falso-positivos medidos ("design in…",
+# "cascading", "InDesign") — fora do detector.
+_LOGIN_WALL_RE = re.compile(
+    r"saml|anmelden|required.{0,80}sign\s?in|please add a text",
+    re.IGNORECASE,
+)
 
 # ---------------------------------------------------------------------------
 # F39 — remoção automática de hard-dead. Critério de "confirmado": o
@@ -1423,6 +1459,84 @@ def _extract_liveness_details(
     )
 
 
+# ---------------------------------------------------------------------------
+# F87 — flag "não-avaliável": detector puro + anotação idempotente. Display
+# e digest leem o CAMPO (``not_assessable``), nunca recomputam — os A/B de
+# SHA congelado da página continuam byte a byte com fixtures sem o campo,
+# e a cura pela hidratação é a recomputação do run seguinte.
+# ---------------------------------------------------------------------------
+def assessability_reason(job: dict) -> str | None:
+    """F87 — motivo do flag "não-avaliável" (pura; ``None`` = avaliável).
+
+    Ordem de diagnóstico (o mais específico primeiro):
+
+    - ``desc_vazia``: descrição ausente/vazia/só-espaço — caso Amazon
+      Koblenz (JS-vazio em todas as fontes), TYTAN, Impulsgrad;
+    - ``login_wall``: padrão textual de wall/placeholder no corpo
+      (``saml``/``anmelden``/``required…sign in``/placeholder "please add
+      a text") — o texto que passou é fragmento atrás de autenticação ou
+      buraco de template (caso henkel 89300);
+    - ``desc_curta``: descrição abaixo de ``ASSESSABLE_MIN_CHARS`` (600,
+      Passo 0) — provável truncamento sem os campos de julgamento (caso
+      henkel 89534: 584 chars de SAML wall).
+
+    Counter-case (medido, contrato do teste): descrição curta LEGÍTIMA
+    (frase completa, 300-500 chars) TAMBÉM acende ``desc_curta`` — o flag
+    é SINAL display-only (⚠️ no card + linha no digest), NUNCA exclusão:
+    a vaga segue eligible, ranqueada e clicável.
+    """
+    desc = str(job.get("description") or "")
+    if not desc.strip():
+        return "desc_vazia"
+    if _LOGIN_WALL_RE.search(desc):
+        return "login_wall"
+    if len(desc) < ASSESSABLE_MIN_CHARS:
+        return "desc_curta"
+    return None
+
+
+def _annotate_assessability(ranking: list) -> dict:
+    """F87 — anota o flag ``not_assessable`` no ranking (in place).
+
+    Idempotente: recomputa TODO run sobre a lista inteira. O flag acende
+    quando a descrição não dá base de julgamento e APAGA quando a
+    hidratação (F20 top-N ou F65 estendida) trouxe texto suficiente — a
+    cura é efeito colateral da recomputação, sem mecanismo novo. Nada de
+    exclusão: ordem, score e emprego ficam intatos (o CSV nem muda — o
+    campo é JSON-only, padrão dos flags de hidratação).
+
+    Devolve contadores para log/métrica::
+
+        {"total", "flagged" (novos), "by_reason" (população atual),
+         "cleared" (curados), "cleared_ids"}
+    """
+    total = flagged = cleared = 0
+    by_reason: dict[str, int] = {}
+    cleared_ids: list[str] = []
+    for job in ranking:
+        if not isinstance(job, dict):
+            continue
+        total += 1
+        reason = assessability_reason(job)
+        had = bool(job.get(NOT_ASSESSABLE_FLAG))
+        if reason:
+            job[NOT_ASSESSABLE_FLAG] = reason
+            by_reason[reason] = by_reason.get(reason, 0) + 1
+            if not had:
+                flagged += 1
+        elif had:
+            job.pop(NOT_ASSESSABLE_FLAG, None)
+            cleared += 1
+            cleared_ids.append(str(job.get("id") or ""))
+    return {
+        "total": total,
+        "flagged": flagged,
+        "by_reason": by_reason,
+        "cleared": cleared,
+        "cleared_ids": cleared_ids,
+    }
+
+
 def _reassess_hydrated_applicability(job: dict) -> str | None:
     """F20 item 3 — re-avalia a aplicabilidade da vaga com a descricao
     hidratada, REUSANDO a funcao pura da cascata (F18 + F37:
@@ -1640,8 +1754,14 @@ def _run_extended_hydration(
     config_path: Path | str | None = None,
     log=None,
     opener=None,
+    budget_override: int | None = None,
 ) -> dict:
     """F65 — estagio de hidratacao estendida (alem do top exibido).
+
+    F87: ``budget_override`` = poço COMPARTILHADO — o liveness de intake
+    (mesmo knob, mesmo run) gasta primeiro e o que sobrou chega aqui
+    (``main`` passa o restante; ``None`` = comportamento F65 exato, lê o
+    knob direto — usado pelos testes/chamadas avulsas).
 
     Fecha a classe B da F60: vagas com description curta/vazia fora da
     janela F20 (top exibido) ficavam CEGAS aos detectores F60/F61 mesmo
@@ -1692,7 +1812,8 @@ def _run_extended_hydration(
         else:
             print("F65(WARN): " + (msg % args if args else msg))
 
-    budget = _hydration_budget(config_path)
+    budget = (_hydration_budget(config_path)
+              if budget_override is None else max(0, int(budget_override)))
     if budget <= 0:
         _info("hidratacao estendida DESLIGADA (default OFF; ligue com %s=N "
               "no .env — N fetches/dia, regra 9: budget 0 = comportamento "
@@ -1815,6 +1936,198 @@ def _run_extended_hydration(
         write_metrics(metrics_path, [record])
     except Exception as exc:  # noqa: BLE001 — metrica e best-effort
         _warn("F65: metrica extended_hydration nao gravada: %s: %s",
+              type(exc).__name__, exc)
+    return record
+
+
+def _intake_liveness(
+    data_dir: Path,
+    archive_dir: Path,
+    metrics_path: Path,
+    *,
+    run_id: str | None = None,
+    config_path: Path | str | None = None,
+    log=None,
+    opener=None,
+) -> dict:
+    """F87 — liveness no 1º sighting: 1 fetch barato por candidata NOVA.
+
+    As duas mortas do registro (Festo St. Ingbert, Simvia) gastaram
+    análise do dono porque o ``url_liveness`` (F11/F20) só roda no top
+    EXIBIDO — a vaga entra, sobe e é analisada antes de qualquer check.
+    Este estágio roda ANTES da janela de análise, sobre as candidatas
+    NOVAS (primeira aparição do ID contra o snapshot arquivado da rotação
+    — MESMO diff ``new_since_previous`` do digest, que cobre ids
+    ``sf_dataset:``/``direct:`` que nunca passam pelo SQLite), e reusa a
+    maquinaria do ``url_liveness`` (MESMO passe GET, timeout 5s, UA
+    honesto, 1 request por vaga).
+
+    Contrato:
+
+    - **Budget-limited (herdado do F65, regra 9)**: o MESMO knob
+      ``INTERNSHIP_FINDER_HYDRATION_BUDGET`` governa os dois estágios —
+      0/ausente/inválido => UMA linha de log e retorno imediato (nenhum
+      fetch, JSON byte-identical). O ``main`` abate o gasto do intake do
+      F65 no mesmo run (um só poço diário).
+    - **Hard-dead (404/410) => mecanismo F39**: ``_remove_hard_dead`` no
+      ranking + reescrita atômica do JSON — a vaga NÃO entra na janela
+      de análise como avaliável (o respetivo kill switch da F39 vale).
+    - **200-falso textual (Festo "bereits besetzt") => morta para
+      display**: entra no conjunto de mortas que desce do top exibido e
+      ganha 🔗; FICA no JSON (semântica F20/F39: remoção do JSON é
+      exclusiva do hard-dead — o corpo 200 transitório pode ser FP).
+    - **Timeout/DNS/403/429 NUNCA provam morte**: ignorados pelo estágio
+      (padrão F11/F20 — nada de falso-positivo por rede).
+    - **Sem baseline (primeiro run)**: sem snapshot arquivado não há
+      como estabelecer "nova" — nada é checado (o diff começa no run
+      seguinte, MESMO contrato do digest; nunca varrer o corpus inteiro).
+    - **Best-effort TOTAL**: qualquer falha vira log/retorno parcial; o
+      exit code do refresh NUNCA muda por causa deste estágio.
+    - ``opener`` injetável (testes/CI sem rede; default urlopen).
+
+    Devolve o dict gravado na métrica ``intake_liveness`` (com
+    ``dead_ids`` — lista — para o chamador unir às superfícies exibidas);
+    ``{"budget": 0, "status": "off"}`` quando desligado.
+    """
+    def _info(msg: str, *args) -> None:
+        if log is not None:
+            log.info(msg, *args)
+        else:
+            print("F87: " + (msg % args if args else msg))
+
+    def _warn(msg: str, *args) -> None:
+        if log is not None:
+            log.warning(msg, *args)
+        else:
+            print("F87(WARN): " + (msg % args if args else msg))
+
+    budget = _hydration_budget(config_path)
+    if budget <= 0:
+        _info("liveness de intake DESLIGADO (default OFF; MESMO knob %s=N "
+              "do F65 liga os dois — regra 9: budget 0 = zero fetch)",
+              HYDRATION_BUDGET_ENV_FLAG)
+        return {"budget": 0, "status": "off"}
+
+    eligible_path = data_dir / "eligible_jobs.json"
+    try:
+        ranking = json.loads(
+            eligible_path.read_text(encoding="utf-8")
+        ) if eligible_path.exists() else []
+    except Exception as exc:  # noqa: BLE001 — JSON ilegivel => estagio pula
+        _warn("liveness de intake: %s ilegivel (%s: %s) — estagio pulado",
+              eligible_path, type(exc).__name__, exc)
+        return {"budget": budget, "status": "unreadable_eligible"}
+
+    previous_path = archive_dir / "eligible_jobs.json"
+    previous: list | None = None
+    try:
+        previous = json.loads(
+            previous_path.read_text(encoding="utf-8")
+        ) if previous_path.exists() else None
+    except Exception as exc:  # noqa: BLE001 — snapshot ilegivel = sem baseline
+        _warn("liveness de intake: snapshot anterior ilegivel (%s: %s) — "
+              "nada checado neste run", type(exc).__name__, exc)
+        previous = None
+    if previous is None:
+        _info("liveness de intake: sem snapshot do run anterior — nada a "
+              "checar (o diff de novas começa no próximo run, MESMO "
+              "contrato do digest; nunca varrer o corpus inteiro)")
+        record = {
+            "type": "intake_liveness",
+            "run_id": run_id or utcnow_iso(),
+            "timestamp": utcnow_iso(),
+            "budget": budget,
+            "status": "no_baseline",
+            "new_candidates": 0, "fetched": 0, "dead": 0,
+            "hard_dead": 0, "soft_dead": 0, "net_errors": 0,
+            "removed": 0, "removed_ids": [], "removed_entries": [],
+            "duration_s": 0.0, "dead_ids": [],
+        }
+        try:
+            from internship_finder.metrics import write_metrics
+            write_metrics(metrics_path, [record])
+        except Exception as exc:  # noqa: BLE001 — metrica e best-effort
+            _warn("F87: metrica intake_liveness nao gravada: %s: %s",
+                  type(exc).__name__, exc)
+        return record
+
+    prev_ids = {
+        str(j.get("id") or "")
+        for j in previous if isinstance(j, dict)
+    } - {""}
+    new_jobs = [
+        j for j in ranking
+        if isinstance(j, dict) and str(j.get("id") or "")
+        and str(j.get("id")) not in prev_ids
+    ]
+    fetched_jobs = new_jobs[:budget]
+    record = {
+        "type": "intake_liveness",
+        "run_id": run_id or utcnow_iso(),
+        "timestamp": utcnow_iso(),
+        "budget": budget,
+        "new_candidates": len(new_jobs),
+        "fetched": len(fetched_jobs),
+        "dead": 0, "hard_dead": 0, "soft_dead": 0, "net_errors": 0,
+        "removed": 0, "removed_ids": [], "removed_entries": [],
+        "duration_s": 0.0, "dead_ids": [],
+    }
+    if not fetched_jobs:
+        _info("liveness de intake: 0 candidata(s) nova(s) fora do "
+              "snapshot anterior (budget %d intocado)", budget)
+        try:
+            from internship_finder.metrics import write_metrics
+            write_metrics(metrics_path, [record])
+        except Exception as exc:  # noqa: BLE001 — metrica e best-effort
+            _warn("F87: metrica intake_liveness nao gravada: %s: %s",
+                  type(exc).__name__, exc)
+        return record
+
+    t0 = time.monotonic()
+    # MESMA maquinaria F11/F20/F87 do top exibido: 1 GET sequencial por
+    # vaga (timeout 5s, UA honesto); want_bodies=False — o corpo serve só
+    # ao veredito (soft-dead/200-falso), sem hidratação aqui (a janela do
+    # topo e a estendida continuam donas dela).
+    dead, _bodies, lstats = url_liveness.check_liveness_v2(
+        fetched_jobs, want_bodies=False, log=log, opener=opener)
+    hard_ids, hard_status = _extract_liveness_details(lstats)
+    removal: dict = {}
+    if os.environ.get(DEAD_REMOVAL_ENV_FLAG) != "1":
+        removal = _remove_hard_dead(ranking, hard_ids, hard_status)
+        if removal["removed"]:
+            try:
+                from internship_finder.cli import _write_json_atomic
+                _write_json_atomic(ranking, eligible_path)
+            except Exception as exc:  # noqa: BLE001 — persistencia best-effort
+                _warn("F87: exclusão de intake não persistida (veredito "
+                      "segue no registro): %s: %s", type(exc).__name__, exc)
+    else:
+        _info("F87: remoção de intake DESLIGADA (%s presente) — semântica "
+              "F20 preservada", DEAD_REMOVAL_ENV_FLAG)
+    soft_ids = set(dead) - set(hard_ids)
+    record.update({
+        "dead": len(dead),
+        "hard_dead": len(hard_ids),
+        "soft_dead": len(soft_ids),
+        "net_errors": int(lstats.get("net_errors") or 0),
+        "removed": removal.get("removed", 0),
+        "removed_ids": removal.get("removed_ids", []),
+        "removed_entries": removal.get("removed_entries", []),
+        "already_removed": removal.get("already_removed", 0),
+        "duration_s": round(time.monotonic() - t0, 1),
+        "dead_ids": sorted(str(i) for i in dead),
+    })
+    _info("liveness de intake: %d nova(s), %d fetch(es), %d morta(s) "
+          "(%d hard-dead, %d soft/200-falso), %d removida(s) do JSON, "
+          "%d erro(s) de rede ignorado(s), %.1fs",
+          len(new_jobs), len(fetched_jobs), len(dead), len(hard_ids),
+          len(soft_ids), removal.get("removed", 0),
+          record["net_errors"], record["duration_s"])
+    try:
+        from internship_finder.metrics import write_metrics
+        write_metrics(metrics_path, [record])
+    except Exception as exc:  # noqa: BLE001 — metrica e best-effort
+        _warn("F87: metrica intake_liveness nao gravada: %s: %s",
               type(exc).__name__, exc)
     return record
 
@@ -2093,6 +2406,24 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("disco: filesystem de %s com %d%% de uso (>= %d%%)",
                     data_dir, disk_pct, DISK_WARN_PCT)
 
+    # F87 — liveness no 1º sighting (ANTES da janela de análise): 1 fetch
+    # barato por candidata NOVA (diff vs o snapshot arquivado — o mesmo do
+    # digest), budget herdado do F65 (mesmo knob; default 0 = OFF). Roda
+    # ANTES do passe F20 do top (hard-dead removido aqui não gasta fetch
+    # lá). Best-effort TOTAL: falha vira log e o run segue sem as marcas.
+    intake_dead_ids: set[str] = set()
+    intake_stats: dict = {}
+    try:
+        intake_stats = _intake_liveness(
+            data_dir, archive_dir, metrics_path,
+            run_id=summary.get("run_id"),
+            config_path=config_path, log=log)
+        intake_dead_ids = {
+            str(i) for i in (intake_stats.get("dead_ids") or []) if i}
+    except Exception as exc:  # noqa: BLE001 — F87 nunca derruba o run
+        log.warning("F87: liveness de intake falhou (run segue sem as "
+                    "marcas): %s: %s", type(exc).__name__, exc)
+
     # F11/F20 — vitalidade de URL do top exibido (ANTES de publicar;
     # best-effort TOTAL: qualquer falha vira log e o publish segue SEM
     # mortas marcadas — o pipeline NUNCA derruba por causa do check).
@@ -2279,7 +2610,12 @@ def main(argv: list[str] | None = None) -> int:
                 data_dir, metrics_path,
                 run_id=summary.get("run_id"),
                 config_path=config_path,
-                log=log)
+                log=log,
+                # F87 — poço compartilhado: o que o intake gastou abate do
+                # teto diário do F65 no MESMO run (um só orçamento de
+                # fetches; intake OFF = comportamento F65 exato).
+                budget_override=max(0, _hydration_budget(config_path)
+                                    - int(intake_stats.get("fetched") or 0)))
             if extended_hydration_stats.get("hydrated"):
                 log.info("F65 resumo: %d vaga(s) sairam da cegueira "
                          "(janela estendida)",
@@ -2400,6 +2736,53 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("F25: reavaliacao do backlog falhou (run segue sem as "
                     "marcas do backlog): %s: %s", type(exc).__name__, exc)
 
+    # F87 — anotação do flag "não-avaliável" (display + digest, NUNCA
+    # exclusão): recomputa TODO run sobre a lista inteira — acende quando
+    # a descrição não dá base de julgamento (vazia / < 600 chars medidos /
+    # login-wall) e APAGA quando a hidratação (F20/F65, que rodou acima)
+    # trouxe texto suficiente. Zero rede, idempotente; persiste ANTES do
+    # publish/digest para que ambos leiam o campo. Best-effort TOTAL.
+    assess_stats: dict = {}
+    try:
+        ranking = json.loads(
+            (data_dir / "eligible_jobs.json").read_text(encoding="utf-8")
+        ) if (data_dir / "eligible_jobs.json").exists() else []
+        assess_stats = _annotate_assessability(ranking)
+        if assess_stats.get("flagged") or assess_stats.get("cleared"):
+            try:
+                from internship_finder.cli import _write_json_atomic
+                _write_json_atomic(ranking, data_dir / "eligible_jobs.json")
+            except Exception as exc:  # noqa: BLE001 — persistencia best-effort
+                log.warning("F87: flag não-avaliável não persistida (página/"
+                            "digest seguem sem os ⚠️): %s: %s",
+                            type(exc).__name__, exc)
+        if assess_stats.get("flagged") or assess_stats.get("cleared"):
+            log.info("F87 não-avaliáveis: %d flaggada(s) %s, %d curada(s) "
+                     "(hidratação/truncamento reverteu) em %d vaga(s)",
+                     assess_stats.get("flagged", 0),
+                     assess_stats.get("by_reason", {}),
+                     assess_stats.get("cleared", 0),
+                     assess_stats.get("total", 0))
+        else:
+            log.info("F87 não-avaliáveis: %d flaggada(s) no acervo (por "
+                     "motivo %s), nada novo neste run",
+                     sum(assess_stats.get("by_reason", {}).values()),
+                     assess_stats.get("by_reason", {}))
+        try:
+            from internship_finder.metrics import write_metrics
+            write_metrics(metrics_path, [{
+                "type": "assessability",
+                "run_id": summary.get("run_id") or utcnow_iso(),
+                "timestamp": utcnow_iso(),
+                **assess_stats,
+            }])
+        except Exception as exc:  # noqa: BLE001 — metrica e best-effort
+            log.warning("F87: metrica assessability nao gravada: %s: %s",
+                        type(exc).__name__, exc)
+    except Exception as exc:  # noqa: BLE001 — F87 nunca derruba o run
+        log.warning("F87: anotação não-avaliável falhou (run segue sem os "
+                    "⚠️): %s: %s", type(exc).__name__, exc)
+
     # F25 — as inaplicáveis do backlog hidratado descem das superfícies
     # exibidas JUNTO com as do liveness (MESMA semântica F20: o publish
     # recebe o conjunto unificado de inaplicáveis; mortas seguem separadas
@@ -2422,7 +2805,7 @@ def main(argv: list[str] | None = None) -> int:
                 exit_code=exit_code,
                 eligible=summary.get("eligible") or 0,
                 run_id=summary.get("run_id") or utcnow_iso(),
-                dead_link_ids=dead_ids,
+                dead_link_ids=dead_ids | intake_dead_ids,
                 **({"inapplicable_ids": inapplicable_ids}
                    if inapplicable_ids else {}),
             )
@@ -2491,8 +2874,9 @@ def main(argv: list[str] | None = None) -> int:
                 # F25 — os DOIS Top 5 cortam as demovidas das superfícies
                 # exibidas (mortas do liveness + inaplicáveis pós-hidratação,
                 # backlog incluído): a vaga seguinte sobe, mesma semântica
-                # da página. O JSON/CSV ficam intocados.
-                excluded_ids=dead_ids | inapplicable_ids,
+                # da página. O JSON/CSV ficam intocados. F87: mortas do
+                # 1º sighting (intake) entram no MESMO conjunto.
+                excluded_ids=dead_ids | inapplicable_ids | intake_dead_ids,
             )
         except Exception as exc:  # noqa: BLE001 — digest e best-effort
             log.warning("digest do ranking nao montado (run segue normal): %s", exc)

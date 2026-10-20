@@ -323,10 +323,10 @@ def test_f_ci_membership() -> None:
     names = ci_discover_tests.discover_tests()
     check("F1. suite descoberta do CI inclui test_f85",
           "test_f85" in names, f"{len(names)} suites")
-    check("F2. README carrega '124' CI test suites (contrato F73 — bump "
-          "da fase; F86 adicionou a test_f86, 123 -> 124)",
-          "**124** | CI test suites" in (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8"),
-          "README.md sem o bump 123->124")
+    check("F2. README carrega '125' CI test suites (contrato F73 — bump "
+          "da fase; F87 adicionou a test_f87, 124 -> 125)",
+          "**125** | CI test suites" in (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8"),
+          "README.md sem o bump 124->125")
 
 
 def main() -> int:
