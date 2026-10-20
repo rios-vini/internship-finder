@@ -371,8 +371,9 @@
    "description_snippets": [],
    "score": null,
    "group": "contra_rewe_talentpool_desc",
-   "expect_excluded": false,
-   "note": "REWE: 'Talentpool' na desc = programa future steps, vaga concreta fica",
+   "expect_excluded": true,
+   "expected_reason": "job_type_non_internship",
+   "note": "REWE: 'Talentpool' na desc = programa future steps, vaga concreta fica (pool é título-only — contra-caso preservado no T2). F86 (20/10): o título 'Werkstudent' agora EXCLUI por job_type_non_internship (matrícula alemã exigida) — veredito atualizado pela F86, intenções das duas doutrinas intactas.",
    "source_snapshot": "20261013T090001Z"
   },
   {

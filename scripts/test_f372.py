@@ -286,9 +286,16 @@ def t3_spontaneous_pool() -> None:
               "description": "Possibility to become part of NXP's Young "
                              "Professional Talent Pool",
               "employment_type": "INTERN"}))
-    check("contra: REWE 'Talentpool' na desc NÃO mata",
+    # F86 (20/10): o título "Werkstudent International Tax" virou exclusão
+    # job_type_non_internship (matrícula alemã) — o counter-case POOL é
+    # sobre a regra título-only do spontaneous_pool e segue provado (a)
+    # pelo detector direto e (b) pela full-chain com título de estágio.
+    check("contra: REWE 'Werkstudent...' no título não é pool (título-only)",
+          not flt.is_spontaneous_pool_title(
+              "Werkstudent International Tax (m/w/d)"))
+    check("contra: REWE 'Talentpool' na desc NÃO mata (título de estágio)",
           not flt.applicability_exclusion_reason({
-              "title": "Werkstudent International Tax (m/w/d)",
+              "title": "Praktikant/in (m/f/d) Steuer & Treasury",
               "description": "Aufnahme in das Bindungsprogramm „future steps“ "
                              "mit exklusiven Events und Talentpool.",
               "employment_type": None}))

@@ -728,6 +728,36 @@ def enrollment_flag(job: dict, lang: str = "pt") -> str:
     return ""
 
 
+# F86 — badge de ambiguidade job_type (display-only, NUNCA exclusão): o
+# TÍTULO nomeia as DUAS classes — "Werkstudent:in / Praktikant:in ..."
+# (caso Impulsgrad, desc vazia). A vaga FICA no eligible (o guard de
+# título da F86 salva os híbridos F37 — o dono se qualifica a Praktikum
+# §16e) e o badge marca o porquê da ambiguidade: Werkstudent exige
+# matrícula em universidade ALEMÃ; Praktikant:in o dono pode. Detector
+# ÚNICO: filters.job_type_ambiguous_title (mesma regra da exclusão —
+# nenhum segundo mecanismo). Import best-effort: a página nunca quebra
+# por causa de um badge. F46: ``lang`` — pt é a constante VERBATIM; en
+# é a tradução do I18N.
+JOB_TYPE_AMBIGUOUS_FLAG_TEXT = (
+    "tipo ambíguo — Werkstudent/Praktikum (decidir na vaga)")
+
+
+def job_type_ambiguous_flag(job: dict, lang: str = "pt") -> str:
+    """F86: badge quando o título nomeia Werkstudent E Praktikum juntos."""
+    title = str(job.get("title") or "")
+    if not title.strip():
+        return ""
+    try:
+        from internship_finder import app_intel as _intel
+    except Exception:  # noqa: BLE001 — view best-effort
+        return ""
+    if not _intel.job_type_ambiguous_title(title):
+        return ""
+    if lang == "en":
+        return I18N["jt_ambiguous_flag"]["en"]
+    return JOB_TYPE_AMBIGUOUS_FLAG_TEXT
+
+
 # F62 — sinal de conflito de início: "ab sofort" ↔ meta jan/2027 do dono.
 # DISPLAY-ONLY (regra never-worsens): badge no card, NUNCA score/ranking/
 # filtro. A fonte é o parser de sazonalidade da F45 (scripts/seasonality.py)
@@ -859,6 +889,10 @@ I18N: dict[str, dict[str, str]] = {
                            "en": "salary not listed"},
     "enrollment_flag": {"pt": ENROLLMENT_FLAG_TEXT,
                         "en": "requires enrollment at a German university"},
+    # F86 — badge de ambiguidade job_type (display-only).
+    "jt_ambiguous_flag": {
+        "pt": JOB_TYPE_AMBIGUOUS_FLAG_TEXT,
+        "en": "ambiguous type — Werkstudent/Praktikum (decide on the posting)"},
     "dur_flag": {"pt": DURATION_FLAG_TEXT,
                  "en": "{n}-month duration — above the §16e cap (6 months)"},
     # F62 — badge de conflito de início (display-only; fonte: parser F45).
@@ -1166,9 +1200,11 @@ _LEGEND_ITEMS: tuple[tuple[str, str, str, str], ...] = (
      "filled/removed"),
     ("⏳ / ⚠️", "⏳ / ⚠️",
      "sinais informativos do §16e: duração citada acima do teto de "
-     "6 meses / anúncio exige matrícula ativa em universidade alemã",
+     "6 meses / anúncio exige matrícula ativa em universidade alemã / "
+     "tipo ambíguo Werkstudent/Praktikum (F86 — decidir na vaga)",
      "informational §16e signals: stated duration above the 6-month "
-     "cap / posting requires active enrollment at a German university"),
+     "cap / posting requires active enrollment at a German university / "
+     "ambiguous Werkstudent/Praktikum type (F86 — decide on the posting)"),
     ("*", "*",
      "estimativa de mercado: salário NÃO citado no anúncio, "
      "estimado por categoria do título (praktikum.info, kununu/Indeed; "
@@ -1411,6 +1447,7 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           age_stale: bool = False,
           duration_flag: str = "",
           enrollment_red_flag: str = "",
+          jt_ambiguous_flag_txt: str = "",
           profile_scores: dict | None = None,
           profile_ranks: dict | None = None,
           profile_attrs: bool = False,
@@ -1538,6 +1575,17 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         else:
             badge_bits.append(
                 f' <span class="flag">⚠️ {_esc(start_conflict_flag)}</span>')
+    # F86 — tipo ambíguo Werkstudent/Praktikum (display-only; a vaga FICA
+    # no eligible — o badge marca a decisão que o dono precisa tomar).
+    if jt_ambiguous_flag_txt:
+        if lang == "en":
+            badge_bits.append(
+                f' <span class="flag"'
+                f'{_i18n_attr("⚠️ " + JOB_TYPE_AMBIGUOUS_FLAG_TEXT)}>⚠️ '
+                f'{_esc(jt_ambiguous_flag_txt)}</span>')
+        else:
+            badge_bits.append(
+                f' <span class="flag">⚠️ {_esc(jt_ambiguous_flag_txt)}</span>')
     badge_bits.append(personal_status_badge(personal_status))
     if dead:
         badge_bits.append(
@@ -2162,6 +2210,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             duration_flag_pt=(duration_flag_text(job, "pt")
                               if lang == "en" else ""),
             enrollment_red_flag=enrollment_flag(job, lang),
+            jt_ambiguous_flag_txt=job_type_ambiguous_flag(job, lang),
             start_conflict_flag=ab_sofort_flag(job, lang),
             na_flag=not_assessable_flag_text(job, lang),
             na_flag_pt=(not_assessable_flag_text(job, "pt")

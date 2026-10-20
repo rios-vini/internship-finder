@@ -95,6 +95,8 @@ DEATH_LABELS = {
     "full_time_permanent": "tempo integral permanente",
     "erasmus_program": "programa Erasmus+",
     "spontaneous_pool": "pool espontâneo",
+    "job_type_non_internship": "tipo de vaga (não-estágio: HiWi/Werkstudent/tese/permanente)",
+    "experience_required": "experiência prévia exigida",
 }
 
 # Ordem de exibição dos desfechos do log F41 (schema da fase).

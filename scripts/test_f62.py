@@ -376,10 +376,13 @@ def test_card_pt():
         + r' início imediato', html)
     check("B2 render pt é PURO: badge sem attrs do toggle (contrato F46)",
           no_attr == [] and 'data-i18n-pt="' + WARN not in html)
-    check("B3 contra-casos: cards Liebherr/Amazon SEM badge e SEM flag",
-          "flag" not in _card_of(html, F_LIEBHERR_TITLE)
-          and "flag" not in _card_of(html, F_AMAZON_TITLE)
-          and "início imediato" not in _card_of(html, F_LIEBHERR_TITLE))
+    check("B3 contra-casos: Liebherr/Amazon SEM badge de início imediato "
+          "(F86: Liebherr é título duplo → badge de AMBIGUIDADE, não "
+          "conflito; Amazon Praktikum puro não ganha nada)",
+          "início imediato" not in _card_of(html, F_LIEBHERR_TITLE)
+          and "início imediato" not in _card_of(html, F_AMAZON_TITLE)
+          and "tipo ambíguo" in _card_of(html, F_LIEBHERR_TITLE)
+          and "tipo ambíguo" not in _card_of(html, F_AMAZON_TITLE))
     check("B4 retrocompat: _card sem o param novo = sem badge (default '')",
           "flag" not in mp._card(1, PLAIN, visa=False, salary="",
                                  snippet="", apply_href=None,
@@ -490,6 +493,16 @@ def test_digest_line():
 def _strip_f62(html: str) -> str:
     """Remove SOMENTE os spans do badge F62 (delta cirúrgico, padrão
     _strip_f60 da F60): qualquer OUTRA divergência continua visível."""
+    # F86 — o item da legenda ⏳/⚠️ ganhou o sinal de tipo ambíguo e as
+    # cards de TÍTULO DUPLO ganham o badge ⚠️ (fixture F62: Liebherr
+    # "Praktikant/Werkstudent" acende) — normaliza novo -> antigo nos
+    # DOIS lados do A/B.
+    html = html.replace(
+        "alemã / tipo ambíguo Werkstudent/Praktikum (F86 — decidir na "
+        "vaga)", "alemã")
+    html = re.sub(
+        r' <span class="flag"[^>]*>⚠️ (?:tipo ambíguo|ambiguous type)'
+        r'[^<]*</span>', "", html)
     return re.sub(r' <span class="flag"[^>]*>' + re.escape(WARN)
                   + r' (?:início imediato[^<]*|immediate start[^<]*)</span>',
                   "", html)
