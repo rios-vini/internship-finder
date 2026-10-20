@@ -59,6 +59,16 @@ Mecanica desta fonte (streaming, NUNCA DataFrame):
    fase futura com historico); (d) ``row_to_job`` valida ``ats_type``
    ANTES de compor ``source`` (fecha a classe "source envenenado").
 
+5. F76 — E1, robustez upstream: o transporte do estagio (manifest + fatias)
+   vive na camada propria ``dataset_fetch`` — status HTTP -> erro EXPLICITO
+   (403/406 fail-loud nao-retryavel — WAF bloqueando; 408/429/5xx com
+   Retry-After numerico respeitado; qualquer outro 4xx nao-retryavel),
+   200-falso detectado (HTML de WAF onde se espera JSON/CSV — padrao
+   MalformedJSONError do upstream) e fatia que falha ganha o erro no
+   forense ``per_ats[name]["error"]`` (antes: "HTTPError" generico).
+   Equivalente proprio dos padroes do ``ats_scrapers.fetch`` medidos na
+   v0.3.0; desvios conscientes documentados no modulo.
+
 Volume: o prefilter reduz ~5,1M rows globais para ~21,6k antes de qualquer
 ``Job`` existir (fato medido §2.3). Budget total do estagio:
 ``DATASET_BUDGET_SECONDS`` (checado ENTRE fatias; estourado -> fatias
@@ -90,12 +100,12 @@ import os
 import re
 import tempfile
 import time
-import urllib.request
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from internship_finder import dataset_fetch
 from internship_finder.dataset_seen import DatasetSeenWriter
 from internship_finder.filters import (
     PROGRAM_EXCLUSION_PATTERNS,
@@ -345,26 +355,19 @@ def _http_fetch(url: str, dest: Path, timeout: float = DATASET_HTTP_TIMEOUT) -> 
 
     Streaming por chunks de 1 MiB em DISCO (nunca RAM): pico de uso = a
     fatia em download. O chamador apaga ``dest`` apos o prefilter.
-    ``urllib.request`` (stdlib) - sem dependencia nova no runtime.
 
     F80 — L2: o sha256 da fatia e computado DURANTE o download (um
     ``hashlib.update`` por chunk, zero I/O extra) e devolvido junto com o
     total de bytes; o chamador compara com o ``sha256`` declarado no
     manifest por fatia (a chave plain ``sha256`` e do CSV — probe passo 0;
     ``parquet_sha256`` e do formato que NAO baixamos).
+
+    F76 — E1: o transporte vive na camada propria ``dataset_fetch`` —
+    status HTTP -> erro explicito (403/406 fail-loud NAO-retryavel,
+    408/429/5xx com Retry-After), e 200-falso (HTML de WAF onde se espera
+    CSV) aborta no PRIMEIRO chunk, ANTES de escrever no disco.
     """
-    bytes_downloaded = 0
-    digest = hashlib.sha256()
-    req = urllib.request.Request(url, headers={"User-Agent": "internship-finder/0.1"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp, dest.open("wb") as fh:
-        while True:
-            chunk = resp.read(1024 * 1024)
-            if not chunk:
-                break
-            fh.write(chunk)
-            digest.update(chunk)
-            bytes_downloaded += len(chunk)
-    return bytes_downloaded, digest.hexdigest()
+    return dataset_fetch.download_file(url, dest, timeout=timeout)
 
 
 def fetch_manifest(
@@ -374,34 +377,24 @@ def fetch_manifest(
     """Manifest vivo COMPLETO (dict top-level: ``by_ats``, ``generated_at``,
     ``version``, ``stats``...). Levanta em falha.
 
-    F80: corpo nao-JSON (HTML/Cloudflare) -> ``ValueError`` claro com os
-    primeiros ~200 chars do corpo (antes: erro critico de json.loads). A
-    validacao L1 (versao/colunas) NAO vive aqui — vive em
-    ``validate_manifest``, chamada pelo ``collect_dataset_jobs`` no mesmo
-    gargalo do caminho injetado (guard so em ``fetch_manifest`` nao seria
-    exercitado pelos testes offline que injetam ``manifest=``).
+    F80: corpo nao-JSON (HTML/Cloudflare) -> erro claro com os primeiros
+    ~200 chars do corpo (o 200-falso do upstream — MalformedJSONError —
+    pega a pagina de WAF servida com status 200).
+
+    F76 — E1: o transporte (retries/status/Retry-After) e da camada
+    ``dataset_fetch``; o 200-falso levanta ``MalformedJSONError``, que E
+    ``ValueError`` — o contrato F80 segue de pe. A validacao L1
+    (versao/colunas) NAO vive aqui — vive em ``validate_manifest``,
+    chamada pelo ``collect_dataset_jobs`` no mesmo gargalo do caminho
+    injetado (guard so em ``fetch_manifest`` nao seria exercitado pelos
+    testes offline que injetam ``manifest=``).
     """
-    req = urllib.request.Request(url, headers={"User-Agent": "internship-finder/0.1"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = resp.read().decode("utf-8", errors="replace")
-    try:
-        manifest = json_loads(body)
-    except ValueError as exc:
-        snippet = body[:200]
-        raise ValueError(
-            f"manifest nao e JSON ({exc}); corpo comeca com: {snippet!r}"
-        ) from exc
+    manifest = dataset_fetch.fetch_json(url, timeout=timeout, context="manifest")
     if not isinstance(manifest, dict):
         raise ValueError(
             f"manifest nao e um objeto JSON (tipo {type(manifest).__name__})"
         )
     return manifest
-
-
-def json_loads(text: str) -> dict[str, Any]:
-    import json
-
-    return json.loads(text)
 
 
 def _schema_version_candidates(data: Mapping[str, Any]) -> list[str]:
@@ -495,7 +488,8 @@ def collect_dataset_jobs(
       caminhos — vivo E injetado (guard que so rodasse no vivo nao
       seria testado offline).
     - ``http_fetch(url, dest)``: injeta o download (testes apontam para
-      fixtures locais); default baixa via urllib em streaming.
+      fixtures locais); default e a camada propria ``dataset_fetch`` (F76 —
+      status/retry/Retry-After/200-falso; streaming para disco).
     - ``workdir``: diretorio para as fatias temporarias (default: tempdir
       do SO - TMPDIR em producao; testes apontam para o tempdir do teste).
     - ``country_isos`` (F7): ISOs-alvo do prefilter (criterio (c)). Default
@@ -638,6 +632,11 @@ def collect_dataset_jobs(
                             "failed, demais seguem", name, declared_rows, rows)
             except Exception as exc:  # noqa: BLE001 - fatia falha, resto segue
                 entry["failed"] = True
+                # F76: forense explicito no registro — o tipo vem da camada
+                # dataset_fetch (BlockedHTTPStatusError/HTTPStatusError/
+                # RetryExhaustedError/MalformedCSVError...), nao mais um
+                # "HTTPError" generico indistinguivel.
+                entry["error"] = f"{type(exc).__name__}: {exc}"
                 summary["failed_slices"] += 1
                 log.warning("sf_dataset: fatia %s falhou (%s); seguindo", name, exc)
             finally:
