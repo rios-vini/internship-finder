@@ -207,12 +207,11 @@ check(src.find("with_suffix(\".csv\")", pos_rescore) > pos_rescore
 check("now=datetime.now(UTC))" in src[pos_rescore:pos_rescore + 200],
       "re-score usa now aware como a coleta (F38)")
 
-ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-tests_line = next(l for l in ci.splitlines() if l.strip().startswith("tests=("))
-names = tests_line.strip().removeprefix("tests=(").removesuffix(")").split()
-check("test_f56" in names, "test_f56 presente no array tests= do ci.yml (união)")
-check(len(names) >= 94, f"array do ci.yml tem >= 94 suítes (93 ao vivo de 41c800d "
-      f"+ test_f56; uniões de fases seguintes só crescem — assert RELATIVO, "
+import ci_discover_tests  # F78: suíte do CI = descoberta (array literal morreu)
+names = ci_discover_tests.discover_tests()
+check("test_f56" in names, "test_f56 presente na suíte descoberta do CI (F78)")
+check(len(names) >= 94, f"suíte descoberta tem >= 94 suítes (93 ao vivo de 41c800d "
+      f"+ test_f56; descobertas seguintes só crescem — assert RELATIVO, "
       f"lição do rebase F46: contagem exata quebra a cada união) — {len(names)}")
 check(all(n in names for n in ("test_f55", "test_f49", "test_f20", "test_hydration")),
       "nenhuma suíte pré-existente removida (união 93->94)")

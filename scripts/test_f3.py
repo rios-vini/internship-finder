@@ -634,10 +634,11 @@ def test_jsonl_records() -> None:
 # ---------------------------------------------------------------------------
 
 def test_ci_membership() -> None:
-    print("== J. CI: test_f3 no array do workflow ==")
-    root = Path(__file__).resolve().parent.parent
-    ci = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    check("J1. tests=(...) inclui test_f3", "test_f3" in ci)
+    print("== J. CI: test_f3 na suíte descoberta (auto-discovery F78) ==")
+    import ci_discover_tests  # F78: suíte do CI = descoberta de scripts/test_*.py
+    names = ci_discover_tests.discover_tests()
+    check("J1. suíte descoberta do CI inclui test_f3 (auto-discovery F78)",
+          "test_f3" in names, f"{len(names)} suítes")
 
 
 def main() -> int:

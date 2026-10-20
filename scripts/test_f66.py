@@ -531,10 +531,9 @@ def test_integracao() -> None:
             os.chdir(cwd_prev2)
     check("I3 cwd fora da raiz: padrao nao achado -> {} (degradacao graciosa, "
           "o estagio NUNCA crasha por config ausente)", outside == {}, str(outside))
-    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    m = re.search(r"tests=\(([^)]*)\)", ci, re.S)
-    arr = m.group(1).split() if m else []
-    check("I4 test_f66 presente no array do CI (uniao por presenca)",
+    import ci_discover_tests
+    arr = ci_discover_tests.discover_tests()
+    check("I4 test_f66 presente na suíte descoberta do CI (por presenca)",
           "test_f66" in arr, f"{len(arr)} suites")
     check("I5 array vivo e relativo (nunca contagem exata)", len(arr) >= 106, f"{len(arr)}")
     missing = [t for t in arr if not (SCRIPTS / f"{t}.py").exists()]

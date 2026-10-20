@@ -60,7 +60,7 @@ from internship_finder.ranking import (  # noqa: E402
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-CI_YML = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+import ci_discover_tests  # noqa: E402  # F78: suíte do CI = descoberta
 
 CHECKS: list = []
 
@@ -380,8 +380,8 @@ def s8_universo_mini_ab() -> None:
         for _, text, exp in universe)
     check("U2 mini-universo: níveis finais exatos por vaga (contrato "
           "completo, incl. soft 'von Vorteil' -> preferred)", levels_ok)
-    check("U3 test_f60 no array do ci.yml (união — mesma suíte do CI)",
-          "test_f60" in CI_YML)
+    check("U3 test_f60 na suíte descoberta do CI (F78 — mesma suíte que o CI roda)",
+          "test_f60" in ci_discover_tests.discover_tests())
 
 
 def main() -> int:

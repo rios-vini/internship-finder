@@ -33,8 +33,8 @@ Contrato da fase:
    titulo) seguem NAO fundindo — bloqueios restantes documentados. Nunca
    "conserte" o teste as cegas: toda mudanca de expectativa e consciente
    (ver relatorio F64 §dedup e o test_f66, que e o dono do mecanismo).
-5. ``.github/workflows/ci.yml`` contem test_f64 no array ``tests=``
-   (uniao RELATIVA: >= 101 suites — assert relativo, regra da casa).
+5. suíte do CI descoberta (F78: scripts/ci_discover_tests.py) contem
+   test_f64 (RELATIVA: >= 101 suites — assert relativo, regra da casa).
 """
 
 import json
@@ -320,16 +320,17 @@ check("G4 o re-post esta rotulado no dataset (verdict=dup, dup_of=vaga canonica)
       any(r["verdict"] == "dup" and "13231277" in r["job_id"] and r.get("dup_of") for r in rows))
 
 # ---------------------------------------------------------------------------
-# G5 — ci.yml: membership + uniao RELATIVA
+# G5 — CI: membership na descoberta + uniao RELATIVA (F78)
 # ---------------------------------------------------------------------------
-ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-m = re.search(r"tests=\((.*?)\)", ci)
-check("G5 ci.yml array tests= presente", m is not None)
-toks = m.group(1).split() if m else []
-check("G5 ci.yml contem test_f64 no array tests=", "test_f64" in toks)
-check("G5 ci.yml uniao RELATIVA (>= 101 suites)", len(toks) >= 101, f"n={len(toks)}")
-check("G5 ci.yml tokens do array puros (sem parenteses/fragmentos de comentario)",
-      all("(" not in t and ")" not in t and "#" not in t for t in toks))
+import ci_discover_tests  # noqa: E402  # F78: array literal morreu
+toks = ci_discover_tests.discover_tests()
+check("G5 descoberta não-vazia e determinística (2 chamadas iguais)",
+      bool(toks) and toks == ci_discover_tests.discover_tests(), f"n={len(toks)}")
+check("G5 descoberta contem test_f64", "test_f64" in toks)
+check("G5 descoberta RELATIVA (>= 101 suites)", len(toks) >= 101, f"n={len(toks)}")
+check("G5 nomes descobertos puros (^test_ + [a-z0-9_])",
+      all(t.startswith("test_") and all(c.isalnum() or c == "_" for c in t)
+          for t in toks))
 
 # ---------------------------------------------------------------------------
 # G6 — measure() end-to-end em fixtures sinteticas (wiring completo offline)

@@ -445,18 +445,17 @@ check(
 # ---------------------------------------------------------------------------
 # G. ci.yml — união RELATIVA (presença; contagens nunca hardcoded)
 # ---------------------------------------------------------------------------
-section("G: ci.yml — união relativa")
+section("G: CI — suíte descoberta, relativa (F78)")
 
-ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-m = re.search(r"tests=\(([^)]*)\)", ci, re.S)
-arr = m.group(1).split() if m else []
+import ci_discover_tests  # noqa: E402  # F78: array literal morreu
+arr = ci_discover_tests.discover_tests()
 check(
-    "G1 test_f61_visa presente no array do CI (união por presença)",
+    "G1 test_f61_visa presente na suíte descoberta do CI (por presença)",
     "test_f61_visa" in arr,
     f"{len(arr)} suítes",
 )
 check(
-    "G2 array vivo e relativo (>= 99 suítes; contagem nunca exata)",
+    "G2 suíte descoberta viva e relativa (>= 99 suítes; contagem nunca exata)",
     len(arr) >= 99,
     f"{len(arr)}",
 )

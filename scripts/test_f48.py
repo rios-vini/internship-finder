@@ -23,7 +23,7 @@ H. canonical intacto (nenhum campo alterado), `duplicate_of` so na duplicata,
    estatisticas/removidas coerentes, determinismo e idempotencia;
 I. integracao com o pipeline (`run_filter_pipeline`): a duplicata sai da
    saida e o registro `type: dedup_cross_source` entra na metrica diaria;
-J. `.github/workflows/ci.yml` contem test_f48 no array `tests=`.
+J. suíte do CI descoberta (F78: scripts/ci_discover_tests.py) contem test_f48.
 
 Convencoes do repo: [OK]/[FAIL], termina "TUDO OK" (exit 0). Sem rede, sem
 LLM, sem data/ de producao — o A/B no universo real esta no relatorio da fase.
@@ -571,13 +571,11 @@ def test_pipeline_integracao() -> None:
 
 
 def test_ci_membership() -> None:
-    section("F48.J ci.yml: test_f48 no array tests=")
-    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    import re
-    match = re.search(r"tests=\((.*?)\)", ci, re.S)
-    specs = [t for t in match.group(1).split() if t] if match else []
-    check("test_f48 no array tests= do ci.yml", "test_f48" in specs, str(len(specs)))
-    check("array tests= sem duplicatas", len(specs) == len(set(specs)))
+    section("F48.J CI: test_f48 na suíte descoberta (F78)")
+    import ci_discover_tests
+    specs = ci_discover_tests.discover_tests()
+    check("test_f48 na suíte descoberta do CI", "test_f48" in specs, str(len(specs)))
+    check("suíte descoberta sem duplicatas", len(specs) == len(set(specs)))
 
 
 def main() -> int:

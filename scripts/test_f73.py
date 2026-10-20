@@ -16,8 +16,9 @@ Fontes de verdade (100% OFFLINE, zero rede, ``data/`` intocada):
 2. ``len({ats distintos do SEED})`` — "N ATS platforms" do README
    (3 menções). O avature do override F58 é FONTE MORTA reescrita em
    runtime, não plataforma declarada do registry;
-3. ``len(tests=...)`` do ci.yml — "N CI test suites" do README
-   (1 menção) + membership de ``test_f73`` no MESMO array;
+3. ``len`` da suíte descoberta (F78: scripts/ci_discover_tests.py) —
+   "N CI test suites" do README (1 menção) + membership de ``test_f73``
+   na MESMA suíte que o CI roda;
 4. janela medida do refresh do upstream — "~14:30 UTC" (manifest
    storage.stapply.ai/jobhive/v1/manifest.json, generated_at 14:30:04Z,
    medido 19/10/2026; o "~05h UTC" era stale) citada em
@@ -114,11 +115,13 @@ def docstring_registry_violations(docstring: str, expected: int) -> list[str]:
     return [f"cita {n}, código diz {expected}" for n in found if n != expected]
 
 
-# --- ci.yml: linha única tests=(...) — regex do procedimento anti-conflito ---
+# --- suíte do CI: auto-discovery F78 (scripts/test_*.py menos skip-list) ---
+# A linha literal de array morreu na F78; a fonte canônica da suíte do
+# CI passou a ser scripts/ci_discover_tests.py (invocada pelo ci.yml).
+# O contrato doc-sync (README == len da suíte) segue valendo.
 
-_CI_TEXT = _read(".github/workflows/ci.yml")
-_CI_MATCH = re.search(r"^[ \t]*tests=\((.*)\)[ \t]*$", _CI_TEXT, re.M)
-CI_TESTS: list[str] = _CI_MATCH.group(1).split() if _CI_MATCH else []
+import ci_discover_tests  # noqa: E402  (scripts/ já está no sys.path)
+CI_TESTS: list[str] = ci_discover_tests.discover_tests()
 
 
 def test_registry_docstrings() -> None:
@@ -156,9 +159,9 @@ def test_readme_counts() -> None:
     check(f"2b. ATS platforms: {len(ats)} menções (contrato: 3), todas == {N_ATS} (ATS do SEED)",
           len(ats) == 3 and all(n == N_ATS for n in ats), f"{ats} vs SEED {N_ATS}")
     ci = [int(n) for n in _RE_CI_SUITES.findall(readme)]
-    check(f"2c. CI test suites: 1 menção == len(tests=) ({len(CI_TESTS)})",
+    check(f"2c. CI test suites: 1 menção == len(suítes descobertas) ({len(CI_TESTS)})",
           len(ci) == 1 and ci[0] == len(CI_TESTS),
-          f"readme={ci}, ci.yml={len(CI_TESTS)}")
+          f"readme={ci}, descobertas={len(CI_TESTS)}")
 
 
 def test_upstream_hour() -> None:
@@ -179,10 +182,13 @@ def test_upstream_hour() -> None:
 
 
 def test_ci_membership() -> None:
-    print("4. ci.yml: linha tests= parseável + membership")
-    check("4a. linha tests=(...) encontrada pelo regex anti-conflito", bool(_CI_MATCH))
-    check("4b. test_f73 presente no array", "test_f73" in CI_TESTS)
-    check("4c. sem duplicatas no array", len(CI_TESTS) == len(set(CI_TESTS)),
+    print("4. CI: descoberta determinística + membership (auto-discovery F78)")
+    check("4a. descoberta não-vazia e determinística (2 chamadas iguais)",
+          bool(CI_TESTS) and CI_TESTS == ci_discover_tests.discover_tests(),
+          f"{len(CI_TESTS)} suítes")
+    check("4b. test_f73 presente na suíte descoberta", "test_f73" in CI_TESTS)
+    check("4c. sem duplicatas na suíte descoberta",
+          len(CI_TESTS) == len(set(CI_TESTS)),
           f"{len(CI_TESTS)} tokens, {len(set(CI_TESTS))} únicos")
 
 
@@ -207,7 +213,8 @@ def test_negative_controls() -> None:
         + [int(b) for _, b in _RE_COMPANIES_TABLE.findall(stale)]
     check("5d. detector de ATS apanha 15 (≠ SEED)", 15 in ats and all(n != N_ATS for n in ats), f"{ats}")
     ci = [int(n) for n in _RE_CI_SUITES.findall(stale)]
-    check("5e. detector de CI apanha 67 (≠ array)", ci == [67] and 67 != len(CI_TESTS),
+    check("5e. detector de CI apanha 67 (≠ suítes descobertas)",
+          ci == [67] and 67 != len(CI_TESTS),
           f"{ci} vs {len(CI_TESTS)}")
     hs = _RE_HOUR_EN.findall(stale)
     check("5f. detector de hora apanha 05:00 (≠ janela medida)",
