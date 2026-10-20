@@ -71,6 +71,14 @@ lista de 127 empresas vira componente ``registry`` no RANKING
 Jobs do dataset NAO entram no lifecycle SQLite (invariante §7.8): a fonte
 e efemera, re-derivada a cada run - so as unidades de coleta do registry
 (``--sqlite``) persistem first_seen/last_seen.
+
+F70 — o caderno ``dataset_seen``: o universo pos-prefilter (~24k
+vagas/dia) e gravado row a row num SQLite SEPARADO (``data/dataset_seen.db``,
+``jobs.db`` intocado) quando o chamador passa um ``DatasetSeenWriter``
+(``seen=``). A escrita e STREAMING no mesmo loop do prefilter (nunca
+materializa o universo), best-effort TOTAL (falha do caderno nunca derruba
+o estagio) e LAZY (o arquivo so nasce no primeiro write). O chamador e
+dono do ciclo de vida do writer (cria/fecha/le stats p/ o registro).
 """
 
 from __future__ import annotations
@@ -88,6 +96,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from internship_finder.dataset_seen import DatasetSeenWriter
 from internship_finder.filters import (
     PROGRAM_EXCLUSION_PATTERNS,
     STUDENT_TYPE_PATTERNS,
@@ -475,6 +484,7 @@ def collect_dataset_jobs(
     now: Callable[[], float] = time.monotonic,
     workdir: Path | None = None,
     country_isos: Any = ("de",),
+    seen: DatasetSeenWriter | None = None,
 ) -> tuple[list[Job], dict[str, Any]]:
     """Coleta do dataset hospedado com prefilter; devolve ``(jobs, summary)``.
 
@@ -491,6 +501,12 @@ def collect_dataset_jobs(
     - ``country_isos`` (F7): ISOs-alvo do prefilter (criterio (c)). Default
       ``("de",)`` = retrocompatibilidade total com a F3; a producao passa
       ``countries.TARGET_COUNTRIES`` (DE primario + LU/NL/FI/BE).
+    - ``seen`` (F70): caderno ``dataset_seen`` — writer passado pelo
+      chamador (dono do ciclo de vida: cria/fecha/le stats para o
+      registro). Default ``None`` = sem caderno (retrocompat total).
+      Cada Job VALIDO pos-prefilter e anotado row a row (streaming);
+      o summary NAO ganha campos de seen — quem fecha o writer le
+      ``seen.written``/``seen.error`` (o CLI injeta no registro).
 
     Summary (dict de metricas, gravado no JSONL como registro
     ``type: dataset`` pelo CLI):
@@ -595,7 +611,7 @@ def collect_dataset_jobs(
                             "sf_dataset: fatia %s sem sha256 no manifest; "
                             "hash nao verificado", name)
                     slice_jobs, rows, kept, invalid = _prefilter_slice(
-                        slice_path, name, country_isos)
+                        slice_path, name, country_isos, seen=seen)
                     summary["rows_total"] += rows
                     summary["rows_prefiltered"] += kept
                     summary["invalid_rows"] += invalid
@@ -642,8 +658,16 @@ def _prefilter_slice(
     path: Path,
     ats_type: str,
     isos: Any = ("de",),
+    seen: DatasetSeenWriter | None = None,
 ) -> tuple[list[Job], int, int, int]:
-    """Prefilter em streaming de UMA fatia: (jobs, rows, kept, invalid)."""
+    """Prefilter em streaming de UMA fatia: (jobs, rows, kept, invalid).
+
+    F70: com ``seen``, cada Job valido e anotado NO MOMENTO em que e
+    criado (mesma iteracao do CSV — streaming; o universo nunca e
+    materializado pelo caderno). Rows invalidas (sem company/title/url)
+    NAO entram: sem identidade nao ha o que anotar. Falha do writer
+    nunca afeta o loop (best-effort §7.8 — o writer se auto-desabilita).
+    """
     jobs: list[Job] = []
     rows = kept = invalid = 0
     with path.open(encoding="utf-8", newline="") as fh:
@@ -660,4 +684,6 @@ def _prefilter_slice(
                 invalid += 1
                 continue
             jobs.append(job)
+            if seen is not None:
+                seen.write(job.id)
     return jobs, rows, kept, invalid

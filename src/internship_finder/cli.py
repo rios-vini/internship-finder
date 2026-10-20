@@ -50,6 +50,10 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from internship_finder.collectors.ats_scraper import collect_company
+from internship_finder.dataset_seen import (
+    SEEN_DB_PATH,
+    DatasetSeenWriter,
+)
 from internship_finder.dataset_source import (
     DATASET_BUDGET_SECONDS,
     collect_dataset_jobs,
@@ -683,6 +687,10 @@ def _dataset_record(run_id: str, summary: dict) -> dict:
     SEM limiar — fase futura). ``anomaly`` so aparece em colapso estrutural
     (``"zero_prefiltered"``: rows_prefiltered == 0 com rows_total acima de
     ``_DATASET_ZERO_POST_MIN_ROWS``) — greppavel no JSONL.
+
+    F70: ``seen_written`` (linhas oferecidas ao caderno dataset_seen)
+    e ``seen_error`` (forense do writer degradado; ausente = caderno
+    saudavel). Retrocompat: summary sem os campos -> 0/None.
     """
     record = {
         "type": "dataset",
@@ -701,6 +709,8 @@ def _dataset_record(run_id: str, summary: dict) -> dict:
         "bytes_downloaded": summary.get("bytes_downloaded", 0),
         "duration": summary.get("duration"),
         "error": summary.get("error"),
+        "seen_written": summary.get("seen_written", 0),
+        "seen_error": summary.get("seen_error"),
     }
     if (summary.get("rows_prefiltered", 0) == 0
             and summary.get("rows_total", 0) > _DATASET_ZERO_POST_MIN_ROWS):
@@ -739,25 +749,52 @@ def _run_dataset_stage(
     run_id: str,
     budget_secs: float,
     country_isos: Any = ("de",),
+    seen_db: Path | str | None = None,
 ) -> tuple[list[Job], dict | None]:
     """Estagio dataset (F3): best-effort TOTAL — nunca levanta para o run.
 
     Devolve ``(jobs, registro)``; em falha estrutural (manifest/rede), os
     jobs sao vazios e o registro carrega ``status: failed`` para o JSONL —
     o CLI loga e segue so com os jobs do registry (exit code inalterado).
+
+    F70 — caderno ``dataset_seen``: o estagio grava o universo
+    pos-prefilter (cada Job valido, row a row) em um SQLite SEPARADO
+    (default ``data/dataset_seen.db`` — o ``jobs.db`` e intocado,
+    invariante §7.8). O writer e LAZY (arquivo so nasce no primeiro
+    write — runs com 0 vagas validas nao criam arquivo) e best-effort
+    TOTAL: caderno degradado (disco cheio, diretorio ausente) NUNCA
+    derruba o estagio — vira forense ``seen_error`` no registro. O
+    ciclo de vida (cria/fecha/le stats) e AQUI: o writer e fechado no
+    finally e suas stats injetadas no summary antes do registro.
     """
+    seen: DatasetSeenWriter | None = None
+    try:
+        seen = DatasetSeenWriter(
+            seen_db if seen_db is not None else SEEN_DB_PATH, run_id)
+    except Exception as exc:  # noqa: BLE001 — caderno nunca derruba o run
+        log.error("dataset_seen: writer nao criado (%s); estagio segue "
+                  "sem caderno", exc)
     try:
         jobs, summary = collect_dataset_jobs(
-            budget_seconds=budget_secs, country_isos=country_isos
+            budget_seconds=budget_secs, country_isos=country_isos,
+            seen=seen,
         )
     except Exception as exc:  # noqa: BLE001 - dataset nunca derruba o run
         log.error("estagio dataset falhou (%s); run segue com registry only", exc)
-        return [], _dataset_record(run_id, {
+        summary = {
             "status": "failed", "error": f"{type(exc).__name__}: {exc}",
             "rows_total": 0, "rows_prefiltered": 0, "invalid_rows": 0,
             "jobs": 0, "per_ats": {}, "skipped_budget": 0,
             "failed_slices": 0, "bytes_downloaded": 0, "duration": 0.0,
-        })
+        }
+        jobs = []
+    finally:
+        if seen is not None:
+            seen.close()
+    if seen is not None:
+        summary["seen_written"] = seen.written
+        if seen.error:
+            summary["seen_error"] = seen.error
     record = _dataset_record(run_id, summary)
     if summary.get("status") == "failed":
         log.error("estagio dataset terminou failed (ver registro dataset no JSONL)")
