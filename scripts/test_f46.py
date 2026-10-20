@@ -506,12 +506,11 @@ def group_f_publish() -> None:
 
 def group_g_ci() -> None:
     section("G: ci.yml — test_f46 na união ao vivo do array")
-    yml = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    m = re.search(r"tests=\(([^)]*)\)", yml, re.S)
-    arr = m.group(1).split() if m else []
-    check("G1 array da suíte lido do head atual", len(arr) > 80,
+    import ci_discover_tests  # F78: descoberta substituiu o array literal
+    arr = ci_discover_tests.discover_tests()
+    check("G1 suíte descoberta do head atual (F78)", len(arr) > 80,
           f"{len(arr)} suítes")
-    check("G2 test_f46 presente no array", "test_f46" in arr)
+    check("G2 test_f46 presente na suíte descoberta", "test_f46" in arr)
     on_disk = {p.stem for p in (REPO / "scripts").glob("test_*.py")}
     missing = sorted(t for t in arr if t not in on_disk)
     check("G3 nenhuma suíte fantasma no array", not missing, str(missing))

@@ -589,12 +589,10 @@ def test_pureza():
 # ---------------------------------------------------------------------------
 
 def test_ci_union():
-    section("F: ci.yml — união relativa")
-    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
-        encoding="utf-8")
-    m = re.search(r"tests=\(([^)]*)\)", ci, re.S)
-    arr = m.group(1).split() if m else []
-    check("F1 test_f67 presente no array do CI (união por presença)",
+    section("F: CI — suíte descoberta, relativa (F78)")
+    import ci_discover_tests
+    arr = ci_discover_tests.discover_tests()
+    check("F1 test_f67 presente na suíte descoberta do CI (por presença)",
           "test_f67" in arr, f"{len(arr)} suítes")
     check("F2 array vivo e relativo (nunca contagem exata)", len(arr) >= 103,
           f"{len(arr)}")

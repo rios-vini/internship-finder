@@ -644,12 +644,10 @@ def test_wiring():
 # G. ci.yml — união RELATIVA (padrão F61)
 # ---------------------------------------------------------------------------
 def test_ci_union():
-    section("G: ci.yml — união relativa")
-    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
-        encoding="utf-8")
-    m = re.search(r"tests=\(([^)]*)\)", ci, re.S)
-    arr = m.group(1).split() if m else []
-    check("G1 test_f62 presente no array do CI (união por presença)",
+    section("G: CI — suíte descoberta, relativa (F78)")
+    import ci_discover_tests
+    arr = ci_discover_tests.discover_tests()
+    check("G1 test_f62 presente na suíte descoberta do CI (por presença)",
           "test_f62" in arr, f"{len(arr)} suítes")
     check("G2 array vivo e relativo (>= 101; contagem nunca exata)",
           len(arr) >= 101, f"{len(arr)}")

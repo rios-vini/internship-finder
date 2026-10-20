@@ -457,13 +457,12 @@ def t11_parser_parity() -> None:
 # T12 — ci.yml: união RELATIVA (presença no array)
 # ---------------------------------------------------------------------------
 def t12_ci_union() -> None:
-    section("T12: ci.yml — test_f59_1 na união do array (relativa)")
-    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    m = re.search(r"tests=\(([^)]*)\)", ci, re.S)
-    arr = m.group(1).split() if m else []
-    check("test_f59_1 presente no array do CI (união por presença)",
+    section("T12: CI — test_f59_1 na suíte descoberta (relativa, F78)")
+    import ci_discover_tests
+    arr = ci_discover_tests.discover_tests()
+    check("test_f59_1 presente na suíte descoberta do CI (por presença)",
           "test_f59_1" in arr, f"{len(arr)} suítes")
-    check("array vivo e relativo (>= 80 suítes; contagens nunca hardcoded)",
+    check("suíte descoberta viva e relativa (>= 80 suítes; contagens nunca hardcoded)",
           len(arr) >= 80, f"{len(arr)}")
 
 
