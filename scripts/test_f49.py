@@ -20,7 +20,11 @@ NADA de rede aqui — fixtures verbatim, zero socket):
 - AkzoNobel — regressão REAL: careers.akzonobel.com/sitemal.xml responde
   HTTP 500 (probe 18/10, 0.5s); funcionava até 28/09 (269-272 vagas/dia).
   Swiss Re no MESMO tenant segue ok (40/40) — o 500 é da URL. Decisão:
-  MANTER + conserto proposto (lado da empresa; monitorar).
+  MANTER + conserto EXECUTADO na F72.1 (20/10): auditoria viva F72 achou
+  a causa raiz (migração SuccessFactors->Phenom ~29/09; portal vivo na
+  plataforma nova) — re-point para phenom:https://careers.akzonobel.com
+  + override TENANT_ATS_OVERRIDES (mesmo padrão F58); ver
+  scripts/test_f72_1.py.
 - Lidl — timeout documentado por design (registry.py: feed sob demanda
   ~120 MB; probe 18/10: HTTP 200, TTFB 4.8s, streaming 7.9 MB/30s — o
   tenant timeout de 85s nunca basta). Decisão: MANTER.
@@ -325,7 +329,12 @@ esperado = {
     # "assinatura do dono" que este check exigia — escopo 2 da card: tenant
     # morto 302->Phenom, validado com fetch real; ver comentário no registry).
     "Siemens Healthineers": ("phenom", "phenom:https://careers.siemens-healthineers.com"),
-    "AkzoNobel": ("successfactors", "successfactors:careers"),
+    # F72.1 (20/10): re-point SuccessFactors->Phenom com evidência da
+    # auditoria viva F72 (feed legacy 500 crônico desde 29/09, 22 runs
+    # FETCH_ERROR; careersite vivo na plataforma Phenom, 225 vagas
+    # validadas ao vivo pelo caminho do pipeline; ver test_f72_1 e o
+    # comentário no registry).
+    "AkzoNobel": ("phenom", "phenom:https://careers.akzonobel.com"),
     "BCG": ("bamboohr", "bamboohr:bcg"),
     "Kuehne+Nagel": ("phenom", "phenom:nan"),
     "SMA": ("successfactors", "successfactors:sma"),
