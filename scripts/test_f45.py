@@ -540,8 +540,17 @@ def test_section_format() -> None:
     check("✂ motivos cap 5 (+N outros; motivo zerado fica fora do corpo)",
           lines[1].startswith("  ✂ alemão exigido: 1.189")
           and "(+6 outros motivos)" in lines[1], detail=lines[1])
-    check("📈 trend", any(l.startswith("  📈 elegíveis: 871 hoje vs 779")
-                          for l in lines))
+    # F75 (mudança de contrato marcada): a linha 📈 do digest agora é o
+    # DRIFT POR ESTÁGIO (raw→pré-filtrado→mantido) — build_report expõe
+    # "drift" e o formatador o prefere ao "trend" legado (que segue
+    # renderizando para reports montados à mão sem o campo — ver test_f75 B4).
+    check("📈 drift por estágio (F75)",
+          any(l == ("  📈 drift 7 runs: brutas 108059 (+59) · "
+                    "pré-filtrado 3121 (+21) · mantido 871 (+92)")
+              for l in lines), detail=str([l for l in lines
+                                           if l.startswith("  📈")]))
+    check("formato antigo 'elegíveis:' ausente no report novo",
+          not any("elegíveis:" in l for l in lines))
     check("📆 calendário cap 5 + (+N outras)",
           any(l.startswith("  📆 ") and "outras janelas" in l
               for l in lines))

@@ -22,6 +22,15 @@ Fluxo:
    cujo timestamp no nome (formato ``YYYYMMDDTHHMMSSZ``) seja mais antigo
    que ``--retention-days`` dias (default 14; ``0`` desliga). Roda APOS a
    rotacao; loga o que removeu (ou "nada a limpar").
+1c. **Retencao do collection_metrics.jsonl (F75)** — ``rollup_metrics``
+   agrupa os registros de metricas mais antigos que
+   ``--metrics-retention-days`` dias (default 90; ``0`` desliga) em UM
+   registro ``type: metrics_rollup`` POR DIA (contagem por type + somas dos
+   campos numericos por type); dentro do corte o arquivo fica RAW, byte a
+   byte. Executada AQUI, em runtime (nunca hand-edit), ANTES do snapshot de
+   linhas e da coleta; idempotente e atomica (tmp + os.replace); falha
+   NUNCA derruba o run. O raw completo de cada dia cortado segue no
+   snapshot do archive de hoje (backup de curto prazo).
 2. **Coleta real** — subprocesso ``python -m internship_finder.cli
    --registry --timeout <T> --sqlite data/jobs.db`` (cwd = raiz do repo;
    env = ambiente do chamador + ``PYTHONPATH=src``; stdout/stderr herdados —
@@ -112,6 +121,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from internship_finder.health import build_health_report  # reuso — sem camada nova
+from internship_finder.metrics_retention import (  # F75 — rollup do JSONL de métricas
+    DEFAULT_METRICS_RETENTION_DAYS,
+    rollup_metrics,
+)
 from internship_finder.ranking import rescore_hydrated_jobs  # F56 — re-score pós-hidratação
 from internship_finder.storage.sqlite_backup import (  # backup do jobs.db (P3)
     BACKUP_DIR_NAME,
@@ -894,6 +907,11 @@ def build_message(
         # último, antes do 🔗 link, após as seções pessoais; o header com
         # as contagens sobrevive em todos os níveis.
         funnel_sect = ranking_digest.funnel_section_lines(digest_lines)
+        # F75 — alerta de gêmeos residuais (>20 grupos cross-source no
+        # elegível): 1 linha ⚠️ que entra em TODOS os níveis do compact —
+        # é o ALERTA da medida (a linha informativa 👯 normal segue o
+        # destino das demais medições). [] quando não há alerta no dia.
+        twins_alert = ranking_digest.twins_alert_lines(digest_lines)
         # Base com a lista de problemas resumida em contagem (computada UMA
         # vez, pura; o slice termina em base_len porque ``lines`` ja contem
         # o digest anexado, que e reconstruido abaixo pelas secoes + top5 +
@@ -984,6 +1002,10 @@ def build_message(
                 # relativa do digest inteiro; só o colapso muda).
                 if fn_part:
                     parts += fn_part
+                # F75 — o alerta de gêmeos entra por ÚLTIMO antes do link
+                # (posição relativa do digest inteiro).
+                if twins_alert:
+                    parts += twins_alert
                 parts += ["", link]
                 if _fits(parts):
                     text = "\n".join(parts)
@@ -1008,6 +1030,8 @@ def build_message(
                         parts += fu_part
                     if fn_part:
                         parts += fn_part
+                    if twins_alert:
+                        parts += twins_alert
                     parts += ["", link]
                     if _fits(parts):
                         text = "\n".join(parts)
@@ -1034,13 +1058,14 @@ def build_message(
                 for line in top5[1:]:
                     candidate = (summarized + [""] + prof_block + ns_part + kept
                                  + wl_part + in_part + fu_part + fn_part
+                                 + twins_alert
                                  + [line] + ["", link])
                     if len("\n".join(candidate)) > TELEGRAM_MAX_LEN:
                         break
                     kept.append(line)
                 if len(kept) > 1:
                     parts = summarized + [""] + prof_block + ns_part + kept + wl_part \
-                        + in_part + fu_part + fn_part + ["", link]
+                        + in_part + fu_part + fn_part + twins_alert + ["", link]
                     text = "\n".join(parts)
                 else:
                     # Ultimo recurso: NENHUMA linha de vaga cabe — linha
@@ -1199,7 +1224,9 @@ def _seed_dry_run(data_dir: Path) -> tuple[int, int]:
     return len(history), len(new)
 
 
-def _run_dry_run(retention_days: int = DEFAULT_RETENTION_DAYS) -> int:
+def _run_dry_run(retention_days: int = DEFAULT_RETENTION_DAYS,
+                 metrics_retention_days: int = DEFAULT_METRICS_RETENTION_DAYS
+                 ) -> int:
     """Fluxo dry-run: tempdir com dados sinteticos; valida rotacao, limpeza
     do archive, snapshot de linhas, health, resumo e mensagem. Nunca toca
     ``data/`` nem a rede."""
@@ -1217,6 +1244,15 @@ def _run_dry_run(retention_days: int = DEFAULT_RETENTION_DAYS) -> int:
         print(f"archives removidos: {len(removed)}; restantes: {restantes}")
         metrics = data_dir / "collection_metrics.jsonl"
         new_records = read_new_records(metrics, hist)
+        # F75 — rollup do JSONL de métricas, DEMONSTRADO aqui no dry-run
+        # (em produção roda ANTES da coleta; o seeding sintético deste fluxo
+        # já escreve os records "novos", então o rollup é exibido APÓS a
+        # leitura do snapshot para não desfazer a contagem — o health logo
+        # abaixo lê o estado PÓS-rollup, que é o que interessa demonstrar).
+        # Datas sintéticas 08-30..09-05 ficam DENTRO do corte de 90d com o
+        # relógio vivo; passe --metrics-retention-days 30 para vê-lo agir.
+        roll = rollup_metrics(metrics, retention_days=metrics_retention_days)
+        print(f"metrics rollup F75: {json.dumps(roll, ensure_ascii=False)}")
         print(f"linhas novas lidas: {len(new_records)} (esperado {new})")
         print("== backup do jobs.db (passo 2b do refresh) ==")
         try:
@@ -1893,6 +1929,15 @@ def main(argv: list[str] | None = None) -> int:
                         default=DEFAULT_BACKUP_RETENTION_DAYS, metavar="N",
                         help="retencao dos backups do jobs.db em dias "
                         f"(default {DEFAULT_BACKUP_RETENTION_DAYS}; 0 = desligado)")
+    # F75 — retencao do collection_metrics.jsonl: rollup diario alem do corte
+    # (raw recente + agregado antigo). O DONO AJUSTA o corte por aqui.
+    parser.add_argument("--metrics-retention-days", type=_non_negative_int,
+                        default=DEFAULT_METRICS_RETENTION_DAYS, metavar="N",
+                        help="F75: retencao do collection_metrics.jsonl em "
+                        "dias — alem do corte os registros viram rollup "
+                        "diario agregado (raw recente + agregado antigo; "
+                        f"default {DEFAULT_METRICS_RETENTION_DAYS}; "
+                        "0 = desligado)")
     parser.add_argument("--pages-dir", default=None, metavar="PATH",
                         help="clone de deploy do GitHub Pages (branch gh-pages). "
                         "Quando informado, o ranking do run e publicado "
@@ -1939,7 +1984,8 @@ def main(argv: list[str] | None = None) -> int:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     if args.dry_run:
-        return _run_dry_run(args.retention_days)
+        return _run_dry_run(args.retention_days,
+                            args.metrics_retention_days)
 
     root = repo_root()
     data_dir = root / "data"
@@ -1951,6 +1997,27 @@ def main(argv: list[str] | None = None) -> int:
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     archive_dir = rotate(data_dir, archive_root, ts)
     cleanup_archive(archive_root, args.retention_days)
+
+    # 1c. F75 — retenção do collection_metrics.jsonl: rollup DIÁRIO dos
+    # registros além do corte (raw recente + agregado antigo). Roda ANTES
+    # do snapshot de linhas (``skip_lines``) para o run enxergar o arquivo
+    # pós-rollup, e ANTES da coleta (que só APPENDE — nada é perdido no
+    # ar). O RAW completo de cada dia cortado segue no snapshot do archive
+    # de hoje (backup de curto prazo). Best-effort: falha loga e o run
+    # segue (padrão do backup do jobs.db) — NUNCA muda o exit code.
+    try:
+        roll = rollup_metrics(metrics_path,
+                              retention_days=args.metrics_retention_days)
+        if roll.get("changed"):
+            log.info("metrics rollup F75: %d dia(s) antigo(s) agregado(s) "
+                     "(%d registros -> %d rollups; %d raw mantidos)",
+                     roll.get("rolled_days"), roll.get("rolled_records"),
+                     roll.get("rolled_days"), roll.get("raw_kept"))
+        else:
+            log.info("metrics rollup F75: nada a fazer (%s)",
+                     roll.get("reason") or "sem registros além do corte")
+    except Exception as exc:  # noqa: BLE001 — retenção nunca derruba o run
+        log.warning("metrics rollup F75 FALHOU (run segue): %s", exc)
 
     skip_lines = _count_lines(metrics_path)
     proc = run_collection(collection_command(args.timeout), root, args.max_collection_secs)
