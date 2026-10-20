@@ -228,6 +228,20 @@ def _strip_f60(html: str) -> str:
     return _F60_CSS_RE.sub("", out)
 
 
+# F83 — sufixo de ocultas da linha do stamp (p_line), anexado quando
+# total_eligible > len(shown) — o caso da fixture T4 (24 jobs/8
+# empresas: cap 2/empresa do legado esconde 8). Mesma mecânica da F60
+# (segunda fase pós-F53 que adiciona bytes ao legado pt): o byte a
+# byte pré-F53 vale MÓDULO esse delta (strip cirúrgico); qualquer
+# OUTRA divergência de byte continua FAIL.
+_F83_HIDDEN_RE = re.compile(r" · \d+ ocultas? pelos filtros")
+
+
+def _strip_f83(html: str) -> str:
+    """Remove o delta F83 (sufixo de ocultas da p_line) — A/B módulo F83."""
+    return _F83_HIDDEN_RE.sub("", html)
+
+
 def check(name: str, cond: bool, detail: str = "") -> None:
     global CHECKS
     CHECKS += 1
@@ -600,9 +614,11 @@ def test_nojs_and_legacy_ab() -> None:
     # 🇫🇷 + badge FR); o byte a byte pré-F53 vale módulo esse delta
     # determinístico (strip cirúrgico; qualquer outro byte divergente
     # continua FAIL).
-    legacy_f60 = _strip_f60(legacy)
+    # F83 — idem: o legado pt ganhou o sufixo de ocultas da p_line
+    # (fixture 24/8: cap 2/empresa esconde 8). Strip F60+F83.
+    legacy_f60 = _strip_f83(_strip_f60(legacy))
     cur_sha = hashlib.sha256(legacy_f60.encode("utf-8")).hexdigest()
-    check("legado BYTE A BYTE igual ao pré-F53 módulo adições F60 (sha256)",
+    check("legado BYTE A BYTE igual ao pré-F53 módulo adições F60+F83 (sha256)",
           cur_sha == base[1], f"{base[0]}B, sha {base[1][:12]}…")
 
 

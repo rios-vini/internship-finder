@@ -10,6 +10,7 @@ September 2026.**
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-3DA639.svg)](LICENSE)
 [![Live site](https://img.shields.io/badge/site-live-brightgreen)](https://rios-vini.github.io/internship-finder/)
+[![RSS feed](https://img.shields.io/badge/RSS-daily%20feed-orange?logo=rss)](https://rios-vini.github.io/internship-finder/rss.xml)
 
 **→ Live ranking, refreshed every morning at 09:00 UTC:
 [rios-vini.github.io/internship-finder](https://rios-vini.github.io/internship-finder/)**

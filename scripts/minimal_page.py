@@ -867,6 +867,12 @@ I18N: dict[str, dict[str, str]] = {
                      "🛂 = empresa com política de visto",
                "en": "{stamp} UTC · ranked by the pipeline score · "
                      "🛂 = employer with a stated visa policy"},
+    # F83 — sufixo da linha do stamp: vagas elegíveis do dia que NÃO
+    # estão na lista final (exclusões/cortes do render). Anexado SÓ
+    # quando hidden > 0 — AUSENTE em 0 (contrato A/B byte a byte do
+    # test_f46 intacto); o test_f83 trava os DOIS ramos.
+    "p_hidden": {"pt": " · {n} oculta{s} pelos filtros",
+                 "en": " · {n} hidden by filters"},
     "footer": {"pt": "{shown} · {n_vf} com 🛂 (empresa com política de "
                      "visto) · ranking, JSON e CSV completos são gerados "
                      "pelo pipeline no VPS",
@@ -2735,6 +2741,17 @@ def render_minimal_html(
     p_line = (I18N["p_line"]["en"] if lang == "en"
               else I18N["p_line"]["pt"]).format(stamp=_esc(generated_at))
     p_line_pt = I18N["p_line"]["pt"].format(stamp=_esc(generated_at))
+    # F83 — contador de ocultas na linha do stamp: elegíveis do dia −
+    # lista final exibida (dead/inaplicáveis do render, corte de
+    # orçamento, cap 2/empresa do top-N). Explica ao visitante o gap
+    # título (shown) × about (elegíveis). Display-only, adição
+    # MINÚSCULA (caps de byte do build intactos); AUSENTE quando 0.
+    hidden_n = max(int(total_eligible) - len(shown), 0)
+    if hidden_n:
+        hidden_pt, hidden_en = _i18n_pair(
+            "p_hidden", n=hidden_n, s="" if hidden_n == 1 else "s")
+        p_line += hidden_en if lang == "en" else hidden_pt
+        p_line_pt += hidden_pt
     vf_pt, vf_en = _i18n_pair("f_vf")
     de_pt, de_en = _i18n_pair("f_de")
     ca_pt, ca_en = _i18n_pair("country_all")
