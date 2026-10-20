@@ -202,7 +202,11 @@ REPO = Path(__file__).resolve().parent.parent
 # na branch, no CI raso ([SKIP]) e no main pós-squash). O render
 # legado segue congelado em _AB_LEGACY_PAGE_SHA (a F81 NÃO toca
 # minimal_page.py).
-_AB_BASELINE_SHA = "d97209e6fa2a08a258ef75657044660915fe2205"
+# F70 (20/10): idem F80 — src/ moveu (dataset_seen.py novo + wiring em
+# dataset_source/cli/sqlite_backup); âncora -> commit F70 1/2
+# (016da00), o 2/2 edita SÓ este teste. A F70 NÃO toca minimal_page.py
+# (render legado segue congelado).
+_AB_BASELINE_SHA = "016da006e47491adab8ba647eb70ceae03450ff1"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
