@@ -648,7 +648,36 @@ def french_level(text: str | None) -> FrenchLevel | None:
 
 
 # ---------------------------------------------------------------------------
-# Work authorization — estados por EVOLUÇÃO EXPLÍCITA no anuncio
+# F86 — título duplo Werkstudent/Praktikant (classificador de AMBIGUIDADE
+# de tipo de vaga). Caso Impulsgrad verbatim: "Werkstudent:in /
+# Praktikant:in Operations & Entrepreneurship (m/w/d)" (desc vazia). A
+# vaga FICA no eligible (o guard de título do detector F86 em
+# filters.job_type_of salva os híbridos F37 — o dono se qualifica a
+# Praktikum §16e) e o SITE renderiza o badge ⚠️ de tipo ambíguo — o dono
+# vê o porquê na triagem (Werkstudent exige matrícula em universidade
+# ALEMÃ; Praktikant:in ele pode). Display-only: NUNCA exclusão, NUNCA
+# score. Mesma dicotomia do german_level (função pura compartilhada pelo
+# render e pelo pipeline — nenhum segundo mecanismo).
+_AMBIGUOUS_WS_RE = re.compile(r"\bwerkstudent\w*|working\s+students?\b",
+                              re.IGNORECASE)
+_AMBIGUOUS_PRAK_RE = re.compile(r"praktikum|praktika|praktikant",
+                                re.IGNORECASE)
+
+
+def job_type_ambiguous_title(title: str | None) -> bool:
+    """Título nomeia as DUAS classes (Werkstudent E Praktikum) — ambíguo?
+
+    F86. Consumido pelo badge do site (minimal_page, via import lazy —
+    o G1 da F51 veda o renderer de importar filters/ranking/scoring;
+    app_intel é a camada de classificação pura compartilhada).
+    """
+    t = title or ""
+    return bool(_AMBIGUOUS_WS_RE.search(t)) and bool(
+        _AMBIGUOUS_PRAK_RE.search(t))
+
+
+# ---------------------------------------------------------------------------
+# Work authorization — estados por EVOLUÇÃO EXPLÍCITA no anuncio
 # ---------------------------------------------------------------------------
 
 # Vocabulario que indica que o anuncio TOCA o tema (sem interromper: sem
