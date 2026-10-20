@@ -162,6 +162,15 @@ def test_readme_counts() -> None:
     check(f"2c. CI test suites: 1 menção == len(suítes descobertas) ({len(CI_TESTS)})",
           len(ci) == 1 and ci[0] == len(CI_TESTS),
           f"readme={ci}, descobertas={len(CI_TESTS)}")
+    # 2d (addendum orquestrador 20/10): a seção "## Testing" NÃO pin a
+    # número — a tabela é a única menção-viva da contagem (contrato 2c).
+    # Achado na verificação da F79: "67 standalone test suites" vivia na
+    # seção (drift 67 vs 111) fora do alcance do detector. Rephrase sem
+    # número + este guard: o phrasing pinado nunca volta (treadmill único).
+    pinado = re.findall(r"\b(\d+)\s+standalone test suites", readme)
+    check("2d. seção Testing sem número pinado (tabela = única menção; "
+          "phrasing 'N standalone' banido)",
+          not pinado, f"achou: {pinado}")
 
 
 def test_upstream_hour() -> None:
