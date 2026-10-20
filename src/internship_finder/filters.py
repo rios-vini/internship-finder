@@ -518,6 +518,8 @@ APPLICABILITY_EXCLUSION_REASONS = (
     "full_time_permanent",
     "erasmus_program",
     "spontaneous_pool",
+    "job_type_non_internship",
+    "experience_required",
 )
 
 # F37.3 (decisão do dono 15/10 ~23:45 UTC, literal: "german_required:
@@ -531,7 +533,20 @@ APPLICABILITY_EXCLUSION_REASONS = (
 # vive num lugar só: ampliar a exclusão = somar o motivo a esta tupla
 # (1 linha). Nenhum segundo mecanismo, nenhum detector duplicado — o motivo
 # vem de ``applicability_exclusion_reason``.
-APPLICABILITY_JSON_EXCLUSION_REASONS = ("german_required",)
+# F86 (20/10, decisão do dono "TODAS as 6 foram recusadas → exclusão
+# automática"): as classes job_type_non_internship (HiWi/Werkstudent/
+# Masterand/permanente — o detector "não-é-estágio-pra-graduando") e
+# experience_required ("N years of professional experience", HYUNDAI
+# MOBIS verbatim) também EXCLUEM o eligible_jobs.json na re-avaliação
+# PÓS-HIDRATAÇÃO. O dono é graduando (formando 2027): essas classes são
+# bloqueios DUROS de elegibilidade (insight do doc de recusas:
+# elegibilidade > tuning), não preferência — mesmo tratamento F37.3 de
+# ``german_required``. Ampliar = somar o motivo a esta tupla (1 linha).
+APPLICABILITY_JSON_EXCLUSION_REASONS = (
+    "german_required",
+    "job_type_non_internship",
+    "experience_required",
+)
 
 
 def is_json_exclusion_reason(reason: str | None) -> bool:
@@ -1012,6 +1027,233 @@ def requires_existing_permit_for_non_eu(
     return False
 
 
+# ---------------------------------------------------------------------------
+# F86 — job_type + experiência (20/10): o detector "não-é-estágio-pra-
+# graduando". Origem: RECUSAS-FEEDBACK-PIPELINE-2026-10.md, categoria TIPO
+# (5 vagas) + EXPERIENCIA (1 vaga), todas recusadas pelo dono em 20/10 com
+# veredito FALHA/PARCIAL — score ≠ elegibilidade; a correção é EXCLUSÃO
+# F37.3-style (``job_type_non_internship`` + ``experience_required``),
+# nunca peso. O dono é graduando (formando 2027): HiWi/Student assistant
+# não é Pflichtpraktikum; Werkstudent exige matrícula em universidade
+# ALEMÃ (Einschreibung); Masterand é tese de MESTRADO (perfil bachelor);
+# permanente full-time não é estágio; experiência profissional prévia
+# bloqueia o estagiário de primeira viagem.
+#
+# PASSO 0 (medido no corpus real 20/10, jobs.json 108.173 vagas brutas +
+# eligible 704): hiwi no título 574 / desc-only 111; werkstudent título
+# 9.941 / desc-only 80; Masterand/Bachelorand no título 25 (gap REAL —
+# nada pegava: ``requires_master`` casa master(arbeit|thesis|studium|
+# student), não "Masterand"); sinal full-time textual 2.309; padrão de
+# experiência 2.322 no bruto — no ELIGIBLE o delta medido da cadeia nova
+# é 10 (4 hiwi + 5 werkstudent + 1 tese) + 1 experience_required.
+#
+# GUARD DE TÍTULO (anti-FP, doutrina F37 dos híbridos — "Werkstudent ...
+# Praktikum" FICA): título com marcador de estágio/Praktikum NUNCA é
+# excluído pelo job_type, mesmo que o restante do texto mencione outras
+# classes. Família praktikum por SUBSTRING (compostos medidos:
+# "Jahrespraktikum", "Pflichtpraktikant", "Praktikanten") — mesma
+# permissividade do _WS_HYBRID_RE da F37; família intern por WORD-
+# BOUNDARY ("International"/"Internal" NÃO salvam — os 5 werkstudent
+# puros que escapavam do puro por "Intern⊂International" são casos
+# REAIS medidos no eligible: Marquardt Footprint Management, oediv/
+# Oetker Controlling International, REWE International Tax, mllerservi).
+# O caso-limite Impulsgrad "Werkstudent:in / Praktikant:in" (título
+# duplo, desc vazia) FICA (decisão registrada no relatório F86: a
+# presença de Praktikant no título salva — doutrina dos híbridos — e o
+# dono se qualifica a Praktikum §16e; badge de ambiguidade no site).
+# ---------------------------------------------------------------------------
+# (a) guard de título — veja o bloco acima.
+_JOB_TYPE_TITLE_GUARD_RE = re.compile(
+    r"praktikum|praktika|praktikant|\binterns?\b|\binternships?\b|\bfreiwillig",
+    re.IGNORECASE,
+)
+# (b) HiWi/Student assistant (DE+EN). Fraunhofer Hamburg "Studentische
+# Hilfskraft Software Entwicklung..." (SF 1444227733) e Fraunhofer
+# Kaiserslautern "STUDENT ASSISTANT (all genders) - DATA SPACE..." (SF
+# 1446740233) verbatim; família AIXTRON "Studentische Aushilfe" pega pelo
+# trecho desc-only de HiWi/Hilfskraft (medido).
+_HIWI_RE = re.compile(
+    r"\bhiwi\b|wissenschaftliche\s+hilfskraft|studentische\s+hilfskraft"
+    r"|student\s+assistant",
+    re.IGNORECASE,
+)
+# (c) Werkstudent — título (reuso do _WS_TITLE_RE da F37) e descrição com
+# contexto DEFINIDOR ("als Werkstudent:in...", "as a working student...").
+# Desc-solto NUNCA pega: "durch Praktika, Werkstudententätigkeiten oder
+# eine erste Berufserfahrung" (boilerplate de background, BASF Junior
+# Controller SF verbatim) não é a vaga ser Werkstudent.
+_WS_DESC_RE = re.compile(
+    r"\b(?:als|as\s+a?)\s+(?:werkstudent\w*|working\s+students?)\b",
+    re.IGNORECASE,
+)
+# (d) Tese por PAPEL (Masterand/Bachelorand — gap medido: 25 títulos) e
+# por DEFINIÇÃO na descrição ("im Rahmen einer Masterarbeit",
+# "Master's Thesis:"). "Abschlussarbeit" solto na descrição NÃO pega
+# (doutrina existente do requires_master: ambíguo — pode ser tese de
+# bachelor e a exclusão de tese é por TÍTULO).
+_TESE_ROLE_RE = re.compile(r"\b(?:master|bachelor)and\w*", re.IGNORECASE)
+_TESE_DESC_RE = re.compile(
+    r"im\s+rahmen\s+(?:einer|deiner|ihrer|der)\s+"
+    r"(?:master|bachelor)['’´-]?\s?(?:arbeit|thesis)"
+    r"|\bmasterarbeit\b|\bmaster[’'´]?s?\s+thesis\b",
+    re.IGNORECASE,
+)
+# (e) Permanente textual: sinal de full-time/emprego fixo + remuneração
+# ANUAL (medido BASF Junior Controller SF verbatim: "Bruttojahresgehalt
+# (Vollzeit): 40.000 - 46.000 €"). A ausência de marcador estudantil usa
+# a MESMA STUDENT_TYPE_PATTERNS do full_time_permanent da F37 (título+
+# descrição) — um estágio legítimo carrega o marcador em algum lugar;
+# boilerplate de empresa ("Wir bieten Praktika an...") bloqueia o motivo
+# por design (falso-negativo consciente, documentado no relatório: o
+# gêmeo SF do BASF JC fica, o gêmeo AA/desc-vazia sai).
+_FULLTIME_TEXT_RE = re.compile(
+    r"\bvollzeit\b|\bfestanstellung\b|bruttojahresgehalt|jahresgehalt"
+    r"|jahresarbeitsentgelt|\bpermanent\s+(?:position|contract|role|employment)"
+    r"|\d[\d.,]*\s*€\s*(?:pro|per)\s+(?:jahr|year)"
+    r"|€\s*\d[\d.,]*\s*(?:pro|per)\s+(?:jahr|year)"
+    r"|\d[\d.,]*\s*(?:eur|euros?)\s*(?:pro|per)\s+(?:jahr|year)"
+    r"|\b\d[\d.,]{3,}\s*(?:pro|per)\s+(?:jahr|year)\b",
+    re.IGNORECASE,
+)
+
+
+def job_type_of(title: str | None, description: str | None) -> str | None:
+    """F86 — classe de tipo de vaga extraída de título+descrição.
+
+    Retorna ``"hiwi"`` | ``"werkstudent"`` | ``"tese"`` | ``"permanente"``
+    ou ``None`` (sem sinal OU título com marcador de estágio/Praktikum —
+    o guard dos híbridos F37). Precedência hiwi > werkstudent > tese >
+    permanente (permanente só por AUSÊNCIA de marcador + sinal full-time,
+    então não colide com as demais). Pura, case-insensitive, DE+EN.
+    """
+    t = title or ""
+    d = description or ""
+    if _JOB_TYPE_TITLE_GUARD_RE.search(t):
+        return None
+    text = f"{t} {d}"
+    if _HIWI_RE.search(text):
+        return "hiwi"
+    if _WS_TITLE_RE.search(t) or _WS_DESC_RE.search(d):
+        return "werkstudent"
+    if _TESE_ROLE_RE.search(text) or _TESE_DESC_RE.search(d):
+        return "tese"
+    if _FULLTIME_TEXT_RE.search(text) and not _has_any(
+        STUDENT_TYPE_PATTERNS, text
+    ):
+        return "permanente"
+    return None
+
+
+# (f) Título duplo Werkstudent/Praktikant (caso Impulsgrad "Werkstudent:in
+# / Praktikant:in Operations & Entrepreneurship (m/w/d)", desc vazia):
+# FICA no eligible (o guard de título salva) e o site renderiza o badge de
+# ambiguidade — o dono vê o porquê na triagem. O classificador do badge
+# vive em ``app_intel.job_type_ambiguous_title`` (camada pura
+# compartilhada com o render — o G1 da F51 veda o renderer de importar
+# filters; mesma dicotomia do german_level F18/F37.3).
+
+
+# (g) Experiência profissional prévia (HYUNDAI MOBIS verbatim: "Minimum
+# of 1 year of relevant professional experience"). N ≥ 1 ANO. Quatro
+# guards medidos no corpus:
+#   1. NEGAÇÃO no span ("keine Erfahrung erforderlich" não tem número —
+#      o \\d+ já protege; o guard cobre "not required" com número);
+#   2. FAIXA COM PISO ZERO ("0–2 years of experience (entry-level)", SAP
+#      Contracts & Bid Support verbatim — o dono SE QUALIFICA com 0 anos);
+#   3. HISTÓRIA DA EMPRESA: a frase da match é sobre a EMPRESA ("building
+#      on more than 180 years of experience", C&A verbatim; "With more
+#      than 70 years of experience ... Coface has become"; "With 30 years
+#      of experience in chemical trading ... has established") e não
+#      sobre o CANDIDATO → não é requisito;
+#   4. DE por composto ("N Jahre Berufserfahrung/Praxiserfahrung").
+_EXP_RES = [
+    re.compile(
+        r"(\d+)\s*(?:jahr|year)s?\s*(?:of\s*)?(?:relevant\s*)?"
+        r"(?:professional\s*)?(?:work\s*)?(?:experience|erfahrung)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(\d+)\s*jahre?s?\s+\w*erfahrung",
+        re.IGNORECASE,
+    ),
+    # "N+ years" — o "+" é marcador de requisito (medido 20/10: 2.371 no
+    # corpus bruto — AIXTRON "Minimum 5+ years of hands-on experience",
+    # adidas "2 + years working with Global markets"; 2.459 com
+    # experience/erfahrung em ≤80 chars; 0 FPs de duração-de-contrato no
+    # eligible — a duração usa meses/"befristet", não "N+ years").
+    re.compile(r"(\d+)\s*\+\s*(?:jahre?s?|years?)\b", re.IGNORECASE),
+]
+_EXP_NEGATION_RE = re.compile(r"\b(?:kein\w*|not|no)\b", re.IGNORECASE)
+# Negação DEPOIS do span ("3 years of experience are not required",
+# "sind nicht erforderlich") — só formas de exigência negada; o "not"
+# solto ("Not only that...") NÃO nega (FP).
+_EXP_POST_NEGATION_RE = re.compile(
+    r"\bnot\s+(?:\w+\s+)?(?:required|necessary|needed)\b"
+    r"|\b(?:is|are|sind|ist)\s+nicht\b"
+    r"|\b(?:nicht|kein\w*)\s+(?:\w+\s+)?(?:erforderlich|notwendig)\b",
+    re.IGNORECASE,
+)
+_EXP_ZERO_RANGE_RE = re.compile(
+    r"\b0\s*[-–—]\s*\d+\s*(?:jahre?s?|years?)\b", re.IGNORECASE
+)
+_EXP_HISTORY_RE = re.compile(
+    r"\bwe\b|\bour\b|\bwir\b|\bunser\w*|\bbuilding on\b"
+    r"|\bhas\s+(?:become|established|built|grown)\b|\bfounded\b"
+    r"|\bgegr(?:ü|ue)ndet\b",
+    re.IGNORECASE,
+)
+_EXP_CANDIDATE_RE = re.compile(
+    r"\byou\b|\byour\b|\bdu\b|\bdein\w*|\bprofil\b|\bprofile\b"
+    r"|\bcandidates?\b|\bapplicants?\b|\bbewerber\w*",
+    re.IGNORECASE,
+)
+_EXP_SENTENCE_SPLIT = ".!?·•¶\n"
+
+
+def _sentence_at(text: str, pos: int) -> str:
+    """Frase (span entre separadores) que contém ``pos`` — guard 3."""
+    starts = [text.rfind(ch, 0, pos) + 1 for ch in _EXP_SENTENCE_SPLIT]
+    s = max(starts) if starts else 0
+    ends = [
+        i
+        for i in (text.find(ch, pos) for ch in _EXP_SENTENCE_SPLIT)
+        if i != -1
+    ]
+    e = min(ends) if ends else len(text)
+    return text[s:e]
+
+
+def requires_experience(title: str | None, description: str | None) -> bool:
+    """F86 — exige N ≥ 1 ano de experiência profissional prévia?
+
+    Pura, case-insensitive, EN+DE, sobre título+descrição. Os guards de
+    negação/faixa-zero/história-de-empresa estão no bloco ``_EXP_RES``.
+    """
+    text = f"{title or ''} {description or ''}"
+    for rx in _EXP_RES:
+        for m in rx.finditer(text):
+            if int(m.group(1)) < 1:
+                continue
+            # Negação: no PRÓPRIO span ("no 3 years..." — raro) e DEPOIS
+            # dele ("3 years of experience are not required" — janela de
+            # 20 chars pós-span, só formas de exigência negada).
+            if _EXP_NEGATION_RE.search(m.group(0)):
+                continue
+            if _EXP_POST_NEGATION_RE.search(text[m.end(): m.end() + 20]):
+                continue
+            if _EXP_ZERO_RANGE_RE.search(
+                text[max(0, m.start() - 10): m.end()]
+            ):
+                continue
+            sent = _sentence_at(text, m.start())
+            if _EXP_HISTORY_RE.search(sent) and not _EXP_CANDIDATE_RE.search(
+                sent
+            ):
+                continue
+            return True
+    return False
+
+
 def applicability_exclusion_reason(
     job: dict, *, intel_map: dict[str, dict] | None = None
 ) -> str | None:
@@ -1021,7 +1263,8 @@ def applicability_exclusion_reason(
     ``german_required`` → ``visa_blocked`` → ``thesis_title`` →
     ``werkstudent_puro`` → ``master_required`` → ``eu_citizenship_required``
     → ``nl_enrolment_required`` → ``phd_position`` → ``duration_over_6m`` →
-    ``full_time_permanent``.
+    ``full_time_permanent`` → ``job_type_non_internship`` →
+    ``erasmus_program`` → ``spontaneous_pool`` → ``experience_required``.
 
     - ``german_required``: ``app_intel.german_level(título+descrição)`` ==
       ``required`` (classificador F18 — o dataset não carrega o nível; a
@@ -1044,6 +1287,17 @@ def applicability_exclusion_reason(
       ``is_thesis_title_strict``).
     - ``werkstudent_puro``: título com ``werkstudent|working student`` SEM
       ``intern|internship|praktikant|praktikum`` (híbridos ficam).
+    - ``job_type_non_internship`` (F86): ``job_type_of(título, descrição)``
+      devolve classe — ``hiwi`` (HiWi/wissenschaftliche|studentische
+      Hilfskraft/Student assistant — Fraunhofer HH 1444227733, Fraunhofer
+      KL 1446740233), ``werkstudent`` (título ou desc definidora "als
+      Werkstudent" — exige matrícula alemã), ``tese`` (Masterand/
+      Bachelorand por papel — Bauerfeind AG — ou Masterarbeit/Master's
+      Thesis definidora na desc) ou ``permanente`` (sinal full-time +
+      remuneração anual SEM marcador estudantil — BASF Junior Controller).
+      Título com marcador de estágio/Praktikum NUNCA exclui (doutrina F37
+      dos híbridos; Impulsgrad "Werkstudent:in / Praktikant:in" FICA com
+      badge de ambiguidade).
     - ``master_required``: ``requires_master(título, descrição)``.
     - ``eu_citizenship_required`` (F37): trecho literal exigindo
       cidadania UE / EU working rights (teampicnic R6, Kraft Heinz R8) —
@@ -1070,6 +1324,13 @@ def applicability_exclusion_reason(
       Application", "Speculative/Unsolicited/Initiative Application" — e o
       posting NÃO é uma vaga concreta (decisão "2a. A"). Título-only;
       menção na descrição NÃO mata (NXP/REWE/Edbz/GRIFOLS ficam).
+    - ``experience_required`` (F86): ``requires_experience(título,
+      descrição)`` — N ≥ 1 ano de experiência profissional prévia
+      (HYUNDAI MOBIS absolventa 13423313 verbatim "Minimum of 1 year of
+      relevant professional experience"). Guards: negação no span,
+      faixa com piso zero ("0–2 years (entry-level)" FICA) e frase de
+      história da empresa ("more than 180 years of experience" C&A NÃO é
+      requisito).
     """
     from internship_finder.app_intel import german_level
 
@@ -1122,6 +1383,18 @@ def applicability_exclusion_reason(
     if is_full_time_permanent(job):
         return "full_time_permanent"
 
+    # F86 (20/10): o detector "não-é-estágio-pra-graduando" — HiWi/
+    # Student assistant, Werkstudent (matrícula alemã exigida), tese de
+    # papel (Masterand/Bachelorand) e permanente textual (full-time +
+    # remuneração anual, sem marcador estudantil). DEPOIS de
+    # ``full_time_permanent``: o campo estruturado ``employment_type`` é
+    # evidência mais forte que o sinal textual (a fixture F37 "ft" —
+    # Associate Analyst FULL_TIME — mantém o motivo original). O guard de
+    # título preserva os híbridos F37 ("Werkstudent ... Praktikum" FICA) —
+    # decisão do dono: TODAS as 6 vagas do registro foram recusadas.
+    if job_type_of(title, description):
+        return "job_type_non_internship"
+
     # F37.2 (decisão do dono 15/10, "2a. A" = EXCLUIR): programas Erasmus+
     # ANTES de pool — first-match: indiecampers "Spontaneous Application |
     # ... - Erasmus+" conta como erasmus_program (programa de mobilidade é
@@ -1131,6 +1404,14 @@ def applicability_exclusion_reason(
 
     if is_spontaneous_pool_title(title):
         return "spontaneous_pool"
+
+    # F86 (20/10): experiência profissional prévia exigida (HYUNDAI MOBIS
+    # verbatim "Minimum of 1 year of relevant professional experience") —
+    # bloqueio p/ estagiário de primeira viagem. ÚLTIMO na ordem
+    # first-match (ortogonal às classes de tipo; guards de negação,
+    # faixa-zero e história-de-empresa no detector).
+    if requires_experience(title, description):
+        return "experience_required"
 
     return None
 

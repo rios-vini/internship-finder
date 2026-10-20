@@ -412,6 +412,15 @@ def _strip_badges(html: str) -> str:
     """Remove SOMENTE os spans do badge F62/F67 (strip cirúrgico dos
     DOIS lados do A/B — o delta de exibição esperado é o número de
     badges; qualquer OUTRO byte divergente continua FAIL)."""
+    # F86 — o item da legenda ⏳/⚠️ ganhou o sinal de tipo ambíguo e as
+    # cards de TÍTULO DUPLO ganham o badge ⚠️ (normaliza novo -> antigo
+    # nos DOIS lados do A/B; fixture F67 sem título duplo = no-op).
+    html = html.replace(
+        "alemã / tipo ambíguo Werkstudent/Praktikum (F86 — decidir na "
+        "vaga)", "alemã")
+    html = re.sub(
+        r' <span class="flag"[^>]*>⚠️ (?:tipo ambíguo|ambiguous type)'
+        r'[^<]*</span>', "", html)
     return re.sub(
         r' <span class="flag"[^>]*>' + re.escape(WARN)
         + r' (?:início imediato[^<]*|immediate start[^<]*)</span>',

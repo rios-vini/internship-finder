@@ -229,7 +229,20 @@ REPO = Path(__file__).resolve().parent.parent
 # minimal_page.py (render legado segue congelado em _AB_LEGACY_PAGE_SHA;
 # A/B byte a byte conferido na suíte local — fixtures sem courant/
 # bilingual/A1-A2, zero divergência de badge).
-_AB_BASELINE_SHA = "c549948"
+# F86 (20/10): src/ moveu de novo (filters.py + app_intel.py — job_type_of
+# + requires_experience + motivos job_type_non_internship/
+# experience_required na cascata e na tupla F37.3; detector
+# "não-é-estágio-pra-graduando" das 6 vagas do registro de recusas 20/10;
+# job_type_ambiguous_title no app_intel). Padrão F56/F59/F60/F61/F63:
+# âncora move para o commit da fase que tocou src/ (1b0e025 = commit F86
+# 1/2 — filters.py + app_intel.py, SÓ src/; o commit 2/2 edita
+# testes/scripts/README — src/ idêntico, o diff segue vazio na branch, no
+# CI raso ([SKIP]) e no main pós-squash). O render legado: a F86 toca
+# minimal_page.py (badge ⚠️ de tipo ambíguo + item da legenda ⏳/⚠️) — mas
+# o badge só acende em TÍTULO DUPLO Werkstudent+Praktikum e as fixtures
+# da F53 não têm título duplo; o item da legenda ⏳/⚠️ mudou de texto →
+# o strip F86 cobre o delta determinístico (ver _strip_f86).
+_AB_BASELINE_SHA = "1b0e025e3c0de704a4cec4591695a0346f86005d"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
@@ -267,6 +280,33 @@ _F83_HIDDEN_RE = re.compile(r" · \d+ ocultas? pelos filtros")
 def _strip_f83(html: str) -> str:
     """Remove o delta F83 (sufixo de ocultas da p_line) — A/B módulo F83."""
     return _F83_HIDDEN_RE.sub("", html)
+
+
+# F86 — item da legenda ⏳/⚠️ ganhou o terceiro sinal ("tipo ambíguo
+# Werkstudent/Praktikum (F86 — decidir na vaga)"); o badge ⚠️ em si só
+# acende em TÍTULO DUPLO (nenhuma fixture da F53 tem) — o delta do legado
+# é SÓ o texto da legenda pt/en. Strip: novo -> antigo (a pré-F53 não
+# tinha o terceiro sinal); qualquer OUTRA divergência de byte FAIL.
+_F86_LEGEND_NEW = (
+    "sinais informativos do §16e: duração citada acima do teto de 6 meses"
+    " / anúncio exige matrícula ativa em universidade alemã / tipo ambíguo"
+    " Werkstudent/Praktikum (F86 — decidir na vaga)")
+_F86_LEGEND_OLD = (
+    "sinais informativos do §16e: duração citada acima do teto de 6 meses"
+    " / anúncio exige matrícula ativa em universidade alemã")
+_F86_LEGEND_NEW_EN = (
+    "informational §16e signals: stated duration above the 6-month cap /"
+    " posting requires active enrollment at a German university /"
+    " ambiguous Werkstudent/Praktikum type (F86 — decide on the posting)")
+_F86_LEGEND_OLD_EN = (
+    "informational §16e signals: stated duration above the 6-month cap /"
+    " posting requires active enrollment at a German university")
+
+
+def _strip_f86(html: str) -> str:
+    """Remove o delta F86 (texto da legenda ⏳/⚠️) — A/B módulo F86."""
+    return (html.replace(_F86_LEGEND_NEW, _F86_LEGEND_OLD)
+                .replace(_F86_LEGEND_NEW_EN, _F86_LEGEND_OLD_EN))
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
@@ -643,7 +683,10 @@ def test_nojs_and_legacy_ab() -> None:
     # continua FAIL).
     # F83 — idem: o legado pt ganhou o sufixo de ocultas da p_line
     # (fixture 24/8: cap 2/empresa esconde 8). Strip F60+F83.
-    legacy_f60 = _strip_f83(_strip_f60(legacy))
+    # F86 — idem: o item da legenda ⏳/⚠️ ganhou o sinal de tipo
+    # ambíguo (badge só acende em título duplo, sem fixture). Strip
+    # F60+F83+F86.
+    legacy_f60 = _strip_f86(_strip_f83(_strip_f60(legacy)))
     cur_sha = hashlib.sha256(legacy_f60.encode("utf-8")).hexdigest()
     check("legado BYTE A BYTE igual ao pré-F53 módulo adições F60+F83 (sha256)",
           cur_sha == base[1], f"{base[0]}B, sha {base[1][:12]}…")
@@ -960,17 +1003,20 @@ def test_budget() -> None:
     # fase. O delta F60 é medido no PRÓPRIO render (strip cirúrgico),
     # não hardcoded.
     f60_add = len(cur.encode("utf-8")) - len(_strip_f60(cur).encode("utf-8"))
-    delta_net = delta - f60_add
+    # F86 — a legenda ⏳/⚠️ ganhou o sinal de tipo ambíguo (delta
+    # determinístico, medido no próprio render pelo strip).
+    f86_add = len(cur.encode("utf-8")) - len(_strip_f86(cur).encode("utf-8"))
+    delta_net = delta - f60_add - f86_add
     print(f"       A/B full: pré {base[0]}B -> pós {len(cur.encode())}B "
-          f"(delta {delta:+d}B = F60 {f60_add}B + líquido {delta_net:+d}B; "
-          f"previsto chrome {total_chrome}B + ext._JS_PROFILE "
-          f"{profile_ext}B + fatores {sum(per_card)}B)")
+          f"(delta {delta:+d}B = F60 {f60_add}B + F86 {f86_add}B + líquido "
+          f"{delta_net:+d}B; previsto chrome {total_chrome}B + "
+          f"ext._JS_PROFILE {profile_ext}B + fatores {sum(per_card)}B)")
     check("A/B full: pós > pré (features existem)", delta > 0,
           f"{delta:+d}B")
     check("A/B full: delta dentro do orçamento previsto",
           expected_lo <= delta_net <= expected_hi,
           f"líquido {delta_net:+d}B vs [{expected_lo}..{expected_hi}] "
-          f"(F60: +{f60_add}B)")
+          f"(F60: +{f60_add}B, F86: +{f86_add}B)")
 
 
 # ---------------------------------------------------------------------------
