@@ -208,7 +208,7 @@ Every stage above is a flag: `--no-dedup`, `--no-hydrate-descriptions`,
 
 ## Testing
 
-67 standalone test suites run on every push (clean runner, Python 3.12,
+The standalone test suites run on every push (clean runner, Python 3.12,
 no network, no local data). Each one prints `[OK]`/`[FAIL]` and exits
 non-zero on failure:
 
