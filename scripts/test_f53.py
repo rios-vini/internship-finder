@@ -221,7 +221,15 @@ REPO = Path(__file__).resolve().parent.parent
 # 312b34d — o 1/2 original fcf4112 foi refeito), o 2/2 edita
 # SÓ este teste. A F76 NÃO toca minimal_page.py (render legado segue
 # congelado em _AB_LEGACY_PAGE_SHA).
-_AB_BASELINE_SHA = "ac19014f932026f8d61aa0d4f76616feef8e1e5c"
+# F85 (20/10): idem F80/F70/F76 — src/ moveu (app_intel.py — corpus de
+# idioma v2: A1/A2 básico grudado à própria menção NÃO exclui, native/
+# bilingual DE no glued F18, eixo FR courant/bilingue pós-nominal +
+# soft-anexado _FRENCH_SOFT_AFTER_RE); âncora -> commit F85 1/2
+# (c549948), o 2/2 edita SÓ testes/README. A F85 NÃO toca
+# minimal_page.py (render legado segue congelado em _AB_LEGACY_PAGE_SHA;
+# A/B byte a byte conferido na suíte local — fixtures sem courant/
+# bilingual/A1-A2, zero divergência de badge).
+_AB_BASELINE_SHA = "c549948"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):

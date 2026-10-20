@@ -68,8 +68,37 @@ F60 — lacunas verificadas no registro de desfechos 10/2026 (3 classes):
 - **Classe A2 (frances como SINAL)**: ``french_level`` classifica
   menções a frances (french/französisch/français) com os mesmos
   qualificadores de evidencia (required/preferred/plus). E SINAL puro
-  (badge/campo) — NUNCA exclusao ou penalidade no score; vaga fora dos
+  (badge/campo) — NUNCA exclusão ou penalidade no score; vaga fora dos
   mercados-alvo e outro filtro (caso CANAL+ verbatim).
+
+F85 — corpus v2 (registro de recusas 20/10, 6 vagas IDIOMA-DE/FR):
+
+- **Passo 0 medido** (universo 108.173 jobs, eligible 725): as 6 frases
+  verbatim do registro tem ZERO escapes de PADRAO — 1.879 vagas com as
+  frases no texto e nenhuma ``required`` no eligible. Os escapes reais do
+  registro foram de DADOS/FONTE (KPMG/Lidl/Daimler: frase ausente ou
+  description vazia; SocGen: nem coletada; CANAL+: preferred/soft correto).
+- **DE — A1/A2 basico GRUDADO a propria mencao** (``German (A1/A2)``,
+  ``Deutsch ... Basis-Niveau (ab A2)`` — HelloFresh/B. Braun reais, 20
+  vagas): vira ``preferred`` (razao ``basic``) ANTES do verb_direct/CEFR
+  forte — basico NAO exclui (regra de severidade do dono), e o A1/A2 da
+  propria mencao vence um B2 de OUTRA lingua na mesma janela.
+- **DE — native/bilingual** no glued F18 e no qual de janela larga
+  ("Native German", "Bilingual German-English"); sicher(e)/
+  verhandlungssicher/fluent/advanced JÁ cobertos (F18/F60) — travados
+  pelo test_f85.
+- **FR — pós-nominal** (``français courant``, ``un français et un anglais
+  courants``, ``français bilingue`` — 26 vagas reais, forma DOMINANTE) via
+  ``_FRENCH_INTENSITY_AFTER_RE`` (gap tight sem cruzar vírgula) e
+  qual-antes courant/couramment/bilingue/bilingual/francophone/native +
+  ``excellente`` (feminino — "excellente maîtrise du français" não casava).
+- **FR — soft GRUDADO DEPOIS** (``_FRENCH_SOFT_AFTER_RE``, espelho F18 do
+  alemão): "French a plus", "French strongly valued" (CANAL+ verbatim) e
+  "Fluent in English (French is a plus)" (nestle/teampicnic/Liebherr
+  reais) seguem preferred — corrige 22 FPs cross-language medidos no A/B
+  (o "fluent/good" do INGLES promovia o frances por contaminação de
+  janela). FR segue SINAL puro: nunca exclusão/penalidade.
+
 """
 
 from __future__ import annotations
@@ -158,6 +187,17 @@ _GERMAN_QUALS: list[tuple[str, str]] = [
         r"ötig|noetig|notwendig|pflicht|needed|need)\b",
         "negated",
     ),
+    # F85 — nível CEFR BÁSICO GRUDADO à própria menção ("German (A1/A2)",
+    # "Deutsch ... Basis-Niveau (ab A2)" — casos HelloFresh/B. Braun reais
+    # do universo 20/10): básico NÃO exclui (regra de severidade do dono —
+    # vale até com verbo de exigência: "German A1 required" segue básico).
+    # ANTES do verb_direct/CEFR forte: o A1/A2 da PRÓPRIA menção vence um
+    # B2 de OUTRA língua na mesma janela ("English (B2), German (A1/A2)
+    # ... a plus") e o verbo de exigência genérico.
+    (
+        r"\b(german|deutsch\w*)\b[\w\s,()/-]{0,45}\b(a1|a2)\b",
+        "cefr_basic",
+    ),
     # Verbo de exigencia na ORDEM DIRETA ("German required", "Deutschkenntnisse
     # vorausgesetzt"): o alemao e o SUJEITO da exigencia.
     (
@@ -204,7 +244,8 @@ _GERMAN_QUALS: list[tuple[str, str]] = [
     (
         r"(sehr\s+)?(gut|gutem|gute|guter|gutes|solide|solider|fundierte|"
         r"fundierter|exzellente|ausgezeichnete|umfassende|sicher(er|e)?|"
-        r"excellent|very good|good|advanced|strong)\s+[\w\s,&()-]{0,26}\b"
+        r"excellent|very good|good|advanced|strong|native|bilingual)\s+"
+        r"[\w\s,&()-]{0,26}\b"
         r"(deutsch\w*|\bgerman\b|kenntnisse\w*|sprachkenntnisse\w*|"
         r"sprachliche\w*|sprache\b|skills\b)\b",
         "qual",
@@ -284,7 +325,8 @@ _GLUED_INTENSITY_RE = re.compile(
     r"\b((sehr\s+)?(gut(?:e[rsn]?|m)?|exzellente[rsn]?|"
     r"ausgezeichnete[rsn]?|fundierte[rsn]?|umfassende[rsn]?|"
     r"sicher(e|er|es|en)?|solide[rsn]?|excellent|very good|good|"
-    r"advanced|strong|fluent|flie(ss|ß)end|verhandlungssicher\w*))\s+"
+    r"advanced|strong|fluent|flie(ss|ß)end|verhandlungssicher\w*|"
+    r"native|bilingual))\s+"
     + _GLUE_SAFE_MID +
     r"\b(deutsch\w*|german)\b",
     re.IGNORECASE,
@@ -390,6 +432,12 @@ def german_level(text: str | None) -> GermanLevel | None:
                     if kind == "negated":
                         local, reason = "plus", "negated"
                         break
+                    if kind == "cefr_basic":
+                        # F85: o nível BÁSICO da própria menção vence —
+                        # básico NÃO exclui (regra de severidade do dono);
+                        # razão "basic" (explicabilidade existente).
+                        local, reason = "preferred", "basic"
+                        break
                     if kind == "verb_rev" and soft_in_win:
                         continue  # a exigencia provavelmente e do ingles
                     if kind == "verb_rev":
@@ -453,12 +501,15 @@ _FRENCH_QUALS: list[tuple[str, str]] = [
     ),
     # Qualificador de intensidade diretamente ligado à língua
     # ("fluent French", "gute Französischkenntnisse" — inclui o "gut"
-    # BARE da F60).
+    # BARE da F60). F85: `excellente` (feminino — "excellente maîtrise du
+    # français" NÃO casava com `excellent` nu) + eixo pós-2026 do registro
+    # de recusas: courant/couramment/bilingue/bilingual/francophone/native.
     (
         r"(sehr\s+)?(gut|gutem|gute|guter|gutes|solide|exzellente|"
-        r"ausgezeichnete|umfassende|sicher(e|er|es|en)?|excellent|"
+        r"ausgezeichnete|umfassende|sicher(e|er|es|en)?|excellent(e|es)?|"
         r"very good|good|advanced|strong|fluent|flie(ss|ß)end|"
-        r"verhandlungssicher\w*)\s+[\w\s,&()-]{0,26}\b"
+        r"verhandlungssicher\w*|courant(e|es|s)?|couramment|"
+        r"bilingu?e(s)?|bilingual|francophone|native)\s+[\w\s,&()-]{0,26}\b"
         r"(französisch\w*|franzoesisch\w*|\bfrench\b|français|francais)\b",
         "qual",
     ),
@@ -482,6 +533,35 @@ _FRENCH_QUALS: list[tuple[str, str]] = [
     ),
 ]
 _FRENCH_QUALS_RE = [(re.compile(p, re.IGNORECASE), kind) for p, kind in _FRENCH_QUALS]
+
+# F85 — intensidade PÓS-NOMINAL grudada à menção ("français courant",
+# "un français et un anglais courants", "français bilingue" — 26 vagas
+# reais no universo 20/10, a forma DOMINANTE do registro de recusas; o
+# qual-antes não via). Gap tight SEM cruzar vírgula (espelho _GLUE_SAFE_MID
+# do alemão). Estreito de propósito: fluent/strong/advanced pós-nominais
+# NÃO entram — "French strongly valued" (CANAL+ verbatim) tem que seguir
+# preferred/soft, e "French fluent in ..." reverso é coberto pelo qual-antes.
+_FRENCH_INTENSITY_AFTER_RE = re.compile(
+    r"\b(french|französisch\w*|franzoesisch\w*|français|francais)\b"
+    r"[\w\s&()-]{0,20}\b(courant(e|es|s)?|couramment|bilingu?e(s)?|bilingual)\b",
+    re.IGNORECASE,
+)
+
+# F85 — soft GRUDADO DEPOIS da menção FR (espelho _SOFT_AFTER_RE do alemão,
+# F18): "French a plus", "French strongly valued", "français courant est un
+# plus". Soft anexado à própria menção vence a intensidade vizinha/pós-
+# nominal (preferred, não required). Gap [\w\s&-] SEM vírgula: o soft de
+# OUTRA língua na mesma frase não se anexa ("French required, German a
+# plus" segue required para o francês via verb_direct).
+_FRENCH_SOFT_AFTER_RE = re.compile(
+    r"\b(french|französisch\w*|franzoesisch\w*|français|francais)\b"
+    r"[\w\s&-]{0,25}\b"
+    r"(plus|preferred|desirable|an asset|a plus|valued|advantage|"
+    r"beneficial|advantageous|nice to have|von vorteil|"
+    r"wünschenswert|wunschenswert|bevorzugt|idealerweise|"
+    r"gerne gesehen|ein plus|good to have)\b",
+    re.IGNORECASE,
+)
 
 FRENCH_LEVELS = ("required", "preferred", "plus")
 
@@ -507,6 +587,19 @@ def french_level(text: str | None) -> FrenchLevel | None:
     "Fluent in English (written and spoken) required; French strongly
     valued" -> preferred/soft (o "required" do inglês fica do outro lado
     do ponto-e-vírgula e não vaza).
+
+    F85 — duas precedências novas por menção (espelho F18 do alemão),
+    ANTES do loop de janela:
+    1. Soft GRUDADO DEPOIS do token (tight ±25, sem cruzar vírgula)
+       => preferred (``soft``) — "French a plus", "French strongly
+       valued" (CANAL+), "Fluent in English (French is a plus)" (nestle/
+       teampicnic/Liebherr reais): o soft anexado à própria menção vence a
+       intensidade vizinha de OUTRA língua (corrige contaminação de janela
+       do "fluent/good" do inglês, 22 FPs medidos no A/B do universo).
+    2. Intensidade pós-nominal GRUDADA ("français courant", "un français
+       et un anglais courants", "français bilingue" — 26 vagas reais,
+       forma dominante; o qual-antes não via) => required
+       (``qual_after``).
     """
     if not text:
         return None
@@ -519,24 +612,36 @@ def french_level(text: str | None) -> FrenchLevel | None:
     best_level, best_reason = "plus", "bare"
     for m in tokens:
         win = text[max(0, m.start() - 45): min(len(text), m.end() + 45)]
-        soft_in_win = any(
-            rx.search(win) for rx, kind in _FRENCH_QUALS_RE if kind == "soft"
-        )
-        local, reason = "plus", "bare"
-        for qrx, kind in _FRENCH_QUALS_RE:
-            if not qrx.search(win):
-                continue
-            if kind == "negated":
-                local, reason = "plus", "negated"
-                break
-            if kind == "verb_rev" and soft_in_win:
-                continue  # a exigência provavelmente é do inglês
-            if kind in ("verb_direct", "qual", "verb_rev"):
-                local, reason = "required", kind
-                break
-            if kind == "soft":
-                local, reason = "preferred", kind
-                break
+        tight_win = text[max(0, m.start() - 25): min(len(text), m.end() + 25)]
+        # F85 — precedência por menção (espelho F18 do alemão):
+        #   (a) soft GRUDADO DEPOIS do token => preferred (o soft anexado à
+        #       menção vence a intensidade vizinha/pós-nominal);
+        #   (b) intensidade pós-nominal GRUDADA ("français courant") =>
+        #       required;
+        #   (c) loop de qualificadores da janela ±45 (inalterado).
+        if _FRENCH_SOFT_AFTER_RE.search(tight_win):
+            local, reason = "preferred", "soft"
+        elif _FRENCH_INTENSITY_AFTER_RE.search(tight_win):
+            local, reason = "required", "qual_after"
+        else:
+            soft_in_win = any(
+                rx.search(win) for rx, kind in _FRENCH_QUALS_RE if kind == "soft"
+            )
+            local, reason = "plus", "bare"
+            for qrx, kind in _FRENCH_QUALS_RE:
+                if not qrx.search(win):
+                    continue
+                if kind == "negated":
+                    local, reason = "plus", "negated"
+                    break
+                if kind == "verb_rev" and soft_in_win:
+                    continue  # a exigência provavelmente é do inglês
+                if kind in ("verb_direct", "qual", "verb_rev"):
+                    local, reason = "required", kind
+                    break
+                if kind == "soft":
+                    local, reason = "preferred", kind
+                    break
         if _LEVEL_PRIO[local] > _LEVEL_PRIO[best_level]:
             best_level, best_reason = local, reason
     return FrenchLevel(level=best_level, reason=best_reason)
