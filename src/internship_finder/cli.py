@@ -658,6 +658,15 @@ def _tenant_record(
     }
 
 
+# F80 — zero-post-guard: 0 rows prefilteradas com acervo GRANDE e colapso
+# estrutural SILENCIOSO (schema mudou / marcador sumiu / upstream travou).
+# O gate ``publication_allowed`` so enxerga colapso TOTAL (eligible == 0);
+# este campo torna a anomalia greppavel no ``data/collection_metrics.jsonl``
+# (fases F69/F70 leem dali). So registros NOVOS — dados historicos
+# intocados.
+_DATASET_ZERO_POST_MIN_ROWS = 1_000_000
+
+
 def _dataset_record(run_id: str, summary: dict) -> dict:
     """Registro de metricas do estagio dataset (linha ``type: dataset``).
 
@@ -668,13 +677,20 @@ def _dataset_record(run_id: str, summary: dict) -> dict:
     gravado mesmo quando o estagio falha (``status: failed``): a falha do
     dataset e DADO (o run segue com so os jobs do registry; o exit code nao
     muda — invariante F3 §4.1 item 6).
+
+    F80: ``manifest_generated_at`` — par de frescor com o ``timestamp`` do
+    run (gravado em TODA execucao, ``null`` quando o manifest nao chegou;
+    SEM limiar — fase futura). ``anomaly`` so aparece em colapso estrutural
+    (``"zero_prefiltered"``: rows_prefiltered == 0 com rows_total acima de
+    ``_DATASET_ZERO_POST_MIN_ROWS``) — greppavel no JSONL.
     """
-    return {
+    record = {
         "type": "dataset",
         "run_id": run_id,
         "timestamp": utcnow_iso(),
         "source": "sf_dataset",
         "status": summary.get("status"),
+        "manifest_generated_at": summary.get("manifest_generated_at"),
         "rows_total": summary.get("rows_total", 0),
         "total_prefiltered": summary.get("rows_prefiltered", 0),
         "invalid_rows": summary.get("invalid_rows", 0),
@@ -686,6 +702,14 @@ def _dataset_record(run_id: str, summary: dict) -> dict:
         "duration": summary.get("duration"),
         "error": summary.get("error"),
     }
+    if (summary.get("rows_prefiltered", 0) == 0
+            and summary.get("rows_total", 0) > _DATASET_ZERO_POST_MIN_ROWS):
+        record["anomaly"] = "zero_prefiltered"
+        log.error(
+            "estagio dataset: ANOMALIA zero_prefiltered (%d rows totais, 0 "
+            "prefilteradas) — marcada no registro dataset",
+            summary.get("rows_total", 0))
+    return record
 
 
 def _country_isos_for_stages(spec_result: frozenset[str] | str | None) -> tuple[str, ...]:

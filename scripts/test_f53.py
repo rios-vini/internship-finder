@@ -179,6 +179,19 @@ REPO = Path(__file__).resolve().parent.parent
 # padrão F56/F58-retroativo/F81: commit 2/2 edita SÓ este teste, diff
 # src/ segue vazio na branch, [SKIP] no CI raso, clone-da-produção
 # retém o SHA pós-squash).
+# F80 (20/10, orquestrador na verificação — LANDMINE descoberto e
+# curado): a F80 tocou src/ (dataset_source.py + cli.py) sem mover a
+# âncora (classe F58) E o guard estava CEGO desde a F75: a âncora
+# 24a1281 (commit de branch da F75) NUNCA existiu na store da
+# produção (o trabalho da F75 correu em clone separado; produção
+# só pull origin main) → "bad revision" → [SKIP] silencioso em
+# TODO contexto com história. LIÇÃO ESTRUTURAL: âncora em commit
+# de branch é retida pela produção SÓ SE o branch foi fetchado
+# lá enquanto vivo; trabalho em clone separado órfã a âncora.
+# Move: 24a1281→d97209e (head da F80, fetchado na verificação;
+# padrão F56/F81). Convencionalizar: fase que toca src/ move a
+# âncora no MESMO PR; verificação confere resolução do SHA na
+# produção (cat-file), não só exit-code do teste.
 # F81 (20/10): src/ moveu de novo (doc do tenant compartilhado
 # phenom:nan em registry.py — docstring do módulo + comentários por
 # entrada DHL/Allianz/Merck/Kuehne+Nagel + docstring do
@@ -189,7 +202,7 @@ REPO = Path(__file__).resolve().parent.parent
 # na branch, no CI raso ([SKIP]) e no main pós-squash). O render
 # legado segue congelado em _AB_LEGACY_PAGE_SHA (a F81 NÃO toca
 # minimal_page.py).
-_AB_BASELINE_SHA = "24a1281b549621356ee0f06ed57789a9d1c3e8b1"
+_AB_BASELINE_SHA = "d97209e6fa2a08a258ef75657044660915fe2205"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):

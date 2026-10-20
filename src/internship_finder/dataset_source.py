@@ -22,8 +22,13 @@ Por que NAO usar ``Client.search()`` do pacote (fato medido, spec F3 §2.1):
 
 Mecanica desta fonte (streaming, NUNCA DataFrame):
 
-1. ``fetch_manifest`` baixa o manifest (timeout ``DATASET_HTTP_TIMEOUT``) e
-   devolve ``by_ats``: ``{ats: {"csv": url, "rows": n, ...}}``.
+1. ``fetch_manifest`` baixa o manifest (timeout ``DATASET_HTTP_TIMEOUT``)
+   e devolve o manifest COMPLETO (``by_ats`` DENTRO, com ``version``,
+   ``stats`` e ``generated_at``). ``validate_manifest`` (F80) e o gargalo
+   L1 fail-loud — versao na allowlist + colunas do prefilter como SUBSET
+   de ``stats.schema_columns`` — e roda no ``collect_dataset_jobs`` nos
+   DOIS caminhos (vivo E injetado: guard dentro de ``fetch_manifest`` so
+   nao seria exercitado pelos testes offline que injetam ``manifest=``).
 2. Para cada fonte em ``sources`` (default: TODAS as chaves de ``by_ats``,
    ordenadas), baixa a fatia CSV para um arquivo temporario em disco
    (streaming por chunks - pico de disco = maior fatia) e aplica o
@@ -42,6 +47,17 @@ Mecanica desta fonte (streaming, NUNCA DataFrame):
    description (mesmo contrato do adapter). Row sem company/title/url ->
    SKIP com contador proprio ``invalid_rows`` (nunca crash, nunca Job
    fabricado).
+
+4. F80 — integridade por fatia: (a) L2: sha256 computado DURANTE o
+   download (streaming, zero I/O extra) vs ``sha256`` declarado no meta
+   por fatia — mismatch -> fatia failed SEM abortar as demais; (b)
+   counted != declared: rows contadas no prefilter (TODAS as iteradas,
+   validas + invalidas) vs ``rows`` declaradas — divergencia -> fatia
+   failed + forenses ``rows_declared``/``rows_counted``; (c) frescor: o
+   par (``generated_at`` do manifest, timestamp do run) e gravado no
+   summary/registro dataset em TODA execucao (sem limiar — o limiar e
+   fase futura com historico); (d) ``row_to_job`` valida ``ats_type``
+   ANTES de compor ``source`` (fecha a classe "source envenenado").
 
 Volume: o prefilter reduz ~5,1M rows globais para ~21,6k antes de qualquer
 ``Job`` existir (fato medido §2.3). Budget total do estagio:
@@ -62,6 +78,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import logging
+import os
 import re
 import tempfile
 import time
@@ -92,6 +109,30 @@ DATASET_BUDGET_SECONDS = 1800.0
 
 # Timeout POR request HTTP (manifest e cada fatia).
 DATASET_HTTP_TIMEOUT = 120.0
+
+# F80 — L1: allowlist de versoes de schema aceitas. Bump futuro do
+# upstream = adicionar a versao nova AQUI (allowlist, nao igualdade, para
+# nao travar o funil em deploy). Probe passo 0 (2026-10-20): o manifest
+# vivo carrega a versao DUAS vezes — ``stats.schema_version`` e ``version``
+# top-level, ambos "2.0" — o guard escuta TODOS os candidatos presentes.
+ALLOWED_SCHEMA_VERSIONS: frozenset[str] = frozenset({"2.0"})
+
+# F80 — L1: escape hatch operacional no padrao existente
+# (``ATS_SCRAPERS_ALLOW_EMPTY_PUBLISH``): a env adiciona UMA versao a
+# allowlist sem deploy (ex.: bump upstream numa sexta a noite). So a
+# versao listada passa — warn-only NAO existe aqui (guard fail-loud ou
+# nao e guard).
+ALLOW_SCHEMA_VERSION_ENV = "INTERNSHIP_FINDER_ALLOW_SCHEMA_VERSION"
+
+# F80 — L1: colunas que o prefilter le via ``row.get(...)`` (9 — title,
+# company, url, ats_id, location, country_iso, description, employment_type,
+# posted_at). Devem ser SUBSET de ``stats.schema_columns`` — SUBSET, nao
+# igualdade: upstream JA adicionou colunas SEM bump de versao
+# (requisition_id, apply_url, commitment).
+PREFILTER_REQUIRED_COLUMNS: tuple[str, ...] = (
+    "title", "company", "url", "ats_id", "location", "country_iso",
+    "description", "employment_type", "posted_at",
+)
 
 # Chaves de ``by_ats`` processadas por default: TODAS (ordenadas). O
 # manifest e a fonte - sem allowlist manual; fontes com 0 rows DE+intern
@@ -201,6 +242,20 @@ def row_is_intern_candidate(title: Any) -> bool:
     return any(p.search(t) for p in _STUDENT_RE)
 
 
+def valid_ats_type(ats_type: Any) -> bool:
+    """F80: ``ats_type`` compoe IDENTIDADE (``source`` e ``id``) — sanidade.
+
+    ``True`` apenas para string nao-vazia cujo ``strip().lower()`` nao seja
+    ``nan``/``none``. Os falsos positivos tipicos vêm de NaN/None
+    stringificados (um slice key ``"nan"`` no manifest viraria source
+    ``sf_dataset:nan`` silenciosamente — a classe "source envenenado").
+    """
+    if not isinstance(ats_type, str):
+        return False
+    text = ats_type.strip()
+    return bool(text) and text.lower() not in {"nan", "none"}
+
+
 def row_to_job(row: Mapping[str, Any], ats_type: str) -> Job | None:
     """Converte uma row do dataset em ``Job`` (ou ``None`` se invalida).
 
@@ -217,7 +272,17 @@ def row_to_job(row: Mapping[str, Any], ats_type: str) -> Job | None:
 
     Row sem company OU sem title OU sem url -> ``None`` (o chamador conta
     em ``invalid_rows`` - nunca crash, nunca Job fabricado).
+
+    F80 — sanidade do KEY_BUILD: ``ats_type`` e validado ANTES de compor
+    ``source``/``id`` (``valid_ats_type``); violacao -> ``ValueError``
+    loud. O chamador do prefilter confina o veneno (fatia failed); nenhum
+    Job com source envenenado e fabricado.
     """
+    if not valid_ats_type(ats_type):
+        raise ValueError(
+            f"ats_type invalido para compor source: {ats_type!r} "
+            "(esperado string nao-vazia != 'nan'/'None')"
+        )
     title = _clean(row.get("title"))
     company = _clean(row.get("company"))
     url = _clean(row.get("url"))
@@ -266,14 +331,21 @@ def row_to_job(row: Mapping[str, Any], ats_type: str) -> Job | None:
 # ---------------------------------------------------------------------------
 
 
-def _http_fetch(url: str, dest: Path, timeout: float = DATASET_HTTP_TIMEOUT) -> int:
-    """Baixa ``url`` em streaming para ``dest``; devolve bytes baixados.
+def _http_fetch(url: str, dest: Path, timeout: float = DATASET_HTTP_TIMEOUT) -> tuple[int, str]:
+    """Baixa ``url`` em streaming para ``dest``; devolve ``(bytes, sha256)``.
 
     Streaming por chunks de 1 MiB em DISCO (nunca RAM): pico de uso = a
     fatia em download. O chamador apaga ``dest`` apos o prefilter.
     ``urllib.request`` (stdlib) - sem dependencia nova no runtime.
+
+    F80 — L2: o sha256 da fatia e computado DURANTE o download (um
+    ``hashlib.update`` por chunk, zero I/O extra) e devolvido junto com o
+    total de bytes; o chamador compara com o ``sha256`` declarado no
+    manifest por fatia (a chave plain ``sha256`` e do CSV — probe passo 0;
+    ``parquet_sha256`` e do formato que NAO baixamos).
     """
     bytes_downloaded = 0
+    digest = hashlib.sha256()
     req = urllib.request.Request(url, headers={"User-Agent": "internship-finder/0.1"})
     with urllib.request.urlopen(req, timeout=timeout) as resp, dest.open("wb") as fh:
         while True:
@@ -281,28 +353,115 @@ def _http_fetch(url: str, dest: Path, timeout: float = DATASET_HTTP_TIMEOUT) -> 
             if not chunk:
                 break
             fh.write(chunk)
+            digest.update(chunk)
             bytes_downloaded += len(chunk)
-    return bytes_downloaded
+    return bytes_downloaded, digest.hexdigest()
 
 
 def fetch_manifest(
     url: str = MANIFEST_URL,
     timeout: float = DATASET_HTTP_TIMEOUT,
 ) -> dict[str, Any]:
-    """Manifest vivo -> ``by_ats`` (dict ``{ats: meta}``). Levanta em falha."""
+    """Manifest vivo COMPLETO (dict top-level: ``by_ats``, ``generated_at``,
+    ``version``, ``stats``...). Levanta em falha.
+
+    F80: corpo nao-JSON (HTML/Cloudflare) -> ``ValueError`` claro com os
+    primeiros ~200 chars do corpo (antes: erro critico de json.loads). A
+    validacao L1 (versao/colunas) NAO vive aqui — vive em
+    ``validate_manifest``, chamada pelo ``collect_dataset_jobs`` no mesmo
+    gargalo do caminho injetado (guard so em ``fetch_manifest`` nao seria
+    exercitado pelos testes offline que injetam ``manifest=``).
+    """
     req = urllib.request.Request(url, headers={"User-Agent": "internship-finder/0.1"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        manifest = json_loads(resp.read().decode("utf-8"))
-    by_ats = manifest.get("by_ats")
-    if not isinstance(by_ats, dict) or not by_ats:
-        raise ValueError("manifest sem 'by_ats' (schema inesperado)")
-    return by_ats
+        body = resp.read().decode("utf-8", errors="replace")
+    try:
+        manifest = json_loads(body)
+    except ValueError as exc:
+        snippet = body[:200]
+        raise ValueError(
+            f"manifest nao e JSON ({exc}); corpo comeca com: {snippet!r}"
+        ) from exc
+    if not isinstance(manifest, dict):
+        raise ValueError(
+            f"manifest nao e um objeto JSON (tipo {type(manifest).__name__})"
+        )
+    return manifest
 
 
 def json_loads(text: str) -> dict[str, Any]:
     import json
 
     return json.loads(text)
+
+
+def _schema_version_candidates(data: Mapping[str, Any]) -> list[str]:
+    """F80 — candidatos de versao de schema presentes no manifest.
+
+    O manifest vivo carrega a versao DUAS vezes (probe passo 0, 2026-10-20):
+    ``stats.schema_version`` (colada com ``schema_columns``) e ``version``
+    top-level — ambos "2.0". Um bump futuro pode tocar qualquer um dos
+    dois; o guard escuta TODOS os presentes (um fora da allowlist falha).
+    """
+    candidates: list[str] = []
+    stats = data.get("stats")
+    if isinstance(stats, Mapping):
+        value = stats.get("schema_version")
+        if value is not None:
+            candidates.append(str(value))
+    if data.get("version") is not None:
+        candidates.append(str(data["version"]))
+    return candidates
+
+
+def validate_manifest(data: Mapping[str, Any]) -> dict[str, Any]:
+    """F80 — L1 guard fail-loud do manifest; devolve ``by_ats`` validado.
+
+    (1) VERSAO: todo candidato presente (``stats.schema_version`` +
+    ``version`` top-level) deve estar na allowlist ``ALLOWED_SCHEMA_VERSIONS``;
+    NENHUM candidato (manifest sem versao) tambem falha. Escape hatch:
+    env ``INTERNSHIP_FINDER_ALLOW_SCHEMA_VERSION`` adiciona UMA versao a
+    allowlist (operador libera um bump upstream sem deploy). Warn-only
+    NAO existe — o guard e fail-loud ou nao e guard.
+
+    (2) COLUNAS: as 9 colunas do prefilter (``PREFILTER_REQUIRED_COLUMNS``)
+    devem ser SUBSET de ``stats.schema_columns`` — SUBSET, nao igualdade:
+    upstream JA adicionou colunas sem bump de versao (requisition_id,
+    apply_url, commitment). Coluna exigida ausente -> falha loud com o
+    NOME de cada coluna faltante.
+
+    (3) ``by_ats``: Mapping nao-vazio.
+    """
+    allowed = set(ALLOWED_SCHEMA_VERSIONS)
+    override = os.environ.get(ALLOW_SCHEMA_VERSION_ENV)
+    if override:
+        allowed.add(str(override).strip())
+    candidates = _schema_version_candidates(data)
+    if not candidates:
+        raise ValueError(
+            "manifest sem versao de schema (esperado 'stats.schema_version'"
+            f" ou 'version' top-level; allowlist: {sorted(ALLOWED_SCHEMA_VERSIONS)})"
+        )
+    bad = [c for c in candidates if c not in allowed]
+    if bad:
+        raise ValueError(
+            f"versao de schema fora da allowlist: {bad} "
+            f"(permitidas: {sorted(allowed)}; hatch: {ALLOW_SCHEMA_VERSION_ENV}=<versao>)"
+        )
+    stats = data.get("stats")
+    columns = stats.get("schema_columns") if isinstance(stats, Mapping) else None
+    if not isinstance(columns, (list, tuple)) or not columns:
+        raise ValueError("manifest sem 'stats.schema_columns' (schema inesperado)")
+    missing = [c for c in PREFILTER_REQUIRED_COLUMNS if c not in columns]
+    if missing:
+        raise ValueError(
+            f"manifest sem colunas exigidas pelo prefilter: {missing} "
+            f"(stats.schema_columns tem {len(columns)} colunas)"
+        )
+    by_ats = data.get("by_ats")
+    if not isinstance(by_ats, Mapping) or not by_ats:
+        raise ValueError("manifest sem 'by_ats' (schema inesperado)")
+    return dict(by_ats)
 
 
 def collect_dataset_jobs(
@@ -312,15 +471,19 @@ def collect_dataset_jobs(
     manifest_url: str = MANIFEST_URL,
     timeout: float = DATASET_HTTP_TIMEOUT,
     manifest: Mapping[str, Any] | None = None,
-    http_fetch: Callable[[str, Path], int] | None = None,
+    http_fetch: Callable[[str, Path], tuple[int, str]] | None = None,
     now: Callable[[], float] = time.monotonic,
     workdir: Path | None = None,
     country_isos: Any = ("de",),
 ) -> tuple[list[Job], dict[str, Any]]:
     """Coleta do dataset hospedado com prefilter; devolve ``(jobs, summary)``.
 
-    - ``manifest``: injeta o by_ats diretamente (testes offline); sem ele,
-      baixa o manifest vivo de ``manifest_url``.
+    - ``manifest``: injeta o manifest COMPLETO (F80 mudou a semantica —
+      era by_ats nu): mesma forma que ``fetch_manifest`` devolve, com
+      ``by_ats`` DENTRO e ``version``/``stats``/``generated_at`` no
+      top-level. A validacao L1 (``validate_manifest``) roda nos DOIS
+      caminhos — vivo E injetado (guard que so rodasse no vivo nao
+      seria testado offline).
     - ``http_fetch(url, dest)``: injeta o download (testes apontam para
       fixtures locais); default baixa via urllib em streaming.
     - ``workdir``: diretorio para as fatias temporarias (default: tempdir
@@ -341,9 +504,14 @@ def collect_dataset_jobs(
       company/title/url).
     - ``jobs``: Jobs criados.
     - ``per_ats``: ``{ats: {"rows": n, "kept": n, "skipped_budget": bool,
-      "failed": bool}}``.
+      "failed": bool}}`` — fatia com mismatch de sha256 ou counted!=declared
+      ganha forenses no entry (``hash_declared``/``hash_computed`` ou
+      ``rows_declared``/``rows_counted``).
     - ``skipped_budget`` / ``failed_slices``: contagens.
     - ``bytes_downloaded`` / ``duration``: volume e duracao.
+    - ``manifest_generated_at`` (F80): par de frescor — ``generated_at`` do
+      manifest gravado em TODA execucao (o par completo com o timestamp
+      do run fica no registro dataset; SEM limiar aqui — fase futura).
     """
     t0 = now()
     fetch = http_fetch or _http_fetch
@@ -357,12 +525,18 @@ def collect_dataset_jobs(
         "skipped_budget": 0,
         "failed_slices": 0,
         "bytes_downloaded": 0,
+        "manifest_generated_at": None,
     }
     jobs: list[Job] = []
     deadline = t0 + budget_seconds
 
     try:
-        by_ats = dict(manifest) if manifest is not None else fetch_manifest(manifest_url, timeout)
+        manifest_data: Mapping[str, Any] = (
+            manifest if manifest is not None else fetch_manifest(manifest_url, timeout)
+        )
+        # L1 nos DOIS caminhos (vivo e injetado) — F80.
+        by_ats = validate_manifest(manifest_data)
+        summary["manifest_generated_at"] = manifest_data.get("generated_at")
     except Exception as exc:  # noqa: BLE001 - dataset e best-effort
         log.error("sf_dataset: manifest falhou (%s); estagio abortado", exc)
         summary["status"] = "failed"
@@ -399,14 +573,53 @@ def collect_dataset_jobs(
                 continue
             slice_path = tmp_dir / f"{name}.csv"
             try:
-                summary["bytes_downloaded"] += fetch(str(meta["csv"]), slice_path)
-                slice_jobs, rows, kept, invalid = _prefilter_slice(slice_path, name, country_isos)
-                summary["rows_total"] += rows
-                summary["rows_prefiltered"] += kept
-                summary["invalid_rows"] += invalid
-                entry["rows"] = rows
-                entry["kept"] = kept
-                jobs.extend(slice_jobs)
+                nbytes, digest = fetch(str(meta["csv"]), slice_path)
+                summary["bytes_downloaded"] += nbytes
+                # F80 — L2: sha256 streaming vs declarado (chave plain
+                # ``sha256`` = CSV, confirmada no probe passo 0;
+                # ``parquet_sha256`` e do formato que NAO baixamos). Sem
+                # hash declarado (injecao de teste) -> warning e segue.
+                declared_hash = meta.get("sha256")
+                if declared_hash and str(declared_hash) != digest:
+                    entry["failed"] = True
+                    entry["hash_declared"] = str(declared_hash)
+                    entry["hash_computed"] = digest
+                    summary["failed_slices"] += 1
+                    log.warning(
+                        "sf_dataset: fatia %s: sha256 MISMATCH (declarado=%s, "
+                        "baixado=%s); fatia descartada, demais seguem",
+                        name, declared_hash, digest)
+                else:
+                    if not declared_hash:
+                        log.warning(
+                            "sf_dataset: fatia %s sem sha256 no manifest; "
+                            "hash nao verificado", name)
+                    slice_jobs, rows, kept, invalid = _prefilter_slice(
+                        slice_path, name, country_isos)
+                    summary["rows_total"] += rows
+                    summary["rows_prefiltered"] += kept
+                    summary["invalid_rows"] += invalid
+                    entry["rows"] = rows
+                    entry["kept"] = kept
+                    jobs.extend(slice_jobs)
+                    # F80 — counted != declared: "contadas" = TODAS as
+                    # iteradas (validas + invalidas — o ``rows`` do loop
+                    # prefilter JA e esse total; a armadilha invalid_rows
+                    # nao se aplica). So fatia COMPLETA: skipped_budget
+                    # nem entra no loop, fatia failed por hash NAO chegou
+                    # ao prefilter, excessao salta este bloco.
+                    declared_rows = meta.get("rows")
+                    if (isinstance(declared_rows, int)
+                            and not isinstance(declared_rows, bool)
+                            and rows != declared_rows):
+                        entry["failed"] = True
+                        entry["rows_declared"] = declared_rows
+                        entry["rows_counted"] = rows
+                        summary["failed_slices"] += 1
+                        log.warning(
+                            "sf_dataset: fatia %s: counted != declared "
+                            "(declaradas=%d, contadas=%d); fatia marcada "
+                            "failed, demais seguem", name, declared_rows, rows)
             except Exception as exc:  # noqa: BLE001 - fatia falha, resto segue
                 entry["failed"] = True
                 summary["failed_slices"] += 1
