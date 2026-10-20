@@ -41,12 +41,13 @@ Fluxo:
    salvos). O exit code final do refresh e o do subprocesso (P1.3): 0/1/2,
    ou 124 quando o teto de tempo e estourado — o cron/systemd distingue
    sucesso de falha.
-2b. **Backup do jobs.db (P3)** — snapshot consistente via backup API do
-   sqlite3 (stdlib) para ``data/backups/jobs-<ts>.db`` (artefato standalone,
-   sem sidecars WAL); retencao simples ``--backup-retention-days`` (default
-   14, 0 desliga) aplicada em seguida. Falha NUNCA derruba o run nem muda o
-   exit code: e logada e (se houver envio) entra na mensagem como
-   ``⚠️ Backup do jobs.db falhou: ...``.
+2b. **Backup do jobs.db (P3) + dataset_seen.db (F70)** — snapshot consistente
+   via backup API do sqlite3 (stdlib) para ``data/backups/`` (artefatos
+   standalone, sem sidecars WAL; stems proprios ``jobs-<ts>.db`` /
+   ``dataset_seen-<ts>.db``); retencao simples ``--backup-retention-days``
+   (default 14, 0 desliga) aplicada em seguida AOS DOIS. Falha NUNCA derruba
+   o run nem muda o exit code: e logada e (se houver envio) entra na
+   mensagem como ``⚠️ Backup ... falhou: ...``.
 2c. **Publicacao GitHub Pages (Fase 1, opcional via ``--pages-dir``)** —
    quando informado, apos coleta/health o ranking do run e publicado na
    branch ``gh-pages`` (reusa ``scripts/interface.py`` para o HTML,
@@ -89,8 +90,9 @@ Flags:
   mensagem "run falhou (timeout do subprocesso)".
 - ``--retention-days N``: retencao do archive em dias (default 14; ``0`` =
   desligado; negativo rejeitado com erro claro via argparse).
-- ``--backup-retention-days N``: retencao dos backups do jobs.db em dias
-  (default 14; ``0`` = desligado; mesma politica do archive).
+- ``--backup-retention-days N``: retenção dos backups em dias (default 14;
+  ``0`` desliga) — cobre jobs.db E dataset_seen.db (F70), no mesmo
+  ``data/backups/``.
 
 Concorrencia: o cron usa ``flock -n`` (ver README) para nunca sobrepor runs;
 este script nao reimplementa lock.
@@ -167,8 +169,9 @@ TELEGRAM_MAX_LEN = 4096
 # Retencao default do archive em dias (--retention-days).
 DEFAULT_RETENTION_DAYS = 14
 
-# Retencao default dos backups do jobs.db em dias (--backup-retention-days).
-# Mesma politica do archive: simples, documentada, sem lifecycle complexo.
+# Retencao default dos backups (jobs.db + dataset_seen.db, F70) em dias
+# (--backup-retention-days). Mesma politica do archive: simples,
+# documentada, sem lifecycle complexo.
 DEFAULT_BACKUP_RETENTION_DAYS = 14
 
 # Cap default de extracoes LLM por run do enrichment (--enrichment-limit).
@@ -621,6 +624,7 @@ def build_message(
     always_notify: bool = False,
     disk_pct: int | None = None,
     backup_error: str | None = None,
+    seen_backup_error: str | None = None,
     publish_error: str | None = None,
     digest_lines: list[str] | None = None,
 ) -> str | None:
@@ -641,7 +645,7 @@ def build_message(
     alerts = sorted(report_alerts, key=lambda a: (a.get("source", ""), a.get("type", "")))
     disk_warning = disk_pct is not None and disk_pct > DISK_WARN_PCT
     if not (always_notify or exit_code != 0 or alerts or disk_warning
-            or backup_error or publish_error):
+            or backup_error or seen_backup_error or publish_error):
         return None
 
     source_names = summary.get("source_names") or {}
@@ -838,6 +842,9 @@ def build_message(
     if backup_error:
         lines.append("")
         lines.append(f"⚠️ Backup do jobs.db falhou: {backup_error}")
+    if seen_backup_error:
+        lines.append("")
+        lines.append(f"⚠️ Backup do dataset_seen.db falhou: {seen_backup_error}")
     if publish_error:
         lines.append("")
         lines.append(f"⚠️ Publicação GitHub Pages falhou: {publish_error}")
@@ -1927,8 +1934,9 @@ def main(argv: list[str] | None = None) -> int:
                         f"(default {DEFAULT_RETENTION_DAYS}; 0 = desligado)")
     parser.add_argument("--backup-retention-days", type=_non_negative_int,
                         default=DEFAULT_BACKUP_RETENTION_DAYS, metavar="N",
-                        help="retencao dos backups do jobs.db em dias "
-                        f"(default {DEFAULT_BACKUP_RETENTION_DAYS}; 0 = desligado)")
+                        help="retencao dos backups (jobs.db/dataset_seen.db) "
+                        f"em dias (default {DEFAULT_BACKUP_RETENTION_DAYS}; "
+                        "0 = desligado)")
     # F75 — retencao do collection_metrics.jsonl: rollup diario alem do corte
     # (raw recente + agregado antigo). O DONO AJUSTA o corte por aqui.
     parser.add_argument("--metrics-retention-days", type=_non_negative_int,
@@ -2038,6 +2046,27 @@ def main(argv: list[str] | None = None) -> int:
             log.error("backup do jobs.db FALHOU: %s", backup_error)
     else:
         log.info("sem %s; backup do jobs.db pulado", jobs_db)
+    # F70 — backup do dataset_seen.db (caderno do universo pos-prefilter):
+    # mesma mecanica/diretorio/retencao do jobs.db (stem proprio
+    # ``dataset_seen-<ts>.db`` — sem colisao de nome). Justificativa da
+    # extensao (spec F70 item 6, decisao do executor): o caderno e a
+    # UNICA memoria do universo EFEMERO do dataset (jobs.db nao cobre
+    # dataset jobs, §7.8) — perda = furos permanentes em first_seen que
+    # nenhuma re-derivacao recupera. Volume: ~24k rows/dia (~4-5 MB/dia
+    # com indice; ~1,2-1,5 GB/ano) — o custo de retencao (default 14d)
+    # e visivel e o knob ``--backup-retention-days`` cobre os DOIS
+    # arquivos. Ausente (primeiro run pos-merge) NAO e falha: pula.
+    seen_backup_error: str | None = None
+    seen_db = data_dir / "dataset_seen.db"
+    if seen_db.exists():
+        try:
+            seen_backup = backup_jobs_db(seen_db)
+            log.info("backup do dataset_seen.db criado: %s", seen_backup)
+        except Exception as exc:  # noqa: BLE001 — caderno e operacional
+            seen_backup_error = f"{type(exc).__name__}: {exc}"
+            log.error("backup do dataset_seen.db FALHOU: %s", seen_backup_error)
+    else:
+        log.info("sem %s; backup do caderno dataset_seen pulado", seen_db)
     try:
         removed_backups = cleanup_backups(
             data_dir / BACKUP_DIR_NAME, args.backup_retention_days)
@@ -2517,6 +2546,7 @@ def main(argv: list[str] | None = None) -> int:
                             always_notify=args.always_notify,
                             disk_pct=disk_pct,
                             backup_error=backup_error,
+                            seen_backup_error=seen_backup_error,
                             publish_error=publish_error,
                             digest_lines=digest_lines)
     if message is None:

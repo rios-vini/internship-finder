@@ -21,11 +21,15 @@ mecanismo minimo:
 - **Validacao minima**: ``PRAGMA quick_check`` no arquivo temporario ANTES do
   ``os.replace`` (checagem de integridade de paginas; mais barata que
   ``integrity_check`` integral, suficiente para validar o artefato).
-- **Nomes**: ``jobs-YYYYMMDDTHHMMSSZ.db`` (UTC, mesmo formato de timestamp dos
-  archives) — permite multiplos backups com historico ordenavel.
-- **Retencao simples**: ``cleanup_backups`` remove backups mais antigos que N
-  dias (N=0 desliga); nomes fora do formato sao preservados com aviso. Sem
-  lifecycle complexo (deliberado): mesma politica do archive, documentada.
+- **Nomes**: ``<stem>-YYYYMMDDTHHMMSSZ.db`` (UTC, mesmo formato de
+  timestamp dos archives) — permite multiplos backups com historico
+  ordenavel. O stem deriva do nome do banco (``jobs.db`` -> ``jobs-``,
+  ``dataset_seen.db`` -> ``dataset_seen-`` — F70), entao bancos
+  distintos nunca colidem no mesmo diretorio.
+- **Retencao simples**: ``cleanup_backups`` remove backups mais antigos
+  que N dias (N=0 desliga); nomes fora do formato sao preservados com
+  aviso. Sem lifecycle complexo (deliberado): mesma politica do
+  archive, documentada.
 
 Falhas NUNCA tocam a origem: levantam excecao para o chamador decidir como
 reportar (o ``refresh_daily`` loga e inclui a linha ``⚠️ Backup ... falhou`` na
@@ -51,30 +55,49 @@ BACKUP_DIR_NAME = "backups"
 # (refresh_daily.ARCHIVE_TS_FORMAT) para leitura humana e ordenacao.
 BACKUP_TS_FORMAT = "%Y%m%dT%H%M%SZ"
 
+# Stems de backup reconhecidos pela retencao (F70: o caderno
+# dataset_seen.db entra na mesma politica de retencao do jobs.db).
+# A lista e uma ALLOWLIST deliberada: um arquivo so e candidato a
+# remocao se o nome for INEQUIVOCAMENTE um backup nosso
+# (``<stem>-YYYYMMDDTHHMMSSZ.db`` com stem conhecido) — qualquer
+# outro nome no diretorio e preservado (seguranca da retencao).
+BACKUP_STEMS: tuple[str, ...] = ("jobs", "dataset_seen")
+
 # Modo do arquivo de backup: mesmo 0644 dos demais artefatos de data/
 # (mkstemp cria 0600 — ajustamos antes do os.replace).
 _BACKUP_MODE = 0o644
 
 
-def backup_filename(ts: str) -> str:
-    """Nome do arquivo de backup para um timestamp (``jobs-<ts>.db``)."""
-    return f"jobs-{ts}.db"
+def backup_filename(ts: str, stem: str = "jobs") -> str:
+    """Nome do arquivo de backup para um timestamp (``<stem>-<ts>.db``).
+
+    F70: ``stem`` default ``"jobs"`` (retrocompat — o nome do jobs.db
+    continua ``jobs-<ts>.db``); ``backup_jobs_db`` deriva o stem do
+    banco de origem (``dataset_seen.db`` -> ``dataset_seen-<ts>.db``).
+    """
+    return f"{stem}-{ts}.db"
 
 
 def _parse_backup_ts(name: str) -> datetime | None:
-    """Timestamp UTC de um nome de backup (``jobs-YYYYMMDDTHHMMSSZ.db``).
+    """Timestamp UTC de um nome de backup (``<stem>-YYYYMMDDTHHMMSSZ.db``).
 
-    None se o nome nao estiver no formato esperado (defensivo: esses arquivos
-    sao preservados pela retencao, nunca apagados por engano).
+    Stems reconhecidos: ``BACKUP_STEMS`` (allowlist). ``None`` se o nome
+    nao estiver no formato esperado (defensivo: esses arquivos sao
+    preservados pela retencao, nunca apagados por engano).
     """
-    if not name.startswith("jobs-") or not name.endswith(".db"):
+    if not name.endswith(".db"):
         return None
-    try:
-        return datetime.strptime(
-            name[len("jobs-"):-len(".db")], BACKUP_TS_FORMAT
-        ).replace(tzinfo=UTC)
-    except ValueError:
-        return None
+    for stem in BACKUP_STEMS:
+        prefix = f"{stem}-"
+        if not name.startswith(prefix):
+            continue
+        try:
+            return datetime.strptime(
+                name[len(prefix):-len(".db")], BACKUP_TS_FORMAT
+            ).replace(tzinfo=UTC)
+        except ValueError:
+            return None
+    return None
 
 
 def _validate(db_path: Path) -> None:
@@ -92,12 +115,16 @@ def backup_jobs_db(
     db_path: Path | str,
     backup_dir: Path | str | None = None,
     ts: str | None = None,
+    stem: str | None = None,
 ) -> Path:
     """Snapshot consistente e standalone de ``db_path`` em ``backup_dir``.
 
-    Devolve o caminho do backup criado (``backup_dir/jobs-<ts>.db``). O
+    Devolve o caminho do backup criado (``backup_dir/<stem>-<ts>.db``). O
     ``ts`` default e o agora em UTC (formato ``YYYYMMDDTHHMMSSZ``); injetar
-    ``ts`` e usado por testes.
+    ``ts`` e usado por testes. O ``stem`` default deriva do NOME do banco
+    de origem (``jobs.db`` -> ``jobs``, ``dataset_seen.db`` ->
+    ``dataset_seen`` — F70): bancos distintos no mesmo diretorio nunca
+    colidem (o ``os.replace`` do final so alcancando o proprio stem).
 
     - origem aberta read-only (o backup API le a origem; nada nela e escrito);
     - artefato final em modo ``journal_mode=DELETE`` (arquivo unico, sem
@@ -113,14 +140,15 @@ def backup_jobs_db(
         backup_dir = Path(backup_dir)
     if not db_path.exists():
         raise FileNotFoundError(f"sem banco para backup: {db_path}")
+    stem = stem if stem is not None else db_path.stem
     ts = ts or datetime.now(UTC).strftime(BACKUP_TS_FORMAT)
     backup_dir.mkdir(parents=True, exist_ok=True)
-    final = backup_dir / backup_filename(ts)
+    final = backup_dir / backup_filename(ts, stem)
 
     # Temporario no MESMO diretorio do destino (mesmo filesystem -> os.replace
     # atomico). Prefixo pontilhado: nao polui a listagem do diretorio.
     fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{backup_filename(ts)}.", suffix=".tmp", dir=backup_dir)
+        prefix=f".{backup_filename(ts, stem)}.", suffix=".tmp", dir=backup_dir)
     os.close(fd)
     tmp = Path(tmp_name)
     try:
@@ -147,8 +175,8 @@ def backup_jobs_db(
             except OSError:  # pragma: no cover — cleanup best-effort
                 log.warning("nao foi possivel remover temporario %s", leftover)
         raise
-    log.info("backup do jobs.db: %s -> %s (%d bytes)",
-             db_path, final, final.stat().st_size)
+    log.info("backup de %s: %s -> %s (%d bytes)",
+             db_path.name, db_path, final, final.stat().st_size)
     return final
 
 
@@ -159,10 +187,12 @@ def cleanup_backups(
 ) -> list[Path]:
     """Retencao simples: remove backups mais antigos que ``retention_days``.
 
-    ``0`` desliga a limpeza. Nomes fora do formato ``jobs-YYYYMMDDTHHMMSSZ.db``
-    sao preservados (defensivo) com aviso. Devolve a lista dos removidos.
-    Diretorio inexistente -> sem crash, nada a remover. Espelha a politica do
-    archive (``cleanup_archive`` do refresh_daily) — sem lifecycle complexo.
+    ``0`` desliga a limpeza. Nomes fora do formato
+    ``<stem>-YYYYMMDDTHHMMSSZ.db`` (stems da allowlist
+    ``BACKUP_STEMS``: jobs/dataset_seen) sao preservados (defensivo)
+    com aviso. Devolve a lista dos removidos. Diretorio inexistente ->
+    sem crash, nada a remover. Espelha a politica do archive
+    (``cleanup_archive`` do refresh_daily) — sem lifecycle complexo.
     """
     removed: list[Path] = []
     backup_dir = Path(backup_dir)
@@ -180,7 +210,9 @@ def cleanup_backups(
         ts = _parse_backup_ts(child.name)
         if ts is None:
             log.warning("backup cleanup: %s fora do formato %s; preservado",
-                        child.name, f"jobs-<ts>.db ({BACKUP_TS_FORMAT})")
+                        child.name,
+                        f"<stem>-<ts>.db ({BACKUP_TS_FORMAT}; stems: "
+                        f"{'/'.join(BACKUP_STEMS)})")
             continue
         age_days = (now - ts).total_seconds() / 86400.0
         if age_days >= retention_days:
