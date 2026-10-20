@@ -1606,6 +1606,21 @@ def digest_sections(
         except Exception:  # noqa: BLE001 — seção nova nunca derruba o digest
             pass
 
+    # F75 — gêmeos residuais (item 4 da spec): contagem read-only de grupos
+    # cross-source sobreviventes (mesma empresa+título, fontes distintas) —
+    # o guardrail conservador do F48 é POR DESIGN; a linha MEDE o que ele
+    # mantém. 0 grupos = linha ausente (regressão zero); >20 = ALERTA ⚠️
+    # (revisar dedup) — o alerta sobrevive ao compact (twins_alert_lines).
+    # Posição: entre a 🎯 (radar) e a ⏰ Intel — a ordem F44 "⏰ Intel
+    # imediatamente antes da 📌 Follow-up" fica intacta. Best-effort.
+    try:
+        twins = residual_twins_lines(current)
+        if twins:
+            lines.append("")
+            lines.extend(twins)
+    except Exception:  # noqa: BLE001 — medida nunca derruba o digest
+        pass
+
     # F44 — frescor do intel de empresas (gatilho de curadoria): lê os
     # MESMOS arquivos versionados do relatório offline (intel curado,
     # watchlist F13, mapa F15) e monta a seção ⏰ quando há gatilhos.
@@ -1765,7 +1780,7 @@ def funnel_seasonality_lines(
 
         📅 Funil & sazonalidade (último run 17/10) — 2.134 inaplicáveis; 156 vagas com janela de início
           ✂ alemão exigido: 1.189 · werkstudent puro: 705 · ... (+7 outros motivos)
-          📈 elegíveis: 871 hoje vs 779 há 7 runs (+92)
+          📈 drift 7 runs: brutas 108059 (+59) · pré-filtrado 3121 (+21) · mantido 871 (+92)
           📆 jan–jul/2027: 48 · ab sofort: 37 · ... (+19 outras janelas)
           ⚠ início imediato (ab sofort): 37 vagas — conflita com jan/2027
           📌 candidaturas (log F41): 12 eventos · 8 vagas — aplicadas 5 · ...
@@ -1823,9 +1838,25 @@ def funnel_seasonality_lines(
             txt += f" (+{len(alive) - max_reasons} outros motivos)"
         lines.append(f"  ✂ {txt}")
 
-    # 📈 trend semanal (último run vs 7 runs atrás; ausente sem histórico).
+    # 📈 drift semanal POR ESTÁGIO (F75 item 2: variação do último run vs o
+    # de 7 runs atrás nas três etapas da cascata — raw→pré-filtrado→mantido,
+    # campos já registrados no record ``type: run``). O report NOVO
+    # (funnel_report.build_report) traz "drift"; reports legados/montados à
+    # mão sem o campo caem no "trend" antigo (só eligible) — migração sem
+    # quebra de contrato. Ausente sem histórico.
+    drift = report.get("drift")
     trend = report.get("trend")
-    if trend:
+    if drift:
+        stage_parts: list[str] = []
+        for stage in drift.get("stages") or []:
+            d = int(stage.get("delta") or 0)
+            delta_txt = f"+{d}" if d > 0 else (str(d) if d < 0 else "±0")
+            stage_parts.append(f"{stage.get('label')} {stage.get('last')} "
+                               f"({delta_txt})")
+        if stage_parts:
+            lines.append(f"  📈 drift {drift.get('window')} runs: "
+                         + " · ".join(stage_parts))
+    elif trend:
         d = int(trend.get("delta") or 0)
         delta_txt = f"+{d}" if d > 0 else (str(d) if d < 0 else "±0")
         lines.append(f"  📈 elegíveis: {trend.get('eligible_last')} hoje vs "
@@ -1919,6 +1950,76 @@ def funnel_seasonality_section(
         return funnel_seasonality_lines(report)
     except Exception:  # noqa: BLE001 — seção nova nunca derruba o digest
         return []
+
+
+# ---------------------------------------------------------------------------
+# F75 — gêmeos residuais: contagem read-only de grupos cross-source
+# sobreviventes no elegível (spec item 4). Instrumento de MEDIDA — nunca
+# funde, nunca remove, nunca muda ranking/score.
+# ---------------------------------------------------------------------------
+
+# Limiar do ALERTA (spec F75: "alerta se >20 (revisar dedup)"). Guardrail
+# conservador do F48 é POR DESIGN — a linha normal INFORMA, o limiar ALERTA.
+RESIDUAL_TWINS_ALERT = 20
+
+# Prefixo EXATO da linha de alerta — o compactador do Telegram extrai por
+# prefixo (padrão F44/F36.1) para o ⚠️ sobreviver aos níveis de aperto.
+TWINS_ALERT_PREFIX = "⚠️ Gêmeos residuais"
+
+
+def residual_twins_count(ranking: list[dict]) -> int:
+    """F75 — grupos cross-source sobreviventes: MESMA empresa (string exata,
+    casefold) + MESMO título (chave DE/EN do dedup — ``_de_en_title_key``,
+    uma só fonte de verdade) em DUAS fontes ou mais.
+
+    Agrupamento read-only INSPIRADO no ``cross_source_dedup`` (F48): o dedup
+    candidata pares por (cidade, título) e reprova por identidade/guardrails;
+    este RADAR mede o que o guardrail conservador MANTÉM — a chave
+    empresa+título enxerga os gêmeos que a chave por cidade não pode ver
+    (twin com ``location`` ausente de um lado, ex.: absolventa sem cidade).
+    Âncora 19/10 (725 elegíveis): 10 grupos = 8 Amazon (absolventa×
+    amazon_jobs, loc ausente de um lado) + 1 Würth (absolventa×BA) +
+    1 Boston Scientific (sf×sf, cidades divergentes) — reproduzida ao
+    vivo no relatório da fase. Vaga sem empresa/título/fonte: fora da
+    contagem (sem chave, sem grupo).
+    """
+    from internship_finder.dedup import _de_en_title_key
+    groups: dict[tuple[str, str], set[str]] = {}
+    for job in ranking:
+        if not isinstance(job, dict):
+            continue
+        company = str(job.get("company") or "").strip().casefold()
+        title_key = _de_en_title_key(job.get("title"))
+        source = str(job.get("source") or "").strip()
+        if not company or not title_key or not source:
+            continue
+        groups.setdefault((company, title_key), set()).add(source)
+    return sum(1 for sources in groups.values() if len(sources) >= 2)
+
+
+def residual_twins_lines(ranking: list[dict]) -> list[str]:
+    """F75 — linha do digest (contagem + alerta >20). ``[]`` quando 0
+    (linha ausente = regressão zero para rankings sem gêmeos; a linha é
+    instrumento de medida — o número aparece quando existe o que medir).
+    """
+    count = residual_twins_count(ranking)
+    if count <= 0:
+        return []
+    if count > RESIDUAL_TWINS_ALERT:
+        return [f"{TWINS_ALERT_PREFIX}: {count} grupos cross-source "
+                f"(mesma empresa+título em fontes distintas) — acima de "
+                f"{RESIDUAL_TWINS_ALERT}, revisar dedup (F48)"]
+    return [f"👯 Gêmeos residuais: {count} grupos cross-source "
+            f"(mesma empresa+título em fontes distintas)"]
+
+
+def twins_alert_lines(digest_lines: list[str]) -> list[str]:
+    """Extrai a linha de ALERTA de gêmeos residuais (F75) de um digest
+    montado — ``[]`` quando não há alerta (linha normal 👯 e rankings sem
+    gêmeos não são extraídos). Uso: compactador do Telegram
+    (``refresh_daily.build_message``) — o ALERTA sobrevive ao encurtamento.
+    """
+    return _section_by_prefix(digest_lines, TWINS_ALERT_PREFIX)
 
 
 # ---------------------------------------------------------------------------

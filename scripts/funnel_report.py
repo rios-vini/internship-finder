@@ -232,6 +232,43 @@ def weekly_trend(run_records: list[dict], *, window: int = WEEK_WINDOW) -> dict 
             "delta": last - then, "window": window}
 
 
+# F75 — estágios do funil cuja variação semanal vai ao DIGEST (spec F75
+# item 2: "variação semanal por estágio raw→pré-filtrado→mantido, já
+# registrados" no record ``type: run``). Campos REAIS do record, na
+# ordem da cascata; rótulos pt-BR da spec.
+STAGE_LABELS = (
+    ("total_collected", "brutas"),
+    ("filtered", "pré-filtrado"),
+    ("eligible", "mantido"),
+)
+
+
+def weekly_stage_drift(run_records: list[dict], *,
+                       window: int = WEEK_WINDOW) -> dict | None:
+    """F75 — variação semanal POR ESTÁGIO do funil (último run vs o run de
+    ``window`` corridas atrás).
+
+    Generalização do ``weekly_trend`` (que mede só o eligible): um
+    estágio só entra quando o campo existe E é inteiro nos DOIS records
+    (record antigo sem campo = estágio ausente, nunca inventado). Menos
+    de ``window`` records ou nenhum estágio medível -> ``None`` (a linha
+    do digest fica ausente — padrão "campo ausente, nunca mentira").
+    """
+    if len(run_records) < window:
+        return None
+    last, then = run_records[-1], run_records[-window]
+    stages: list[dict] = []
+    for field, label in STAGE_LABELS:
+        a, b = last.get(field), then.get(field)
+        if isinstance(a, int) and not isinstance(a, bool) \
+                and isinstance(b, int) and not isinstance(b, bool):
+            stages.append({"field": field, "label": label,
+                           "last": a, "then": b, "delta": a - b})
+    if not stages:
+        return None
+    return {"window": window, "stages": stages}
+
+
 # ---------------------------------------------------------------------------
 # Cauda pessoal (event log F41) — desfechos das candidaturas
 # ---------------------------------------------------------------------------
@@ -326,6 +363,10 @@ def build_report(metrics_path: str | Path = DEFAULT_METRICS,
     return {
         "funnel": funnel,
         "trend": weekly_trend(runs, window=week_window),
+        # F75 — drift semanal POR ESTÁGIO (raw -> pré-filtrado -> mantido):
+        # a linha 📈 do digest lê DAQUI (o "trend" de cima fica como API
+        # legada do relatório offline — format_report não muda).
+        "drift": weekly_stage_drift(runs, window=week_window),
         "surface": len(jobs),
         "ranked": ranked,
         "best": best,
