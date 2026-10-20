@@ -213,7 +213,12 @@ REPO = Path(__file__).resolve().parent.parent
 # dataset_source/cli/sqlite_backup); âncora -> commit F70 1/2
 # (016da00), o 2/2 edita SÓ este teste. A F70 NÃO toca minimal_page.py
 # (render legado segue congelado).
-_AB_BASELINE_SHA = "98e1e27276e7bc9663343c37e0f18d76b28f4c1d"
+# F76 (20/10): idem F80/F70 — src/ moveu (dataset_fetch.py novo + wiring
+# em dataset_source); âncora -> commit F76 1/2 (8bbe9d8, REBASE pós-F72.1
+# 312b34d — o 1/2 original fcf4112 foi refeito), o 2/2 edita
+# SÓ este teste. A F76 NÃO toca minimal_page.py (render legado segue
+# congelado em _AB_LEGACY_PAGE_SHA).
+_AB_BASELINE_SHA = "8bbe9d81f7860489b896b205477fcfd2f8ecb265"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
