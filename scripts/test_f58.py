@@ -156,9 +156,13 @@ check("B3 registry: nenhuma entrada declara avature para Siemens "
       "(a série avature sai do registry)",
       not any(e.ats == "avature" and "siemens" in e.name.casefold()
               for e in SEED))
-check("B4 mapa de migração: exatamente a chave Siemens (ats, slug-URL, nome)",
+check("B4 mapa de migração: exatamente as chaves Siemens (F58) + AkzoNobel "
+      "(F72.1, 20/10 — mesma evidência: feed morto + careersite Phenom "
+      "validado ao vivo; a chave AkzoNobel usa o SLUG do manifest 'careers' "
+      "+ nome exato, o que protege o Swiss Re do mesmo slug; ver test_f72_1.py)",
       set(TENANT_ATS_OVERRIDES)
-      == {("avature", AVATURE_URL, "Siemens Healthineers")},
+      == {("avature", AVATURE_URL, "Siemens Healthineers"),
+          ("successfactors", "careers", "AkzoNobel")},
       str(set(TENANT_ATS_OVERRIDES)))
 
 

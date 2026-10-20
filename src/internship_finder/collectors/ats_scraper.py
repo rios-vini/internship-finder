@@ -115,6 +115,31 @@ TENANT_ATS_OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
         "https://jobs.siemens-healthineers.com/en_US/searchjobs/SearchJobs",
         "Siemens Healthineers",
     ): ("phenom", "https://careers.siemens-healthineers.com"),
+    # AkzoNobel: SuccessFactors -> Phenom (~29/09/2026). Achado F72
+    # (auditoria viva 20/10): careers.akzonobel.com/sitemal.xml responde
+    # HTTP 500 PERSISTENTE (RetryExhausted apos 3 tentativas; 500
+    # re-medido a ~1h10 de distancia e por GET direto — CloudFront,
+    # 23 bytes) com o portal VIVO: raiz 303 -> /gb/en HTTP 200 com
+    # assinatura Phenom (data-ph-id). Serie do JSONL de metricas: 28 runs
+    # ok (~270 vagas/dia, 08-28/09) -> 22 runs FETCH_ERROR collected=0
+    # (29/09-20/10) — coleta cega com a empresa viva, mesmo padrao F58.
+    # Validado AO VIVO 20/10 com o caminho EXATO do pipeline
+    # (PhenomScraper, defaults locale en_us/country us): 225 vagas em ~2s;
+    # 5 student-pattern no board global (1 DE: "Praktikum /
+    # Studententatigkeit", Koln DEU, jobId 28874); identidade
+    # company == careers.akzonobel.com (P1.1). Manifest upstream
+    # verificado ao vivo 20/10: find_company("AkzoNobel") ainda resolve SO
+    # a linha successfactors com slug "careers" + url
+    # careers.akzonobel.com (o DESAMBIGUADOR e a URL; o slug "careers" e
+    # COMPARTILHADO com Swiss Re — o nome EXATO na chave do override e o
+    # que protege o outro tenant do mesmo slug) — remover este override
+    # quando o upstream atualizar a linha. Evidencias e serie completa:
+    # relatorio F72 (~/.hermes/handoff/f72-auditoria-127/).
+    (
+        "successfactors",
+        "careers",
+        "AkzoNobel",
+    ): ("phenom", "https://careers.akzonobel.com"),
 }
 
 

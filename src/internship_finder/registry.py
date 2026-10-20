@@ -168,7 +168,17 @@ SEED = [
     RegistryEntry(name="Schindler", ats="successfactors", tenant="successfactors:job"),
     RegistryEntry(name="Shell", ats="workday", tenant="workday:shell/shellcareers"),
     RegistryEntry(name="Unilever", ats="workday", tenant="workday:unilever/unilever_experienced_professionals"),
-    RegistryEntry(name="AkzoNobel", ats="successfactors", tenant="successfactors:careers"),
+    # F72 (20/10): AkzoNobel migrou de successfactors para phenom ~29/09/2026
+    # — feed legacy sitemal.xml em 500 cronico desde ent (22 runs
+    # FETCH_ERROR collected=0) com o portal VIVO na plataforma Phenom
+    # (careers.akzonobel.com/gb/en HTTP 200). Tenant phenom validado AO VIVO
+    # (F72, caminho exato do pipeline): 225 vagas em ~2s. O manifest
+    # upstream AINDA resolve so a linha successfactors:careers -> a coleta
+    # usa o override de migracao TENANT_ATS_OVERRIDES
+    # (collectors/ats_scraper.py; mesmo padrao F58 do Siemens Healthineers)
+    # — remover quando o upstream atualizar a linha. Evidencia e serie
+    # completa: relatorio F72 (~/.hermes/handoff/f72-auditoria-127/).
+    RegistryEntry(name="AkzoNobel", ats="phenom", tenant="phenom:https://careers.akzonobel.com"),
     RegistryEntry(name="Rabobank", ats="workday", tenant="workday:rabobank/jobs"),
     RegistryEntry(name="NXP", ats="workday", tenant="workday:nxp/careers"),
     RegistryEntry(name="OMV", ats="successfactors", tenant="successfactors:omvagPRD"),
