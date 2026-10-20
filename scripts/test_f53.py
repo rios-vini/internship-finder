@@ -179,6 +179,9 @@ REPO = Path(__file__).resolve().parent.parent
 # padrão F56/F58-retroativo/F81: commit 2/2 edita SÓ este teste, diff
 # src/ segue vazio na branch, [SKIP] no CI raso, clone-da-produção
 # retém o SHA pós-squash).
+# F76.1 (20/10, orquestrador na verificação — 4ª ocorrência da classe
+# F58, guard VIVO pegando LOUD como projetado): discovery_rules.py
+# NOVO em src/ sem mover a âncora. Move: →ac19014 (head da fase).
 # F72.1 (20/10, orquestrador na verificação — padrão F58 pela 3ª vez,
 # agora com o guard VIVO e pegando): a F72.1 tocou src/
 # (collectors/ats_scraper.py override + registry.py re-point AkzoNobel)
@@ -218,7 +221,7 @@ REPO = Path(__file__).resolve().parent.parent
 # 312b34d — o 1/2 original fcf4112 foi refeito), o 2/2 edita
 # SÓ este teste. A F76 NÃO toca minimal_page.py (render legado segue
 # congelado em _AB_LEGACY_PAGE_SHA).
-_AB_BASELINE_SHA = "8bbe9d81f7860489b896b205477fcfd2f8ecb265"
+_AB_BASELINE_SHA = "ac19014f932026f8d61aa0d4f76616feef8e1e5c"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
