@@ -17,6 +17,17 @@ A **consistência** entre o tenant declarado no registry e o tenant que o
 runtime de fato resolve/coleta é verificável por ``tenant_consistency_report``
 (configuração x resultado real, classificação por empresa — ver docstring da
 função) e exposta pelo ``--health`` (chave ``registry_consistency``).
+
+TENANT COMPARTILHADO ``phenom:nan`` (F81): o slug ``nan`` é o identificador
+LITERAL de um tenant Phenom compartilhado da base upstream — declarado aqui
+para DHL/Allianz/Merck/Kuehne+Nagel e resolvido em runtime (sem declaração)
+também para ABB/Philips/Roche/BCG. NÃO é NaN/bug do pandas nem erro a
+purgar/renomear: a série é saudável (32/32 runs ``ok``; 1.064–1.115
+vagas/dia na medição do F49 §2.1, 17/10/2026, registro ``type: tenant`` do
+JSONL de métricas) e o guard de regressão vive em ``scripts/test_f81.py``
+(lista estável de declarantes + fixture verbatim + contra-caso do
+KEY_BUILD). A sanidade de KEY_BUILD (F80) mira ``ats_type`` de FATIA do
+dataset (``sf_dataset:<ats_type>``) — nunca este slug de TENANT.
 """
 
 from __future__ import annotations
@@ -70,6 +81,16 @@ SEED = [
     RegistryEntry(name="Covestro", ats="workday", tenant="workday:covestro/cov_external"),
     RegistryEntry(name="Evonik", ats="workday", tenant="workday:evonik/external_careers"),
     # --- 27 da expansão E2 (2026-08-12) ---
+    # DHL — 1º declarante do tenant COMPARTILHADO ``phenom:nan``. O slug
+    # "nan" é o identificador LITERAL do tenant Phenom na base upstream
+    # (artefato do manifest adotado como slug), NÃO um NaN/bug do pandas:
+    # série saudável 32/32 runs ok; 1.064–1.115 vagas/dia (medição F49
+    # §2.1, 17/10/2026, registro ``type: tenant`` do JSONL de métricas).
+    # Serve no registry: DHL/Allianz/Merck/Kuehne+Nagel; só em runtime
+    # (resolução dinâmica, não declarada): ABB/Philips/Roche/BCG. Nenhuma
+    # fase futura deve tratar ``phenom:nan`` como NaN a purgar/renomear —
+    # o quase-erro do prompt da F80 (ats_type "nan" → loud) mira FATIA do
+    # dataset, não slug de TENANT. Guard: scripts/test_f81.py.
     RegistryEntry(name="DHL", ats="phenom", tenant="phenom:nan"),
     RegistryEntry(name="Hellmann", ats="workday", tenant="workday:hellmann/hellmannexternaljobs"),
     # Lidl: o RCM do successfactors serve o feed completo
@@ -119,11 +140,17 @@ SEED = [
     # + fetch real OK >0 vagas); tenant copiado da saída (sem invenção).
     # Otto (jazzhr:otto) REMOVIDA em 15/09: falso positivo — otto.applytojob.com
     # não é o Otto Group (auditoria de cobertura; ver seção J.8).
+    # Allianz — declara o tenant COMPARTILHADO ``phenom:nan`` (slug "nan"
+    # LITERAL da base upstream — NÃO NaN/bug; ver bloco da DHL acima e
+    # scripts/test_f81.py). Série saudável: 1.757 vagas no run 19/10/2026.
     RegistryEntry(name="Allianz", ats="phenom", tenant="phenom:nan"),
     RegistryEntry(name="Adidas", ats="moka", tenant="moka:adidas/140456"),
     RegistryEntry(name="Puma", ats="workday", tenant="workday:puma/jobs_at_puma"),
     RegistryEntry(name="Hella", ats="cornerstone", tenant="cornerstone:hella"),
     RegistryEntry(name="Fraunhofer", ats="successfactors", tenant="successfactors:fraunhofer"),
+    # Merck — declara o tenant COMPARTILHADO ``phenom:nan`` (slug "nan"
+    # LITERAL da base upstream — NÃO NaN/bug; ver bloco da DHL acima e
+    # scripts/test_f81.py). Série saudável: 359 vagas no run 19/10/2026.
     RegistryEntry(name="Merck", ats="phenom", tenant="phenom:nan"),
     RegistryEntry(name="Boehringer Ingelheim", ats="successfactors", tenant="successfactors:BoehringerPRD"),
     RegistryEntry(name="HelloFresh", ats="greenhouse", tenant="greenhouse:hellofresh"),
@@ -191,6 +218,10 @@ SEED = [
     # kuehne-nagel.csod.com NAO resolve (NXDOMAIN — careersite extinto, K+N
     # migrou para phenom). FETCH_ERROR recorrente esperado por run; sem
     # exclusao per-tenant legitima (registry declara referencia, base decide).
+    # F81: phenom:nan é o tenant COMPARTILHADO cujo slug "nan" é LITERAL da
+    # base upstream (NÃO NaN/bug — ver bloco da DHL acima e test_f81). A
+    # série DESTE tenant é a evidência da medição F49 §2.1: 1.064–1.115
+    # vagas/dia, 32/32 runs ok (17/10/2026; registro verbatim no test_f81).
     RegistryEntry(name="Kuehne+Nagel", ats="phenom", tenant="phenom:nan"),
     RegistryEntry(name="Vattenfall", ats="smartrecruiters", tenant="smartrecruiters:Vattenfall"),
     RegistryEntry(name="4flow", ats="workday", tenant="workday:4flow/4flow"),
@@ -509,7 +540,9 @@ def tenant_consistency_report(
     A identidade da comparacao e POR EMPRESA (nome canonico do registry),
     nunca ``source`` isolado como identidade global: o MESMO tenant pode ser
     compartilhado por varias empresas (ex.: ``successfactors:jobs`` cobre
-    SAP/ZF/Kaufland/...; ``phenom:nan`` cobre DHL/Allianz/Merck/...) e a
+    SAP/ZF/Kaufland/...; ``phenom:nan`` — slug ``nan`` LITERAL da base
+    upstream, NÃO NaN/bug (F81) — cobre DHL/Allianz/Merck/Kuehne+Nagel no
+    registry e, so em runtime, ABB/Philips/Roche/BCG) e a
     classificacao de uma empresa nunca depende do que outra coletou.
 
     Devolve uma linha por entrada (ordem do registry, deterministica), com
