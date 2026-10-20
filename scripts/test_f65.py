@@ -36,7 +36,18 @@ import os
 import sys
 import tempfile
 import urllib.error
+from datetime import UTC, datetime
 from pathlib import Path
+
+# F65 (hotfix 20/10): `now` do re-score F56 PINADO na data da evidência.
+# O decay de frescor (score_job) envelhece o score da fixture ~0,005/dia;
+# sem o pino, os valores de evidência (9.0 -> 7.96) e a literal do CSV eram
+# uma bomba-relógio — quebrou 20/10, 1 dia após o merge (CI verde no dia
+# do push, vermelho no dia seguinte). Pino = autoria da evidência (19/10).
+# O monkeypatch intercepta o nome no namespace de refresh_daily (o import
+# é `from internship_finder.ranking import rescore_hydrated_jobs`), SEM
+# tocar em src/ — comportamento de produção usa o now real, SEMPRE.
+_FROZEN_NOW = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -701,11 +712,24 @@ def test_ab_counters() -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> int:
-    test_budget_gate()
-    test_candidates()
-    test_stage_offline()
-    test_e2e_refresh()
-    test_ab_counters()
+    # F65 (hotfix 20/10): pino do `now` do re-score F56 durante TODO o teste
+    # — intercepta `rescore_hydrated_jobs` no namespace de refresh_daily e
+    # força o _FROZEN_NOW (o argumento now=datetime.now(UTC) da linha 1735
+    # é sobrescrito). Restore no finally: produção NUNCA é afetada.
+    _orig_rescore = rd.rescore_hydrated_jobs
+
+    def _frozen_rescore(jobs, hydrated_ids, *, now=None, **kw):
+        return _orig_rescore(jobs, hydrated_ids, now=_FROZEN_NOW, **kw)
+
+    rd.rescore_hydrated_jobs = _frozen_rescore
+    try:
+        test_budget_gate()
+        test_candidates()
+        test_stage_offline()
+        test_e2e_refresh()
+        test_ab_counters()
+    finally:
+        rd.rescore_hydrated_jobs = _orig_rescore
     print()
     if FAILURES:
         print(f"FALHAS: {len(FAILURES)}")
