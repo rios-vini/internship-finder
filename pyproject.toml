@@ -23,6 +23,11 @@ dependencies = [
     # Scraper moka (Bayer) do ats-scrapers exige pycryptodome (extra opcional);
     # sem ele o fetch falha com FETCH_ERROR "requires pycryptodome" (P3 #36, 07/09).
     "pycryptodome>=3.20",
+    # F82 (20/10): scripts/test_f82.py (contrato yaml do ci.yml) faz
+    # yaml.safe_load. O PyYAML ja existia na venv de producao sem estar
+    # declarado (Required-by vazio) — declarar garante que a instalacao
+    # limpa do CI == suite local (parser puro, zero dependencias proprias).
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
