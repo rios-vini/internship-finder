@@ -71,10 +71,26 @@
 
 name: CI
 
+# F82 (20/10): fim do run duplicado — gatilho push SO em [main]. Todo push
+# numa branch com PR aberto ja dispara o evento pull_request (synchronize);
+# o gatilho push em "feature/*" rodava cada head de PR 2x (19/10: 30 runs,
+# ~37% redundantes). Trade-off: branch SEM PR aberto perde o sinal de push
+# (aceitavel — a convencao do repo e PR por fase; branch protection SEM
+# required contexts, merge e botao do dono).
 on:
   push:
-    branches: [main, "feature/*"]
+    branches: [main]
   pull_request:
+
+# F82 (20/10): higiene de fila — run superseded na MESMA ref e cancelado
+# (2 pushes rapidos no head do PR, ou merges seguidos no main: o mais novo
+# cobre o estado mais recente). Refs de PR (refs/pull/N/merge) sao
+# distintas das refs de push — nao colidem entre si. Contrato travado no
+# scripts/test_f82.py (excecao documentada a regra "este arquivo nao e
+# editado por fase": o OBJETO da F82 era o proprio ci.yml).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -593,8 +609,12 @@ jobs:
                     # test_find_company/test_resolver: smokes de rede
                     # sem assertions, commit 6426063). Fases NOVAS: criar
                     # scripts/test_fXX.py é SUFICIENTE — este arquivo NÃO
-                    # é mais editado por fase; só o bump do número
-                    # "N CI test suites" do README segue (contrato F73).
+                    # é editado por fase (única exceção DOCUMENTADA até
+                    # aqui: a própria F82, 20/10, cujo OBJETO era o ci.yml
+                    # — gatilho push só [main] + bloco concurrency, ver
+                    # topo do arquivo; contrato travado no test_f82.py);
+                    # só o bump do número "N CI test suites" do README
+                    # segue em toda fase (contrato F73).
                     # Descoberta vazia = abort (nunca falso-verde).
                     tests=($(python scripts/ci_discover_tests.py))
                     if [ ${#tests[@]} -eq 0 ]; then
