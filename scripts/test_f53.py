@@ -172,7 +172,17 @@ REPO = Path(__file__).resolve().parent.parent
 # segue vazio na branch, no CI raso ([SKIP]) e no main pós-squash).
 # O render legado segue congelado em _AB_LEGACY_PAGE_SHA (a F73 NÃO
 # toca minimal_page.py).
-_AB_BASELINE_SHA = "5794d274ed1fb64a021138e2b91cf3e0f8e20a87"
+# F81 (20/10): src/ moveu de novo (doc do tenant compartilhado
+# phenom:nan em registry.py — docstring do módulo + comentários por
+# entrada DHL/Allianz/Merck/Kuehne+Nagel + docstring do
+# tenant_consistency_report; fase SEM purge, SÓ documentação, zero
+# mudança de comportamento/coleta). Padrão F56/F59/F66/F73: âncora
+# move para o commit da fase que tocou src/ (e2371ac = commit F81 1/2;
+# o commit 2/2 edita SÓ este teste — src/ idêntico, o diff segue vazio
+# na branch, no CI raso ([SKIP]) e no main pós-squash). O render
+# legado segue congelado em _AB_LEGACY_PAGE_SHA (a F81 NÃO toca
+# minimal_page.py).
+_AB_BASELINE_SHA = "e2371ac6c469aed8c974b838612b62e98731d30d"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
