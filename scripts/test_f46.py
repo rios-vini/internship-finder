@@ -108,6 +108,24 @@ def _strip_f83(html: str) -> str:
     return _F83_HIDDEN_RE.sub("", html)
 
 
+# F86 — o item da legenda ⏳/⚠️ ganhou o sinal de tipo ambíguo
+# Werkstudent/Praktikum (badge só acende em TÍTULO DUPLO — sem fixture
+# B1/B2). Mesma mecânica: o A/B "pt == main" vale MÓDULO esse delta
+# (novo -> antigo no strip).
+_F86_LEGEND_NEW = (
+    "sinais informativos do §16e: duração citada acima do teto de 6 meses"
+    " / anúncio exige matrícula ativa em universidade alemã / tipo ambíguo"
+    " Werkstudent/Praktikum (F86 — decidir na vaga)")
+_F86_LEGEND_OLD = (
+    "sinais informativos do §16e: duração citada acima do teto de 6 meses"
+    " / anúncio exige matrícula ativa em universidade alemã")
+
+
+def _strip_f86(html: str) -> str:
+    """Remove o delta F86 (texto da legenda ⏳/⚠️) — A/B módulo F86."""
+    return html.replace(_F86_LEGEND_NEW, _F86_LEGEND_OLD)
+
+
 def check(name: str, ok: bool, detail: str = "") -> None:
     global N
     N += 1
@@ -250,9 +268,12 @@ def group_b_ab() -> None:
         # F83 — idem para o sufixo de ocultas da p_line (B1 top-N tem
         # hidden=16 pela regra 2/empresa; B2 full tem hidden=0, sufixo
         # ausente e strip = no-op).
-        cur_net = _strip_f83(_strip_f60(cur))
+        # F86 — idem para o terceiro sinal da legenda ⏳/⚠️ (tipo
+        # ambíguo Werkstudent/Praktikum — sem fixture com título duplo,
+        # strip = no-op nos cards).
+        cur_net = _strip_f86(_strip_f83(_strip_f60(cur)))
         check(f"B{1 if not full else 2} pt == main byte a byte "
-              f"módulo adições F60+F83 ({regime})",
+              f"módulo adições F60+F83+F86 ({regime})",
               cur_net == head,
               f"{len(cur_net.encode('utf-8'))}B vs "
               f"{len(head.encode('utf-8'))}B")
