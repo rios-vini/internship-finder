@@ -22,8 +22,8 @@ CONTROLES NEGATIVOS (nunca falso-verde): o MESMO detector é aplicado a
 cópias mutadas do ci.yml real (in-memory — zero disco/rede):
 concurrency ausente = violação; ``"feature/*"`` de volta ao push =
 violação; ``cancel-in-progress: false`` = violação; ``group`` fixo
-(fora da forma por-ref) = violação. O arquivo real tem que cumprir
-TODOS para o teste passar.
+(fora da forma por-ref) = violação; ``pull_request`` ausente =
+violação. O arquivo real tem que cumprir TODOS para passar.
 
 GOTCHA travado: em YAML 1.1 (PyYAML) a chave nua ``on:`` parseia como
 booleana ``True`` — o detector localiza a chave certa (True OU "on")
@@ -145,11 +145,15 @@ def main() -> int:
     def _group_fixed(m: dict) -> None:
         m["concurrency"]["group"] = "ci"
 
+    def _del_pr(m: dict) -> None:
+        m[_on_key(m)].pop("pull_request", None)
+
     for label, mutate, frag in [
         ("B1. sem bloco concurrency", _del_concurrency, "concurrency"),
         ("B2. \"feature/*\" de volta ao gatilho push", _feature_back, "push.branches"),
         ("B3. cancel-in-progress: false", _cancel_false, "cancel-in-progress"),
         ("B4. group fixo (não por-ref)", _group_fixed, "por-ref"),
+        ("B5. sem gatilho pull_request", _del_pr, "pull_request"),
     ]:
         m = copy.deepcopy(doc)
         mutate(m)
