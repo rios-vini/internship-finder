@@ -163,7 +163,16 @@ REPO = Path(__file__).resolve().parent.parent
 # na branch, no CI raso ([SKIP]) e no main pós-squash). O render
 # legado: a F66 NÃO toca minimal_page.py — o byte a byte (módulo o
 # strip F60) segue idêntico.
-_AB_BASELINE_SHA = "5ea23e0f43613b306596932022ece3ba6c5a04cf"
+# F73 (19/10): src/ moveu de novo (doc-sync D1 — dataset_source.py +
+# ranking.py docstrings contagem 101→127; janela do upstream ~05h→
+# ~14:30 UTC em dataset_source.py/direct_fetch.py/ats_scraper.py; só
+# documentação, zero mudança de comportamento). Padrão F56/F59/F66:
+# âncora move para o commit da fase que tocou src/ (5794d27 = commit
+# F73 1/2; o commit 2/2 edita SÓ este teste — src/ idêntico, o diff
+# segue vazio na branch, no CI raso ([SKIP]) e no main pós-squash).
+# O render legado segue congelado em _AB_LEGACY_PAGE_SHA (a F73 NÃO
+# toca minimal_page.py).
+_AB_BASELINE_SHA = "5794d274ed1fb64a021138e2b91cf3e0f8e20a87"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
