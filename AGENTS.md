@@ -92,6 +92,17 @@ When an architectural or behavioral decision changes, update the relevant docume
 
 Do not duplicate information unnecessarily. Prefer linking to the authoritative document.
 
+## Automation concurrency (Hermes sessions)
+
+The LLM provider used by the automation enforces a strict per-model concurrency limit (approximately one slot), not a requests-per-minute quota. Two simultaneous requesters saturate it; a third causes immediate 429 errors and cascading retries.
+
+- Run at most two Kanban workers at a time (`kanban.max_in_progress: 2`).
+- Before verifying, merging, or doing interactive session work, pause all running workers first: the interactive session itself counts as one requester.
+- Pausing a worker kills its current run but preserves its work-in-progress; the dispatcher re-queues it — do not re-queue manually.
+- Keep `agent.api_max_retries: 2` and `agent.auto_recovery_cycles: 1`. Higher retry values caused request storms and provider soft-bans in the past (2026-10-16).
+- Keep full test-suite runs outside the production cron window (09:00-09:15 UTC).
+- Watchdogs are configured to report only failures: silence means healthy.
+
 ## Before finishing a task
 
 Report:
