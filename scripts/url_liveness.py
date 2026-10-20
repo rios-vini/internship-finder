@@ -57,6 +57,7 @@ from pathlib import Path
 __all__ = [
     "LIVENESS_UA", "LIVENESS_TIMEOUT_S", "LIVENESS_DELAY_S",
     "LIVENESS_DEADLINE_S", "LIVENESS_MAX_BYTES", "SOFT_DEAD_MARKERS",
+    "FAKE200_MARKERS", "FAKE200_MAX_BODY_CHARS",
     "SPA_SHELL_SIZES", "SPA_SHELL_TITLE_RE", "DEAD_STATUS",
     "check_liveness", "check_liveness_v2", "parse_job_description",
 ]
@@ -87,6 +88,25 @@ SOFT_DEAD_MARKERS = (
     "nicht mehr verfügbar",
     "stelle ist besetzt",
 )
+
+# F87 — 200-falso textual de página de empresa (a classe E1 da F76: resposta
+# 200 que mente sobre o conteúdo — lá era WAF no lugar do CSV, aqui é aviso
+# de vaga preenchida). Caso real (Festo St. Ingbert, 20/10): jobs.festo.com
+# responde 200 com "Diese Stelle wurde leider bereits besetzt" — nenhum
+# marcador SOFT_DEAD existente casa ("stelle ist besetzt" tem outra ordem de
+# palavras). Gate DUPLO anti-falso-positivo:
+#   (a) marcador EXPLÍCITO de vaga preenchida (nada de substring genérica);
+#   (b) corpo CURTO (len <= FAKE200_MAX_BODY_CHARS): página real de vaga é
+#       grande (dezenas~centenas de KB; shell SPA ~268KB já coberto por
+#       _is_spa_shell); o aviso de preenchida é uma página mínima. Um
+#       "position filled" citado no meio de um anúncio grande e vivo não
+#       marca nada.
+# "not available" NÃO entra na lista: substring genérica ("item not
+# available", geo-block, stub de cookie-wall curto) — falso-positivo em
+# página viva; as variantes fortes ("position is no longer", "this position
+# has been filled") já são cobertas por SOFT_DEAD_MARKERS.
+FAKE200_MARKERS = ("bereits besetzt", "position filled")
+FAKE200_MAX_BODY_CHARS = 4096
 
 # F20 — assinaturas de shell SPA de board (Infineon/eightfold): tamanho
 # EXATO do shell generico servido para vaga morta (268.630 bytes medidos
@@ -120,11 +140,30 @@ _DESCRIPTION_MIN_CHARS = 120
 def _soft_dead_in_body(body_text: str) -> str | None:
     """Marcador de vaga encerrada presente no corpo? Devolve o marcador.
 
-    Case-insensitive (o corpo e comparado apos casefold). ``None` = corpo
+    Case-insensitive (o corpo e comparado apos casefold). ``None`` = corpo
     vivo. Pura — testavel offline com strings fixture.
     """
     folded = body_text.casefold()
     for marker in SOFT_DEAD_MARKERS:
+        if marker.casefold() in folded:
+            return marker
+    return None
+
+
+def _fake_200_in_short_body(body_text: str, body_len: int) -> str | None:
+    """F87 — 200-falso textual em corpo CURTO (página de empresa)?
+
+    Caso Festo: HTTP 200 cujo corpo (curto) declara a vaga preenchida
+    ("Diese Stelle wurde leider bereits besetzt") — anúncio encerrado por
+    trás de um 200. Gate duplo: marcador explícito de FAKE200_MARKERS E
+    corpo dentro de FAKE200_MAX_BODY_CHARS (página real de vaga é grande;
+    o aviso de preenchida é mínima). Pura — testavel offline com fixture.
+    ``None`` = nada marcado por este check.
+    """
+    if body_len > FAKE200_MAX_BODY_CHARS:
+        return None
+    folded = body_text.casefold()
+    for marker in FAKE200_MARKERS:
         if marker.casefold() in folded:
             return marker
     return None
@@ -415,6 +454,18 @@ def check_liveness_v2(
                 soft_dead += 1
                 soft_dead_ids.add(jid)
                 _info("soft-dead %s: corpo contem %r (%s)", jid, marker, url)
+                continue
+            # F87 — 200-falso textual em corpo curto (Festo "bereits
+            # besetzt"): mesma semantica soft-dead (desce do top, nunca
+            # excluido por este check sozinho — a remocao do JSON segue
+            # sendo exclusiva do hard-dead 404/410, F39).
+            fake_marker = _fake_200_in_short_body(body_text, body_len)
+            if fake_marker is not None:
+                dead.add(jid)
+                soft_dead += 1
+                soft_dead_ids.add(jid)
+                _info("soft-dead %s: 200-falso textual %r (%s)",
+                      jid, fake_marker, url)
                 continue
             if _final_path_is_homepage(final_url, url):
                 dead.add(jid)

@@ -776,6 +776,27 @@ def ab_sofort_flag(job: dict, lang: str = "pt") -> str:
             else AB_SOFORT_FLAG_TEXT)
 
 
+# F87 — badge "não-avaliável" (display-only, NUNCA exclusão): a descrição
+# que chegou ao eligible não dá base de julgamento (vazia / < 600 chars
+# medidos no Passo 0 / login-wall). O CAMPO ``not_assessable`` (motivo
+# estável) é anotado pelo refresh (refresh_daily._annotate_assessability) —
+# o render SÓ lê o campo, nunca recomputa: fixtures sem o campo ficam byte
+# a byte iguais (A/B de SHA congelado intactos) e a hidratação (F20/F65)
+# cura no run seguinte, quando a anotação deixa de acender.
+NA_FLAG_TEXT = "desc indisponível"
+
+
+def not_assessable_flag_text(job: dict, lang: str = "pt") -> str:
+    """F87: texto do badge ⚠️ quando o campo ``not_assessable`` existe.
+
+    ``job`` é o dict cru do ranking (mesma fonte dos outros flags F29);
+    sem campo = '' (nenhum byte novo no card). Pura e best-effort.
+    """
+    if not job.get("not_assessable"):
+        return ""
+    return I18N["na_flag"]["en"] if lang == "en" else NA_FLAG_TEXT
+
+
 # F29 item 4b — red-flag honesta: remuneração não citada no anúncio.
 SALARY_UNSPECIFIED_TEXT = "remuneração não citada"
 
@@ -843,6 +864,9 @@ I18N: dict[str, dict[str, str]] = {
     # F62 — badge de conflito de início (display-only; fonte: parser F45).
     "ab_sofort_flag": {"pt": AB_SOFORT_FLAG_TEXT,
                        "en": "immediate start — conflicts with Jan/2027"},
+    # F87 — badge de descrição não-avaliável (display-only; fonte: campo
+    # ``not_assessable`` anotado pelo refresh).
+    "na_flag": {"pt": NA_FLAG_TEXT, "en": "description unavailable"},
     # -- barra de filtros ---------------------------------------------------
     "search_ph": {"pt": "Buscar título, empresa, local…",
                   "en": "Search title, company, location…"},
@@ -1394,7 +1418,9 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           factors_attr: str = "",
           lang: str = "pt",
           duration_flag_pt: str = "",
-          start_conflict_flag: str = "") -> str:
+          start_conflict_flag: str = "",
+          na_flag: str = "",
+          na_flag_pt: str = "") -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -1449,8 +1475,9 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
             quality_text = employer_quality.badge_text(quality_entry)
         except Exception:  # noqa: BLE001 — view best-effort
             quality_text = ""
-    # F51 item 7 — ordem FIXA: 🛂 → 🇩🇪/🇫🇷(F60 sinal) → 🚫 → ⭐/🏆 → 🆕 → sinais F29
-    # → ⚠️ F62 (conflito de início) → ✅(pessoal) → 🔗. Emojis com aria-hidden="true": o leitor de tela lê
+    # F51 item 7 — ordem FIXA: 🛂 → 🇩🇪/🇫🇷(F60 sinal) → 🚫 → ⭐/🏆 → 🆕 → ⚠️ F87
+    # (não-avaliável) → sinais F29 → ⚠️ F62 (conflito de início) → ✅(pessoal)
+    # → 🔗. Emojis com aria-hidden="true": o leitor de tela lê
     # o texto VISÍVEL do badge (🇩🇪, 🚫, 🏆, ⭐ 4,0, 🔗); a semântica
     # completa de cada um vive UMA vez na legenda (details/summary
     # focusable). Os title= saíram dos badges (custo por card) — a
@@ -1474,6 +1501,15 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         badge_bits.append(f' <span class="eq">{quality_text}</span>')
     if is_new:
         badge_bits.append(' <span class="newb"><span aria-hidden="true">🆕</span></span>')
+    # F87 — não-avaliável (display-only; campo anotado pelo refresh).
+    if na_flag:
+        if lang == "en":
+            badge_bits.append(
+                f' <span class="flag"{_i18n_attr(na_flag_pt)}>⚠️ '
+                f'{_esc(na_flag)}</span>')
+        else:
+            badge_bits.append(
+                f' <span class="flag">⚠️ {_esc(na_flag)}</span>')
     if duration_flag:
         if lang == "en":
             badge_bits.append(
@@ -2127,6 +2163,9 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                               if lang == "en" else ""),
             enrollment_red_flag=enrollment_flag(job, lang),
             start_conflict_flag=ab_sofort_flag(job, lang),
+            na_flag=not_assessable_flag_text(job, lang),
+            na_flag_pt=(not_assessable_flag_text(job, "pt")
+                        if lang == "en" else ""),
             profile_scores=(profile_scores_map.get(jid) or {}) if profile_attrs
             else None,
             profile_ranks=(profile_ranks_map.get(jid) or {}) if profile_attrs

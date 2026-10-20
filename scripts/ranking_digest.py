@@ -907,6 +907,69 @@ def applicable_lines(current: list[dict], *, top: int = DIGEST_TOP5) -> list[str
     return lines
 
 
+# F87 — rótulos pt dos motivos do flag "não-avaliável" (fonte única; o
+# valor do campo é o código estável do detector, o rótulo é só exibição).
+NA_REASON_LABELS = {
+    "desc_vazia": "vazia",
+    "login_wall": "login wall",
+    "desc_curta": "curta",
+}
+
+
+def assessability_lines(
+    current: list[dict],
+    excluded_ids: set[str] | None = None,
+    *,
+    top: int = DIGEST_TOP,
+) -> list[str]:
+    """Linha ⚠️ do digest para vagas NÃO-AVALIÁVEIS (F87; display-only).
+
+    População: o corte Top ``top`` do ranking corrente MENOS os ids
+    excluídos das superfícies (mortas/inaplicáveis — MESMA semântica dos
+    Top 5: o que desceu não é analisado). Flaggada = job com o campo
+    ``not_assessable`` (anotado pelo refresh: desc vazia, < 600 chars ou
+    login-wall). O flag é SINAL, nunca exclusão — a linha só informa o
+    que não vale a análise do dono sem checar o browser.
+
+    Formato (uma linha; até 2 exemplos com título curto)::
+
+        ⚠️ Desc indisponível: 3 no Top 30 (2 vazias, 1 curta) —
+        henkel Data & Stakeholder Ops; TYTAN HR Systems
+
+    Sem flaggada no corte => lista VAZIA (nenhum byte no digest — o
+    comportamento pré-F87 é o caso comum dos fixtures/regressões).
+    Pura; nunca levanta.
+    """
+    try:
+        excluded = {str(i) for i in (excluded_ids or set())}
+        flagged: list[dict] = []
+        for pos, job in top_positions(current, top):
+            jid = str(job.get("id") or "")
+            if jid in excluded:
+                continue
+            if job.get("not_assessable"):
+                flagged.append(job)
+        if not flagged:
+            return []
+        by_reason: dict[str, int] = {}
+        for job in flagged:
+            reason = str(job.get("not_assessable") or "?")
+            by_reason[reason] = by_reason.get(reason, 0) + 1
+        breakdown = ", ".join(
+            f"{n} {NA_REASON_LABELS.get(reason, reason)}"
+            f"{'s' if n > 1 and reason != 'login_wall' else ''}"
+            for reason, n in sorted(by_reason.items())
+        )
+        examples = "; ".join(
+            _short_title(job) for job in flagged[:2])
+        head = f"⚠️ Desc indisponível: {len(flagged)} no Top {top} ({breakdown})"
+        if examples:
+            head = f"{head} — {examples}"
+        return [head]
+    except Exception:  # noqa: BLE001 — linha de digest nunca derruba nada
+        return []
+
+
 def new_since_lines(
     diff: tuple[set[str], set[str]] | None,
     current: list[dict],
@@ -1486,6 +1549,15 @@ def digest_sections(
             f"{stats['median']:g} · máx {stats['max']:g} "
             f"({_fmt(stats['count'])} vagas elegíveis)"
         )
+
+    # F87 — linha ⚠️ das não-avaliáveis no corte exibido (ANALISE o dono):
+    # aparece SÓ quando existe vaga flaggada no Top (campo
+    # ``not_assessable`` anotado pelo refresh — fixtures sem o campo não
+    # ganham NENHUM byte, regressão zero dos digests pré-F87).
+    na_lines = assessability_lines(current, excluded, top=top)
+    if na_lines:
+        lines.append("")
+        lines.extend(na_lines)
 
     if not previous:
         lines.append("")

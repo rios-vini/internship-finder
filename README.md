@@ -116,6 +116,21 @@ and the wildcards "mehrere Standorte" feed the DE/EN collapse) — on the
 542/783 → 704/783 (90%). Best-effort and budget-capped; a failure per
 posting never affects the run.
 
+**Assessability & liveness at intake.** Two guardrails keep the owner's
+manual analysis focused on postings worth analyzing. (a) Postings whose
+description can't support a judgment — empty (JS-only sources), under a
+measured 600-char threshold (login-wall fragments) or matching
+login-wall/placeholder patterns — carry a `not_assessable` flag shown as
+a ⚠️ badge on the page and one aggregate line in the Telegram digest; it
+is a signal, never an exclusion, and successful hydration clears it.
+(b) Brand-new postings (first appearance of the id vs the previous
+snapshot) get one cheap liveness fetch *before* entering the analysis
+window: a confirmed 404/410 is removed via the dead-link mechanism, and
+a fake-200 that announces the position was filled ("Diese Stelle wurde
+leider bereits besetzt") is treated as dead for display. Network
+timeouts never prove death, and the whole stage is budget-capped on the
+same daily fetch budget as hydration (off by default).
+
 **Ranking.** Deterministic, reproducible scoring (no ML) over the same
 eligible set, with a full per-component breakdown; ties broken by score
 → title → company → id. Two independent profiles rank it: the primary
@@ -176,7 +191,7 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **127 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-| **123** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+| **124** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **227** | commits, one feature PR per change (git log, first-parent) |
 
@@ -256,10 +271,14 @@ APIs da Bundesagentur/EURES + fontes de pesquisa), filtra estágios
 NL, FI, BE), remove inaplicáveis para um perfil específico, deduplica
 com 4 chaves + colapso de espelhos DE/EN, hidrata descriptions
 seletivamente e ranqueia com 2 perfis determinísticos — medidos contra
-benchmark rotulado à mão (tau +0,651). Produtos: página pública diária
-(GitHub Pages), digest no Telegram, tracker pessoal de candidaturas e
-radar de empresas-alvo. Documentação operacional completa (PT-BR) em
-`docs/README-operacional.md`.
+benchmark rotulado à mão (tau +0,651). Guardrails de análise: vagas sem
+descrição avaliável ganham flag ⚠️ (sinal, nunca exclusão; hidratação
+cura) e vagas novas passam por 1 liveness check no 1º sighting (404/410
+ou "besetzt" 200-falso = morta antes de gastar análise; timeout nunca
+mata; budget diário compartilhado com a hidratação). Produtos: página
+pública diária (GitHub Pages), digest no Telegram, tracker pessoal de
+candidaturas e radar de empresas-alvo. Documentação operacional
+completa (PT-BR) em `docs/README-operacional.md`.
 
 ## License
 
