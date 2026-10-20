@@ -179,6 +179,13 @@ REPO = Path(__file__).resolve().parent.parent
 # padrão F56/F58-retroativo/F81: commit 2/2 edita SÓ este teste, diff
 # src/ segue vazio na branch, [SKIP] no CI raso, clone-da-produção
 # retém o SHA pós-squash).
+# F72.1 (20/10, orquestrador na verificação — padrão F58 pela 3ª vez,
+# agora com o guard VIVO e pegando): a F72.1 tocou src/
+# (collectors/ats_scraper.py override + registry.py re-point AkzoNobel)
+# sem mover a âncora — o check falhou LOUD na verificação (como
+# deve). Move: →98e1e27 (head da fase). A lição está consolidada
+# nos cards F75/F80/F70; verificação da próxima fase src/ confere
+# cat-file + pré-condição REAL (não [SKIP]).
 # F80 (20/10, orquestrador na verificação — LANDMINE descoberto e
 # curado): a F80 tocou src/ (dataset_source.py + cli.py) sem mover a
 # âncora (classe F58) E o guard estava CEGO desde a F75: a âncora
@@ -206,7 +213,7 @@ REPO = Path(__file__).resolve().parent.parent
 # dataset_source/cli/sqlite_backup); âncora -> commit F70 1/2
 # (016da00), o 2/2 edita SÓ este teste. A F70 NÃO toca minimal_page.py
 # (render legado segue congelado).
-_AB_BASELINE_SHA = "016da006e47491adab8ba647eb70ceae03450ff1"
+_AB_BASELINE_SHA = "98e1e27276e7bc9663343c37e0f18d76b28f4c1d"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
