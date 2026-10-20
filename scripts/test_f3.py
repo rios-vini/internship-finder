@@ -76,6 +76,7 @@ Uso: .venv/bin/python scripts/test_f3.py
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import sys
@@ -184,11 +185,23 @@ def test_prefilter() -> None:
         ]
         csv_path = Path(tmp) / "slice.csv"
         write_csv(csv_path, rows)
-        manifest = {"acme": {"csv": str(csv_path), "rows": len(rows)}}
+        payload = csv_path.read_bytes()
+        # F80: ``manifest`` agora e o manifest COMPLETO (by_ats DENTRO) —
+        # a validacao L1 roda tambem no caminho injetado.
+        manifest = {
+            "version": "2.0",
+            "generated_at": "2026-10-20T14:30:00+00:00",
+            "stats": {"schema_version": "2.0", "schema_columns": DATASET_HEADER},
+            "by_ats": {"acme": {"csv": str(csv_path), "rows": len(rows)}},
+        }
+
+        def _fetch(url, dest):  # F80: contrato (bytes, sha256)
+            dest.write_bytes(payload)
+            return len(payload), hashlib.sha256(payload).hexdigest()
+
         jobs, summary = collect_dataset_jobs(
             manifest=manifest, sources=["acme"],
-            http_fetch=lambda url, dest: (dest.write_bytes(csv_path.read_bytes()),
-                                          len(rows))[1],
+            http_fetch=_fetch,
             workdir=Path(tmp),
         )
         check("A5a. rows_total = 5", summary["rows_total"] == 5,
@@ -507,12 +520,19 @@ def test_budget() -> None:
         pa, pb = Path(tmp) / "a.csv", Path(tmp) / "b.csv"
         write_csv(pa, rows_a)
         write_csv(pb, rows_b)
-        manifest = {"aaa": {"csv": str(pa)}, "bbb": {"csv": str(pb)}}
+        # F80: manifest COMPLETO (by_ats DENTRO).
+        manifest = {
+            "version": "2.0",
+            "generated_at": "2026-10-20T14:30:00+00:00",
+            "stats": {"schema_version": "2.0", "schema_columns": DATASET_HEADER},
+            "by_ats": {"aaa": {"csv": str(pa)}, "bbb": {"csv": str(pb)}},
+        }
 
         def fetch(url, dest):
             src = pa if str(url).endswith("a.csv") else pb
-            dest.write_bytes(src.read_bytes())
-            return 10
+            data = src.read_bytes()
+            dest.write_bytes(data)
+            return len(data), hashlib.sha256(data).hexdigest()
 
         # clock fake: t0=0; budget 5s; a 1a fatia termina em t=10 -> a 2a
         # estoura o budget e vira skipped_budget
