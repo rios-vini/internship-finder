@@ -319,15 +319,26 @@ def test_e_controles_negativos() -> None:
 
 def test_f_ci_membership() -> None:
     print("== F. CI: test_f85 na suite descoberta (auto-discovery F78) ==")
+    import re as _re
     import ci_discover_tests  # noqa: F401
     names = ci_discover_tests.discover_tests()
     check("F1. suite descoberta do CI inclui test_f85",
           "test_f85" in names, f"{len(names)} suites")
-    check("F2. README carrega '129' CI test suites (contrato F73 — bump "
-          "serial do dia: F91+F93 paralelas da base 127 — recontagem P0-11 "
-          "no merge do 2º: 127+test_f91+test_f93 = 129)",
-          "**129** | CI test suites" in (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8"),
-          "README.md sem a recontagem serial 127->129 (F91+F93)")
+    # F2 EVOLUÍDO na F94 (padrão test_f79 — contrato F73 paramétrico): o
+    # número do README tem que SER a contagem descoberta neste run. A
+    # asserção congelada da F91 ("bump serial do dia": 127+test_f91+
+    # test_f93 = 129) era um contrato PONTUAL do dia e quebrava em TODO
+    # bump futuro — a F94 (130ª suíte) foi a primeira a esbarrar nela
+    # (CI run 39694757432). Regra > contagem (lição F5/F10).
+    m = _re.search(
+        r"\*\*(\d+)\*\* \| CI test suites",
+        (Path(__file__).resolve().parent.parent / "README.md")
+        .read_text(encoding="utf-8"))
+    check("F2. README carrega a contagem ATUAL de CI test suites "
+          "(contrato F73 paramétrico — F94 evoluiu a asserção congelada "
+          "'129' da F91)",
+          m is not None and int(m.group(1)) == len(names),
+          f"README={m.group(1) if m else 'ausente'} vs {len(names)} descobertas")
 
 
 def main() -> int:
