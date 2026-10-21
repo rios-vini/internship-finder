@@ -58,6 +58,13 @@ from internship_finder.materials_ranking import rank_materials_jobs
 DIGEST_TOP = 30
 # Top 5 exibido no resumo diario.
 DIGEST_TOP5 = 5
+# F93 — cap de empresa nas seções top5/🆕 do digest (display-only): máx.
+# ``minimal_page.COMPANY_MAX_CARDS`` vagas por empresa no corte exibido,
+# a 3ª+ da empresa sai e a vaga seguinte de outra empresa sobe (MESMA
+# regra do site F11 T4/F20 — o digest apenas deixa de divergir dele).
+# Teto do top-3 da seção 🆕 "Novas desde ontem" (F11), nomeado F93: o cap
+# e a linha de ocultas compartilham o MESMO default.
+NEW_SINCE_MAX_SHOWN = 3
 # Variacao minima de posicao (em posicoes) para contar como "movimento
 # relevante" entre runs (evita ruido de troca +/-1).
 MOVER_MIN_DELTA = 5
@@ -555,6 +562,12 @@ def _top5_section(current: list[dict],
     (mesma semântica F20 da página — mortas/inaplicáveis descem do top
     e a vaga seguinte sobe). Default ``None`` = sem exclusões (regressão
     zero para chamadores legados).
+
+    F93: cap de empresa no corte exibido (mesma regra do site F11 T4) —
+    máx. ``COMPANY_MAX_CARDS`` vagas por empresa no Top 5; a 3ª+ de uma
+    empresa sai e a vaga seguinte de outra sobe. O 🏆 e o ⚡ usam o mesmo
+    corte (nunca divergem); as ocultas viram a linha "N vagas ocultas
+    pelo cap" no digest_sections.
     """
     lines = ["🏆 Top 5 atual"]
     if not current:
@@ -565,12 +578,76 @@ def _top5_section(current: list[dict],
              if excluded else current)
     if not shown:
         return lines + ["— todas as vagas do topo foram demovidas (ver ranking)"]
+    shown = _company_capped(shown, limit=DIGEST_TOP5)
     for pos, job in top_positions(shown, DIGEST_TOP5):
         lines.append(
             f"{pos}. {_short_title(job)} — "
             f"{job.get('company') or '—'} ({_score_text(job.get('score'))})"
         )
     return lines
+
+
+# ---------------------------------------------------------------------------
+# F93 — cap de empresa nas seções do digest (display-only). Reuso TOTAL da
+# regra do site: ``minimal_page.apply_company_cap`` + ``COMPANY_MAX_CARDS``
+# (F11 T4/F20) — mesma função, mesma constante, zero divergência site×digest.
+# ---------------------------------------------------------------------------
+
+def _company_capped(jobs: list[dict], *, limit: int,
+                    max_per_company: int | None = None) -> list[dict]:
+    """Corte exibido com cap de empresa (F93; wrapper puro da regra do site).
+
+    Lazy import de ``minimal_page`` (padrão do ``TELEGRAM_MAX_LEN`` em
+    ``format_top5``): o módulo do site não sobe no import de
+    ranking_digest e o ciclo continua impossível (minimal_page não
+    importa ranking_digest). ``max_per_company=None`` = o default do
+    site (``COMPANY_MAX_CARDS``) — o digest NUNCA inventa regra própria.
+    """
+    from minimal_page import COMPANY_MAX_CARDS, apply_company_cap
+    return apply_company_cap(
+        jobs, limit=limit,
+        max_per_company=COMPANY_MAX_CARDS if max_per_company is None
+        else max_per_company)
+
+
+def company_cap_hidden(jobs: list[dict], *, limit: int,
+                       max_per_company: int | None = None) -> list[dict]:
+    """Vagas que o cap DESLOCOU do corte exibido (F93; pura).
+
+    ``hidden`` = o que estaria no top-``limit`` SEM cap mas ficou fora do
+    corte COM cap — a 3ª+ vaga de uma empresa que a regra pula para a
+    vaga seguinte de outra empresa subir. É a matéria-prima da linha "N
+    vagas ocultas pelo cap": as capadas NÃO somem do digest, viram
+    contagem por empresa (padrão do rodapé do site F83). Ordem oficial
+    preservada (a função nunca reordena — ``apply_company_cap`` é
+    determinística e só pula).
+    """
+    shown = _company_capped(jobs, limit=limit,
+                            max_per_company=max_per_company)
+    shown_ids = {str(j.get("id") or "") for j in shown}
+    return [j for j in jobs[:limit]
+            if str(j.get("id") or "") not in shown_ids]
+
+
+def cap_hidden_line(hidden: list[dict]) -> str | None:
+    """1 linha "N vagas ocultas pelo cap (top empresas: X +N, …)" (F93).
+
+    ``None`` quando nada foi oculto — digest sem repetição >2/empresa é
+    byte a byte o de antes (regressão zero). Máx. 3 empresas listadas
+    (contagem desc, empate por nome); o detalhe mora no ranking completo
+    (o 🔗 link é a última linha do digest).
+    """
+    if not hidden:
+        return None
+    counts: dict[str, int] = {}
+    for job in hidden:
+        name = str(job.get("company") or "").strip() or "—"
+        counts[name] = counts.get(name, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+    listed = ", ".join(f"{name} +{n}" for name, n in ranked)
+    suffix = ", …" if len(counts) > 3 else ""
+    return (f"ℹ️ {len(hidden)} vaga(s) ocultas pelo cap de empresa "
+            f"(top empresas: {listed}{suffix})")
 
 
 # ---------------------------------------------------------------------------
@@ -629,6 +706,12 @@ def format_top5(jobs: list[dict], *, max_len: int | None = None,
     da F25). MESMA semântica da página F20: descem do Top 5 e a vaga
     seguinte sobe — ficam no JSON. Default ``None`` = sem exclusões
     (comportamento pré-F25, regressão zero para chamadores legados).
+
+    F93: cap de empresa ANTES de enumerar (mesma regra do site F11 T4) —
+    máx. ``COMPANY_MAX_CARDS`` vagas/empresa no Top 5; a 3ª+ de uma
+    empresa é pulada e a vaga seguinte de outra sobe. Mesmo corte do 🏆
+    (as duas seções nunca divergem); as ocultas do dia viram a linha "N
+    vagas ocultas pelo cap" montada pelo digest_sections.
     """
     if max_len is None:
         from refresh_daily import TELEGRAM_MAX_LEN  # lazy (evita ciclo de import)
@@ -643,6 +726,10 @@ def format_top5(jobs: list[dict], *, max_len: int | None = None,
                 if str(j.get("id") or "") not in excluded]
     if not jobs:
         return "🙂 Nenhuma vaga elegível hoje após exclusões do topo (ver ranking)."
+    # F93 — cap de empresa ANTES da enumeração (regra do site): o Top 5
+    # lista no máx. 2 vagas por empresa; a vaga seguinte de outra empresa
+    # ocupa o lugar. Ordem oficial preservada (nunca reordena).
+    jobs = _company_capped(jobs, limit=DIGEST_TOP5)
     # F15 — lookup exato por empresa (match _norm; silêncio gracioso).
     # Mapeada = entrada COM score OU prêmio (spec §3: "quando mapeada";
     # entrada "unavailable" não tem sinal para oferecer — sem ⭐).
@@ -974,7 +1061,7 @@ def new_since_lines(
     diff: tuple[set[str], set[str]] | None,
     current: list[dict],
     *,
-    max_shown: int = 3,
+    max_shown: int = NEW_SINCE_MAX_SHOWN,
     big_diff: int = NEW_SINCE_BIG_DIFF,
 ) -> list[str]:
     """Secao '🆕 Novas desde ontem' do digest (F11 T1; contagem + top 3).
@@ -987,6 +1074,14 @@ def new_since_lines(
     O top-3 e escaneado em ordem oficial (score do pipeline) entre as
     novas; cada linha: titulo, empresa, score, apply_url (mesma prioridade
     da pagina — raw.apply_url com fallback job.url).
+
+    F93: cap de empresa no top-3 listado (mesma regra do site F11 T4) —
+    máx. ``COMPANY_MAX_CARDS`` vagas/empresa entre as listadas; a 3ª+ de
+    uma empresa é pulada e a nova seguinte de outra empresa sobe. A
+    CONTAGEM do header segue exata (nenhuma vaga some da conta); as
+    deslocadas do top-3 viram a linha "N vagas ocultas pelo cap" do
+    digest (montada pelo digest_sections). Sem repetição >2/empresa a
+    saída é byte a byte a de antes (regressão zero).
     """
     if diff is None:
         return []
@@ -1003,21 +1098,20 @@ def new_since_lines(
             "volta no próximo run)"
         )
         return lines
-    shown = 0
-    for job in current:
-        if shown >= max_shown:
-            break
-        if job.get("id") not in new_ids:
-            continue
+    # F93 — cap de empresa no corte listado (regra do site): as novas em
+    # ordem oficial passam pelo apply_company_cap com o MESMO teto da
+    # seção (``max_shown``) — máx. 2/empresa entre as listadas.
+    candidates = [job for job in current if job.get("id") in new_ids]
+    picked = _company_capped(candidates, limit=max_shown)
+    for shown, job in enumerate(picked, 1):
         url = _apply_url_of(job) or "—"
         lines.append(
-            f"  {shown + 1}. {_short_title(job)} — "
+            f"  {shown}. {_short_title(job)} — "
             f"{job.get('company') or '—'} — {_score_text(job.get('score'))} "
             f"— {url}"  # F12.5: URL inteira, NUNCA clipada (link quebrado = 404)
         )
-        shown += 1
-    if len(new_ids) > shown:
-        lines.append(f"  (+{len(new_ids) - shown} outras novas — ver página)")
+    if len(new_ids) > len(picked):
+        lines.append(f"  (+{len(new_ids) - len(picked)} outras novas — ver página)")
     return lines
 
 
@@ -1532,6 +1626,18 @@ def digest_sections(
     (nenhuma empresa >90d, nenhum alvo sem Kununu) também = seção
     ausente. Best-effort: arquivos ausentes/corrompidos -> sem seção,
     nunca derruba o digest.
+
+    F93: cap de empresa nas seções top5 (🏆 resumo e ⚡ apply_url — o
+    MESMO corte, as duas nunca divergem) e 🆕 "Novas desde ontem"
+    (regra do site F11 T4/F20: máx. ``COMPANY_MAX_CARDS`` vagas/empresa
+    no corte exibido; a vaga seguinte de outra empresa sobe, ordem
+    oficial preservada). Contrapartida de informação: 1 linha "N
+    vaga(s) ocultas pelo cap de empresa (top empresas: …)" fecha o
+    CORPO da seção ⚡ — viaja com o produto do dia em todos os níveis do
+    compact (o extrator puxa o corpo inteiro). Seção 🎯 Empresas-alvo
+    (watchlist) INTOCADA: é por-empresa por construção (só empresas
+    curadas aparecem; cap 5/dia RADAR_MAX_SHOWN) e cada evento é sinal
+    deliberado do dono. Ranking/JSON/CSV intocados (display-only).
     """
     current = load_ranking(current_path)
     if not current:
@@ -1599,6 +1705,7 @@ def digest_sections(
     # acima; sem snapshot usavel, secao ausente) e 🎯 Top 5 aplicaveis
     # (visa_friendly E sem DE-required — o filtro que mais importa para
     # o dono). Falha em qualquer secao nova NUNCA derruba o digest.
+    ns_hidden: list[dict] = []  # F93 — ocultas do cap na seção 🆕
     try:
         previous_for_diff = load_ranking_or_none(previous_path)
         diff = new_since_previous(current, previous_for_diff)
@@ -1606,6 +1713,17 @@ def digest_sections(
         if ns_lines:
             lines.append("")
             lines.extend(ns_lines)
+        # F93 — ocultas do cap da 🆕: MESMA janela que a seção lista
+        # (diff válido, contagem < big_diff — quando a seção mostra SÓ
+        # a contagem não há lista que o cap desloque). Mesma fonte do
+        # corte interno de new_since_lines (ordem oficial ∩ new_ids) —
+        # o teste trava a igualança.
+        if diff is not None:
+            ns_new_ids = diff[0]
+            if ns_new_ids and len(ns_new_ids) < NEW_SINCE_BIG_DIFF:
+                ns_hidden = company_cap_hidden(
+                    [j for j in current if j.get("id") in ns_new_ids],
+                    limit=NEW_SINCE_MAX_SHOWN)
     except Exception:  # noqa: BLE001 — secao nova nunca derruba o digest
         pass
     try:
@@ -1656,6 +1774,22 @@ def digest_sections(
             lines.append("")
             lines.append(TOP5_SECTION_HEADER)
             lines.extend(top5_text.splitlines())
+            # F93 — contrapartida de informação: as ocultas do cap NÃO
+            # somem. 1 linha no CORPO da seção ⚡ (o compact preserva a
+            # seção inteira em todos os níveis — o extrator puxa header +
+            # corpo). Ocultas do ⚡ == ocultas do 🏆 (mesmo corte, mesma
+            # regra) — contadas UMA vez, unidas às da 🆕 por id (vaga
+            # oculta em duas seções é 1 vaga na contagem).
+            pool = ([j for j in current
+                     if str(j.get("id") or "") not in excluded]
+                    if excluded else current)
+            hidden_by_id: dict[str, dict] = {}
+            for job in (company_cap_hidden(pool, limit=DIGEST_TOP5)
+                        + ns_hidden):
+                hidden_by_id.setdefault(str(job.get("id") or ""), job)
+            cap_line = cap_hidden_line(list(hidden_by_id.values()))
+            if cap_line:
+                lines.append(cap_line)
     except Exception:  # noqa: BLE001 — seção extra nunca derruba o digest
         pass
 
