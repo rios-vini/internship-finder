@@ -22,7 +22,7 @@ rede, ``data/`` intocada), afirmando por entrada do SEED atual:
 4. **company nao-vazio** — nome canonico non-empty e UNICO (o
    ``CompanyRegistry`` indexa por nome: duplicata silenciosamente sobrescreve
    e encolhe o registro);
-5. **contagem == 127 == soma das ondas** — total do SEED == 127 ==
+5. **contagem == 145 == soma das ondas** — total do SEED == 145 ==
    soma das ondas documentadas nos marcadores ``# --- N da ...`` do proprio
    seed, com a contagem REAL de cada onda == N documentado (onda que diz 17
    e traz 16 = violador).
@@ -50,8 +50,8 @@ from internship_finder.registry import SEED, RegistryEntry  # noqa: E402
 
 FAILURES: list[str] = []
 
-# Contrato de contagem da especificacao F71 (127 empresas, roadmap v5).
-REGISTRY_TOTAL = 127
+# Contrato de contagem da especificacao F71 (145 empresas: 127 pre-F88 + 18 da onda F88).
+REGISTRY_TOTAL = 145
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
@@ -263,12 +263,12 @@ def test_shape_table_coverage() -> None:
 # ---------------------------------------------------------------------------
 
 def test_seed_form_contract() -> None:
-    print("== [2] forma por entrada no SEED (127) — zero violadores ==")
+    print("== [2] forma por entrada no SEED (145) — zero violadores ==")
     viol = seed_form_violations(list(SEED))
     for v in viol:
         print(f"    VIOLADOR: {v}")
     check("2a. zero violadores de forma no seed atual", not viol,
-          f"{len(viol)} violadores" if viol else "127 entradas conformes")
+          f"{len(viol)} violadores" if viol else "145 entradas conformes")
     # Visibilidade dos tenants compartilhados (regra da secao [3] e informativo):
     shared = Counter(
         (e.ats, _slug_of(e.tenant)) for e in SEED if e.tenant and ":" in e.tenant
@@ -314,7 +314,7 @@ def test_url_shapes() -> None:
 # ---------------------------------------------------------------------------
 
 def test_company_names() -> None:
-    print("== [4] company nao-vazio e unico (127 nomes) ==")
+    print("== [4] company nao-vazio e unico (145 nomes) ==")
     empty = [e for e in SEED if not (e.name or "").strip()]
     for e in empty:
         print(f"    VIOLADOR: company vazio em ats={e.ats!r} tenant={e.tenant!r}")
@@ -322,19 +322,19 @@ def test_company_names() -> None:
     dups = {n: c for n, c in Counter(e.name for e in SEED).items() if c > 1}
     for n, c in dups.items():
         print(f"    VIOLADOR: company duplicado {n!r} (x{c})")
-    check("4b. nenhum company duplicado", not dups, f"{dups}" if dups else "127 unicos")
+    check("4b. nenhum company duplicado", not dups, f"{dups}" if dups else "145 unicos")
     check("4c. CompanyRegistry indexa o seed inteiro (dict por nome nao colide)",
           len({e.name for e in SEED}) == len(SEED),
           f"{len(SEED)} entradas -> {len({e.name for e in SEED})} chaves")
 
 
 # ---------------------------------------------------------------------------
-# [5] contagem == 127 == soma das ondas documentadas
+# [5] contagem == 145 == soma das ondas documentadas
 # ---------------------------------------------------------------------------
 
 def test_counts_and_waves() -> None:
-    print("== [5] contagem == 127 == soma das ondas documentadas ==")
-    check("5a. total do SEED == 127 (contrato F71)", len(SEED) == REGISTRY_TOTAL,
+    print("== [5] contagem == 145 == soma das ondas documentadas ==")
+    check("5a. total do SEED == 145 (contrato F71)", len(SEED) == REGISTRY_TOTAL,
           f"len(SEED)={len(SEED)}")
     src = (Path(__file__).resolve().parent.parent / "src" / "internship_finder" / "registry.py").read_text(encoding="utf-8")
     block = seed_block(src)
@@ -347,7 +347,7 @@ def test_counts_and_waves() -> None:
     check("5c. cada onda: entradas reais == N documentado (lista completa)", not wv,
           f"{len(wv)} violadores" if wv else f"{len(waves)} ondas conformes")
     s = sum(n for n, _, _ in waves)
-    check("5d. soma das ondas documentadas == 127 == len(SEED)",
+    check("5d. soma das ondas documentadas == 145 == len(SEED)",
           s == REGISTRY_TOTAL == len(SEED),
           f"soma={s} vs total={len(SEED)}")
     n_src = len(_ENTRY_RE.findall(block))
