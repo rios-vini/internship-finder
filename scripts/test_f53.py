@@ -247,7 +247,16 @@ REPO = Path(__file__).resolve().parent.parent
 # ranking seguem). Nenhuma mudança de render: o badge/legenda da página
 # não dependem do SEED — o byte a byte da F53 segue válido módulo os
 # strips F60/F83/F86 (fixtures sem empresa da onda).
-_AB_BASELINE_SHA = "aba7c055ab8b2071da79cd06473903482b10279c"
+# F92 (21/10): src/ moveu de novo (cli.py — estágio de normalização de
+# ingestão F92 entre select_eligible e dedup; dedup.py — normalize_location
+# trata o sentinela '—' como ausente; company_aliases.py NOVO — loader
+# fail-closed + aplicação dos aliases canônicos e guards de location).
+# Nenhuma mudança de render: o estágio reescreve company/location no DADO
+# (pós-filter, pré-dedup) — as fixtures da F53 não usam labels do mapa
+# F92 nem locations com prefixo postal, o byte a byte segue válido
+# módulo os strips F60/F83/F86. Padrão F56/F88: âncora move para o head
+# da fase que tocou src/.
+_AB_BASELINE_SHA = "64a64a8ee5283a791d4c8658285a233b90c8499e"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
