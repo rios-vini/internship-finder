@@ -209,16 +209,53 @@ def _final_path_is_homepage(final_url: str, original_url: str) -> bool:
     return False
 
 
+def _loads_lenient(text: str):
+    """F91 — parse JSON-LD tolerante a malformação de board (pura).
+
+    Boards reais (absolventa, medido 21/10: 30/30 páginas) emitem JSON-LD
+    ``JobPosting`` com (a) caracteres de controle crus dentro de strings
+    (newlines literais — ``json.loads`` estrito rejeita) e (b) escapes
+    inválidos (``\\x`` — rejeita mesmo com ``strict=False``). Cascata, do
+    mais conservador ao mais reparador:
+
+    1. ``json.loads(text)`` — caminho atual, zero mudança p/ JSON válido;
+    2. ``strict=False`` — libera chars de controle dentro de strings;
+    3. reparo de escape: backslash NÃO seguido de escape válido vira
+       backslash literal (``\\\\``) + ``strict=False`` — o texto que o
+       autor da página quis dizer, não uma invenção nossa.
+
+    ``None`` quando nenhum passo parseia (o chamador pula o bloco — mesmo
+    comportamento de hoje para lixo real). Estritamente aditivo: bloco
+    que parseava continua idêntico; bloco que falhava silenciosamente
+    agora parseia (F20/F65/F91 hidratam descrições de absolutenta).
+    """
+    import json as _json
+    import re as _re
+    try:
+        return _json.loads(text)
+    except (ValueError, TypeError):
+        pass
+    try:
+        return _json.loads(text, strict=False)
+    except (ValueError, TypeError):
+        pass
+    try:
+        repaired = _re.sub(r'\\(?![\\"/bfnrtu])', r"\\\\", text)
+        return _json.loads(repaired, strict=False)
+    except (ValueError, TypeError):
+        return None
+
+
 def _iter_jsonld_jobpostings(html: str):
     """Percorre os blocos JSON-LD (objeto | array | @graph) e devolve os
     objetos com ``@type`` contendo ``JobPosting``. Pura (o parse é do
     chamador); segue a mesma convenção do ``official_page`` (Fase D).
+    F91: o parse usa ``_loads_lenient`` (malformação de board não mata o
+    bloco inteiro); os GATES do ``parse_job_description`` seguem intactos.
     """
-    import json as _json
     for m in _JSON_LD_JOB_RE.finditer(html):
-        try:
-            data = _json.loads(m.group(1).strip())
-        except (ValueError, TypeError):
+        data = _loads_lenient(m.group(1).strip())
+        if data is None:
             continue
         stack = data if isinstance(data, list) else [data]
         while stack:

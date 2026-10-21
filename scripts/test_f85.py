@@ -323,11 +323,11 @@ def test_f_ci_membership() -> None:
     names = ci_discover_tests.discover_tests()
     check("F1. suite descoberta do CI inclui test_f85",
           "test_f85" in names, f"{len(names)} suites")
-    check("F2. README carrega '127' CI test suites (contrato F73 — bump "
-          "serial do dia: F90 test_f90 125->126 no main + F88 test_f88 — "
-          "recontagem P0-11 no merge: 127)",
-          "**127** | CI test suites" in (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8"),
-          "README.md sem a recontagem serial 125->127")
+    check("F2. README carrega '128' CI test suites (contrato F73 — bump "
+          "serial do dia: F85->F90->F88 = 127 no main + F91 test_f91 — "
+          "recontagem P0-11 no merge: 128)",
+          "**128** | CI test suites" in (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8"),
+          "README.md sem a recontagem serial 127->128")
 
 
 def main() -> int:
