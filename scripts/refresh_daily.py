@@ -246,6 +246,48 @@ HYDRATION_SOURCE_EXTENDED = "hydrated_extended"
 EXTENDED_HYDRATION_DEADLINE_S = 600.0
 
 # ---------------------------------------------------------------------------
+# F91 — hidratacao dos CEGOS: description para as vagas desc-empty do pool
+# (< BLIND_DESCRIPTION_LIMIT chars), terceiro estagio flag-gated (padrao
+# F65), budget PROPRIO. Alvo medido 21/10: absolutenta 30/30 fetchaveis
+# (JSON-LD JobPosting malformado — chars de controle crus + escapes
+# invalidos — curado pelo parse leniente F91 no url_liveness) e
+# praktikum_info 1/1; sf_dataset:bundesagentur fica FORA da lista de
+# fontes: o Passo 0 mediu 74/74 refnrs das cegas MORTOS na fonte (detail
+# v4 HTTP 404, pagina publica 410 — o slice do dataset e espelho
+# atrasado; os postings vivos, 26/26, a Fase A ja cura diariamente) e a
+# spec manda pular fonte incuravel ("se parede, documentar e pular").
+# ---------------------------------------------------------------------------
+
+# Teto diario de fetches do estagio dos cegos (env OU .env, padrao F1):
+# INTERNSHIP_FINDER_BLIND_HYDRATION_BUDGET=N com N inteiro >= 1 liga;
+# 0/ausente/invalido = OFF (regra 9: zero fetch, JSON byte-identical).
+# Budget PROPRIO — nao compartilha o poço do F65 (spec F91 item 2).
+BLIND_HYDRATION_BUDGET_ENV_FLAG = "INTERNSHIP_FINDER_BLIND_HYDRATION_BUDGET"
+# Provenance distinta (hydration / hydrated_topn / hydrated_extended):
+# identifica no JSON o texto trazido pelo estagio dos cegos.
+HYDRATION_SOURCE_BLIND = "hydrated_blind"
+# Limiar "cego" da spec F91 (<50 chars) — NAO confundir com a janela
+# F65 (HYDRATION_SHORT_LIMIT=500): cegas sao vagas SEM texto util, a
+# janela estendida cobre vagas com texto CURTO.
+BLIND_DESCRIPTION_LIMIT = 50
+# Fontes atendidas pelo estagio, em ordem de prioridade por volume
+# curavel medido no Passo 0 (absolventa 30 > praktikum_info 1). Fontes
+# fora da lista (sf_dataset:bundesagentur: mortas na fonte, ver acima;
+# sf_dataset:oracle: URL e pagina de BUSCA, nao de vaga) ficam cegas —
+# motivo documentado no relatorio da fase.
+BLIND_HYDRATION_SOURCES: tuple[str, ...] = ("absolventa", "praktikum_info")
+# Timeout por fetch do estagio (pagens de board: 200-300 KB medidos;
+# 20s = mesmo teto conservador do direct_fetch).
+BLIND_HYDRATION_TIMEOUT_S = 20.0
+# Cap de corpo lido por fetch (1 MB — pagina real ~265 KB; protege o
+# parse de corpos anomais, mesmo cap logico do liveness).
+BLIND_HYDRATION_MAX_BYTES = 1_048_576
+# Teto TOTAL do estagio (pior caso patologico: budget inteiro em
+# timeouts; 600s cobre 30 timeouts — truncacao logada, nunca derruba).
+BLIND_HYDRATION_DEADLINE_S = 600.0
+
+
+# ---------------------------------------------------------------------------
 # F87 — flag "não-avaliável" (display + digest, NUNCA exclusão) + liveness
 # no 1º sighting. Princípio: não gastar a análise do dono em coisa que não
 # presta. (a) O flag acende quando a descrição que chegou ao eligible não dá
@@ -1693,20 +1735,29 @@ def _sync_personal_ranking(root: Path, data_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _hydration_budget(config_path: Path | str | None) -> int:
-    """F65 — teto diario de fetches da hidratacao estendida (pura).
+def _hydration_budget(
+    config_path: Path | str | None,
+    *,
+    flag: str = HYDRATION_BUDGET_ENV_FLAG,
+) -> int:
+    """Teto diario de fetches de um estagio de hidratacao (pura).
 
     Fonte (mesmo padrao do gate F1 ``ENRICHMENT_ENV_FLAG``): env herdada
-    ``INTERNSHIP_FINDER_HYDRATION_BUDGET`` OU a MESMA chave no ``.env``
-    (``load_env_config``); a env tem precedencia sobre o arquivo. Parse
-    FAIL-SAFE: ausente, vazia, nao-inteira ou negativa => ``0`` (OFF).
-    Default OFF (regra 9): zero mudanca de comportamento ate o dono
-    ligar — ``0`` = o estagio nem le o JSON (byte-identical garantido).
+    OU a MESMA chave no ``.env`` (``load_env_config``); a env tem
+    precedencia sobre o arquivo. Parse FAIL-SAFE: ausente, vazia,
+    nao-inteira ou negativa => ``0`` (OFF). Default OFF (regra 9): zero
+    mudanca de comportamento ate o dono ligar — ``0`` = o estagio nem le
+    o JSON (byte-identical garantido).
+
+    ``flag`` (F91): chave lida — default o knob historico do F65
+    (``INTERNSHIP_FINDER_HYDRATION_BUDGET``, tambem compartilhado pelo
+    intake F87); o estagio dos cegos passa o budget PROPRIO
+    (``BLIND_HYDRATION_BUDGET_ENV_FLAG``).
     """
-    raw = os.environ.get(HYDRATION_BUDGET_ENV_FLAG)
+    raw = os.environ.get(flag)
     if raw is None and config_path is not None:
         try:
-            raw = load_env_config(config_path).get(HYDRATION_BUDGET_ENV_FLAG)
+            raw = load_env_config(config_path).get(flag)
         except Exception:  # noqa: BLE001 — .env ilegivel => OFF, nunca derruba
             return 0
     if raw is None:
@@ -1936,6 +1987,278 @@ def _run_extended_hydration(
         write_metrics(metrics_path, [record])
     except Exception as exc:  # noqa: BLE001 — metrica e best-effort
         _warn("F65: metrica extended_hydration nao gravada: %s: %s",
+              type(exc).__name__, exc)
+    return record
+
+
+# ---------------------------------------------------------------------------
+# F91 — hidratacao dos CEGOS (desc-empty) por pagina publica com JSON-LD.
+# ---------------------------------------------------------------------------
+
+def _blind_hydration_candidates(
+    ranking: list,
+    *,
+    limit: int = BLIND_DESCRIPTION_LIMIT,
+    sources: tuple[str, ...] = BLIND_HYDRATION_SOURCES,
+) -> dict[str, list]:
+    """F91 — candidatas do estagio dos cegos (pura, offline-testavel).
+
+    Cega = description com menos de ``limit`` chars (limiar da spec F91,
+    <50) — SEM texto util para os detectores (skills/idioma ficam no
+    estado default). O corte e por COMPRIMENTO, nao por provenance: vaga
+    com description curtissima de qualquer fonte continua cega e pode
+    ser curada (o preenchimento so acontece se o texto novo for MAIOR —
+    nunca piora).
+
+    Ordem OFICIAL do ranking preservada dentro de cada fonte (a lista
+    vem ordenada do ``rank_jobs``/F56 = score desc — "as melhores
+    primeiro", spec F91 item 2). Fontes agrupadas na ordem de prioridade
+    de ``sources`` (volume curavel medido no Passo 0: absolventa 30 >
+    praktikum_info 1; sf_dataset:bundesagentur fora — mortas na fonte).
+
+    Devolve ``{fonte: [vagas...]}; as fontes fora da lista ficam de fora
+    (contadas pelo chamador para o relatorio, nunca fetchadas).
+    """
+    by_source: dict[str, list] = {s: [] for s in sources}
+    for job in ranking:
+        if not isinstance(job, dict):
+            continue
+        desc = job.get("description")
+        if desc is not None and len(str(desc)) >= limit:
+            continue
+        src = str(job.get("source") or "")
+        if src in by_source:
+            by_source[src].append(job)
+    return by_source
+
+
+def _default_blind_fetch_page(
+    url: str,
+    *,
+    timeout: float = BLIND_HYDRATION_TIMEOUT_S,
+    max_bytes: int = BLIND_HYDRATION_MAX_BYTES,
+) -> str | None:
+    """F91 — GET da pagina da vaga (default injetavel; None em falha).
+
+    Boards atendidos (absolventa/praktikum_info) servem HTML estatico
+    com JSON-LD (sem parede JS — Passo 0: 31/31 fetchaveis). UA explicito
+    do projeto (mesma string do ``direct_fetch``), timeout curto, corpo
+    lido com cap ``max_bytes``. Erro/timeout/HTTP != 200 => ``None``
+    (o chamador conta ``failed`` e preserva a vaga — Fase A pattern).
+    """
+    if not url or not str(url).startswith(("http://", "https://")):
+        return None
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": ("internship-finder/0.1 "
+                           "(daily public-source fetch; contact: repo owner)"),
+            "Accept": "text/html,application/xhtml+xml",
+        })
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read(max_bytes + 1)
+        if len(body) > max_bytes:
+            log.warning("F91: corpo de %s excede %d bytes — truncado",
+                        str(url).split("?")[0], max_bytes)
+            body = body[:max_bytes]
+        return body.decode("utf-8", "replace")
+    except Exception as exc:  # noqa: BLE001 — best-effort por vaga
+        log.warning("F91: GET %s falhou: %s",
+                    str(url).split("?")[0], exc)
+        return None
+
+
+def _run_blind_hydration(
+    data_dir: Path,
+    metrics_path: Path,
+    *,
+    run_id: str | None = None,
+    config_path: Path | str | None = None,
+    log=None,
+    fetch_page=None,
+    budget_override: int | None = None,
+) -> dict:
+    """F91 — estagio de hidratacao dos cegos (desc-empty do pool).
+
+    Terceiro estagio flag-gated (padrao F65), budget PROPRIO
+    (``INTERNSHIP_FINDER_BLIND_HYDRATION_BUDGET``; default 0 = OFF,
+    regra 9 — zero fetch, JSON byte-identical). Roda DEPOIS do F20
+    (top) e do F65 (janela estendida): pega o que AINDA esta cego —
+    fontes cujo texto so existe na pagina propria (absolventa/
+    praktikum_info) e cujo JSON-LD malformado so parseia com o fix
+    leniente F91 do ``url_liveness``. O topo exibido ENTRA (o F20 busca
+    a pagina destas fontes e falha no parse estrito — o fetch do F91 e
+    parse leniente, nao double-fetch do mesmo recurso util).
+
+    Por vaga: fetch da pagina -> ``parse_job_description`` (gates F22:
+    JSON-LD JobPosting >= 120 chars, cap 16 KB, so se maior que a atual)
+    -> description preenchida + provenance ``hydrated_blind`` ->
+    re-avaliacao honesta (``_reassess_hydrated_applicability``: texto
+    que revela ``german_required`` ganha o marcador e desce do topo —
+    a varredura F37.3 deste run remove em sequencia). Re-score F56 das
+    hidratadas + persistencia atomica JSON/CSV (score e coluna do
+    contrato CSV). Falha de fetch/parse: vaga preservada + contador
+    ``failed`` da fonte (Fase A pattern) — NUNCA derruba o run.
+
+    Devolve o registro gravado na metrica ``blind_hydration``;
+    ``{"budget": 0, "status": "off"}`` quando desligado.
+    """
+    def _info(msg: str, *args) -> None:
+        if log is not None:
+            log.info(msg, *args)
+        else:
+            print("F91: " + (msg % args if args else msg))
+
+    def _warn(msg: str, *args) -> None:
+        if log is not None:
+            log.warning(msg, *args)
+        else:
+            print("F91(WARN): " + (msg % args if args else msg))
+
+    budget = (_hydration_budget(config_path, flag=BLIND_HYDRATION_BUDGET_ENV_FLAG)
+              if budget_override is None else max(0, int(budget_override)))
+    if budget <= 0:
+        _info("hidratacao dos cegos DESLIGADA (default OFF; ligue com "
+              "%s=N no .env — N fetches/dia, regra 9: budget 0 = JSON "
+              "byte-identical)",
+              BLIND_HYDRATION_BUDGET_ENV_FLAG)
+        return {"budget": 0, "status": "off"}
+
+    eligible_path = data_dir / "eligible_jobs.json"
+    try:
+        ranking = json.loads(
+            eligible_path.read_text(encoding="utf-8")
+        ) if eligible_path.exists() else []
+    except Exception as exc:  # noqa: BLE001 — JSON ilegivel => estagio pula
+        _warn("hidratacao dos cegos: %s ilegivel (%s: %s) — estagio pulado",
+              eligible_path, type(exc).__name__, exc)
+        return {"budget": budget, "status": "unreadable_eligible"}
+
+    fetch = fetch_page or _default_blind_fetch_page
+    by_source = _blind_hydration_candidates(ranking)
+    blind_total = sum(
+        1 for j in ranking
+        if isinstance(j, dict) and (
+            j.get("description") is None
+            or len(str(j.get("description"))) < BLIND_DESCRIPTION_LIMIT)
+    )
+
+    t0 = time.monotonic()
+    record = {
+        "type": "blind_hydration",
+        "run_id": run_id or utcnow_iso(),
+        "timestamp": utcnow_iso(),
+        "budget": budget,
+        "blind_total": blind_total,
+        "candidates": sum(len(v) for v in by_source.values()),
+        "by_source": {
+            s: {"candidates": len(v), "fetched": 0, "hydrated": 0,
+                "failed": 0, "skipped": 0}
+            for s, v in by_source.items()
+        },
+        "fetched": 0,
+        "hydrated": 0,
+        "failed": 0,
+        "newly_inapplicable": 0,
+        "by_reason": {},
+        "duration_s": 0.0,
+    }
+    hydrated_ids: set[str] = set()
+    by_reason: dict[str, int] = {}
+    remaining = budget
+
+    for source in BLIND_HYDRATION_SOURCES:
+        for job in by_source.get(source, []):
+            if remaining <= 0:
+                record["by_source"][source]["skipped"] += 1
+                continue
+            if time.monotonic() - t0 > BLIND_HYDRATION_DEADLINE_S:
+                _warn("estagio dos cegos: teto de %.0fs atingido — %d "
+                      "candidata(s) restante(s) ficam cegas ate o proximo "
+                      "run", BLIND_HYDRATION_DEADLINE_S,
+                      sum(len(v) for v in by_source.values()) - record["fetched"])
+                remaining = 0
+                record["by_source"][source]["skipped"] += 1
+                continue
+            entry = record["by_source"][source]
+            entry["fetched"] += 1
+            record["fetched"] += 1
+            remaining -= 1
+            jid = str(job.get("id") or "")
+            current = str(job.get("description") or "")
+            try:
+                html = fetch(str(job.get("url") or ""))
+                new_desc = url_liveness.parse_job_description(html) \
+                    if html else None
+            except Exception as exc:  # noqa: BLE001 — por vaga, nunca fatal
+                _warn("hidratacao dos cegos: %s falhou (%s: %s) — vaga "
+                      "preservada", jid, type(exc).__name__, exc)
+                new_desc = None
+            if not new_desc or len(new_desc) <= len(current):
+                entry["failed"] += 1
+                record["failed"] += 1
+                continue
+            job["description"] = new_desc
+            job["description_source"] = HYDRATION_SOURCE_BLIND
+            job["description_hydrated_at"] = utcnow_iso()
+            hydrated_ids.add(jid)
+            entry["hydrated"] += 1
+            reason = _reassess_hydrated_applicability(job)
+            if reason:
+                job[HYDRATION_INAPPLICABLE_FLAG] = reason
+                by_reason[reason] = by_reason.get(reason, 0) + 1
+                _info("hidratacao dos cegos revelou %s em %s — desce do "
+                      "topo exibido (varredura F37.3 deste run remove do "
+                      "JSON)", reason, jid)
+
+    record.update({
+        "hydrated": len(hydrated_ids),
+        "hydrated_ids": sorted(hydrated_ids),
+        "newly_inapplicable": sum(by_reason.values()),
+        "by_reason": by_reason,
+        "duration_s": round(time.monotonic() - t0, 1),
+    })
+    if hydrated_ids:
+        # F56 — re-score APENAS das hidratadas (causa real: a descricao
+        # mudou) + reordenacao oficial. Best-effort: falha NUNCA derruba.
+        try:
+            rescored = rescore_hydrated_jobs(
+                ranking, hydrated_ids, now=datetime.now(UTC))
+            _info("F56: score recomputado para %d vaga(s) hidratada(s) "
+                  "pelo estagio dos cegos", rescored)
+        except Exception as exc:  # noqa: BLE001 — re-score nunca derruba
+            _warn("F91: re-score pos-hidratacao falhou (JSON segue com "
+                  "scores pre-hidratacao): %s: %s", type(exc).__name__, exc)
+        # Persistencia atomica (padrao F65): JSON + CSV (score e coluna do
+        # contrato CSV — mesmo cuidado da F56 top-N). Falha NUNCA derruba.
+        try:
+            from internship_finder.cli import (_write_json_atomic,
+                                               _write_atomic,
+                                               _dump_csv)
+            _write_json_atomic(ranking, eligible_path)
+            _write_atomic(
+                eligible_path.with_suffix(".csv"),
+                lambda fh: _dump_csv(fh, ranking))
+            _info("F91: %d descricao(oes) de cegas persistida(s) em %s",
+                  len(hydrated_ids), eligible_path)
+        except Exception as exc:  # noqa: BLE001
+            _warn("F91: hidratacao dos cegos nao persistida (JSON segue "
+                  "com descricoes originais): %s: %s",
+                  type(exc).__name__, exc)
+        # Cura do flag F87 e automatica: _annotate_assessability (mais
+        # abaixo no run) recomputa TODO ranking DEPOIS deste estagio e
+        # apaga not_assessable das vagas que ganharam texto suficiente.
+    _info("estagio F91 (cegos): budget=%d, %d cega(s) total(is), %d "
+          "candidata(s), %d fetch(es), %d hidratada(s), %d falha(s), %d "
+          "inaplicavel(is) novo(s), %.1fs",
+          budget, record["blind_total"], record["candidates"],
+          record["fetched"], record["hydrated"], record["failed"],
+          record["newly_inapplicable"], record["duration_s"])
+
+    try:
+        from internship_finder.metrics import write_metrics
+        write_metrics(metrics_path, [record])
+    except Exception as exc:  # noqa: BLE001 — metrica e best-effort
+        _warn("F91: metrica blind_hydration nao gravada: %s: %s",
               type(exc).__name__, exc)
     return record
 
@@ -2622,6 +2945,34 @@ def main(argv: list[str] | None = None) -> int:
                          extended_hydration_stats["hydrated"])
         except Exception as exc:  # noqa: BLE001 — F65 nunca derruba o run
             log.warning("F65: hidratacao estendida falhou (run segue, "
+                        "exit %d preservado): %s: %s",
+                        exit_code, type(exc).__name__, exc)
+
+        # F91 — hidratacao dos CEGOS: as desc-empty do pool (<50 chars)
+        # de fontes cujo texto so existe na pagina propria (absolventa,
+        # praktikum_info — JSON-LD malformado curado pelo parse leniente
+        # desta fase no url_liveness). Terceiro estagio flag-gated
+        # (padrao F65), budget PROPRIO
+        # (INTERNSHIP_FINDER_BLIND_HYDRATION_BUDGET; default 0 = OFF,
+        # regra 9: nenhuma mudanca ate o dono ligar). Roda DEPOIS do F20
+        # e do F65 — pega o que AINDA esta cego (incluindo o topo: o F20
+        # busca a pagina destas fontes e falha no parse estrito).
+        # sf_dataset:bundesagentur fica FORA (Passo 0: 74/74 refnrs
+        # mortos na fonte — espelho atrasado; as vivas a Fase A cura).
+        # Best-effort TOTAL; re-score F56 + persistencia atomica;
+        # german_required revelado desce via marcador + F37.3 deste run.
+        try:
+            blind_hydration_stats = _run_blind_hydration(
+                data_dir, metrics_path,
+                run_id=summary.get("run_id"),
+                config_path=config_path,
+                log=log)
+            if blind_hydration_stats.get("hydrated"):
+                log.info("F91 resumo: %d vaga(s) sairam da cegueira "
+                         "(estagio dos cegos)",
+                         blind_hydration_stats["hydrated"])
+        except Exception as exc:  # noqa: BLE001 — F91 nunca derruba o run
+            log.warning("F91: hidratacao dos cegos falhou (run segue, "
                         "exit %d preservado): %s: %s",
                         exit_code, type(exc).__name__, exc)
 
