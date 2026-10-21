@@ -1,0 +1,12 @@
+{
+  "_comment": "F92 — aliases canônicos de empresa (label sujo -> nome canônico). Diferente do F54 (display_aliases: SÓ no render, dados intactos) e do F66 (dedup_company_aliases: SÓ na chave de identidade do cross_source_dedup): ESTE mapa reescreve o CAMPO company no estágio de normalização de ingestão (cli.main, ANTES do dedup) — dedup, ranking, intel, página e digest passam a ver o nome canônico. Chave = string EXATA do dataset (match casefold inteiro, NUNCA substring); valor = nome canônico — quando o twin já existe no pool com label limpa, o valor É a label do twin (princípio F66: a identidade do valor tem que ser igual à do twin, senão o par não casa). Curadoria medida 21/10 09:43 UTC (710 eligible): SUSONITY 2 vagas = portal da Merck (URLs jobs.vibrantm.com/merck/); 'Fa Exdu Saasfaprod1' 1 = Daimler Buses (título literal 'Einkauf Daimler Buses am Standort Mannheim'; alvo = label existente no pool 'Daimler Buses GmbH'); 'gacmotoreuropebv-1747132357' 2 = tenant teamtailor da GAC Motor Europe BV; descasamento dataset×dataset: peeces (join_com) × Peeces GmbH (absolventa), axessintelligence (join_com) × axess Intelligence GmbH (absolventa), rfi-trading (join_com) × RFI Food Ingredients (twin fora do pool no dia, alias fica p/ o retorno), ELIA (eures) × Elia System Operator SA (successfactors). REGRA LEVIO/TYTAN (F66/F9/F10): label de tenant multi-empregador NUNCA entra. CLASSE 3 (razão legal de subsidiária, ex.: 'Lidl Dienstleistung GmbH & Co. KG') FICA FORA por design — collapse de subsidiária muda contagens de cap e é decisão do dono (spec F92 item 3: só relatório). Loader fail-closed: arquivo ausente/ilegível/ambíguo = estágio segue SEM aliases (nunca crasha). id/URL/raw das vagas NÃO mudam — só o campo company (identidade técnica de dataset_seen/JSONL preservada).",
+  "aliases": {
+    "SUSONITY": "Merck KGaA",
+    "Fa Exdu Saasfaprod1": "Daimler Buses GmbH",
+    "gacmotoreuropebv-1747132357": "GAC Motor",
+    "peeces": "Peeces GmbH",
+    "axessintelligence": "axess Intelligence GmbH",
+    "rfi-trading": "RFI Food Ingredients",
+    "ELIA": "Elia System Operator SA"
+  }
+}

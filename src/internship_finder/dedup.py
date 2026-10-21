@@ -226,7 +226,15 @@ def normalize_location(location: str | None) -> str:
     loc = _strip_accents(str(location).casefold()).strip()
     loc = re.sub(r"\s+", " ", loc)
     loc = re.sub(r",\s*[a-z]{2}$", "", loc)  # trailing ISO-2 (ex.: ", de")
-    return loc.strip()
+    loc = loc.strip()
+    # F92 — sentinela "—" (localização desconhecida, guard da classe 4:
+    # company_aliases.MISSING_LOCATION) NUNCA vira chave de dedup: os tiers
+    # company+title+location exigem localização REAL — o guardrail "sem
+    # localização, títulos iguais em cidades diferentes seriam fundidos"
+    # permanece intacto (contrato testado no test_f92).
+    if loc == "—":
+        return ""
+    return loc
 
 
 # ---------------------------------------------------------------------------

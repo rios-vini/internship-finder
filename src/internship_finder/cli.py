@@ -71,6 +71,12 @@ from internship_finder.dedup import (
     deduplicate,
     deduplicate_ms_wildcard,
 )
+# F92 — estágio de normalização de ingestão (aliases canônicos + guards de
+# location), aplicado ANTES do dedup.
+from internship_finder.company_aliases import (
+    apply_ingest_normalization,
+    print_ingest_normalization,
+)
 from internship_finder.mirror_dedup import KEY_MIRRORS_DE_EN, deduplicate_mirrors_de_en
 from internship_finder.cross_source_dedup import (
     KEY_CROSS_SOURCE,
@@ -423,6 +429,18 @@ def run_filter_pipeline(
         intel_map=_load_applicability_intel() if applicability else None,
     )
     print_cascade(counts, country)
+    # F92 — estágio de normalização de ingestão (ANTES do dedup, por spec):
+    # (1) aliases canônicos de empresa (config/company_aliases.json, fail-
+    #     closed): label sujo upstream ("SUSONITY" = Merck) e descasamento
+    #     dataset×dataset ("peeces" × "Peeces GmbH") viram o nome canônico
+    #     no CAMPO company — dedup casa os pares por nome canônico e o
+    #     display (página/digest) mostra "Merck KGaA", não "SUSONITY";
+    # (2) guards de location (classe 4): strip do prefixo postal alemão e
+    #     vazia/None -> raw -> "—". Normalização NÃO é dedup: aplica-se
+    #     também com --no-dedup. id/URL/raw não mudam (identidade técnica
+    #     de dataset_seen/JSONL preservada — canonização reversível).
+    norm_stats = apply_ingest_normalization(selected)
+    print_ingest_normalization(norm_stats)
     dedup_stats: dict[str, int] = {}
     if dedup:
         selected, dedup_stats, _ = deduplicate(selected)
