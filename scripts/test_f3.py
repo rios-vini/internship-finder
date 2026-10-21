@@ -28,7 +28,7 @@ GRUPO C — Dedup cross-fonte:
 GRUPO D — Peso registry (ranking):
   D1. "Robert Bosch GmbH" -> +WEIGHT_REGISTRY_INTEREST (substring casefold).
   D2. "Bosch" exato idem; "SAP" idem; breakdown tem 'registry'.
-  D3. "Levio GmbH" (fora do registry) -> 0.
+  D3. "PwC GmbH" (fora do registry) -> 0.
   D4. Invariante aditivo: score(registry) - score(non-registry, mesmo
       resto) == peso.
 
@@ -54,7 +54,7 @@ GRUPO G — Budget:
       skipped_budget; jobs da 1a presentes; summary registra.
 
 GRUPO H — Registry NAO e filtro (o coracao da F3):
-  H1. Job dataset de empresa FORA do registry ("Levio GmbH", DE, estagio,
+  H1. Job dataset de empresa FORA do registry ("PwC GmbH", DE, estagio,
       area-match) passa pelo funil e chega ao eligible — sem componente
       registry no breakdown.
 
@@ -332,15 +332,20 @@ def test_registry_weight() -> None:
               "company": "Bosch", "url": "https://a/1",
               "location": "Berlin, DE", "country_iso": "de",
               "collected_at": "2026-10-02T07:00:00+00:00"}).breakdown)
-    check("D3. Levio GmbH fora do registry -> 0",
-          registry_interest("Levio GmbH") == 0.0)
+    # F88 (21/10): o fixture histórico "Levio GmbH" entrou no registry (onda
+    # F88 top-up de frescor, greenhouse:levio) — a premissa "fora do
+    # registry" morreu com a fase. Novo fora-do-registry: "PwC GmbH",
+    # varrido contra o SEED inteiro (145) E a watchlist (67), casefold
+    # bidirecional (substring dos dois lados) — zero match 21/10.
+    check("D3. PwC GmbH fora do registry -> 0",
+          registry_interest("PwC GmbH") == 0.0)
     base = {
         "id": "x", "source": "s", "title": "Werkstudent",
         "url": "https://a/1", "location": "Berlin, DE",
         "country_iso": "de", "collected_at": "2026-10-02T07:00:00+00:00",
     }
     s_reg = score_job({**base, "company": "Robert Bosch GmbH"})
-    s_out = score_job({**base, "company": "Levio GmbH"})
+    s_out = score_job({**base, "company": "PwC GmbH"})
     check("D4. invariante aditivo == peso",
           abs((s_reg.total - s_out.total) - WEIGHT_REGISTRY_INTEREST) < 1e-9,
           f"{s_reg.total} vs {s_out.total}")
@@ -565,15 +570,17 @@ def test_budget() -> None:
 
 def test_registry_not_filter() -> None:
     print("== H. empresa FORA do registry chega ao eligible ==")
-    # "Levio GmbH": fora do registry (fato medido §2.6 — 39 intern-DE),
+    # "PwC GmbH": fora do registry (F88 21/10: o fixture histórico "Levio
+    # GmbH" entrou na onda F88 — greenhouse:levio; PwC varrido contra o
+    # SEED 145 + watchlist 67, casefold bidirecional, zero match),
     # DE + estagio + area-match -> deve passar pelo funil inteiro.
     ds_job = row_to_job(make_row(
         # F18: título HÍBRIDO (Werkstudent + Praktikum) — Werkstudent puro
         # sairia pelo hard exclude de aplicabilidade; o híbrido fica e o
         # bloco continua testando o componente registry (não-filtro).
-        url="https://careers.levio.de/job/9",
+        url="https://careers.pwc.de/job/9",
         title="Werkstudent / Praktikum Data Analytics (m/w/d)",
-        company="Levio GmbH", description="sap reporting python",
+        company="PwC GmbH", description="sap reporting python",
         employment_type="INTERN"), "successfactors")
     selected, counts = select_eligible([ds_job.to_dict()], country="de")
     check("H1a. job fora do registry passa pelo funil",

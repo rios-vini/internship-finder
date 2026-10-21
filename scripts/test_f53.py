@@ -242,7 +242,12 @@ REPO = Path(__file__).resolve().parent.parent
 # o badge só acende em TÍTULO DUPLO Werkstudent+Praktikum e as fixtures
 # da F53 não têm título duplo; o item da legenda ⏳/⚠️ mudou de texto →
 # o strip F86 cobre o delta determinístico (ver _strip_f86).
-_AB_BASELINE_SHA = "1b0e025e3c0de704a4cec4591695a0346f86005d"
+# F88 (21/10): src/ moveu de novo (registry.py +18 entradas da onda F88
+# top-up de frescor, 127->145; docstrings de contagem do dataset_source/
+# ranking seguem). Nenhuma mudança de render: o badge/legenda da página
+# não dependem do SEED — o byte a byte da F53 segue válido módulo os
+# strips F60/F83/F86 (fixtures sem empresa da onda).
+_AB_BASELINE_SHA = "aba7c055ab8b2071da79cd06473903482b10279c"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):

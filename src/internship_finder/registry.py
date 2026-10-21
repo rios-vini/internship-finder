@@ -47,7 +47,7 @@ class RegistryEntry(BaseModel):
     enabled: bool = True  # false desabilita a empresa sem removê-la do registry
 
 
-# --- Seed: 127 empresas operacionais (12 da validação inicial + 27 da
+# --- Seed: 145 empresas operacionais (12 da validação inicial + 27 da
 # --- expansão E2 + 25 da expansão internacional P3 #23: 8 DE + 17 NL/CH/AT
 # --- + 17 da expansão de cobertura 15/09/2026 + 6 da auditoria 16/09/2026
 # --- + 9 da auditoria próxima fronteira 17/09/2026 + 5 da última onda de
@@ -60,7 +60,11 @@ class RegistryEntry(BaseModel):
 # --- Delo, EBM-Papst, ElringKlinger, Freudenberg, Karlstorz, KAESER Careers,
 # --- Körber Group | Job Market, Jobs - Multivac, Ottobock Karriereportal,
 # --- Mapal Group, Jobs | LEMKEN The Agrovision Company, Grammer, Leoni,
-# --- Walter, Rational).
+# --- Walter, Rational
+# --- + 18 da onda F88 top-up de frescor 21/10/2026: KPMG DE, Vetter, AGCO,
+# --- mllerservi (Theo Müller), Deutsche Börse, Witglobal (Würth), Levio,
+# --- Indie Campers, Vitesco, Marquardt Group, Kraft Heinz, aumovio,
+# --- Vodafone, Vanderlande, Stryker, Endress+Hauser, Pirelli, GALERIA).
 # --- Nomes canônicos = consulta real do ``--companies``
 # --- (README.md + docs/empresas_verificacao.md + docs/relatorio_expansao.md +
 # --- docs da auditoria de cobertura 15/09 + auditoria próxima onda 16/09).
@@ -374,6 +378,56 @@ SEED = [
     RegistryEntry(name="Leoni", ats="smartrecruiters", tenant="smartrecruiters:LEONI1"),
     RegistryEntry(name="Walter", ats="workday", tenant="workday:sandvik/walter-jobs"),
     RegistryEntry(name="Rational", ats="successfactors", tenant="successfactors:jobs"),
+    # --- 18 da onda F88 top-up de frescor (2026-10-21, watchlist F13 x SEED:
+    # --- as 44 empresas sem tenant, menos Amazon [conector próprio same-day];
+    # --- descoberta via F76.1 discovery_rules + find_company no inventário
+    # --- upstream 80.390 empresas, validação AO VIVO com o scraper REAL
+    # --- [validate_slug/validate_candidate] + ground-truth de host pelas
+    # --- URLs do eligible de 20/10; A/B de dedup coletado no clone para
+    # --- KPMG/AGCO/aumovio: o dedup 3-pass [estágio URL] removeu 100% dos
+    # --- pares tenant x dataset — zero duplicação pós-filtro) ---
+    # Nomes canônicos = nome EXATO do inventário que o CompanyCollector
+    # resolve (match exato ou token; o nome comercial da watchlist NÃO
+    # resolve: "KPMG" resolve IT/UK/US — a linha DE é "KPMG | DE - KPMG
+    # Global"; "Würth" não existe — a linha do grupo é "Witglobal";
+    # "indiecampers" não casa exato — o inventário tem "Indie Campers";
+    # "Vitesco" resolve por token [VitescoProd]). REWE Group (karriere
+    # .rewe-group.com) validou com o scraper mas ENTROU COMO REJEITADA:
+    # patologia Lidl-like medida (sitemal.xml = 114 MB, GET cru 342s) —
+    # a referência de patologia a evitar. A tentativa workday
+    # "ag/airbus" (Airbus): 2.964 vagas coletadas, 0 elegíveis (locations
+    # sem país parseável, country=None em 2.761) — rejeitada no A/B.
+    # 2 empresas JÁ presentes no SEED confirmaram match ao vivo e foram
+    # ignoradas (precedente F32): Zeiss Group (workday zeissgroup/external,
+    # linha existente) e BAUHAUS ('bahagag', mesma linha bewerben.bauhaus.info).
+    # Counter-cases sem tenant no universo do registry (ADAC, Everllence,
+    # MTU x3, Google, TikTok, Kärcher, Exclusive Associates, Bechtle AG
+    # [só HanseVision, subsidiária]): NÃO adicionados — procedimento
+    # test_f88 Grupo E. AUMOVIO SE Haupverwaltung/Würth Industrie Service/
+    # Müller Service/REWE Markt/REWE digital/Airbus* são cobertos pelas
+    # entradas de grupo (aumovio, Witglobal, mllerservi) ou seguem fonte
+    # dataset (Airbus). Vodafone: multi-match 3 linhas (eightfold 1.201 +
+    # SR empty + SF 1.272, 479 DE-like) — coleta dupla tolerada, norma do
+    # SEED (19 nomes já resolvem 2-4 tenants; dedup cross-source cuida do
+    # overlap).
+    RegistryEntry(name="KPMG | DE - KPMG Global", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="Vetter", ats="successfactors", tenant="successfactors:careers"),
+    RegistryEntry(name="AGCO", ats="successfactors", tenant="successfactors:careers"),
+    RegistryEntry(name="mllerservi", ats="successfactors", tenant="successfactors:mllerservi"),
+    RegistryEntry(name="Deutsche Börse AG", ats="successfactors", tenant="successfactors:career"),
+    RegistryEntry(name="Witglobal", ats="successfactors", tenant="successfactors:wrthitinteP2"),
+    RegistryEntry(name="Levio", ats="greenhouse", tenant="greenhouse:levio"),
+    RegistryEntry(name="Indie Campers", ats="greenhouse", tenant="greenhouse:indiecampers"),
+    RegistryEntry(name="Vitesco", ats="successfactors", tenant="successfactors:VitescoProd"),
+    RegistryEntry(name="Marquardt Group", ats="cornerstone", tenant="cornerstone:https://marquardt-group.csod.com/ux/ats/careersite/5/home?c=marquardt-group"),
+    RegistryEntry(name="Kraft Heinz", ats="eightfold", tenant="eightfold:kraftheinz"),
+    RegistryEntry(name="aumovio", ats="smartrecruiters", tenant="smartrecruiters:aumovio"),
+    RegistryEntry(name="Vodafone", ats="successfactors", tenant="successfactors:vodafone"),
+    RegistryEntry(name="Vanderlande", ats="workday", tenant="workday:vanderlande/careers"),
+    RegistryEntry(name="Stryker", ats="workday", tenant="workday:stryker/strykercareers"),
+    RegistryEntry(name="Endress+Hauser", ats="successfactors", tenant="successfactors:careers"),
+    RegistryEntry(name="Pirelli", ats="successfactors", tenant="successfactors:jobs"),
+    RegistryEntry(name="GALERIA", ats="cornerstone", tenant="cornerstone:galeria"),
 ]
 
 

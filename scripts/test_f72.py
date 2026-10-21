@@ -21,7 +21,7 @@ trava o comportamento DETERMINÍSTICO dele sem nunca tocar rede:
    empresa; linha truncada (crash no meio do append) e linha sem
    name/result sao ignoradas SEM derrubar o lote; arquivo ausente = vazio;
    idempotente em re-execucao;
-5. **registry** — o batch cobre TODAS as entradas (127, re-ancora F71) e o
+5. **registry** — o batch cobre TODAS as entradas (145, re-ancora F71) e o
    runner expoe main() com os guardrails nos args;
 6. **CI (F78)** — ``test_f72`` e descoberto por ``ci_discover_tests`` (a
    linha morta ``tests=`` continua MORTA no ci.yml — E1 persiste).
@@ -214,8 +214,8 @@ def group_e() -> None:
     from internship_finder.registry import CompanyRegistry
 
     entries = CompanyRegistry().entries
-    check("e1. registry tem 127 entradas (F71: contagem == soma das ondas)",
-          len(entries) == 127, f"got {len(entries)}")
+    check("e1. registry tem 145 entradas (F71: contagem == soma das ondas)",
+          len(entries) == 145, f"got {len(entries)}")
     check("e2. runner expoe main() (entrypoint do lote)",
           callable(getattr(audit, "main", None)))
     src = (SCRIPTS / "audit_registry.py").read_text(encoding="utf-8")
