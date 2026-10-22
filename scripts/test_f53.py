@@ -268,7 +268,14 @@ REPO = Path(__file__).resolve().parent.parent
 # fase que tocou src/ (667925e = commit F99 1/2 — SÓ src/; o commit 2/2
 # edita testes/README — src/ idêntico, o diff segue vazio na branch, no
 # CI raso ([SKIP]) e no main pós-squash).
-_AB_BASELINE_SHA = "ca1c0b93a6fd20403671631b3e105f1707184855"
+# F100 (22/10): src/ moveu de novo (registry.py — onda F100 de 2 entries
+# Issgovernance/JACOBS DOUWE EGBERTS + header 147; dataset_source.py e
+# ranking.py — docstrings de contagem 145→147, parseados pelo test_f73).
+# Nenhuma mudança de render/pipeline de ranking: a onda só acrescenta
+# entradas de coleta ao SEED e bumpa docstrings — as fixtures da F53 não
+# dependem do SEED, o byte a byte segue válido módulo os strips. Lição F58
+# aplicada: âncora movida NO commit da fase (head pré-squash 355ca62).
+_AB_BASELINE_SHA = "46518a35f600505beea5ec30151c34ffe1e91591"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
