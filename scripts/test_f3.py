@@ -335,7 +335,7 @@ def test_registry_weight() -> None:
     # F88 (21/10): o fixture histórico "Levio GmbH" entrou no registry (onda
     # F88 top-up de frescor, greenhouse:levio) — a premissa "fora do
     # registry" morreu com a fase. Novo fora-do-registry: "PwC GmbH",
-    # varrido contra o SEED inteiro (145) E a watchlist (67), casefold
+    # varrido contra o SEED inteiro (147) E a watchlist (67), casefold
     # bidirecional (substring dos dois lados) — zero match 21/10.
     check("D3. PwC GmbH fora do registry -> 0",
           registry_interest("PwC GmbH") == 0.0)
@@ -572,7 +572,7 @@ def test_registry_not_filter() -> None:
     print("== H. empresa FORA do registry chega ao eligible ==")
     # "PwC GmbH": fora do registry (F88 21/10: o fixture histórico "Levio
     # GmbH" entrou na onda F88 — greenhouse:levio; PwC varrido contra o
-    # SEED 145 + watchlist 67, casefold bidirecional, zero match),
+    # SEED 147 + watchlist 67, casefold bidirecional, zero match),
     # DE + estagio + area-match -> deve passar pelo funil inteiro.
     ds_job = row_to_job(make_row(
         # F18: título HÍBRIDO (Werkstudent + Praktikum) — Werkstudent puro

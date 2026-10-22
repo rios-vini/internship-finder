@@ -75,7 +75,7 @@ Volume: o prefilter reduz ~5,1M rows globais para ~21,6k antes de qualquer
 restantes viram ``skipped_budget``).
 
 O registry NAO participa da entrada (a inversao arquitetural da F3): a
-lista de 145 empresas vira componente ``registry`` no RANKING
+lista de 147 empresas vira componente ``registry`` no RANKING
 (``ranking.WEIGHT_REGISTRY_INTEREST``), nunca filtro de existencia.
 
 Jobs do dataset NAO entram no lifecycle SQLite (invariante §7.8): a fonte
