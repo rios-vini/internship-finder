@@ -530,6 +530,30 @@ STUDENT_SUBTYPE_LABELS: dict[str, str] = {
     "unclear": "Subtipo não especificado no anúncio",
 }
 
+# Motivos de inaplicabilidade (filters.APPLICABILITY_EXCLUSION_REASONS) —
+# legenda PT-BR com o badge/motivo da F99 para as classes novas. Display
+# only: os reasons são chaves técnicas dos metrics/JSON; este mapa é a
+# tradução oficial para relatórios e exibições futuras.
+APPLICABILITY_REASON_LABELS: dict[str, str] = {
+    "german_required": "🇩🇪 Alemão exigido",
+    "native_language": "🚫 native-language (língua exigida em nível nativo)",
+    "visa_blocked": "🛂 Exige autorização/residência já válida (não-UE)",
+    "thesis_title": "📝 Tese no título (Abschlussarbeit/Thesis)",
+    "werkstudent_puro": "⏰ Werkstudent puro (exige matrícula na Alemanha)",
+    "master_required": "🎓 Exige mestrado (completo ou em curso)",
+    "eu_citizenship_required": "🇪🇺 EU-national-only (cidadania/nacionalidade UE)",
+    "nl_enrolment_required": "🇳🇱 local-enrollment NL (matrícula na universidade holandesa)",
+    "phd_position": "🔬 Posição de PhD/doutorado",
+    "duration_over_6m": "⏳ Duração > 6 meses citada no título (teto §16e)",
+    "duration_conflict": "🚫 1-year-conflict (duração > 6 meses na descrição, teto §16e)",
+    "full_time_permanent": "💼 Vaga permanente full-time (não é estágio)",
+    "erasmus_program": "🌍 Programa Erasmus+/mobilidade estudantil",
+    "spontaneous_pool": "📮 Banco de candidaturas espontâneas/pool",
+    "job_type_non_internship": "🚫 Tipo de vaga não-estágio (HiWi/Werkstudent/tese/permanente)",
+    "experience_required": "📈 Exige experiência profissional prévia",
+    "recent_graduate": "🚫 recent-graduate (vaga para recém-formados; dono é matriculado)",
+}
+
 # Problemas possiveis (app_intel.possible_problems): template por key.
 # ``{arg}`` e preenchido com o detalhe real (ex.: a data do deadline).
 PROBLEM_TEXTS: dict[str, str] = {

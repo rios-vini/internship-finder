@@ -507,6 +507,7 @@ from internship_finder.countries import (
 # desliga o estágio inteiro (comportamento pré-F18).
 APPLICABILITY_EXCLUSION_REASONS = (
     "german_required",
+    "native_language",
     "visa_blocked",
     "thesis_title",
     "werkstudent_puro",
@@ -515,11 +516,13 @@ APPLICABILITY_EXCLUSION_REASONS = (
     "nl_enrolment_required",
     "phd_position",
     "duration_over_6m",
+    "duration_conflict",
     "full_time_permanent",
     "erasmus_program",
     "spontaneous_pool",
     "job_type_non_internship",
     "experience_required",
+    "recent_graduate",
 )
 
 # F37.3 (decisão do dono 15/10 ~23:45 UTC, literal: "german_required:
@@ -546,6 +549,12 @@ APPLICABILITY_JSON_EXCLUSION_REASONS = (
     "german_required",
     "job_type_non_internship",
     "experience_required",
+    # F99 (22/10): classes duras de elegibilidade novas — mesmo padrão F86
+    # (elegibilidade > tuning): o motivo SAI do eligible_jobs.json também
+    # quando revelado na re-avaliação pós-hidratação.
+    "native_language",
+    "duration_conflict",
+    "recent_graduate",
 )
 
 
@@ -607,6 +616,14 @@ _EU_CITIZENSHIP_RES = [
         r"or\s+you\s+are\s+studying\s+in\s+the\s+netherlands",
         re.IGNORECASE,
     ),
+    # F99 (22/10) — AWS ESC 10571716 verbatim: "Candidate must be a national
+    # of an EU member state and residing in the EU". Nacionalidade UE exigida
+    # é a MESMA classe semântica do motivo (o dono tem passaporte BR).
+    re.compile(r"\bnationals?\s+of\s+an?\s+eu\b", re.IGNORECASE),
+    re.compile(r"\bcitizens?\s+of\s+an?\s+eu\s+member\s+state\b", re.IGNORECASE),
+    # variante curta "EU nationals" — guard lookbehind evita o FP "non-EU
+    # nationals" (o hífen é word boundary; sem o guard casaria).
+    re.compile(r"(?<!non-)(?<!non )\beu\s+nationals?\b", re.IGNORECASE),
 ]
 
 # (2) Matrícula/residência NL obrigatória (sistema holandês HBO/WO) — o dono
@@ -621,6 +638,25 @@ _NL_ENROLMENT_RES = [
     # Parfumado R12: "enrolled in an HBO/WO programme" (sistema NL; "HBO"
     # puro também aparece — word-boundary evita colisões)
     re.compile(r"\bhbo\b|\bhbo/wo\b", re.IGNORECASE),
+    # F99 (22/10) — Avery Dennison 744000155457544 verbatim: "You must be
+    # currently enrolled at a Dutch university for the entire duration of
+    # your internship". Matrícula em universidade HOLANDESA exigida = mesma
+    # classe (o dono é matriculado na UFSCar/BR; a generalização
+    # multi-país fica para fase futura com motivo próprio).
+    re.compile(
+        r"\benrol{1,2}ed\s+(at|in)\s+a\s+"
+        r"(dutch|netherlands)\s+"
+        r"(university|universiteit|hogeschool|college|research\s+university)\b",
+        re.IGNORECASE,
+    ),
+    # F99 — YETI JR102248 verbatim (título): "Business Operations Internship
+    # for AUAS Students" + desc "...at the Amsterdam University of Applied
+    # Sciences". AUAS = Amsterdam University of Applied Sciences — público
+    # por INSTITUIÇÃO específica NL. Contexto exigido ("at/for AUAS") para
+    # a sigla; o nome por extenso é inambíguo.
+    re.compile(r"\b(at|for)\s+(the\s+)?auas\b", re.IGNORECASE),
+    re.compile(r"\bauas\s+students?\b", re.IGNORECASE),
+    re.compile(r"\bamsterdam\s+university\s+of\s+applied\s+sciences\b", re.IGNORECASE),
 ]
 
 # (3) PhD/doctoral — perfil é aluno de graduação (bachelor). Casos medidos:
@@ -873,7 +909,7 @@ _MASTER_DEGREE_RES = [
         re.IGNORECASE,
     ),
     re.compile(
-        r"\bmaster'?s?\s+student\b|\bmasterstudent\w*\b|"
+        r"\bmaster'?s?\s+students?\b|\bmasterstudent\w*\b|"
         r"\byou are a master'?s?\s+student\b",
         re.IGNORECASE,
     ),
@@ -925,13 +961,30 @@ def requires_master(title: str | None, description: str | None) -> bool:
     d = (description or "")
     if not d:
         return False
+    # F99 (22/10): apóstrofo tipográfico (U+2019/U+2018) é a MESMA grafia de
+    # mestrado — 187/704 vagas do archive 20261021T090001Z carregam U+2019.
+    # A cadeia normaliza antes; aqui de novo (idempotente) para chamadores
+    # diretos da função pura.
+    d = d.translate(_APOSTROPHE_FIX)
     # Título sem sinal: analisa a descrição removendo os trechos FP
     # (substitui por espaço para não colar palavras vizinhas).
     cleaned = _MASTER_FP_RE.sub(" ", d)
-    # "Bachelor's or Master's"/"Bachelor or Master" não exige mestrado:
-    # neutraliza o "Master" dessas construções ANTES dos padrões legítimos.
+    # "Bachelor's or Master's"/"Bachelor's final year or Master's"/
+    # "undergraduate or master's" não exige mestrado: o grau de BACHELOR/
+    # undergraduate é aceito — neutraliza o "Master" dessas construções
+    # ANTES dos padrões legítimos. F99 estende a janela do "or" (30 chars
+    # sem pontuação) além do adjacente: Resmed "Bachelor's final year or
+    # Master's programme" aceita o graduando do dono; Tencent "undergraduate
+    # or master's degree student" idem.
     cleaned = re.sub(
         r"\bbachelor'?s?\s*(or|/|;|,|und|and)?\s*master'?s?\b",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"\b(bachelor|undergraduate)'?s?[^.;:]{0,30}\b(or|/|;|,|und|and)\b"
+        r"[^.;:]{0,10}master'?s?\b",
         " ",
         cleaned,
         flags=re.IGNORECASE,
@@ -1254,21 +1307,282 @@ def requires_experience(title: str | None, description: str | None) -> bool:
     return False
 
 
+# ---------------------------------------------------------------------------
+# F99 — Requisitos duros de elegibilidade (22/10): 6 classes de requisito que
+# escaparam de TODA a triagem e chegaram ao documento de estratégia como vagas
+# "aplicáveis" quando NÃO são (verificação independente do Brainstorm_Visto
+# 21/10, erratas E1/E4/E5/E6/E8). Três classes são NOVAS (detectores abaixo);
+# três são EXTENSÕES de motivos existentes (eu_citizenship_required,
+# nl_enrolment_required, master_required — ver _EU_CITIZENSHIP_RES,
+# _NL_ENROLMENT_RES e requires_master). Severidade espelhada da F85:
+# requisito DURO exclui; "advantage/preferred/ideally" NÃO exclui.
+# ---------------------------------------------------------------------------
+
+# Apóstrofo tipográfico → ASCII: "Master’s" (U+2019) é a mesma grafia de
+# "Master's". ROOT CAUSE medido das 3 fixtures de mestrado da F99 (ISS DACH
+# JR_10438, AGFA 454965801, Oliver Wyman R_364450) e de 187/704 vagas do
+# archive 20261021T090001Z (26,5% do corpus). Idempotente.
+_APOSTROPHE_FIX = str.maketrans({"\u2019": "'", "\u2018": "'"})
+
+
+def normalize_apostrophes(text: str | None) -> str:
+    """F99 — normaliza apóstrofos tipográficos (U+2019/U+2018 → ASCII)."""
+    return (text or "").translate(_APOSTROPHE_FIX)
+
+
+# --- (F99-a) native_language — exigência de língua em nível NATIVO ---
+# ISS STOXX JR_10434 verbatim (a vaga de MAIOR score do dataset 21/10):
+# "A minimum one of the following languages to a native standard: Russian,
+# Polish, German, Turkish, Danish, Swedish, Norwegian." O dono é nativo
+# PT-BR — nenhuma dessas línguas é nativa dele. O german_level (F18/F85)
+# vê alemão no texto e classifica ``plus`` — o contexto "one of the
+# following languages" derrota o classificador de nível, por isso a classe
+# é um detector PRÓPRIO.
+_NATIVE_LANGUAGE_RES = [
+    re.compile(r"to\s+a\s+native\s+standard", re.IGNORECASE),
+    re.compile(
+        r"\bnative\s+(speaker|level|proficiency|standard|command)s?\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bmother\s+tongue\b", re.IGNORECASE),
+    re.compile(
+        r"\bnative\s+(german|english|french|dutch|danish|swedish|norwegian|"
+        r"russian|polish|turkish|spanish|italian|czech|hungarian|romanian|"
+        r"bulgarian|greek|portuguese)\b",
+        re.IGNORECASE,
+    ),
+]
+# Severidade F85: menção nativa com marcador SOFT perto do match NÃO exclui
+# (Kraft Heinz "Ideally native Dutch speaker or at least, advanced Dutch"
+# — "ideally" é preferência, não requisito).
+_NATIVE_SOFT_NEAR_RE = re.compile(
+    r"\b(advantage|preferred|preference|plus|desirable|nice to have|bonus|"
+    r"welcome|ideally)\b",
+    re.IGNORECASE,
+)
+_NATIVE_LANGUAGE_NAMES_RE = re.compile(
+    r"\b(german|english|french|dutch|danish|swedish|norwegian|russian|polish|"
+    r"turkish|spanish|italian|czech|hungarian|romanian|bulgarian|greek|"
+    r"portuguese)\b",
+    re.IGNORECASE,
+)
+_F99_SENT_SPLIT = re.compile(r"(?<=[.!?;])\s+|\n+")
+
+
+def _f99_sentences(text: str) -> list[str]:
+    return [s for s in _F99_SENT_SPLIT.split(text) if s]
+
+
+def requires_native_language(title: str | None, description: str | None) -> bool:
+    """F99 — exige língua em nível NATIVO (dono é nativo PT-BR)?
+
+    Requisito DURO de natividade exclui; marcador soft ("ideally",
+    "advantage", "preferred", "plus") no raio de ±80 chars do match NÃO
+    exclui (severidade F85). Se as únicas línguas nativas citadas na
+    sentença forem português, o dono qualifica (nativo) — não exclui.
+    """
+    text = f"{normalize_apostrophes(title)} {normalize_apostrophes(description)}"
+    for sent in _f99_sentences(text):
+        for rx in _NATIVE_LANGUAGE_RES:
+            m = rx.search(sent)
+            if not m:
+                continue
+            if _NATIVE_SOFT_NEAR_RE.search(
+                sent[max(0, m.start() - 80): m.end() + 80]
+            ):
+                continue
+            langs = _NATIVE_LANGUAGE_NAMES_RE.findall(sent)
+            if langs and all(l.lower() == "portuguese" for l in langs):
+                continue
+            return True
+    return False
+
+
+# --- (F99-b) recent_graduate — vaga destinada a RECENT-GRADUATES ---
+# auto1 744000154701234 verbatim: "You are recent graduate from University,
+# preferably in Business, Economics, Finance, or in another relevant
+# [field]". O dono é ALUNO MATRICULADO (§16e exige matrícula ativa durante
+# o estágio obrigatório) — posting que define o candidato como
+# recém-formado não é aplicável. GUARD (counter-cases F99): alternativa de
+# MATRÍCULA na mesma janela anula o sinal — DB Controlling LU 1445042933
+# ("You are enrolled ... or have graduated ... for no more than 6 months"),
+# Wellington R94939 ("Current enrolment in, or recent completion of"),
+# Nestlé 1441411733 ("obtained or are currently pursuing a degree"), JDE
+# 744000150326658 ("mandatory part of your studies").
+_RECENT_GRADUATE_RES = [
+    re.compile(r"\byou\s+are\s+(a\s+)?recent\s+graduate\b", re.IGNORECASE),
+    re.compile(r"\bfor\s+recent\s+graduates?\b", re.IGNORECASE),
+    re.compile(r"\brecent\s+graduates?\s+(are|is)\b", re.IGNORECASE),
+    re.compile(r"\bopen\s+to\s+recent\s+graduates?\b", re.IGNORECASE),
+    re.compile(r"\byou\s+have\s+recently\s+graduated\b", re.IGNORECASE),
+    re.compile(r"\brecently\s+graduated\s+from\b", re.IGNORECASE),
+    re.compile(r"\brecent\s+graduates?\s+(from|in)\b", re.IGNORECASE),
+]
+# Alternativa de matrícula na janela ±60 chars do match (a alternativa
+# aparece ANTES — "student or recent graduate" / "Currently studying in, or
+# recently graduated from" — ou DEPOIS — "recent graduate or nearing the
+# end of your studies"). Janela, não sentença: descrições sem pontuação
+# geram sentenças-gigantes e o guard por sentença engole a fixture auto1.
+_ENROLLED_ALTERNATIVE_RE = re.compile(
+    r"\b(students?|studying|enrolled|enrolment|enrollment|undergraduate|"
+    r"pursuing|completing|nearing|final[-\s]year)\b",
+    re.IGNORECASE,
+)
+
+
+def targets_recent_graduates(title: str | None, description: str | None) -> bool:
+    """F99 — a vaga define o candidato como recém-formado (dono é matriculado)?
+
+    OR-semantics com matrícula na mesma janela (±60 chars) NÃO exclui
+    (counter-cases DB Controlling/Wellington/Nestlé/JDE — matriculado
+    qualifica).
+    """
+    text = f"{normalize_apostrophes(title)} {normalize_apostrophes(description)}"
+    for sent in _f99_sentences(text):
+        for rx in _RECENT_GRADUATE_RES:
+            m = rx.search(sent)
+            if not m:
+                continue
+            lo = max(0, m.start() - 60)
+            hi = min(len(sent), m.end() + 60)
+            if _ENROLLED_ALTERNATIVE_RE.search(sent[lo:hi]):
+                continue
+            return True
+    return False
+
+
+# --- (F99-c) duration_conflict — duração > 6 meses citada na DESCRIÇÃO ---
+# Delivery Hero 744000155973854 verbatim (página viva, confirmada 22/10;
+# a descrição do DATASET não carrega a frase — gap de captura upstream,
+# documentado no relatório da fase): "This is a 1 Year full time Internship
+# and will require full time work authorization." — 12 meses ≠ estágio
+# obrigatório de ≤6 meses (§16e). O motivo existente duration_over_6m é
+# TÍTULO-only (F37: 14 FPs medidos na descrição — "graduated in the last
+# 12 months", "Reststudiendauer mind. 12 Monate"); este detector exige o
+# token de duração ADJACENTE ao marcador de estágio na MESMA frase, com
+# PISO da faixa > 6 (semântica F29/F37: faixa 6–12 começa dentro do teto
+# — Edbz "6 – 12 Monate Praktikum" FICA) e guard de frase-de-data
+# ("within 12 months" = prazo de elegibilidade, Kinaxis — não duração).
+# A parte "full time work authorization" é trabalho da F95 (work_auth) —
+# NÃO duplicada aqui.
+_F99_INTERNSHIP_MARKER_RE = re.compile(
+    r"\b(internship|intern\b|praktikum|praktikant|placement)\b", re.IGNORECASE
+)
+_F99_DURATION_TOKEN_RE = re.compile(
+    r"\b(\d{1,2})(?:\s*(?:[-\u2013\u2014]|to)\s*(\d{1,2}))?\s*[-\s]?\s*"
+    r"(years?|months?|monate[rs]?)\b"
+    r"|\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+    r"\s*[-\s]?\s*(years?|months?|monate[rs]?)\b",
+    re.IGNORECASE,
+)
+_F99_WORD_NUM = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+}
+_F99_DURATION_AFTER_MARKER_RE = re.compile(
+    r"\b(?:is|lasts?|runs?|of|will\s+(?:be|last|run)|would\s+(?:be|last|run)|"
+    r"duration\s+of)\s+(?:at\s+least\s+|around\s+|approximately\s+)?",
+    re.IGNORECASE,
+)
+_F99_DATE_PHRASE_RE = re.compile(
+    r"\b(within|less\s+than|in\s+less\s+than|deadline|by)\s*$", re.IGNORECASE
+)
+# conectores temporais ENTRE a duracao e o marker = a duracao nao e da vaga
+# ("at least 2 years before the internship" = experiencia previa)
+_F99_TEMPORAL_CONNECTOR_RE = re.compile(
+    r"\b(before|prior\s+to|after|following|then|next)\b", re.IGNORECASE
+)
+# ruído ENTRE a duração e o marker (conjunção/verbo) = construções de outra
+# informação ("graduated in the last 12 months and are looking for an
+# internship" — FP medido F37) — a duração da vaga é ADJACENTE ao marker
+# ("1 Year full time Internship", "12-month internship").
+_F99_INTERMEDIATE_NOISE_RE = re.compile(
+    r"\b(and|or|but|however|while|when|if)\b|[,;]", re.IGNORECASE
+)
+_F99_MARKER_LOOKAHEAD = 30  # " full time " (11) + "Internship" (10) = 21
+_F99_MONTHS_CAP = 6  # teto §16e (mesma semântica do F37/F29)
+
+
+def _f99_duration_months(m: "re.Match") -> "tuple[int, int]":
+    """(piso, teto) em meses do token de duração casado."""
+    g = m.groups()
+    if g[0] is not None:
+        lo = int(g[0])
+        hi = int(g[1]) if g[1] else lo
+        unit = g[2]
+    else:
+        lo = _F99_WORD_NUM[g[3].lower()]
+        hi = lo
+        unit = g[4]
+    if hi < lo:
+        lo, hi = hi, lo
+    mult = 12 if unit.lower().startswith(("year", "jahr")) else 1
+    return lo * mult, hi * mult
+
+
+def duration_conflict_description(title: str | None, description: str | None) -> bool:
+    """F99 — duração da VAGA > 6 meses citada na descrição (teto §16e)?
+
+    Token de duração (número + ano/mês, dígitos ou palavras) ADJACENTE ao
+    marcador de estágio na mesma frase: (a) duração até 20 chars ANTES do
+    marcador ("This is a 1 Year full time Internship", "During this
+    12-month internship") ou (b) marcador + verbo de duração + duração
+    ("an internship of at least 12 months"). PISO da faixa > 6 exclui;
+    faixa com piso ≤ 6 fica ("6 to 12 months"). Frase-de-data ("within 12
+    months") e duração de estudo/formatura não são duração da vaga.
+    """
+    text = f"{normalize_apostrophes(title)} {normalize_apostrophes(description)}"
+    for sent in _f99_sentences(text):
+        for m in _F99_DURATION_TOKEN_RE.finditer(sent):
+            lo, _hi = _f99_duration_months(m)
+            if lo <= _F99_MONTHS_CAP:
+                continue
+            if _F99_DATE_PHRASE_RE.search(sent[: m.start()]):
+                continue
+            # (a) duração imediatamente antes do marcador de estágio
+            post = sent[m.end(): m.end() + _F99_MARKER_LOOKAHEAD]
+            if _F99_TEMPORAL_CONNECTOR_RE.search(post):
+                continue
+            mk = _F99_INTERNSHIP_MARKER_RE.search(post)
+            if mk and not _F99_INTERMEDIATE_NOISE_RE.search(post[: mk.start()]):
+                return True
+            # (b) marcador seguido de verbo de duração e desta duração
+            mk = _F99_INTERNSHIP_MARKER_RE.search(sent)
+            if mk and mk.end() <= m.start():
+                between = sent[mk.end(): m.start()]
+                if (
+                    len(between) <= 40
+                    and _F99_DURATION_AFTER_MARKER_RE.search(between)
+                ):
+                    return True
+    return False
+
+
 def applicability_exclusion_reason(
     job: dict, *, intel_map: dict[str, dict] | None = None
 ) -> str | None:
     """Motivo de inaplicabilidade da vaga ao perfil do dono; None = aplicável.
 
     Ordem de atribuição FIRST-MATCH (a mesma vaga nunca conta 2 motivos):
-    ``german_required`` → ``visa_blocked`` → ``thesis_title`` →
-    ``werkstudent_puro`` → ``master_required`` → ``eu_citizenship_required``
-    → ``nl_enrolment_required`` → ``phd_position`` → ``duration_over_6m`` →
+    ``german_required`` → ``native_language`` → ``visa_blocked`` →
+    ``thesis_title`` → ``werkstudent_puro`` → ``master_required`` →
+    ``eu_citizenship_required`` → ``nl_enrolment_required`` →
+    ``phd_position`` → ``duration_over_6m`` → ``duration_conflict`` →
     ``full_time_permanent`` → ``job_type_non_internship`` →
-    ``erasmus_program`` → ``spontaneous_pool`` → ``experience_required``.
+    ``erasmus_program`` → ``spontaneous_pool`` → ``experience_required`` →
+    ``recent_graduate``.
 
     - ``german_required``: ``app_intel.german_level(título+descrição)`` ==
       ``required`` (classificador F18 — o dataset não carrega o nível; a
       exclusão chama a MESMA função pura do render/digest).
+    - ``native_language`` (F99): exigência de língua em nível NATIVO
+      (``requires_native_language`` — ISS STOXX JR_10434 verbatim "a
+      minimum one of the following languages to a native standard:
+      Russian, Polish, German, Turkish, Danish, Swedish, Norwegian"; o
+      dono é nativo PT-BR). O german_level vê alemão e classifica
+      ``plus`` — o contexto de lista derrota o classificador de nível.
+      Severidade F85: "ideally native"/"native ... would be an
+      advantage" NÃO exclui.
     - ``visa_blocked``: (F61) EXIGÊNCIA TEXTUAL de permit/título de
       residência JÁ VÁLIDO dirigida a não-UE
       (``requires_existing_permit_for_non_eu`` — MAHLE verbatim "Für
@@ -1331,16 +1645,59 @@ def applicability_exclusion_reason(
       faixa com piso zero ("0–2 years (entry-level)" FICA) e frase de
       história da empresa ("more than 180 years of experience" C&A NÃO é
       requisito).
+    - ``recent_graduate`` (F99): ``targets_recent_graduates(título,
+      descrição)`` — a vaga define o candidato como RECENT-GRADUATE
+      (auto1 744000154701234 verbatim "You are recent graduate from
+      University") e o dono é ALUNO MATRICULADO (§16e exige matrícula
+      ativa). OR-semantics com matrícula na mesma janela (±100 chars)
+      NÃO exclui (DB Controlling "enrolled ... or have graduated",
+      Wellington "current enrolment in, or recent completion of",
+      Nestlé "obtained or are currently pursuing", JDE "mandatory part
+      of your studies").
+    - ``duration_conflict`` (F99): ``duration_conflict_description`` —
+      duração da VAGA > 6 meses citada na DESCRIÇÃO (teto §16e;
+      Delivery Hero 744000155973854 verbatim "This is a 1 Year full
+      time Internship"). Token de duração ADJACENTE ao marcador de
+      estágio na mesma frase; faixa com piso ≤ 6 fica ("6 to 12
+      months", Edbz "6 – 12 Monate Praktikum"); frase-de-data ("within
+      12 months", Kinaxis) não é duração. Complemento da duração
+      TÍTULO-only do F37 (``duration_over_6m``) — os 14 FPs medidos na
+      descrição ficam fora pela adjacência.
+    ``master_required``/``eu_citizenship_required``/
+    ``nl_enrolment_required`` ganham EXTENSÕES F99 (mesmos motivos,
+    frases novas): apóstrofo tipográfico normalizado na cadeia (U+2019 —
+    root cause das fixtures ISS DACH JR_10438/AGFA/Oliver Wyman;
+    "Master's students" pluralizado; neutralizador "Bachelor's final
+    year or Master's"/"undergraduate or master's"), nacionalidade UE
+    ("national of an EU member state", AWS ESC 10571716; "EU nationals"
+    com guard non-) e matrícula NL ("enrolled at a Dutch university",
+    Avery Dennison 744000155457544; AUAS/Amsterdam University of Applied
+    Sciences, YETI JR102248).
     """
     from internship_finder.app_intel import german_level
 
     title = str(job.get("title") or "")
     description = job.get("description")
+    # F99 (22/10): apóstrofo tipográfico (U+2019/U+2018) é a MESMA grafia de
+    # grau/nível — 187/704 vagas do archive 20261021T090001Z (26,5%). A
+    # normalização UMA vez na cadeia cobre TODOS os detectores (root cause
+    # das 3 fixtures de mestrado que escapavam: requires_master era ASCII).
+    title = normalize_apostrophes(title)
+    if isinstance(description, str):
+        description = normalize_apostrophes(description)
     text = f"{title} {description or ''}"
 
     gl = german_level(text)
     if gl is not None and gl.level == "required":
         return "german_required"
+
+    # F99 (22/10): exigência de língua em nível NATIVO (ISS STOXX JR_10434,
+    # a vaga de maior score do dataset — "to a native standard: Russian,
+    # Polish, German, Turkish..."). O german_level vê alemão e classifica
+    # ``plus``; o contexto "one of the following languages" exige detector
+    # próprio. Severidade F85: soft ("ideally"/"advantage") NÃO exclui.
+    if requires_native_language(title, description):
+        return "native_language"
 
     # F61: exigência TEXTUAL de permit já válido dirigida a não-UE —
     # independe de intel_map (a re-avaliação pós-hidratação F20/F25 chama
@@ -1380,6 +1737,15 @@ def applicability_exclusion_reason(
     if duration_over_6m_title(title):
         return "duration_over_6m"
 
+    # F99 (22/10): duração da VAGA > 6 meses citada na DESCRIÇÃO (teto §16e)
+    # — Delivery Hero 744000155973854 "This is a 1 Year full time
+    # Internship". Token de duração ADJACENTE ao marcador de estágio na
+    # mesma frase; faixa com piso ≤ 6 fica; frase-de-data ("within 12
+    # months") não é duração. A parte "full time work authorization" é
+    # trabalho da F95 (work_auth) — não duplicada aqui.
+    if duration_conflict_description(title, description):
+        return "duration_conflict"
+
     if is_full_time_permanent(job):
         return "full_time_permanent"
 
@@ -1412,6 +1778,15 @@ def applicability_exclusion_reason(
     # faixa-zero e história-de-empresa no detector).
     if requires_experience(title, description):
         return "experience_required"
+
+    # F99 (22/10): vaga destinada a RECENT-GRADUATES (auto1 744000154701234
+    # verbatim "You are recent graduate from University") — o dono é ALUNO
+    # MATRICULADO (§16e exige matrícula ativa). OR-semantics com matrícula
+    # na mesma janela NÃO exclui (counter-cases DB Controlling/Wellington/
+    # Nestlé/JDE). ÚLTIMO na ordem first-match (família perfil do candidato,
+    # junto com experience_required).
+    if targets_recent_graduates(title, description):
+        return "recent_graduate"
 
     return None
 
