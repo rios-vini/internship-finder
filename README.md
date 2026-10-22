@@ -136,7 +136,14 @@ window: a confirmed 404/410 is removed via the dead-link mechanism, and
 a fake-200 that announces the position was filled ("Diese Stelle wurde
 leider bereits besetzt") is treated as dead for display. Network
 timeouts never prove death, and the whole stage is budget-capped on the
-same daily fetch budget as hydration (off by default).
+same daily fetch budget as hydration (off by default). (c) Everything
+the machine can't judge — non-assessable/borderline postings, `unknown`
+liveness verdicts and provider-ID collisions between dead and alive
+companies (a `recruitee` id reused by another employer) — lands in one
+regenerated `data/MANUAL-CHECK.md` queue: one line per item with a
+direct link (redirect chains resolved to their final target), the
+reason and the first-sighting date. The queue is parallel: nothing
+leaves the ranking or the Top-5.
 
 **Ranking.** Deterministic, reproducible scoring (no ML) over the same
 eligible set, with a full per-component breakdown; ties broken by score
@@ -198,7 +205,7 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **145 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-| **133** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+| **134** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **227** | commits, one feature PR per change (git log, first-parent) |
 
@@ -282,7 +289,11 @@ benchmark rotulado à mão (tau +0,651). Guardrails de análise: vagas sem
 descrição avaliável ganham flag ⚠️ (sinal, nunca exclusão; hidratação
 cura) e vagas novas passam por 1 liveness check no 1º sighting (404/410
 ou "besetzt" 200-falso = morta antes de gastar análise; timeout nunca
-mata; budget diário compartilhado com a hidratação). Produtos: página
+mata; budget diário compartilhado com a hidratação); o que a máquina
+não consegue julgar (não-avaliável/borderline, liveness unknown, ID de
+provedor colidindo entre empresa viva e morta) vira fila diária
+`data/MANUAL-CHECK.md` com link direto, motivo e data — fila paralela,
+o Top-5 não é filtrado. Produtos: página
 pública diária (GitHub Pages), digest no Telegram, tracker pessoal de
 candidaturas e radar de empresas-alvo. Documentação operacional
 completa (PT-BR) em `docs/README-operacional.md`.
