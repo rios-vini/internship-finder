@@ -247,7 +247,28 @@ REPO = Path(__file__).resolve().parent.parent
 # ranking seguem). Nenhuma mudança de render: o badge/legenda da página
 # não dependem do SEED — o byte a byte da F53 segue válido módulo os
 # strips F60/F83/F86 (fixtures sem empresa da onda).
-_AB_BASELINE_SHA = "67b61ff511a2d493da4722d084dccf1c65c1868a"
+
+# F92 (21/10): src/ moveu de novo (cli.py — estágio de normalização de
+# ingestão F92 entre select_eligible e dedup; dedup.py — normalize_location
+# trata o sentinela '—' como ausente; company_aliases.py NOVO — loader
+# fail-closed + aplicação dos aliases canônicos e guards de location).
+# Nenhuma mudança de render: o estágio reescreve company/location no DADO
+# (pós-filter, pré-dedup) — as fixtures da F53 não usam labels do mapa
+# F92 nem locations com prefixo postal, o byte a byte segue válido
+# módulo os strips F60/F83/F86. Padrão F56/F88: âncora move para o head
+# da fase que tocou src/.
+# F99 (22/10): src/ moveu de novo (filters.py — 3 detectores novos de
+# hard-eligibility [native_language, duration_conflict, recent_graduate]
+# + extensões de eu_citizenship_required/nl_enrolment_required/
+# requires_master + normalização de apóstrofo tipográfico U+2019 na
+# cadeia; ptbr.py — APPLICABILITY_REASON_LABELS display-only). Nenhuma
+# mudança de render: minimal_page.py intocado, os motivos são chaves
+# técnicas de metrics/JSON — o byte a byte da F53 segue válido módulo os
+# strips F60/F83/F86. Padrão F56/F88/F92: âncora move para o commit da
+# fase que tocou src/ (667925e = commit F99 1/2 — SÓ src/; o commit 2/2
+# edita testes/README — src/ idêntico, o diff segue vazio na branch, no
+# CI raso ([SKIP]) e no main pós-squash).
+_AB_BASELINE_SHA = "ca1c0b93a6fd20403671631b3e105f1707184855"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
