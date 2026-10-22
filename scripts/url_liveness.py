@@ -44,6 +44,17 @@ SOMENTE JSON-LD schema.org JobPosting (campo ``description``). Os caminhos
 F20): boards como KPMG/Thales servem meta GENÉRICA do board que passava no
 gate de qualidade (>= 120 chars) e era inútil como descrição da vaga. O
 gate (>= 120 chars) passa a valer também para o JSON-LD extraído.
+
+F94 (21/10) — liveness v2: o passe devolve VEREDITO por vaga checada
+(``alive | dead | unknown`` em ``stats["verdicts"]``) para o chamador
+persistir no registro; ``unknown`` = checou e não deu para determinar
+(wall SAML/csod, erro de rede, erro do stub Lidl rdr) — NUNCA morto por
+falta de parse. Edge cases de provedor: SAML => unknown +
+``manual_check_required``; stub Lidl ``rdr/jump-to-job`` => o veredito é
+do ALVO (re-post: vaga fora do feed/eligible mas VIVA no site — pacote
+válido não se descarta). ``needs_liveness_recheck``: hook do fluxo de
+aplicação — veredito >24h pede re-teste antes do pacote (display/digest,
+nunca exclusão).
 """
 
 from __future__ import annotations
@@ -59,7 +70,10 @@ __all__ = [
     "LIVENESS_DEADLINE_S", "LIVENESS_MAX_BYTES", "SOFT_DEAD_MARKERS",
     "FAKE200_MARKERS", "FAKE200_MAX_BODY_CHARS",
     "SPA_SHELL_SIZES", "SPA_SHELL_TITLE_RE", "DEAD_STATUS",
+    "SAML_URL_MARKER", "SAML_BODY_MARKERS", "REDIRECT_STUB_RE",
+    "LIVENESS_RECHECK_AFTER_H",
     "check_liveness", "check_liveness_v2", "parse_job_description",
+    "needs_liveness_recheck",
 ]
 
 # UA honesto e identificavel (spec: "UA honesto") — nao imita browser.
@@ -107,6 +121,55 @@ SOFT_DEAD_MARKERS = (
 # has been filled") já são cobertas por SOFT_DEAD_MARKERS.
 FAKE200_MARKERS = ("bereits besetzt", "position filled")
 FAKE200_MAX_BODY_CHARS = 4096
+
+# ---------------------------------------------------------------------------
+# F94 — Liveness v2: estado persistente + edge cases de provedor.
+#
+# A F87 mata/remove mas não deixa estado CONSULTÁVEL por vaga; aqui o passe
+# devolve um VEREDITO por vaga checada (``alive | dead | unknown``) para o
+# chamador persistir no registro (``liveness_status`` +
+# ``liveness_checked_at``). ``unknown`` = checou e NÃO deu para determinar —
+# NUNCA "morto por falta de parse" (a doutrina da F11/F87 vira campo).
+#
+# Dois edge cases medidos ao vivo (21/10, probes da fase):
+#
+# - **SAML/csod** (henkel ×4 do registro): a URL da vaga redireciona (3
+#   hops) para ``/samldefault.aspx`` com 200 e corpo de 3.6KB
+#   ``<title>SAML Authentication Request</title>`` — autenticação na
+#   frente do anúncio. Semântica: ``unknown`` +
+#   ``manual_check_required`` — o wall PROVA nada sobre a vaga; marcar
+#   dead por não conseguir parsear seria exatamente o FP que a F20
+#   proíbe. Padrão genérico (URL/corpo), sem hard-code de empresa.
+# - **Lidl redirect stub** (``/rdr/jump-to-job/<ref>``): URL ESTÁVEL de
+#   apply/ref que redireciona (1 hop medido) para a página REAL da vaga —
+#   o veredito vem do ALVO, não do stub. Caso re-post (Ref 753653,
+#   registro 21/10): a vaga antiga sai do eligible (re-post ganhou novo
+#   requisition id no feed) mas o alvo SEGUE VIVO no site — pacote de
+#   candidatura VÁLIDO não pode ser descartado. Stub que responde 404/410
+#   ou 500 (ref inexistente: 500 "We'll be right back", 210KB, medido)
+#   não prova morte do ANÚNCIO => ``unknown``, nunca dead/remoção F39.
+# ---------------------------------------------------------------------------
+
+# SAML: marcador na URL FINAL (path do IdP — ``samldefault.aspx``) OU título/
+# corpo curto declarando o request de autenticação (medido henkel.csod.com).
+SAML_URL_MARKER = "saml"
+SAML_BODY_MARKERS = (
+    "saml authentication request",
+    "samlrequest",
+)
+# Corpo que um wall de autenticação pode ter sem deixar de ser wall — o
+# check de corpo SAML olha só o início (walls são páginas mínimas; a
+# henkel medida tem 3.6KB).
+_SAML_BODY_SCAN_CHARS = 8192
+
+# Lidl: URL de redirect estável por REF (apply/manifest). O veredito vem do
+# ALVO após o redirect; erros do stub nunca provam morte do anúncio.
+REDIRECT_STUB_RE = re.compile(r"/rdr/jump-to-job/(?:[^/?#]+)", re.IGNORECASE)
+
+# F94 item 4 — re-check antes do pacote: veredito mais velho que isso (em
+# horas) pede re-teste antes de virar candidatura. Hook do fluxo de
+# aplicação (display/digest), NUNCA exclusão.
+LIVENESS_RECHECK_AFTER_H = 24
 
 # F20 — assinaturas de shell SPA de board (Infineon/eightfold): tamanho
 # EXATO do shell generico servido para vaga morta (268.630 bytes medidos
@@ -207,6 +270,82 @@ def _final_path_is_homepage(final_url: str, original_url: str) -> bool:
         # so e redirect-para-homepage se o original NAO era homepage
         return bool(orig.path) and orig.path != "/"
     return False
+
+
+def _is_saml_wall(final_url: str, body_text: str) -> str | None:
+    """F94 — a resposta é um wall de autenticação SAML (csod/IdP)?
+
+    Caso medido (henkel.csod.com 21/10): a URL da vaga redireciona para
+    ``/samldefault.aspx?...`` respondendo 200 com corpo mínimo
+    ``<title>SAML Authentication Request</title>``. O wall PROVA nada
+    sobre a vaga — o veredito é ``unknown`` + ``manual_check_required``,
+    NUNCA dead. Sinal duplo e FP-safe: marcador SAML no PATH da URL final
+    OU no corpo (o título/corpo declarando o auth request). Pura.
+    """
+    from urllib.parse import urlsplit
+    try:
+        path = urlsplit(str(final_url or "")).path.casefold()
+    except ValueError:
+        path = ""
+    if SAML_URL_MARKER in path:
+        return f"url:{path}"
+    folded = body_text[:_SAML_BODY_SCAN_CHARS].casefold()
+    for marker in SAML_BODY_MARKERS:
+        if marker.casefold() in folded:
+            return f"body:{marker}"
+    return None
+
+
+def _is_redirect_stub(url: str) -> bool:
+    """F94 — a URL é um stub de redirect por REF (Lidl rdr/jump-to-job)?
+
+    Pura. O stub não é a página da vaga: o veredito vem do ALVO após o
+    redirect (o opener segue redirects — a resposta que chega aqui É a do
+    alvo quando ele existe). Erros do STUB (404/410/5xx, medido: Lidl
+    serve 500 "We'll be right back" para ref inexistente) não provam
+    morte do anúncio => ``unknown``, nunca dead/F39.
+    """
+    return bool(REDIRECT_STUB_RE.search(str(url or "")))
+
+
+def needs_liveness_recheck(job: dict, now=None) -> bool:
+    """F94 item 4 — a vaga pede re-teste de liveness antes do pacote?
+
+    Hook DOCUMENTADO para o fluxo de aplicação: quando uma vaga vai virar
+    pacote de candidatura (o dono vai investir tempo nela), um veredito
+    com mais de ``LIVENESS_RECHECK_AFTER_H`` horas (24) deve ser
+    re-testado ANTES — mortes entre avaliação e envio são o padrão
+    medido (Simvia/Festo 20/10, GFO 21/10). Semântica display/digest:
+    sinal para o fluxo de aplicação, NUNCA exclusão do JSON.
+
+    - Sem estado persistido (vaga nunca checada) => ``True`` — checar
+      antes é sempre a resposta honesta.
+    - ``liveness_status`` "unknown" => ``True`` sempre: veredito
+      inconclusivo não autoriza candidatura sem re-teste manual.
+    - ``liveness_checked_at`` ilegível/ausente => ``True`` (defensivo).
+    """
+    status = str(job.get("liveness_status") or "").strip().lower()
+    if status == "unknown":
+        return True
+    checked_at = str(job.get("liveness_checked_at") or "").strip()
+    if not checked_at:
+        return True
+    if now is None:
+        from datetime import UTC, datetime
+        now = datetime.now(UTC)
+    try:
+        from datetime import datetime as _dt
+        checked = _dt.fromisoformat(checked_at)
+    except ValueError:
+        return True
+    if checked.tzinfo is None:
+        from datetime import timezone as _tz
+        checked = checked.replace(tzinfo=_tz.utc)
+    if now.tzinfo is None:
+        from datetime import timezone as _tz
+        now = now.replace(tzinfo=_tz.utc)
+    age_h = (now - checked).total_seconds() / 3600.0
+    return age_h > LIVENESS_RECHECK_AFTER_H
 
 
 def _loads_lenient(text: str):
@@ -397,7 +536,17 @@ def check_liveness_v2(
       — nunca piora).
     - ``stats``: contadores do passe (attempts/http_responses/net_errors/
       soft_dead/{marker,redirect,shell}/hydrated/hydration_failed/
-      duration_s) para o log e o relatorio da fase.
+      duration_s) para o log e o relatorio da fase. F94 acrescenta, por
+      vaga CHECADA, o veredito consultável ``verdicts``:
+      ``{job_id: {"status": "alive"|"dead"|"unknown", "detail": str}}``
+      (+ ``manual_check_required``: lista de ids atrás de wall SAML —
+      o chamador persiste ``liveness_status``/``liveness_checked_at`` no
+      registro). Edge cases F94: wall SAML => unknown + manual, NUNCA
+      dead; stub de redirect (Lidl ``rdr/jump-to-job``) => o veredito é
+      do ALVO, e erros do stub (404/410/5xx/rede) => unknown, nunca
+      dead (o 404 do STUB não é o 404 do ANÚNCIO). Falha TOTAL de rede:
+      ``verdicts`` vazio — o estado anterior do registro permanece
+      (nada foi efetivamente checado; a F11 manda não marcar ninguém).
 
     ``want_bodies=False`` = modo so-vitalidade (o parse de descricao e
     pulado; usado pelo ``check_liveness`` compativel).
@@ -435,6 +584,11 @@ def check_liveness_v2(
     hydrated = 0
     hydration_failed = 0
     short_candidates = 0
+    # F94 — veredito consultável por vaga CHECADA (alive|dead|unknown) +
+    # ids atrás de wall SAML (manual_check_required). Preservado no
+    # registro pelo chamador (refresh_daily) com liveness_checked_at.
+    verdicts: dict[str, dict] = {}
+    manual_check: set[str] = set()
     try:
         for idx, job in enumerate(jobs):
             jid = str(job.get("id") or "")
@@ -475,13 +629,53 @@ def check_liveness_v2(
                 # HTTPError E uma resposta HTTP do servidor (site no ar).
                 http_responses += 1
                 if exc.code in DEAD_STATUS:
-                    dead.add(jid)
-                    hard_dead.add(jid)
-                    hard_dead_status[jid] = int(exc.code)
-                    _info("morta %s: %s -> HTTP %d", jid, url, exc.code)
+                    if _is_redirect_stub(url):
+                        # F94 — o 404/410 é do STUB de redirect, não do
+                        # ANÚNCIO: o alvo não foi alcançado => unknown.
+                        # Nunca dead/F39 (padrão Lidl re-post: pacote
+                        # válido não é descartado por erro do stub).
+                        verdicts[jid] = {
+                            "status": "unknown",
+                            "detail": f"stub http {exc.code}",
+                        }
+                        _info("unknown %s: stub de redirect respondeu "
+                              "HTTP %d — alvo não testável (%s)",
+                              jid, exc.code, url)
+                    else:
+                        dead.add(jid)
+                        hard_dead.add(jid)
+                        hard_dead_status[jid] = int(exc.code)
+                        verdicts[jid] = {
+                            "status": "dead",
+                            "detail": f"http {exc.code}",
+                        }
+                        _info("morta %s: %s -> HTTP %d", jid, url, exc.code)
+                else:
+                    # 403/429/5xx: bloqueio/erro, não morte (F11) —
+                    # honesto no registro: checou, não deu para saber.
+                    verdicts[jid] = {
+                        "status": "unknown",
+                        "detail": f"http {exc.code}",
+                    }
                 continue
             except Exception:  # noqa: BLE001 — timeout/DNS/SSL/bloqueio
                 net_errors += 1  # 403/429 chegam como HTTPError; rede nao
+                verdicts[jid] = {"status": "unknown", "detail": "network"}
+                continue
+
+            # ---- F94 — wall SAML (csod/IdP) ANTES de qualquer check de
+            # corpo: autenticação na frente do anúncio PROVA nada sobre a
+            # vaga. unknown + manual_check_required, NUNCA dead.
+            saml = _is_saml_wall(final_url, body_text)
+            if saml is not None:
+                verdicts[jid] = {
+                    "status": "unknown",
+                    "detail": f"saml wall ({saml})",
+                }
+                manual_check.add(jid)
+                _info("unknown %s: wall SAML de autenticação (%s) — "
+                      "manual_check_required, nunca dead (%s)",
+                      jid, saml, url)
                 continue
 
             # ---- soft-dead checks (so respostas 2xx chegam aqui) ----
@@ -490,6 +684,7 @@ def check_liveness_v2(
                 dead.add(jid)
                 soft_dead += 1
                 soft_dead_ids.add(jid)
+                verdicts[jid] = {"status": "dead", "detail": f"marker {marker}"}
                 _info("soft-dead %s: corpo contem %r (%s)", jid, marker, url)
                 continue
             # F87 — 200-falso textual em corpo curto (Festo "bereits
@@ -501,6 +696,10 @@ def check_liveness_v2(
                 dead.add(jid)
                 soft_dead += 1
                 soft_dead_ids.add(jid)
+                verdicts[jid] = {
+                    "status": "dead",
+                    "detail": f"fake200 {fake_marker}",
+                }
                 _info("soft-dead %s: 200-falso textual %r (%s)",
                       jid, fake_marker, url)
                 continue
@@ -508,6 +707,7 @@ def check_liveness_v2(
                 dead.add(jid)
                 soft_dead += 1
                 soft_dead_ids.add(jid)
+                verdicts[jid] = {"status": "dead", "detail": "redirect homepage"}
                 _info("soft-dead %s: redirect para homepage (%s -> %s)",
                       jid, url, final_url)
                 continue
@@ -515,9 +715,15 @@ def check_liveness_v2(
                 dead.add(jid)
                 soft_dead += 1
                 soft_dead_ids.add(jid)
+                verdicts[jid] = {"status": "dead", "detail": "spa shell"}
                 _info("soft-dead %s: shell SPA de board (%d bytes, %s)",
                       jid, body_len, url)
                 continue
+
+            # F94 — sobreviveu a todos os checks: viva. Para stub de
+            # redirect, este é o veredito DO ALVO (o opener seguiu o
+            # redirect — caso Lidl Ref 753653: alvo 200 de 209KB = viva).
+            verdicts[jid] = {"status": "alive", "detail": ""}
 
             # ---- hidratacao (vaga VIVA com descricao curta) ----
             if want_bodies and jid not in dead:
@@ -546,6 +752,10 @@ def check_liveness_v2(
             "hard_dead_ids": set(hard_dead),
             "hard_dead_status": dict(hard_dead_status),
             "soft_dead_ids": set(soft_dead_ids),
+            # F94 — vereditos confirmados ATÉ a falha (evidência real
+            # observada); o que não chegou a ser checado fica sem estado.
+            "verdicts": {k: dict(v) for k, v in verdicts.items()},
+            "manual_check_required": sorted(manual_check),
         }
         return dead, bodies, stats
     # Falha TOTAL de rede: nenhuma resposta HTTP de nenhuma tentativa —
@@ -553,7 +763,9 @@ def check_liveness_v2(
     duration = time.monotonic() - started
     if attempts > 0 and http_responses == 0 and net_errors == attempts:
         _warn("falha total de rede (%d/%d tentativas sem resposta HTTP); "
-              "NENHUMA vaga marcada", net_errors, attempts)
+              "NENHUMA vaga marcada, vereditos ANTERIORES do registro "
+              "preservados (nada foi efetivamente checado)", net_errors,
+              attempts)
         stats = {
             "attempts": attempts, "http_responses": http_responses,
             "net_errors": net_errors, "soft_dead": 0,
@@ -562,11 +774,21 @@ def check_liveness_v2(
             "duration_s": round(duration, 1),
             "hard_dead_ids": set(), "hard_dead_status": {},
             "soft_dead_ids": set(),
+            # F94 — SEM vereditos: o run não conseguiu checar nada; o
+            # estado persistido no registro (runs anteriores) é a última
+            # evidência real e permanece intocado (mesma doutrina F11
+            # que não marca mortas sem resposta HTTP).
+            "verdicts": {},
+            "manual_check_required": [],
         }
         return set(), bodies, stats
+    alive_n = sum(1 for v in verdicts.values() if v.get("status") == "alive")
+    unknown_n = sum(1 for v in verdicts.values() if v.get("status") == "unknown")
     _info("%d checks: %d morta(s) (%d soft), %d hidratada(s), "
-          "%d erro(s) de rede ignorado(s)",
-          attempts, len(dead), soft_dead, hydrated, net_errors)
+          "%d erro(s) de rede ignorado(s); vereditos F94: %d viva(s), "
+          "%d unknown (%d wall SAML)",
+          attempts, len(dead), soft_dead, hydrated, net_errors,
+          alive_n, unknown_n, len(manual_check))
     stats = {
         "attempts": attempts, "http_responses": http_responses,
         "net_errors": net_errors, "soft_dead": soft_dead,
@@ -577,6 +799,12 @@ def check_liveness_v2(
         "hard_dead_ids": set(hard_dead),
         "hard_dead_status": dict(hard_dead_status),
         "soft_dead_ids": set(soft_dead_ids),
+        # F94 — veredito por vaga checada para o chamador persistir no
+        # registro (liveness_status/liveness_checked_at/manual_check).
+        "verdicts": {k: dict(v) for k, v in verdicts.items()},
+        "manual_check_required": sorted(manual_check),
+        "alive": alive_n,
+        "unknown": unknown_n,
     }
     return dead, bodies, stats
 

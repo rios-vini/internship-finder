@@ -1579,6 +1579,198 @@ def _annotate_assessability(ranking: list) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# F94 — Liveness v2: estado persistente por vaga + stale_posting (ITEM 1 da
+# delegação, o DELTA da F87). A F87 mata/remove mas não deixa estado
+# CONSULTÁVEL por vaga; estes annotators gravam o veredito NO REGISTRO
+# (``liveness_status: alive|dead|unknown`` + ``liveness_checked_at``) e a
+# idade do posting (``stale_posting`` + ``posting_age_days``). Todos
+# display/digest-agnósticos: NENHUM filtro/exclusão lê estes campos — a
+# semântica de morte/remoção continua EXCLUSIVA dos mecanismos F11/F20/F39.
+# ---------------------------------------------------------------------------
+LIVENESS_STATUS_FIELD = "liveness_status"
+LIVENESS_CHECKED_AT_FIELD = "liveness_checked_at"
+MANUAL_CHECK_FIELD = "manual_check_required"
+STALE_POSTING_FIELD = "stale_posting"
+POSTING_AGE_DAYS_FIELD = "posting_age_days"
+
+# F94 item 3 — idade do posting por tipo (spec: estágio ~30–45d, permanente
+# ~90d). O flag acende no TOPO da janela medida (45d): abaixo disso um
+# estágio é idade normal de ciclo (a janela 30–45 é o território de atenção,
+# não de flag). Permanente = ``job_type_of == "permanente"`` (F86: sinal
+# full-time SEM marcador estudantil); tudo que é estágio-família (None/
+# hiwi/werkstudent/tese — o corpus eligible é Praktikum-centríco por
+# construção) usa 45d.
+STALE_POSTING_DAYS_INTERNSHIP = 45
+STALE_POSTING_DAYS_PERMANENT = 90
+
+
+def _annotate_liveness_state(
+    ranking: list, verdicts: dict, manual_ids: set[str], checked_at: str,
+) -> dict:
+    """F94 item 1 — grava o veredito de liveness NO REGISTRO (in place).
+
+    Para cada vaga CHECADA neste passe (``stats["verdicts"]`` do
+    ``url_liveness.check_liveness_v2``): ``liveness_status`` =
+    ``alive|dead|unknown`` + ``liveness_checked_at`` (timestamp ISO do
+    passe). Vagas NÃO checadas neste run (fora do top/budget) ficam com o
+    estado do run anterior — é a PERSISTÊNCIA que a spec pede: estado por
+    vaga consultável entre runs. Vagas com wall SAML ganham
+    ``manual_check_required: true`` (e o campo APAGA quando um run
+    posterior acha a vaga viva — cura idempotente, padrão F87).
+
+    Nada de exclusão aqui: hard-dead sai do JSON pelo mecanismo F39 (o
+    annotator roda antes e o registro removido leva o veredito junto);
+    soft-dead/unknown/alive ficam no JSON com o estado honesto.
+
+    Devolve contadores::  {"annotated", "alive", "dead", "unknown",
+    "manual_check_required"}
+    """
+    by_id: dict[str, dict] = {}
+    for job in ranking:
+        if isinstance(job, dict):
+            jid = str(job.get("id") or "")
+            if jid and jid not in by_id:
+                by_id[jid] = job
+    manual = set(str(i) for i in (manual_ids or()))
+    annotated = alive = dead = unknown = manual_n = 0
+    for raw_id, raw_verdict in (verdicts or {}).items():
+        job = by_id.get(str(raw_id))
+        if job is None:
+            continue  # id fora do ranking (ex.: já removido por F39)
+        verdict = raw_verdict if isinstance(raw_verdict, dict) else {}
+        status = str(verdict.get("status") or "").strip().lower()
+        if status not in ("alive", "dead", "unknown"):
+            continue  # veredito malformado: estado anterior permanece
+        job[LIVENESS_STATUS_FIELD] = status
+        job[LIVENESS_CHECKED_AT_FIELD] = checked_at
+        annotated += 1
+        if status == "alive":
+            alive += 1
+        elif status == "dead":
+            dead += 1
+        else:
+            unknown += 1
+        if status == "unknown" and str(raw_id) in manual:
+            job[MANUAL_CHECK_FIELD] = True
+            manual_n += 1
+        else:
+            # cura idempotente: wall SAML saiu (run achou a vaga) => flag apaga
+            job.pop(MANUAL_CHECK_FIELD, None)
+    return {
+        "annotated": annotated, "alive": alive, "dead": dead,
+        "unknown": unknown, "manual_check_required": manual_n,
+    }
+
+
+def posting_age_days(job: dict, now: datetime, first_seen: str | None = None):
+    """F94 item 3 — idade do posting em dias (pura; evidência primeiro).
+
+    Fonte primária: ``posted_at`` JÁ COLETADO pela pipeline (nunca
+    inferido). Fallback: ``first_seen`` do caderno F70
+    (``dataset_seen.db`` — o universo dataset pós-prefilter; vagas sem
+    posted_at no feed ganham a idade da primeira aparição). Sem nenhuma
+    das duas => ``None``: SEM evidência de idade nada é flagrado
+    (AGENTS.md: ausência vale ``None``, nunca dado fabricado).
+
+    Devolve ``(idade_em_dias, fonte)`` com fonte
+    ``"posted_at"|"first_seen"``; idades negativas (clock skew/posting no
+    futuro) viram 0. Aceita ISO com timezone (shape real do JSON) e sem
+    (assumida UTC).
+    """
+    posted = str(job.get("posted_at") or "").strip()
+    seen = str(first_seen or "").strip()
+    for source, raw in (("posted_at", posted), ("first_seen", seen)):
+        if not raw:
+            continue
+        try:
+            ts = datetime.fromisoformat(raw)
+        except ValueError:
+            continue  # ilegível => tenta o fallback, nunca inventa
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        age = (now - ts).total_seconds() / 86400.0
+        return (max(age, 0.0), source)
+    return None
+
+
+def stale_posting_threshold_days(job: dict) -> int:
+    """F94 item 3 — limite de idade por tipo de vaga (pura).
+
+    ``permanente`` (F86 ``job_type_of``) => 90d; o resto do corpus
+    (estágio-família: Praktikum/intern, hiwi, werkstudent, tese) => 45d.
+    Falha de import => 45d (o Limiar conservador do estágio — nunca
+    derruba o run).
+    """
+    try:
+        from internship_finder.filters import job_type_of
+        if job_type_of(job.get("title"), job.get("description")) == "permanente":
+            return STALE_POSTING_DAYS_PERMANENT
+    except Exception:  # noqa: BLE001 — detector é sinal, nunca gate
+        pass
+    return STALE_POSTING_DAYS_INTERNSHIP
+
+
+def _annotate_stale_posting(
+    ranking: list, now: datetime, seen_db_path=None,
+) -> dict:
+    """F94 item 3 — flag ``stale_posting`` por tipo NO REGISTRO (in place).
+
+    Idempotente: recomputa TODO run sobre a lista inteira — acende acima
+    do limite do tipo (45d estágio / 90d permanente) e APAGA quando a
+    idade volta para baixo (re-post zera ``posted_at``; a cura é
+    efeito colateral da recomputação, padrão F87). O flag é SINAL
+    (display/digest leem o CAMPO, nunca recomputam; NUNCA exclusão —
+    vaga velha pode estar VIVA, o caso Lidl re-post). Sem evidência de
+    idade (sem posted_at E sem caderno) => campos APAGADOS, vaga
+    intocada. Zero rede; best-effort TOTAL.
+
+    Devolve contadores para log/métrica::
+        {"total", "stale", "cleared", "no_evidence", "by_source",
+         "by_threshold"}
+    """
+    from internship_finder.dataset_seen import job_seen_history
+    total = stale = cleared = no_evidence = 0
+    by_source: dict[str, int] = {}
+    by_threshold: dict[str, int] = {}
+    for job in ranking:
+        if not isinstance(job, dict):
+            continue
+        total += 1
+        first_seen = None
+        jid = str(job.get("id") or "")
+        if seen_db_path is not None and jid:
+            history = job_seen_history(seen_db_path, jid)
+            if history is not None:
+                first_seen = history[0]
+        age = posting_age_days(job, now, first_seen)
+        if age is None:
+            if STALE_POSTING_FIELD in job or POSTING_AGE_DAYS_FIELD in job:
+                cleared += 1  # tinha flag de run anterior, perdeu a evidência
+            job.pop(STALE_POSTING_FIELD, None)
+            job.pop(POSTING_AGE_DAYS_FIELD, None)
+            no_evidence += 1
+            continue
+        age_days, source = age
+        by_source[source] = by_source.get(source, 0) + 1
+        threshold = stale_posting_threshold_days(job)
+        by_threshold[str(threshold)] = by_threshold.get(str(threshold), 0) + 1
+        if age_days > threshold:
+            job[STALE_POSTING_FIELD] = True
+            job[POSTING_AGE_DAYS_FIELD] = int(age_days)
+            stale += 1
+        else:
+            if STALE_POSTING_FIELD in job or POSTING_AGE_DAYS_FIELD in job:
+                cleared += 1
+            job.pop(STALE_POSTING_FIELD, None)
+            job.pop(POSTING_AGE_DAYS_FIELD, None)
+    return {
+        "total": total, "stale": stale, "cleared": cleared,
+        "no_evidence": no_evidence, "by_source": by_source,
+        "by_threshold": by_threshold,
+    }
+
+
 def _reassess_hydrated_applicability(job: dict) -> str | None:
     """F20 item 3 — re-avalia a aplicabilidade da vaga com a descricao
     hidratada, REUSANDO a funcao pura da cascata (F18 + F37:
@@ -2413,6 +2605,23 @@ def _intake_liveness(
     # topo e a estendida continuam donas dela).
     dead, _bodies, lstats = url_liveness.check_liveness_v2(
         fetched_jobs, want_bodies=False, log=log, opener=opener)
+    # F94 — veredito por vaga NO REGISTRO (estado persistente consultável
+    # entre runs): alive/dead/unknown + liveness_checked_at; wall SAML
+    # (csod) ganha manual_check_required. Anota ANTES da remoção F39 — o
+    # hard-dead removido leva o veredito junto (o registro sai do JSON);
+    # os demais ficam com o estado honesto.
+    liveness_state = _annotate_liveness_state(
+        ranking,
+        lstats.get("verdicts") or {},
+        set(lstats.get("manual_check_required") or []),
+        utcnow_iso(),
+    )
+    if liveness_state["annotated"]:
+        _info("F94 vereditos de intake: %d anotado(s) — %d viva(s), "
+              "%d morta(s), %d unknown (%d wall SAML)",
+              liveness_state["annotated"], liveness_state["alive"],
+              liveness_state["dead"], liveness_state["unknown"],
+              liveness_state["manual_check_required"])
     hard_ids, hard_status = _extract_liveness_details(lstats)
     removal: dict = {}
     if os.environ.get(DEAD_REMOVAL_ENV_FLAG) != "1":
@@ -2427,12 +2636,27 @@ def _intake_liveness(
     else:
         _info("F87: remoção de intake DESLIGADA (%s presente) — semântica "
               "F20 preservada", DEAD_REMOVAL_ENV_FLAG)
+    # F94 — persiste os vereditos quando a remoção F39 NÃO reescreveu o
+    # JSON neste passe (best-effort; falha nunca derruba o estágio).
+    if liveness_state["annotated"] and not removal.get("removed"):
+        try:
+            from internship_finder.cli import _write_json_atomic
+            _write_json_atomic(ranking, eligible_path)
+        except Exception as exc:  # noqa: BLE001 — persistencia best-effort
+            _warn("F94: vereditos de intake não persistidos (o registro "
+                  "segue sem o estado): %s: %s", type(exc).__name__, exc)
     soft_ids = set(dead) - set(hard_ids)
     record.update({
         "dead": len(dead),
         "hard_dead": len(hard_ids),
         "soft_dead": len(soft_ids),
         "net_errors": int(lstats.get("net_errors") or 0),
+        # F94 — vereditos persistidos no registro por este passe
+        "verdict_annotated": liveness_state["annotated"],
+        "verdict_alive": liveness_state["alive"],
+        "verdict_dead": liveness_state["dead"],
+        "verdict_unknown": liveness_state["unknown"],
+        "verdict_manual_check": liveness_state["manual_check_required"],
         "removed": removal.get("removed", 0),
         "removed_ids": removal.get("removed_ids", []),
         "removed_entries": removal.get("removed_entries", []),
@@ -2785,6 +3009,24 @@ def main(argv: list[str] | None = None) -> int:
                     dead_ids, hydrated_bodies, hydration_stats = result, {}, {}
                 else:
                     dead_ids, hydrated_bodies, hydration_stats = result
+                # F94 — veredito por vaga NO REGISTRO (estado persistente):
+                # alive/dead/unknown + liveness_checked_at; wall SAML ganha
+                # manual_check_required. Anota ANTES da remoção F39 e da
+                # hidratação (as reescritas seguintes carregam os campos; a
+                # persistência explícita cobre o run sem remoção/hidratação).
+                liveness_state = _annotate_liveness_state(
+                    ranking,
+                    hydration_stats.get("verdicts") or {},
+                    set(hydration_stats.get("manual_check_required") or []),
+                    utcnow_iso(),
+                )
+                if liveness_state["annotated"]:
+                    log.info(
+                        "F94 vereditos do top exibido: %d anotado(s) — "
+                        "%d viva(s), %d morta(s), %d unknown (%d wall SAML)",
+                        liveness_state["annotated"], liveness_state["alive"],
+                        liveness_state["dead"], liveness_state["unknown"],
+                        liveness_state["manual_check_required"])
                 # F39 — remoção de hard-dead confirmado: ids HTTP 404/410
                 # SEPARADOS dos soft-dead nos stats do liveness (extração
                 # tolerante — stats sem as chaves F39 = nada a excluir).
@@ -2827,6 +3069,20 @@ def main(argv: list[str] | None = None) -> int:
                     log.info("F39 remoção DESLIGADA (%s presente): "
                              "semântica F20 preservada",
                              DEAD_REMOVAL_ENV_FLAG)
+                # F94 — persiste os vereditos quando a remoção F39 NÃO
+                # reescreveu o JSON (a reescrita da remoção/hidratação já
+                # carrega os campos — anotação in place no ranking).
+                # Best-effort: falha nunca derruba o run.
+                if liveness_state["annotated"] and not removal_stats.get("removed"):
+                    try:
+                        from internship_finder.cli import _write_json_atomic
+                        _write_json_atomic(
+                            ranking, data_dir / "eligible_jobs.json")
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning(
+                            "F94: vereditos não persistidos (página/digest "
+                            "seguem; o estado fica só no log): %s: %s",
+                            type(exc).__name__, exc)
                 # Hidratacao: aplica a descricao completa nas vagas vivas
                 # (provenance honesta; descricao original NUNCA piora) e
                 # re-avalia aplicabilidade com as regras da F18.
@@ -3133,6 +3389,57 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001 — F87 nunca derruba o run
         log.warning("F87: anotação não-avaliável falhou (run segue sem os "
                     "⚠️): %s: %s", type(exc).__name__, exc)
+
+    # F94 item 3 — flag stale_posting por tipo (display/digest leem o
+    # CAMPO, NUNCA recomputam; NUNCA exclusão — vaga velha pode estar
+    # VIVA no site, o caso Lidl re-post). posted_at coletado como fonte
+    # primária; caderno F70 first_seen como fallback (dataset sem
+    # posted_at — ex. workday airbus). Zero rede, idempotente; persiste
+    # ANTES do publish/digest. Best-effort TOTAL.
+    try:
+        ranking = json.loads(
+            (data_dir / "eligible_jobs.json").read_text(encoding="utf-8")
+        ) if (data_dir / "eligible_jobs.json").exists() else []
+        stale_stats = _annotate_stale_posting(
+            ranking, now=datetime.now(UTC),
+            seen_db_path=data_dir / "dataset_seen.db")
+        if stale_stats.get("stale") or stale_stats.get("cleared"):
+            try:
+                from internship_finder.cli import _write_json_atomic
+                _write_json_atomic(ranking, data_dir / "eligible_jobs.json")
+            except Exception as exc:  # noqa: BLE001 — persistencia best-effort
+                log.warning("F94: stale_posting não persistido (página/"
+                            "digest seguem sem o flag): %s: %s",
+                            type(exc).__name__, exc)
+            log.info("F94 stale_posting: %d flaggada(s) (limiar por tipo "
+                     "%s, idade por fonte %s), %d curada(s) em %d vaga(s)",
+                     stale_stats.get("stale", 0),
+                     stale_stats.get("by_threshold", {}),
+                     stale_stats.get("by_source", {}),
+                     stale_stats.get("cleared", 0),
+                     stale_stats.get("total", 0))
+        else:
+            log.info("F94 stale_posting: %d flaggada(s) no acervo (fonte "
+                     "%s, limiar %s), nada novo neste run (%d sem "
+                     "evidência de idade)",
+                     stale_stats.get("stale", 0),
+                     stale_stats.get("by_source", {}),
+                     stale_stats.get("by_threshold", {}),
+                     stale_stats.get("no_evidence", 0))
+        try:
+            from internship_finder.metrics import write_metrics
+            write_metrics(metrics_path, [{
+                "type": "stale_posting",
+                "run_id": summary.get("run_id") or utcnow_iso(),
+                "timestamp": utcnow_iso(),
+                **stale_stats,
+            }])
+        except Exception as exc:  # noqa: BLE001 — metrica e best-effort
+            log.warning("F94: metrica stale_posting nao gravada: %s: %s",
+                        type(exc).__name__, exc)
+    except Exception as exc:  # noqa: BLE001 — F94 nunca derruba o run
+        log.warning("F94: anotação stale_posting falhou (run segue sem os "
+                    "flags): %s: %s", type(exc).__name__, exc)
 
     # F25 — as inaplicáveis do backlog hidratado descem das superfícies
     # exibidas JUNTO com as do liveness (MESMA semântica F20: o publish
