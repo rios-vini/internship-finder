@@ -247,16 +247,7 @@ REPO = Path(__file__).resolve().parent.parent
 # ranking seguem). Nenhuma mudança de render: o badge/legenda da página
 # não dependem do SEED — o byte a byte da F53 segue válido módulo os
 # strips F60/F83/F86 (fixtures sem empresa da onda).
-# F92 (21/10): src/ moveu de novo (cli.py — estágio de normalização de
-# ingestão F92 entre select_eligible e dedup; dedup.py — normalize_location
-# trata o sentinela '—' como ausente; company_aliases.py NOVO — loader
-# fail-closed + aplicação dos aliases canônicos e guards de location).
-# Nenhuma mudança de render: o estágio reescreve company/location no DADO
-# (pós-filter, pré-dedup) — as fixtures da F53 não usam labels do mapa
-# F92 nem locations com prefixo postal, o byte a byte segue válido
-# módulo os strips F60/F83/F86. Padrão F56/F88: âncora move para o head
-# da fase que tocou src/.
-_AB_BASELINE_SHA = "64a64a8ee5283a791d4c8658285a233b90c8499e"
+_AB_BASELINE_SHA = "67b61ff511a2d493da4722d084dccf1c65c1868a"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
@@ -321,6 +312,24 @@ def _strip_f86(html: str) -> str:
     """Remove o delta F86 (texto da legenda ⏳/⚠️) — A/B módulo F86."""
     return (html.replace(_F86_LEGEND_NEW, _F86_LEGEND_OLD)
                 .replace(_F86_LEGEND_NEW_EN, _F86_LEGEND_OLD_EN))
+
+
+# F95 — delta de render da fase (data-nl + badge 🇳🇱 + item 🇳🇱 da legenda;
+# os badges 🔒/🤝/🎓/⚠ TOO_EARLY não acendem nas fixtures sintéticas —
+# sem sinais F95 no texto). Strip cirúrgico, padrão _strip_f60.
+_F95_NL_ATTR_RE = re.compile(r' data-nl="[^"]*"')
+_F95_NL_BADGE = ' <span class="nl"><span aria-hidden="true">🇳🇱</span></span>'
+_F95_NL_LEGEND_RE = re.compile(
+    r'<dt><span aria-hidden="true">🇳🇱</span> holandês \(sinal\)</dt>'
+    r"<dd>.*?</dd>", re.DOTALL)
+
+
+def _strip_f95(html: str) -> str:
+    """Remove o delta F95 de render (F95 não toca o legado pré-F53 além
+    desses bytes determinísticos; qualquer OUTRO byte divergente FAIL)."""
+    html = _F95_NL_ATTR_RE.sub("", html)
+    html = html.replace(_F95_NL_BADGE, "")
+    return _F95_NL_LEGEND_RE.sub("", html)
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
@@ -700,7 +709,7 @@ def test_nojs_and_legacy_ab() -> None:
     # F86 — idem: o item da legenda ⏳/⚠️ ganhou o sinal de tipo
     # ambíguo (badge só acende em título duplo, sem fixture). Strip
     # F60+F83+F86.
-    legacy_f60 = _strip_f86(_strip_f83(_strip_f60(legacy)))
+    legacy_f60 = _strip_f95(_strip_f86(_strip_f83(_strip_f60(legacy))))
     cur_sha = hashlib.sha256(legacy_f60.encode("utf-8")).hexdigest()
     check("legado BYTE A BYTE igual ao pré-F53 módulo adições F60+F83 (sha256)",
           cur_sha == base[1], f"{base[0]}B, sha {base[1][:12]}…")
@@ -1020,9 +1029,13 @@ def test_budget() -> None:
     # F86 — a legenda ⏳/⚠️ ganhou o sinal de tipo ambíguo (delta
     # determinístico, medido no próprio render pelo strip).
     f86_add = len(cur.encode("utf-8")) - len(_strip_f86(cur).encode("utf-8"))
-    delta_net = delta - f60_add - f86_add
+    # F95 — delta da fase (data-nl por card + item 🇳🇱 da legenda; badges
+    # F95 não acendem nas fixtures sintéticas), medido pelo strip.
+    f95_add = len(cur.encode("utf-8")) - len(_strip_f95(cur).encode("utf-8"))
+    delta_net = delta - f60_add - f86_add - f95_add
     print(f"       A/B full: pré {base[0]}B -> pós {len(cur.encode())}B "
-          f"(delta {delta:+d}B = F60 {f60_add}B + F86 {f86_add}B + líquido "
+          f"(delta {delta:+d}B = F60 {f60_add}B + F86 {f86_add}B + "
+          f"F95 {f95_add}B + líquido "
           f"{delta_net:+d}B; previsto chrome {total_chrome}B + "
           f"ext._JS_PROFILE {profile_ext}B + fatores {sum(per_card)}B)")
     check("A/B full: pós > pré (features existem)", delta > 0,
@@ -1030,7 +1043,7 @@ def test_budget() -> None:
     check("A/B full: delta dentro do orçamento previsto",
           expected_lo <= delta_net <= expected_hi,
           f"líquido {delta_net:+d}B vs [{expected_lo}..{expected_hi}] "
-          f"(F60: +{f60_add}B, F86: +{f86_add}B)")
+          f"(F60: +{f60_add}B, F86: +{f86_add}B, F95: +{f95_add}B)")
 
 
 # ---------------------------------------------------------------------------

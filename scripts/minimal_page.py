@@ -598,6 +598,22 @@ def _french_level_attr(job: dict) -> str:
         return "none"
 
 
+def _dutch_level_attr(job: dict) -> str:
+    """data-nl do card: 'required'|'preferred'|'plus'|'none' (F95).
+
+    Espelho do FR (F60): SINAL puro (app_intel.dutch_level sobre
+    titulo+descricao) — NUNCA exclusão (BE/NL fora dos mercados-alvo é
+    outro filtro). Best-effort: falha de import/parse -> 'none'.
+    """
+    try:
+        from internship_finder import app_intel
+        text = f"{job.get('title') or ''} {job.get('description') or ''}"
+        dl = app_intel.dutch_level(text)
+        return dl.level if dl is not None else "none"
+    except Exception:  # noqa: BLE001 — view best-effort
+        return "none"
+
+
 def _parse_posted_at(value) -> datetime | None:
     """posted_at ISO (com Z ou offset) -> datetime UTC-aware; None em falha."""
     if not value:
@@ -806,6 +822,137 @@ def ab_sofort_flag(job: dict, lang: str = "pt") -> str:
             else AB_SOFORT_FLAG_TEXT)
 
 
+# F95 — conflito de início GENERALIZADO (ITENS ITEM 3; doutrina F62:
+# display-only, o dono decide — "o dono enviou mesmo assim"). A classe
+# vem de ``seasonality.start_conflict_of`` (MESMO canônico F45 do badge
+# F62 e do calendário 📆 — nenhum parser novo): IMMEDIATE (ab sofort com
+# contexto OU fórmula ASAP "zum nächstmöglichen Zeitpunkt"/"Start date:
+# ASAP"), TOO_EARLY (janela datada < jan/2027 — Mondelez ago/2026,
+# keplercheuvreux jan/2026) e TOO_LATE (> set/2027). O texto IMMEDIATE é
+# o VERBATIM da F62 (byte a byte — test_f62 intocado).
+START_CONFLICT_TOO_EARLY_TEXT = (
+    "início {label} — antes da disponibilidade (jan/2027)")
+START_CONFLICT_TOO_LATE_TEXT = (
+    "início {label} — depois da janela (até set/2027)")
+
+
+def start_conflict_flag_text(job: dict, lang: str = "pt") -> str:
+    """F95: badge ⚠ quando a janela de início conflita com a meta do dono.
+
+    Substitui o consumo direto de ``ab_sofort_flag`` no card (que segue
+    existindo e VERBATIM para a classe IMMEDIATE — contrato F62). Janela
+    boa = jan/2027..set/2027 (semestre SoSe/WiSe 2026/27 contam pelo mês
+    de início canônico). Best-effort: nunca lança.
+    """
+    try:
+        _sd = Path(__file__).resolve().parent
+        if str(_sd) not in sys.path:
+            sys.path.insert(0, str(_sd))
+        import seasonality  # parser puro da F45 (zero I/O)
+        sc = seasonality.start_conflict_of(job)
+        if not sc:
+            return ""
+        cls = sc.get("conflict")
+        label = sc.get("label") or ""
+        if cls == "IMMEDIATE":
+            # F62 VERBATIM (test_f62) — label "ab sofort" já está no texto.
+            return (I18N["ab_sofort_flag"]["en"] if lang == "en"
+                    else AB_SOFORT_FLAG_TEXT)
+        if cls == "TOO_EARLY":
+            if lang == "en":
+                return I18N["start_too_early"]["en"].replace("{label}", label)
+            return START_CONFLICT_TOO_EARLY_TEXT.replace("{label}", label)
+        if cls == "TOO_LATE":
+            if lang == "en":
+                return I18N["start_too_late"]["en"].replace("{label}", label)
+            return START_CONFLICT_TOO_LATE_TEXT.replace("{label}", label)
+        return ""
+    except Exception:  # noqa: BLE001 — display best-effort, nunca erro
+        return ""
+
+
+# F95 — work-auth (ITENS ITEM 2; campo 3-níveis
+# ``app_intel.work_auth_requirement``): DISPLAY-ONLY. A exclusão F61 segue
+# pelo padrão endereçado-a-não-UE (MAHLE); as frases novas (Amazon
+# "zum Starttermin die Arbeitsberechtigung ... haben" / "right to work
+# ... by the start date") acendem o badge SEM excluir — blast radius
+# medido da exclusão: 77 vagas (10,8% do eligible 21/10), decisão do dono.
+WORK_AUTH_FLAG_TEXT = (
+    "exige autorização de trabalho já no início — o §16e só cobre "
+    "DURANTE o estágio")
+SPONSORSHIP_FLAG_TEXT = "patrocínio de visto oferecido"
+
+
+def work_auth_flag_text(job: dict, lang: str = "pt") -> str:
+    """F95: badge 🔒 do nível right_to_work_required (só ele).
+
+    ``none_mentioned``/``sponsorship_offered`` -> '' (o 🤝 tem função
+    própria). Best-effort, nunca lança.
+    """
+    try:
+        from internship_finder import app_intel
+        text = f"{job.get('title') or ''} {job.get('description') or ''}"
+        level = app_intel.work_auth_requirement(text)["level"]
+    except Exception:  # noqa: BLE001 — display best-effort
+        return ""
+    if level == "right_to_work_required":
+        return (I18N["work_auth_flag"]["en"] if lang == "en"
+                else WORK_AUTH_FLAG_TEXT)
+    return ""
+
+
+def sponsorship_flag_text(job: dict, lang: str = "pt") -> str:
+    """F95: badge 🤝 do nível sponsorship_offered (só ele)."""
+    try:
+        from internship_finder import app_intel
+        text = f"{job.get('title') or ''} {job.get('description') or ''}"
+        level = app_intel.work_auth_requirement(text)["level"]
+    except Exception:  # noqa: BLE001 — display best-effort
+        return ""
+    if level == "sponsorship_offered":
+        return (I18N["sponsorship_flag"]["en"] if lang == "en"
+                else SPONSORSHIP_FLAG_TEXT)
+    return ""
+
+
+# F95 — dual-track Pflicht × freiwillig (ITENS ITEM 6 delta; flag
+# INFORMATIVO de remuneração/expectativa — NÃO elegibilidade: ambos os
+# tracks são válidos pro dono, F86 decidiu "Praktikum presente = OK"). O
+# dono É candidato a Pflichtpraktikum (obrigatório UFSCar 360h) — na
+# Lidl SAP BI verbatim o track Pflicht paga 1.300 € p.M. e o freiwillig
+# Mindestlohn: a trilha muda a remuneração esperada. Padrão F29
+# (``enrollment_flag``): patterns inline no render, display-only.
+DUAL_TRACK_FLAG_TEXT = (
+    "Pflicht e freiwillig Praktikum na mesma vaga — remuneração distinta "
+    "por trilha")
+_DUAL_TRACK_PF_RE = re.compile(r"\bpflichtpraktik\w*", re.IGNORECASE)
+_DUAL_TRACK_FW_RE = re.compile(
+    r"\bfreiwillig\w*\s+praktik\w*|\bfreiwilliges?\s+praktikum\b",
+    re.IGNORECASE)
+# Negado: "freiwilliges Praktikum NÃO é oferecido" (MAHLE verbatim) —
+# aí não há duas trilhas, só Pflicht (o student_type já marca
+# mandatory_internship; sem badge duplo).
+_DUAL_TRACK_NEG_RE = re.compile(
+    r"(?:kein\w*|not|no|cannot|can'?t)\s+[\w\s,-]{0,40}freiwillig\w*"
+    r"|freiwillig\w*[\w\s,-]{0,40}(?:cannot|not\s+(?:be\s+)?offered|keine|nicht)",
+    re.IGNORECASE)
+
+
+def dual_track_flag_text(job: dict, lang: str = "pt") -> str:
+    """F95: badge 🎓 quando o anúncio oferece Pflicht E freiwillig."""
+    text = " ".join(
+        str(x or "") for x in (job.get("title"), job.get("description")))
+    if not text.strip():
+        return ""
+    if not (_DUAL_TRACK_PF_RE.search(text)
+            and _DUAL_TRACK_FW_RE.search(text)):
+        return ""
+    if _DUAL_TRACK_NEG_RE.search(text):
+        return ""
+    return (I18N["dual_track_flag"]["en"] if lang == "en"
+            else DUAL_TRACK_FLAG_TEXT)
+
+
 # F87 — badge "não-avaliável" (display-only, NUNCA exclusão): a descrição
 # que chegou ao eligible não dá base de julgamento (vazia / < 600 chars
 # medidos no Passo 0 / login-wall). O CAMPO ``not_assessable`` (motivo
@@ -898,6 +1045,25 @@ I18N: dict[str, dict[str, str]] = {
     # F62 — badge de conflito de início (display-only; fonte: parser F45).
     "ab_sofort_flag": {"pt": AB_SOFORT_FLAG_TEXT,
                        "en": "immediate start — conflicts with Jan/2027"},
+    # F95 — conflito de início GENERALIZADO (janela datada fora de
+    # jan–set/2027; o {label} é o mês pt do parser F45).
+    "start_too_early": {"pt": START_CONFLICT_TOO_EARLY_TEXT,
+                        "en": "start {label} — before your availability (Jan/2027)"},
+    "start_too_late": {"pt": START_CONFLICT_TOO_LATE_TEXT,
+                       "en": "start {label} — after the window (until Sep/2027)"},
+    # F95 — work-auth (campo 3-níveis app_intel.work_auth_requirement;
+    # display-only, a exclusão F61 fica intacta).
+    "work_auth_flag": {
+        "pt": WORK_AUTH_FLAG_TEXT,
+        "en": "requires work authorization already at start — §16e only "
+              "covers DURING the internship"},
+    "sponsorship_flag": {"pt": SPONSORSHIP_FLAG_TEXT,
+                         "en": "visa sponsorship offered"},
+    # F95 — dual-track Pflicht × freiwillig (informativo de remuneração).
+    "dual_track_flag": {
+        "pt": DUAL_TRACK_FLAG_TEXT,
+        "en": "both mandatory and voluntary internship tracks — pay "
+              "differs by track"},
     # F87 — badge de descrição não-avaliável (display-only; fonte: campo
     # ``not_assessable`` anotado pelo refresh).
     "na_flag": {"pt": NA_FLAG_TEXT, "en": "description unavailable"},
@@ -1167,6 +1333,14 @@ _LEGEND_ITEMS: tuple[tuple[str, str, str, str], ...] = (
      "posting mentions qualified French (french_level: required or "
      "preferred) — informative signal, never an exclusion; off-target "
      "market is a separate filter"),
+    ('<span aria-hidden="true">🇳🇱</span> holandês (sinal)',
+     '<span aria-hidden="true">🇳🇱</span> Dutch (signal)',
+     "anúncio menciona holandês qualificado (dutch_level: required ou "
+     "preferred) — SINAL informativo, nunca exclusão (espelho do "
+     "francês; \"fluent French OR Dutch\" Mondelez)",
+     "posting mentions qualified Dutch (dutch_level: required or "
+     "preferred) — informative signal, never an exclusion (French "
+     "mirror; \"fluent French OR Dutch\" Mondelez)"),
     ('<span aria-hidden="true">🚫</span> inaplicável',
      '<span aria-hidden="true">🚫</span> inapplicable',
      "a descrição completa (hidratada do site) revelou requisito "
@@ -1456,8 +1630,16 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           lang: str = "pt",
           duration_flag_pt: str = "",
           start_conflict_flag: str = "",
+          start_conflict_flag_pt: str = "",
           na_flag: str = "",
-          na_flag_pt: str = "") -> str:
+          na_flag_pt: str = "",
+          work_auth_flag_txt: str = "",
+          work_auth_flag_pt: str = "",
+          sponsorship_flag_txt: str = "",
+          sponsorship_flag_pt: str = "",
+          dual_track_flag_txt: str = "",
+          dual_track_flag_pt: str = "",
+          nl_level: str = "none") -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -1512,13 +1694,14 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
             quality_text = employer_quality.badge_text(quality_entry)
         except Exception:  # noqa: BLE001 — view best-effort
             quality_text = ""
-    # F51 item 7 — ordem FIXA: 🛂 → 🇩🇪/🇫🇷(F60 sinal) → 🚫 → ⭐/🏆 → 🆕 → ⚠️ F87
-    # (não-avaliável) → sinais F29 → ⚠️ F62 (conflito de início) → ✅(pessoal)
-    # → 🔗. Emojis com aria-hidden="true": o leitor de tela lê
-    # o texto VISÍVEL do badge (🇩🇪, 🚫, 🏆, ⭐ 4,0, 🔗); a semântica
-    # completa de cada um vive UMA vez na legenda (details/summary
-    # focusable). Os title= saíram dos badges (custo por card) — a
-    # explicação é a legenda única.
+    # F51 item 7 — ordem FIXA: 🛂 → 🇩🇪/🇫🇷/🇳🇱(F60/F95 sinal) → 🚫 → ⭐/🏆 →
+    # 🆕 → ⚠️ F87 (não-avaliável) → sinais F29 → ⚠️ F62/F95 (conflito de
+    # início) → ⚠️ F86 (tipo ambíguo) → 🎓 F95 (dual-track) → 🔒/🤝 F95
+    # (work-auth) → ✅(pessoal) → 🔗. Emojis com aria-hidden="true": o
+    # leitor de tela lê o texto VISÍVEL do badge (🇩🇪, 🚫, 🏆, ⭐ 4,0, 🔗);
+    # a semântica completa de cada um vive UMA vez na legenda (details/
+    # summary focusable). Os title= saíram dos badges (custo por card) —
+    # a explicação é a legenda única.
     badge_bits = []
     if visa:
         badge_bits.append(
@@ -1531,6 +1714,10 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     if fr_level in ("required", "preferred"):
         badge_bits.append(
             ' <span class="fr"><span aria-hidden="true">🇫🇷</span></span>')
+    # F95 — holandês é SINAL (espelho do FR, ITENS ITEM 5 delta).
+    if nl_level in ("required", "preferred"):
+        badge_bits.append(
+            ' <span class="nl"><span aria-hidden="true">🇳🇱</span></span>')
     if inapplicable:
         badge_bits.append(
             ' <span class="dead"><span aria-hidden="true">🚫</span></span>')
@@ -1562,15 +1749,17 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         else:
             badge_bits.append(
                 f' <span class="flag">⚠️ {_esc(enrollment_red_flag)}</span>')
-    # F62 — conflito de início imediato ↔ jan/2027 (display-only). O attr
+    # F62/F95 — conflito de início ↔ janela do dono (display-only). O attr
     # do toggle carrega o ⚠️ JUNTO ao texto pt (diferença consciente do
-    # padrão enrollment acima, cujo swap perde o emoji): o toggle EN→pt
-    # reproduz o badge pt nativo byte a byte.
+    # padrão enrollment, cujo swap perde o emoji): o toggle EN→pt
+    # reproduz o badge pt nativo byte a byte. F95: o pt vem do par
+    # ``start_conflict_flag_pt`` (a classe pode ser TOO_EARLY/TOO_LATE —
+    # texto com o mês do parser); fallback = constante F62 (callers antigos).
     if start_conflict_flag:
         if lang == "en":
             badge_bits.append(
                 f' <span class="flag"'
-                f'{_i18n_attr("⚠️ " + AB_SOFORT_FLAG_TEXT)}>⚠️ '
+                f'{_i18n_attr("⚠️ " + (start_conflict_flag_pt or AB_SOFORT_FLAG_TEXT))}>⚠️ '
                 f'{_esc(start_conflict_flag)}</span>')
         else:
             badge_bits.append(
@@ -1586,6 +1775,37 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         else:
             badge_bits.append(
                 f' <span class="flag">⚠️ {_esc(jt_ambiguous_flag_txt)}</span>')
+    # F95 — dual-track Pflicht × freiwillig (informativo de remuneração;
+    # NÃO elegibilidade — F86: Praktikum presente = OK).
+    if dual_track_flag_txt:
+        if lang == "en":
+            badge_bits.append(
+                f' <span class="flag"'
+                f'{_i18n_attr("🎓 " + DUAL_TRACK_FLAG_TEXT)}>🎓 '
+                f'{_esc(dual_track_flag_txt)}</span>')
+        else:
+            badge_bits.append(
+                f' <span class="flag">🎓 {_esc(dual_track_flag_txt)}</span>')
+    # F95 — work-auth (campo 3-níveis; display-only, a exclusão F61 fica
+    # intacta). 🤝 positivo antes do 🔒 de bloqueio em avaliação.
+    if sponsorship_flag_txt:
+        if lang == "en":
+            badge_bits.append(
+                f' <span class="flag"'
+                f'{_i18n_attr("🤝 " + SPONSORSHIP_FLAG_TEXT)}>🤝 '
+                f'{_esc(sponsorship_flag_txt)}</span>')
+        else:
+            badge_bits.append(
+                f' <span class="flag">🤝 {_esc(sponsorship_flag_txt)}</span>')
+    if work_auth_flag_txt:
+        if lang == "en":
+            badge_bits.append(
+                f' <span class="flag"'
+                f'{_i18n_attr("🔒 " + WORK_AUTH_FLAG_TEXT)}>🔒 '
+                f'{_esc(work_auth_flag_txt)}</span>')
+        else:
+            badge_bits.append(
+                f' <span class="flag">🔒 {_esc(work_auth_flag_txt)}</span>')
     badge_bits.append(personal_status_badge(personal_status))
     if dead:
         badge_bits.append(
@@ -1674,6 +1894,7 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         f' data-vf="{1 if visa else 0}"'
         f' data-de="{_esc(de_level)}"'
         f' data-fr="{_esc(fr_level)}"'
+        f' data-nl="{_esc(nl_level)}"'
         f' data-iso="{_esc(str(job.get("country_iso") or "").strip().lower())}"'
         f' data-new="{1 if is_new else 0}"'
         f' data-ws="{1 if is_werkstudent_title(job) else 0}"'
@@ -2197,6 +2418,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             apply_href=apply_href, job_href=job_href,
             de_level=_german_level_attr(job),
             fr_level=_french_level_attr(job),
+            nl_level=_dutch_level_attr(job),
             age=age_badge_text(job, ref), age_stale=age_is_stale(job, ref),
             dead=jid in dead_ids, is_new=jid in new_ids,
             score_override=(job.get(score_key)
@@ -2211,7 +2433,18 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                               if lang == "en" else ""),
             enrollment_red_flag=enrollment_flag(job, lang),
             jt_ambiguous_flag_txt=job_type_ambiguous_flag(job, lang),
-            start_conflict_flag=ab_sofort_flag(job, lang),
+            start_conflict_flag=start_conflict_flag_text(job, lang),
+            start_conflict_flag_pt=(start_conflict_flag_text(job, "pt")
+                                    if lang == "en" else ""),
+            work_auth_flag_txt=work_auth_flag_text(job, lang),
+            work_auth_flag_pt=(work_auth_flag_text(job, "pt")
+                               if lang == "en" else ""),
+            sponsorship_flag_txt=sponsorship_flag_text(job, lang),
+            sponsorship_flag_pt=(sponsorship_flag_text(job, "pt")
+                                 if lang == "en" else ""),
+            dual_track_flag_txt=dual_track_flag_text(job, lang),
+            dual_track_flag_pt=(dual_track_flag_text(job, "pt")
+                                if lang == "en" else ""),
             na_flag=not_assessable_flag_text(job, lang),
             na_flag_pt=(not_assessable_flag_text(job, "pt")
                         if lang == "en" else ""),
