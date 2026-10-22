@@ -504,6 +504,7 @@ def job_salary(job: dict) -> dict | None:
         # confirmada, NUNCA "month" por default).
         return _apply_salary_plausibility(
             {"min": lo, "max": hi, "period": period,
+             "period_declared": period,
              "text": text, "currency": currency})
     text = " ".join(
         normalize_text(x) for x in (job.get("title"), job.get("description")) if x
@@ -582,14 +583,57 @@ def job_salary(job: dict) -> dict | None:
         # (mesmo anuncio pode citar "Gehalt: X €" e depois "pro Jahr").
         if best is None or (has_period and best.get("_period") is not True):
             clause["_period"] = has_period
+            # F95 — o período só é DECLARADO quando a cláusula o diz
+            # (sufixo/label horário/anual). O default Fase 7 "month" sem
+            # nenhuma marca é INFERÊNCIA — o campo ``period_declared``
+            # congela None (nunca estimar; LexisNexis verbatim).
+            clause["_declared"] = bool(has_period or is_hourly or is_yearly)
             best = clause
     if best is None:
         return None
     best.pop("_period", None)
+    declared = best.pop("_declared", False)
+    # F95 — período DECLARADO pela fonte, congelado ANTES da plausibilidade
+    # (a F63 pode converter year→month no display; o campo ``period_declared``
+    # preserva o que o anúncio realmente disse — a unidade nunca é estimada;
+    # default Fase 7 sem marca → None).
+    best["period_declared"] = best.get("period") if declared else None
     # F63: heurística de plausibilidade (display-only) no resultado final
     # — o default "month" da Fase 7 nunca mais afirma unidade para ranges
     # implausíveis sem contexto anual.
     return _apply_salary_plausibility(best)
+
+
+# ---------------------------------------------------------------------------
+# F95 — salary_period (ITENS ITEM 4): período DECLARADO pelo anúncio como
+# campo estruturado. "monthly" | "annual" | None — NUNCA estimado (LexisNexis
+# "€17,200 - €28,700" NÃO declara período no verbatim medido — a suspeita
+# anual é só magnitude; spec dizia "/ano" e a medição F63/F95 refutou: o
+# record integral não contém /year|per year|p.a.|jährlich|annual|yearly).
+# "hour" e período ausente viram None (fora do enum do dono). O verbatim
+# segue garantido pela F63 (``text``); a conversão display F63 fica intocada.
+SALARY_PERIOD_VALUES = ("monthly", "annual")
+
+
+def salary_period_of(job: dict) -> str | None:
+    """F95 — período declarado da remuneração: 'monthly' | 'annual' | None.
+
+    Deriva do MESMO parse da F63 (``job_salary``), do campo
+    ``period_declared`` congelado antes da plausibilidade: structured
+    ``raw.salary_period`` ("MONTH"→monthly, "YEAR"→annual) e cláusula
+    textual (sufixo "per year"/"pro Jahr", contexto anual — BASF "Gross
+    annual salary"). "hour" e ausente → None (nunca estimar/converter).
+    Pura, determinística.
+    """
+    sal = job_salary(job)
+    if not sal:
+        return None
+    declared = sal.get("period_declared")
+    if declared == "year":
+        return "annual"
+    if declared == "month":
+        return "monthly"
+    return None
 
 
 # ---------------------------------------------------------------------------
