@@ -85,6 +85,7 @@ def build_previous_index(previous_jobs: list[dict[str, Any]]) -> dict[str, list[
 def flag_reposts(
     current_jobs: list[dict[str, Any]],
     previous_index: dict[str, list[dict[str, Any]]],
+    previous_ids: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Marca jobs do run atual que sao re-post/twin do run anterior.
 
@@ -95,9 +96,17 @@ def flag_reposts(
     Regra: match EXATO de chave (titulo_norm + empresa_norm + local_norm).
     Se multiplos jobs no indice anterior batem, usa o primeiro (deterministico
     pela ordem de construcao do indice).
+
+    ``previous_ids``: ids presentes no run anterior. Quando fornecido, jobs
+    cujo id JA existia no run anterior NAO sao flaggados — a vaga que
+    sobreviveu de ontem nao e re-post, e a mesma publicacao continuando
+    (o alvo da F103 e o id NOVO cuja chave ja existia: re-post ou twin
+    cross-ATS). ``None`` = flag em todo match (comportamento bruto).
     """
     flagged = 0
     for job in current_jobs:
+        if previous_ids is not None and job.get("id") in previous_ids:
+            continue
         key = repost_key(job)
         if key is None:
             continue
@@ -218,14 +227,20 @@ def count_reposts(
     current_jobs: list[dict[str, Any]],
     previous_jobs: list[dict[str, Any]],
 ) -> int:
-    """Quantos jobs do run atual sao re-post/twin do run anterior (F103).
+    """Quantos jobs NOVOS do run atual sao re-post/twin do run anterior (F103).
 
-    Mesma chave e mesma regra de ``flag_reposts`` — funcao de CONTAGEM pura
-    para a metrica do run (padrao F75), sem mutar os jobs de entrada.
+    Alvo da F103: id ausente do run anterior cuja chave (titulo_norm +
+    empresa_norm + local_norm) ja existia la — re-post (id novo, mesma
+    vaga) ou twin cross-ATS. Vaga que sobreviveu de ontem (mesmo id)
+    NAO conta: e a mesma publicacao continuando, nao re-post.
+    Funcao de CONTAGEM pura para a metrica do run (padrao F75), sem
+    mutar os jobs de entrada.
     """
+    previous_ids = {str(j.get("id")) for j in previous_jobs if j.get("id")}
     _, flagged = flag_reposts(
-        [dict(j) for j in current_jobs],  # copias raras: sem mutar entrada
+        [dict(j) for j in current_jobs],  # copias rasas: sem mutar entrada
         build_previous_index(previous_jobs),
+        previous_ids=previous_ids,
     )
     return flagged
 

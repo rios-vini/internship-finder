@@ -104,6 +104,36 @@ def test_flag_reposts_basic() -> None:
     _check("cur-2 NÃO tem repost_match", "repost_match" not in flagged[1])
 
 
+def test_surviving_job_not_repost() -> None:
+    """Vaga que sobreviveu de ontem (MESMO id) NÃO é re-post — o alvo da
+    F103 é o id NOVO cuja chave já existia (re-post/twin cross-ATS).
+    Medido no snapshot real 23/10: sem esse guard, 644 jobs continuando
+    seriam flaggados (página cheia de 🔄) — semântica corrigida."""
+    previous = [
+        {"id": "same-1", "title": "Praktikant (m/w/d) Einkauf", "company": "Lidl", "location": "Neckarsulm, DE"},
+        {"id": "old-2", "title": "Praktikum SAP BI", "company": "Lidl", "location": "Neckarsulm, DE"},
+    ]
+    current = [
+        # sobrevivente: mesmo id, mesma chave — NÃO é re-post
+        {"id": "same-1", "title": "Praktikant (m/w/d) Einkauf", "company": "Lidl", "location": "Neckarsulm, DE"},
+        # re-post real: id NOVO, chave já existia
+        {"id": "new-post-9", "title": "Praktikum SAP BI", "company": "Lidl", "location": "Neckarsulm, DE"},
+        # nova genuína
+        {"id": "fresh-1", "title": "Werkstudent Logistik", "company": "Outra", "location": "Berlin, DE"},
+    ]
+    prev_ids = {str(j["id"]) for j in previous}
+    idx = build_previous_index(previous)
+    flagged, count = flag_reposts(current, idx, previous_ids=prev_ids)
+    _check("só o id NOVO com chave antiga é flagged", count == 1)
+    _check("sobrevivente sem flag", "repost_match" not in flagged[0])
+    _check("re-post real flaggado", "repost_match" in flagged[1])
+    _check("nova genuína sem flag", "repost_match" not in flagged[2])
+    # count_reposts (métrica F75) segue a MESMA semântica
+    from internship_finder.repost_flag import count_reposts
+    n = count_reposts(current, previous)
+    _check("count_reposts = 1 (sobrevivente não conta)", n == 1)
+
+
 def test_flag_reposts_twin_cross_ats() -> None:
     """Twin cross-ATS: mesma vaga, ATS diferente (Bosch AA × SR)."""
     # AA = Arbeitsagentur, SR = SuccessRecruiters
@@ -366,6 +396,7 @@ if __name__ == "__main__":
     test_repost_key()
     test_build_previous_index()
     test_flag_reposts_basic()
+    test_surviving_job_not_repost()
     test_flag_reposts_twin_cross_ats()
     test_flag_reposts_lidl_sap_bi()
     test_flag_reposts_lidl_controlling_projete()
