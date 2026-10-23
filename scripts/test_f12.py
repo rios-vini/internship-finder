@@ -355,8 +355,8 @@ def test_tool_happy_path() -> None:
               "integrate.api.nvidia.com" in url)
         check("Authorization Bearer com a key",
               headers.get("Authorization") == "Bearer test-key-abcdef123456")
-        check("model == llm.MODEL (contrato enrichment; default F50.1 = normal)",
-              payload["model"] == _llm.MODEL and _llm.MODEL == "z-ai/glm-5.3")
+        check("model == llm.MODEL (contrato enrichment; default F102 = nemotron-3-ultra)",
+              payload["model"] == _llm.MODEL and _llm.MODEL == "nvidia/nemotron-3-ultra-550b-a55b")
         check("temperature 0", payload["temperature"] == 0)
 
 

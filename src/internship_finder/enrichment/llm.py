@@ -1,8 +1,19 @@
-"""Cliente GLM-5.3 (API NVIDIA integrate) para extracao estruturada.
+"""Cliente LLM (API NVIDIA integrate) para extracao estruturada.
 
 Fatos medidos (historia completa, NAO reabrir sem evidencia nova):
 
 - Endpoint ``https://integrate.api.nvidia.com/v1/chat/completions``.
+- **23/10/2026 (F102 — swap de modelo POR EVIDENCIA NOVA, regra do topo)**:
+  ``z-ai/glm-5.3`` recebe header ``deprecation: 2026-10-28T08:00:00Z``
+  em TODA resposta (aposentadoria POR MODELO: o flash e ``/v1/models``
+  NAO carregam o header; 410 Gone pos-data segundo o forum NVIDIA). A/B
+  head-to-head em codigo de producao (8 vagas reais x mesmo prompt +
+  ``reasoning_effort="low"``): 96% de respostas identicas, 5
+  divergencias reais (nemotron 4x1), zero alucinacao/parse-error,
+  latencia empate ~25-28s. Evidencia + raw:
+  ``~/.hermes/handoff/nvidia-deprecao-ab/``. MODEL default =
+  ``nvidia/nemotron-3-ultra-550b-a55b`` (rollback ate 28/10 08:00Z via
+  env ``INTERNSHIP_FINDER_ENRICHMENT_MODEL``).
 - **19/10/2026 (calibracao F50, payload real, ordem do dono)**:
   ``z-ai/glm-5.3`` (normal) + ``reasoning_effort="low"`` = PARSED OK em 1
   tentativa, 53,4s/vaga, tokens in 2.679 / out 584, ZERO burn de max_tokens
@@ -46,7 +57,7 @@ MODELS_URL = f"{NVIDIA_BASE_URL}/models"
 # nao existe "nao enviar"). Flash voltar a ser default exige evidencia de
 # queima do normal (docstring acima).
 MODEL_ENV = "INTERNSHIP_FINDER_ENRICHMENT_MODEL"
-MODEL = os.environ.get(MODEL_ENV) or "z-ai/glm-5.3"
+MODEL = os.environ.get(MODEL_ENV) or "nvidia/nemotron-3-ultra-550b-a55b"
 
 LLM_TIMEOUT_S = 290
 MAX_TOKENS = 8000

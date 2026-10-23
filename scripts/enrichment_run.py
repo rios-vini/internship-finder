@@ -26,8 +26,12 @@ Uso:
 
 A key vem EXCLUSIVAMENTE da env var ``NVIDIA_API_KEY`` (nunca em arquivo,
 nunca em log). Sem key (exceto ``--dry-run``): mensagem clara + exit 1.
-Modelo = ``llm.MODEL`` (F50.1 19/10: default z-ai/glm-5.3 normal, calibrado com reasoning_effort=low — ver llm.py; o 5.3 SEM low queimava todo o max_tokens em
-raciocinio interno — medido no spike A/B 5/5 falhas; NAO trocar).
+Modelo = ``llm.MODEL`` (F102 23/10: default ``nvidia/nemotron-3-ultra-550b-a55b``
+apos deprecao anunciada do glm-5.3 — ver llm.py + evidencia A/B em
+~/.hermes/handoff/nvidia-deprecao-ab/; rollback ate 28/10 08:00Z via env
+``INTERNSHIP_FINDER_ENRICHMENT_MODEL``. Historico F50.1 19/10: glm-5.3
+calibrado com reasoning_effort=low — o 5.3 SEM low queimava todo o
+max_tokens em raciocinio interno, medido no spike A/B 5/5 falhas).
 
 Concorrencia (spec secao 14): o modo real adquire flock exclusivo em
 ``<dir do --output>/.enrichment.lock``; segunda execucao concorrente sai
