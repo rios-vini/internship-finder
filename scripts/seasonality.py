@@ -170,6 +170,27 @@ _START_ISO_RE = re.compile(
     rf"{_START_PREFIX}\s+(?P<y>\d{{4}})-(?P<m>\d{{1,2}})-(?P<d>\d{{1,2}})(?!\d)",
     re.IGNORECASE)
 
+# F95 — rótulos de início COM DOIS-PONTOS: "Start Date: January 2026"
+# (keplercheuvreux verbatim), "Beginning : August 2026" (Mondelez R-160904
+# verbatim — o " : " quebra o ``\s+`` do _START_PREFIX e a vaga ficava sem
+# janela), "Startdatum: ab 09/01/2027" (BMW). O DOIS-PONTOS é obrigatório —
+# sem ele "beginning August 2026" casaria DUAS vezes (aqui e no
+# _START_MONTH_RE). Exige mês-NOME (as formas numéricas vivem no
+# _START_SLASH_RE/_START_DOT_RE abaixo).
+_START_LABEL_RE = re.compile(
+    rf"(?:start\s*date|startdatum|beginn(?:ing)?|eintritt(?:stermin)?)\s*:\s*"
+    rf"{_DAY_PREFIX}{_MONTH_RE}\s+(?P<yr>\d{{4}})(?!\d)",
+    re.IGNORECASE)
+
+# F95 — início numérico com BARRA (spec ITEM 3 "ab MM/YYYY" + forma BMW
+# real "Startdatum: ab 09/01/2027"): 2 partes = MM/YYYY; 3 partes =
+# DD/MM/YYYY (ordem alemã, MESMA leitura do _START_DOT_RE). Sem prefixo
+# NUNCA casa (doutrina F57: data solta é ambígua).
+_START_SLASH_RE = re.compile(
+    rf"{_START_PREFIX}\s+(?:(?P<d>\d{{1,2}})/)?(?P<m>\d{{1,2}})/"
+    rf"(?P<y>\d{{4}}|\d{{2}})(?!\d)",
+    re.IGNORECASE)
+
 # Janela mês-ano A (sep) mês-ano B: März 2027 bis Juni 2027 · March 2027
 # to June 2027 · de janvier 2027 à juin 2027 · janvier 2027 - juin 2027.
 # O ano final rejeita sufixo alfabético ((?![a-zA-Z\d]) — "June 30th" não
@@ -385,11 +406,19 @@ def _start_hits(text: str) -> list[dict]:
     hits: list[dict] = []
     for pattern, kind in ((_START_MONTH_RE, "month"),
                           (_START_DOT_RE, "dot"),
-                          (_START_ISO_RE, "iso")):
+                          (_START_ISO_RE, "iso"),
+                          (_START_LABEL_RE, "label"),   # F95
+                          (_START_SLASH_RE, "slash")):  # F95
         for m in pattern.finditer(text):
             if kind == "month":
                 y = _year(m.group("yr"))
                 mo = _month_of(m, "mon")
+            elif kind == "label":
+                y = _year(m.group("yr"))
+                mo = _month_of(m, "mon")
+            elif kind == "slash":
+                y = _year(m.group("y"))
+                mo = int(m.group("m"))
             elif kind == "dot":
                 y = _year(m.group("y"))
                 mo = int(m.group("m"))
@@ -404,7 +433,18 @@ def _start_hits(text: str) -> list[dict]:
                 "start": _fmt_month(y, mo), "end": None,
                 "year": y, "pos": m.start(),
             }))
-    return hits
+    # F95 — dedupe por mês de início: "Startdatum: ab März 2027" casa no
+    # rótulo NOVO e no "ab März 2027" do _START_MONTH_RE — a MESMA janela
+    # não pode virar 2 hits (o calendário e o canônico são 1 por vaga).
+    # Mantém o PRIMEIRO na ordem de leitura (menor pos), padrão do canônico.
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for h in sorted(hits, key=lambda h: h["pos"]):
+        if h["start"] in seen:
+            continue
+        seen.add(h["start"])
+        deduped.append(h)
+    return deduped
 
 
 def _immediate_has_context(text: str, start: int, end: int) -> bool:
@@ -547,6 +587,115 @@ def job_window_text(job: dict) -> str:
     Pura: só lê o dict, nunca I/O."""
     return (f"{(job.get('title') or '')} — "
             f"{(job.get('description') or '')}")
+
+
+# ---------------------------------------------------------------------------
+# F95 — start_date + start_conflict (ITENS ITEM 3; doutrina F62: FLAG
+# obrigatória, NÃO exclusão — display-only, o dono decide).
+#
+# Meta do dono: PRIMEIRA ENTRADA jan/2027 (visto §16e). Janela boa de
+# início: jan/2027 .. set/2027 (spec ITEM 3: "início > ~set/2027" =
+# TOO_LATE; setembro INTEIRO ainda cabe — boundary medida: início
+# set/2027 NÃO flaga, out/2027 flaga).
+#
+#   TOO_EARLY  — janela canônica datada ANTES de jan/2027 (Mondelez
+#                R-160904 "Beginning : August 2026" = ago/2026; kepler-
+#                cheuvreux "Start Date: January 2026" = jan/2026 stale).
+#   IMMEDIATE  — canônico imediato COM contexto (F62/F67, Lidl SAP BI
+#                "Ab sofort für 6 Monate") OU fórmula ASAP sem data
+#                ("zum nächstmöglichen Zeitpunkt" — 1254 hits no corpus
+#                bruto, 3 no eligible 21/10; "Start date: ASAP" /
+#                "as soon as possible" pós-rótulo — Gsk/Adaptyv).
+#   TOO_LATE   — janela canônica datada DEPOIS de set/2027.
+#
+# A janela datada canônica é TERMINAL: "ab sofort oder für das
+# Sommersemester 2027" (Liebherr) canoniza o semestre e fica POSITIVA —
+# a ASAP-só-fórmula não vence a janela específica (mesma doutrina F62:
+# janelas futuras continuam positivas). Imediato em prosa (sem contexto,
+# slogan/rodapé) NÃO acende sozinho — só se houver fórmula ASAP declarada
+# no texto (F67: o sinal é mais estrito que o texto).
+# ---------------------------------------------------------------------------
+
+START_WINDOW_MIN = (2027, 1)   # disponibilidade do dono (jan/2027)
+START_WINDOW_MAX = (2027, 9)   # ~set/2027 (spec ITEM 3 — "início > ~set/2027")
+START_CONFLICTS = ("TOO_EARLY", "IMMEDIATE", "TOO_LATE")
+
+# Fórmulas ASAP sem data concreta. DE canônica do corpus ("Eintrittstermin:
+# Zum nächstmöglichen Zeitpunkt" HORNBACH verbatim, "Beginn zum
+# nächstmöglichen Zeitpunkt" GFO verbatim); EN só PÓS-RÓTULO de início
+# ("Start date: ASAP" Adaptyv, "Start date: As soon as possible" Gsk —
+# "as soon as possible" solto em prosa ("apply as soon as possible") NUNCA
+# casa).
+_ASAP_FORMS_RE = re.compile(
+    r"zum\s+n(?:ä|ae)chstm(?:ö|oe)glichen\s+zeitpunkt"
+    r"|(?:start\s*date|startdatum|beginn(?:ing)?)\s*:\s*"
+    r"(?:asap|as\s+soon\s+as\s+possible)\b",
+    re.IGNORECASE,
+)
+
+
+def _ym(value: str | None) -> tuple[int, int] | None:
+    """"YYYY-MM" -> (y, m); None inválido."""
+    if not value or "-" not in value:
+        return None
+    try:
+        y, m = (int(x) for x in value.split("-"))
+    except ValueError:
+        return None
+    if not 1 <= m <= 12:
+        return None
+    return y, m
+
+
+def start_conflict_of(job: dict) -> dict | None:
+    """F95 — conflito da janela de início com a meta jan/2027 do dono.
+
+    Devolve ``{"conflict", "start", "term", "label"}`` ou None (sem
+    conflito / sem janela). ``conflict`` ∈ START_CONFLICTS; ``start`` é
+    "YYYY-MM" quando datado (None no imediato/ASAP); ``term`` é o trecho
+    verbatim casado; ``label`` é o rótulo de exibição pt-BR ("ago/2026",
+    "ab sofort", "zum nächstmöglichen Zeitpunkt"). Consome o MESMO
+    canônico da F45 (``canonical_seasonality`` sobre
+    ``job_window_text`` — o calendário 📆 e o badge F62 varrem o mesmo
+    texto; nenhum parser novo). Pura, best-effort, nunca lança.
+    """
+    try:
+        text = job_window_text(job)
+        hit = canonical_seasonality(text)
+        if hit is not None:
+            kind = hit.get("kind")
+            if kind == "immediate" and hit.get("context"):
+                return {"conflict": "IMMEDIATE", "start": None,
+                        "term": hit.get("term") or "", "label": "ab sofort"}
+            start = hit.get("start")
+            ym = _ym(start)
+            if ym is not None:
+                # Janela datada canônica é TERMINAL (Liebherr: semestre
+                # vence o "ab sofort" em prosa e fica positivo).
+                if ym < START_WINDOW_MIN:
+                    return {"conflict": "TOO_EARLY", "start": start,
+                            "term": hit.get("term") or "",
+                            "label": _fmt_label_pt(ym)}
+                if ym > START_WINDOW_MAX:
+                    return {"conflict": "TOO_LATE", "start": start,
+                            "term": hit.get("term") or "",
+                            "label": _fmt_label_pt(ym)}
+                return None
+            # canônico sem data (semestre sem ano) — cai para ASAP
+        asap = _ASAP_FORMS_RE.search(text)
+        if asap:
+            return {"conflict": "IMMEDIATE", "start": None,
+                    "term": asap.group(0),
+                    "label": "zum nächstmöglichen Zeitpunkt"}
+    except Exception:  # noqa: BLE001 — best-effort, nunca erro
+        return None
+    return None
+
+
+def _fmt_label_pt(ym: tuple[int, int]) -> str:
+    """"(2026, 8)" -> "ago/2026" (mesma abreviação do calendário 📆)."""
+    y, m = ym
+    return f"{_MONTH_ABREV[m]}/{y:04d}"
 
 
 if __name__ == "__main__":  # uso manual: echo de hits de um texto

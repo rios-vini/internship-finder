@@ -133,9 +133,13 @@ def test_salary_structured() -> None:
     job = _job(raw={"salary_min": 1400.0, "salary_max": 1500.0,
                     "salary_currency": "EUR", "salary_period": None})
     got = oi.job_salary(job)
+    # F95 — o retorno carrega ``period_declared`` (período DECLARADO pela
+    # fonte, congelado antes da plausibilidade F63; None quando ausente —
+    # nunca estimar). Evolução consciente do contrato de dict exato.
     check("min/max preservados", got == {"min": 1400.0, "max": 1500.0,
                                         "period": None, "text": "EUR 1400–1500",
-                                        "currency": "EUR"})
+                                        "currency": "EUR",
+                                        "period_declared": None})
     check("periodicidade ausente -> None (nunca inferida)",
           got is not None and got["period"] is None)
     # payload com periodicidade

@@ -326,15 +326,47 @@ def seasonality_summary(jobs: list[dict]) -> dict:
     F67: ``immediate_context`` = imediatos COM contexto de início
     (janela declarada); é o número da linha ⚠ do digest. O calendário
     preserva TODOS os hits imediatos no rótulo ``ab sofort``
-    (contagem textual intacta — o aperto é do SINAL, não do texto)."""
+    (contagem textual intacta — o aperto é do SINAL, não do texto).
+
+    F95: ``too_early``/``too_late`` = janelas datadas canônicas FORA da
+    janela do dono (jan–set/2027; display-only, ITENS ITEM 3) e
+    ``work_auth_flagged`` = vagas com nível right_to_work_required do
+    campo 3-níveis (ITENS ITEM 2 — display-only, a exclusão F61 segue
+    intacta; import LAZY de app_intel, best-effort: módulo ausente ->
+    contagem ausente, nunca erro)."""
     texts = [seasonality.job_window_text(j) for j in jobs]
     calendar = seasonality.seasonality_calendar(texts)
-    return {
+    too_early = 0
+    too_late = 0
+    for j in jobs:
+        sc = seasonality.start_conflict_of(j)
+        if not sc:
+            continue
+        if sc.get("conflict") == "TOO_EARLY":
+            too_early += 1
+        elif sc.get("conflict") == "TOO_LATE":
+            too_late += 1
+    work_auth_flagged = None
+    try:
+        from internship_finder import app_intel as _ai
+        work_auth_flagged = sum(
+            1 for j in jobs
+            if _ai.work_auth_requirement(
+                f"{j.get('title') or ''} {j.get('description') or ''}"
+            )["level"] == "right_to_work_required")
+    except Exception:  # noqa: BLE001 — best-effort (fonte ausente = sinal ausente)
+        work_auth_flagged = None
+    out = {
         "scanned": len(jobs),
         "with_window": sum(n for _, n in calendar),
         "calendar": [{"label": label, "count": n} for label, n in calendar],
         "immediate_context": seasonality.immediate_context_count(texts),
+        "too_early": too_early,
+        "too_late": too_late,
     }
+    if work_auth_flagged is not None:
+        out["work_auth_flagged"] = work_auth_flagged
+    return out
 
 
 # ---------------------------------------------------------------------------

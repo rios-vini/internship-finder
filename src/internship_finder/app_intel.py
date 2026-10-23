@@ -566,6 +566,65 @@ _FRENCH_SOFT_AFTER_RE = re.compile(
 FRENCH_LEVELS = ("required", "preferred", "plus")
 
 
+def _language_level_of(
+    text: str,
+    *,
+    token_res: list[re.Pattern],
+    soft_after_re: re.Pattern,
+    intensity_after_re: re.Pattern,
+    quals_re: list[tuple[re.Pattern, str]],
+) -> tuple[str, str] | None:
+    """F95 — motor genérico de nível de idioma (corpo da french_level F60/
+    F85, extraído inteiro). UM mecanismo para FR e NL: janela ±45 por
+    menção, o primeiro qualificador que casa define a classe local, o
+    sinal mais forte vence (required > preferred > plus). Devolve
+    ``(level, reason)`` ou None sem menção. Pura.
+    """
+    if not text:
+        return None
+    tokens: list[re.Match] = []
+    for rx in token_res:
+        tokens.extend(rx.finditer(text))
+    if not tokens:
+        return None
+    best_level, best_reason = "plus", "bare"
+    for m in tokens:
+        win = text[max(0, m.start() - 45): min(len(text), m.end() + 45)]
+        tight_win = text[max(0, m.start() - 25): min(len(text), m.end() + 25)]
+        # F85 — precedência por menção (espelho F18 do alemão):
+        #   (a) soft GRUDADO DEPOIS do token => preferred (o soft anexado à
+        #       menção vence a intensidade vizinha/pós-nominal);
+        #   (b) intensidade pós-nominal GRUDADA ("français courant") =>
+        #       required;
+        #   (c) loop de qualificadores da janela ±45 (inalterado).
+        if soft_after_re.search(tight_win):
+            local, reason = "preferred", "soft"
+        elif intensity_after_re.search(tight_win):
+            local, reason = "required", "qual_after"
+        else:
+            soft_in_win = any(
+                rx.search(win) for rx, kind in quals_re if kind == "soft"
+            )
+            local, reason = "plus", "bare"
+            for qrx, kind in quals_re:
+                if not qrx.search(win):
+                    continue
+                if kind == "negated":
+                    local, reason = "plus", "negated"
+                    break
+                if kind == "verb_rev" and soft_in_win:
+                    continue  # a exigência provavelmente é do inglês
+                if kind in ("verb_direct", "qual", "verb_rev"):
+                    local, reason = "required", kind
+                    break
+                if kind == "soft":
+                    local, reason = "preferred", kind
+                    break
+        if _LEVEL_PRIO[local] > _LEVEL_PRIO[best_level]:
+            best_level, best_reason = local, reason
+    return best_level, best_reason
+
+
 @dataclass(frozen=True)
 class FrenchLevel:
     """Nível de menção a francês + razão (F60: SINAL, nunca exclusão)."""
@@ -600,51 +659,135 @@ def french_level(text: str | None) -> FrenchLevel | None:
        et un anglais courants", "français bilingue" — 26 vagas reais,
        forma dominante; o qual-antes não via) => required
        (``qual_after``).
+
+    F95: o corpo virou o motor genérico ``_language_level_of`` (UM
+    mecanismo para FR e NL — nenhum segundo parser); esta função é o
+    wrapper FR com os constantes originais — comportamento byte a byte
+    o mesmo da F85 (testado).
     """
-    if not text:
+    got = _language_level_of(
+        normalize_text(text or ""),
+        token_res=_FRENCH_TOKEN_RE,
+        soft_after_re=_FRENCH_SOFT_AFTER_RE,
+        intensity_after_re=_FRENCH_INTENSITY_AFTER_RE,
+        quals_re=_FRENCH_QUALS_RE,
+    )
+    if got is None:
         return None
-    text = normalize_text(text)
-    tokens: list[re.Match] = []
-    for rx in _FRENCH_TOKEN_RE:
-        tokens.extend(rx.finditer(text))
-    if not tokens:
+    return FrenchLevel(level=got[0], reason=got[1])
+
+
+# ---------------------------------------------------------------------------
+# F95 — Idioma: holandês (delta ITEM 5 — "fluent French OR Dutch",
+# Mondelez R-176327 verbatim; espelho do FR da F60/F85: SINAL, nunca
+# exclusão). MESMO motor da F60/F85 (_language_level_of — um mecanismo
+# só), com tokens/qualificadores próprios. A vaga com holandês exigido
+# FICA no eligible (o filtro de idioma de exclusão é o alemão; BE/NL
+# fora dos mercados-alvo é outro filtro) — o badge 🇳🇱 sinaliza o custo
+# de idioma na triagem.
+# ---------------------------------------------------------------------------
+
+DUTCH_TOKEN_PATTERNS: list[str] = [
+    r"\bdutch\b",
+    r"\bnederlands\b",
+    r"\bn(é|e)erlandais\b",
+]
+_DUTCH_TOKEN_RE = [re.compile(p, re.IGNORECASE) for p in DUTCH_TOKEN_PATTERNS]
+
+# Qualificadores — mesma estrutura/kinds do FR. A ÚNICA divergência é o
+# GAP do ``qual`` (intensidade ANTES do token): FR usa {0,26}; NL usa
+# {0,40} — a forma-fixture Mondelez verbatim ("fluent in one of the 2
+# languages, French or Dutch") mede 38 chars entre "fluent" e "Dutch".
+# Medido no eligible 21/10: 14 vagas com "fluent/fluency ... Dutch" a
+# até 40 chars; nenhuma FP auditada nessa janela.
+_DUTCH_QUALS: list[tuple[str, str]] = [
+    (
+        r"\b(no|not|kein\w*|ohne)\b[\w\s,()-]{0,22}\b"
+        r"(required|requirement|vorausgesetzt|erforderlich|n"
+        r"ötig|noetig|notwendig|pflicht|needed|need)\b",
+        "negated",
+    ),
+    (
+        r"\b(dutch|nederlands\b|n(é|e)erlandais)\b"
+        r"[\w\s,()-]{0,35}\b"
+        r"(required|essential|mandatory|must|fluent|fluency|native|pflicht|"
+        r"erforderlich|vorausgesetzt|erwartet|zwingend|notwendig)\b",
+        "verb_direct",
+    ),
+    (
+        r"(sehr\s+)?(gut|gutem|gute|guter|gutes|solide|exzellente|"
+        r"ausgezeichnete|umfassende|sicher(e|er|es|en)?|excellent(e|es)?|"
+        r"very good|good|advanced|strong|fluent|flie(ss|ß)end|"
+        r"verhandlungssicher\w*|native)"
+        r"[\w\s,&()-]{0,40}\b(dutch|nederlands\b|n(é|e)erlandais)\b",
+        "qual",
+    ),
+    (
+        r"\b(required|essential|mandatory|must|fluent|fluency|native|"
+        r"fließend|fliessend|verhandlungssicher)\w*[\w\s,()-]{0,30}\b"
+        r"(dutch|nederlands\b|n(é|e)erlandais)\b",
+        "verb_rev",
+    ),
+    (
+        r"\b(plus|preferred|desirable|an asset|a plus|valued|advantage|"
+        r"beneficial|advantageous|nice to have|von vorteil|wünschenswert|"
+        r"wunschenswert|bevorzugt|idealerweise|gerne gesehen|ein plus|"
+        r"good to have)\b",
+        "soft",
+    ),
+]
+_DUTCH_QUALS_RE = [(re.compile(p, re.IGNORECASE), kind) for p, kind in _DUTCH_QUALS]
+
+# Soft GRUDADO DEPOIS ("Dutch is a plus" — espelho _FRENCH_SOFT_AFTER_RE).
+_DUTCH_SOFT_AFTER_RE = re.compile(
+    r"\b(dutch|nederlands\b|n(é|e)erlandais)\b"
+    r"[\w\s&-]{0,25}\b"
+    r"(plus|preferred|desirable|an asset|a plus|valued|advantage|"
+    r"beneficial|advantageous|nice to have|von vorteil|"
+    r"wünschenswert|wunschenswert|bevorzugt|idealerweise|"
+    r"gerne gesehen|ein plus|good to have)\b",
+    re.IGNORECASE,
+)
+
+# Intensidade pós-nominal ("Dutch bilingual", "Nederlands bilingue") —
+# mesma lista do FR (courant/couramment/bilingue/bilingual); os compostos
+# FR-específicos não atrapalham (não casam com token NL).
+_DUTCH_INTENSITY_AFTER_RE = re.compile(
+    r"\b(dutch|nederlands\b|n(é|e)erlandais)\b"
+    r"[\w\s&()-]{0,20}\b(courant(e|es|s)?|couramment|bilingu?e(s)?|bilingual)\b",
+    re.IGNORECASE,
+)
+
+DUTCH_LEVELS = ("required", "preferred", "plus")
+
+
+@dataclass(frozen=True)
+class DutchLevel:
+    """Nível de menção a holandês + razão (F95: SINAL, nunca exclusão)."""
+
+    level: str
+    reason: str
+
+
+def dutch_level(text: str | None) -> DutchLevel | None:
+    """Nível de menção a holandês no título+descrição; None = sem menção.
+
+    F95 — SINAL puro (badge 🇳🇱/campo de exibição): o ranking NÃO consome
+    este valor e nenhum filtro exclui por holandês (espelho F60/F85 do
+    francês). Mesmo motor, mesmas precedências (soft grudado => preferred;
+    intensidade pós-nominal => required; janela ±45; ``verb_rev``
+    ignorado com soft na janela).
+    """
+    got = _language_level_of(
+        normalize_text(text or ""),
+        token_res=_DUTCH_TOKEN_RE,
+        soft_after_re=_DUTCH_SOFT_AFTER_RE,
+        intensity_after_re=_DUTCH_INTENSITY_AFTER_RE,
+        quals_re=_DUTCH_QUALS_RE,
+    )
+    if got is None:
         return None
-    best_level, best_reason = "plus", "bare"
-    for m in tokens:
-        win = text[max(0, m.start() - 45): min(len(text), m.end() + 45)]
-        tight_win = text[max(0, m.start() - 25): min(len(text), m.end() + 25)]
-        # F85 — precedência por menção (espelho F18 do alemão):
-        #   (a) soft GRUDADO DEPOIS do token => preferred (o soft anexado à
-        #       menção vence a intensidade vizinha/pós-nominal);
-        #   (b) intensidade pós-nominal GRUDADA ("français courant") =>
-        #       required;
-        #   (c) loop de qualificadores da janela ±45 (inalterado).
-        if _FRENCH_SOFT_AFTER_RE.search(tight_win):
-            local, reason = "preferred", "soft"
-        elif _FRENCH_INTENSITY_AFTER_RE.search(tight_win):
-            local, reason = "required", "qual_after"
-        else:
-            soft_in_win = any(
-                rx.search(win) for rx, kind in _FRENCH_QUALS_RE if kind == "soft"
-            )
-            local, reason = "plus", "bare"
-            for qrx, kind in _FRENCH_QUALS_RE:
-                if not qrx.search(win):
-                    continue
-                if kind == "negated":
-                    local, reason = "plus", "negated"
-                    break
-                if kind == "verb_rev" and soft_in_win:
-                    continue  # a exigência provavelmente é do inglês
-                if kind in ("verb_direct", "qual", "verb_rev"):
-                    local, reason = "required", kind
-                    break
-                if kind == "soft":
-                    local, reason = "preferred", kind
-                    break
-        if _LEVEL_PRIO[local] > _LEVEL_PRIO[best_level]:
-            best_level, best_reason = local, reason
-    return FrenchLevel(level=best_level, reason=best_reason)
+    return DutchLevel(level=got[0], reason=got[1])
 
 
 # ---------------------------------------------------------------------------
@@ -897,6 +1040,99 @@ def work_authorization(text: str | None) -> dict[str, str]:
     if _wa_existing_evidence(text):
         return {"state": "existing_required", "detected": "existing"}
     return {"state": "unclear", "detected": "vocab_unclassified"}
+
+
+# ---------------------------------------------------------------------------
+# F95 — work_auth_requirement: campo 3-níveis do ITENS ITEM 2 (delta F61).
+#
+# A F61 (``filters.requires_existing_permit_for_non_eu``) EXCLUI pelo padrão
+# endereçado-a-não-UE + qualificador — essa política de hard blocker §16e
+# fica INTACTA. O delta da F95 é o CAMPO com níveis
+# (``none_mentioned | right_to_work_required | sponsorship_offered``) mais
+# as famílias de frases novas do ITENS ("EU/EEA citizenship", "EU only",
+# "right to work by start date") — medidas no corpus 21/10:
+#   - "zum Starttermin ... Arbeitsberechtigung ... haben" (Amazon DE
+#     boilerplate, verbatim 10544252): 62 vagas no eligible;
+#   - "right to work ... by the start date" (Amazon EN, verbatim): 15;
+#   - "EU/EEA citizenship" e "EU only": 0 ocorrências (futuro-proof, sem
+#     risco de FP medido; "EEA engineer" hella NÃO casa — exige
+#     "citizenship").
+# DISPLAY-ONLY (decisão F95): o campo NÃO amplia a exclusão — a extensão
+# do bloqueio às frases novas mexeria com ~77 vagas da família Amazon
+# (10,8% do eligible 21/10) e é decisão do dono (doutrina F62: o dono
+# decide; a F61 já aplica o que ele decidiu para o padrão MAHLE).
+#
+# Dobras conscientes do 5-estados (``work_authorization``) para o
+# 3-níveis do dono: ``no_sponsorship`` e ``unclear`` caem em
+# ``none_mentioned`` (o dono nunca contou com patrocínio — a aposta do
+# projeto é o §16e; "no visa sponsorship" sem exigência de right-to-work
+# não bloqueia). Precedência: blocker vence suporte (o campo alimenta a
+# decisão de aplicar; o aviso de bloqueio é o mais útil quando ambos
+# aparecem).
+WORK_AUTH_LEVELS = (
+    "none_mentioned", "right_to_work_required", "sponsorship_offered",
+)
+
+# "right to work/work authorization ... by (the) start date" (Amazon EN
+# verbatim 21/10: "You must have the right to work in the country of
+# employment by the start date").
+_RTW_BY_START_RE = re.compile(
+    r"\b(?:right\s+to\s+work|work\s+authorization)"
+    r"[\w\s,()-]{0,50}\bby\s+(?:the\s+)?start\b",
+    re.IGNORECASE,
+)
+# Amazon DE verbatim (10544252): "Du musst zum Starttermin die
+# Arbeitsberechtigung für das Beschäftigungsland haben." — ambas as ordens.
+_RTW_STARTTERMIN_RE = re.compile(
+    r"\bzum\s+starttermin[\w\s,()äöüß-]{0,60}arbeitsberechtigung"
+    r"|arbeitsberechtigung[\w\s,()äöüß-]{0,60}zum\s+starttermin",
+    re.IGNORECASE,
+)
+# "EU/EEA citizenship" com contexto de EXIGÊNCIA (0 hits no corpus 21/10 —
+# forms futuras; menção nua não conta).
+_RTW_EU_EEA_RE = re.compile(
+    r"\beu\s*/\s*eeas?\s+citizenship[\w\s,():-]{0,40}"
+    r"\b(?:required|necessary|needed|must|hold|possess)\b"
+    r"|\b(?:must|need|requires?|only|hold|possess)[\w\s,():-]{0,30}"
+    r"\beu\s*/\s*eeas?\s+citizenship\b",
+    re.IGNORECASE,
+)
+# "EU only" (bare) e "EU citizens/applicants only" / "only EU citizens".
+_RTW_EU_ONLY_RE = re.compile(
+    r"(?<!\w)eu\s+only\b"
+    r"|eu[\s-]*(?:citizens?|nationals?|applicants?|candidates?)\s+only\b"
+    r"|only\s+eu\s+(?:citizens?|nationals?|applicants?|candidates?)\b",
+    re.IGNORECASE,
+)
+
+
+def work_auth_requirement(text: str | None) -> dict[str, str]:
+    """F95 — nível de exigência de work-authorization do anúncio (3-níveis).
+
+    ``right_to_work_required``: evidência ``existing_required`` do
+    detector 5-estados (MAHLE verbatim) OU uma das famílias novas
+    ("right to work by start date" EN, "zum Starttermin ...
+    Arbeitsberechtigung" DE, "EU/EEA citizenship" qualificado, "EU only").
+    ``sponsorship_offered``: estado ``support`` (visa sponsorship
+    oferecido) SEM blocker. ``none_mentioned``: todo o resto — inclui as
+    dobras ``no_sponsorship``/``unclear`` (ver bloco acima).
+
+    Display-only: nenhum filtro/exclusão consome este valor (a exclusão
+    F61 segue pelo padrão endereçado-a-não-UE). Pura, determinística.
+    """
+    t = normalize_text(text or "")
+    if not t:
+        return {"level": "none_mentioned", "detected": "no_vocab"}
+    if _wa_existing_evidence(t) or _RTW_BY_START_RE.search(t) \
+            or _RTW_STARTTERMIN_RE.search(t) \
+            or _RTW_EU_EEA_RE.search(t) or _RTW_EU_ONLY_RE.search(t):
+        if _wa_existing_evidence(t):
+            return {"level": "right_to_work_required", "detected": "existing"}
+        return {"level": "right_to_work_required", "detected": "new_forms"}
+    state = work_authorization(t)
+    if state["state"] == "support":
+        return {"level": "sponsorship_offered", "detected": "support"}
+    return {"level": "none_mentioned", "detected": state["state"]}
 
 
 # ---------------------------------------------------------------------------

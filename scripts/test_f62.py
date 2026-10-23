@@ -472,17 +472,22 @@ def test_digest_line():
     integ = rg.funnel_seasonality_lines(
         {"funnel": None, "trend": None, "application": None,
          "seasonality": summary})
+    # F95 — a seção 📅 ganhou a linha 🚫 work-auth (o MAHLE da fixture é
+    # right_to_work_required no campo 3-níveis; display-only). A ⚠ segue
+    # DERIVADA do resumo real; a última linha agora é a 🚫 (nova cauda
+    # F95, depois da ⚠ e antes da 📌).
     check("D5 integração: ⚠ derivada do RESUMO REAL (mesma fonte do 📆)",
           ("  ⚠ início imediato (ab sofort): 2 vagas "
            "— conflita com jan/2027") in integ
-          and integ[-2].startswith("  📆 ")
-          and integ[-1].startswith("  ⚠ "),
+          and integ[-3].startswith("  📆 ")
+          and integ[-2].startswith("  ⚠ ")
+          and integ[-1].startswith("  🚫 work-auth: 2 vagas "),
           detail=" | ".join(integ))
     digest = ["⚡ Top 5 do dia (candidatura direta)", "  1. vaga", ""]
     digest += integ + ["", "🔗 Ranking completo: https://x"]
     check("D6 extrator do compact: ⚠ viaja DENTRO da seção 📅 (corpo)",
           rg.funnel_section_lines(digest) == integ
-          and rg.funnel_section_lines(digest)[-1].startswith("  ⚠ "))
+          and rg.funnel_section_lines(digest)[-1].startswith("  🚫 "))
 
 
 # ---------------------------------------------------------------------------
@@ -503,6 +508,23 @@ def _strip_f62(html: str) -> str:
     html = re.sub(
         r' <span class="flag"[^>]*>⚠️ (?:tipo ambíguo|ambiguous type)'
         r'[^<]*</span>', "", html)
+    # F95 — delta da fase: data-nl + badge 🇳🇱 + item 🇳🇱 da legenda +
+    # badges 🔒/🤝/🎓 + ⚠ de janela datada (TOO_EARLY/TOO_LATE — as
+    # fixtures Lidl/MAHLE ganham 🔒/🎓 pela F95; strip cirúrgico, o A/B
+    # continua valendo módulo o delta F95 declarado).
+    html = re.sub(r' data-nl="[^"]*"', "", html)
+    html = html.replace(
+        ' <span class="nl"><span aria-hidden="true">🇳🇱</span></span>', "")
+    html = re.sub(
+        r'<dt><span aria-hidden="true">🇳🇱</span> holandês \(sinal\)</dt>'
+        r"<dd>.*?</dd>", "", html, flags=re.DOTALL)
+    html = re.sub(
+        r' <span class="flag"[^>]*>(?:🔒|🤝|🎓) [^<]*</span>', "", html)
+    html = re.sub(
+        r' <span class="flag"[^>]*>⚠️ '
+        r"(?:início (?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)"
+        r"|start (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))"
+        r"/\d{4}[^<]*</span>", "", html)
     return re.sub(r' <span class="flag"[^>]*>' + re.escape(WARN)
                   + r' (?:início imediato[^<]*|immediate start[^<]*)</span>',
                   "", html)
@@ -608,12 +630,17 @@ def test_ab_byte():
                  if l not in main_map["with_imm"]]
                 + [l for l in main_map["with_imm"]
                    if l not in cur_map["with_imm"]])
-        check("E3 digest c/ imediatas: diff simétrico vs main = SÓ a ⚠",
-              len(diff) == 1 and diff[0].startswith("  ⚠ início imediato")
-              and diff[0].endswith("conflita com jan/2027"),
+        check("E3 digest c/ imediatas: diff simétrico vs main = ⚠ + 🚫 (F95)",
+              len(diff) == 2
+              and diff[0].startswith("  ⚠ início imediato")
+              and diff[0].endswith("conflita com jan/2027")
+              and diff[1].startswith("  🚫 work-auth: 2 vagas "),
               detail=str(diff))
-        check("E4 digest SEM imediatas: seção == main byte a byte",
-              cur_map["no_imm"] == main_map["no_imm"],
+        check("E4 digest SEM imediatas: seção == main + linha 🚫 (F95)",
+              # F95 — a seção ganha a linha 🚫 work-auth (display-only);
+              # o resto da seção é byte a byte o do main.
+              cur_map["no_imm"][:-1] == main_map["no_imm"]
+              and cur_map["no_imm"][-1].startswith("  🚫 work-auth: 1 vaga "),
               detail=str(cur_map["no_imm"]))
 
 
@@ -623,8 +650,12 @@ def test_ab_byte():
 def test_wiring():
     section("F: wiring + never-worsens — score/ranking NUNCA tocados")
     src_mp = (SCRIPTS / "minimal_page.py").read_text(encoding="utf-8")
-    check("F1 call-site único do _card wired: start_conflict_flag=ab_sofort_flag",
-          "start_conflict_flag=ab_sofort_flag(job, lang)" in src_mp)
+    # F95 — o call-site foi GENERALIZADO: start_conflict_flag_text (3
+    # classes; a IMMEDIATE devolve o VERBATIM F62 — ab_sofort_flag segue
+    # existindo e testado).
+    check("F1 call-site único do _card wired: start_conflict_flag",
+          "start_conflict_flag=start_conflict_flag_text(job, lang)" in src_mp
+          and src_mp.count("start_conflict_flag=start_conflict_flag_text") == 1)
     tree = ast.parse(src_mp)
     top_imports = [n for n in tree.body
                    if isinstance(n, ast.Import)

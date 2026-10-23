@@ -2100,6 +2100,37 @@ def funnel_seasonality_lines(
                      f"{'vaga' if imm == 1 else 'vagas'} — conflita com "
                      f"jan/2027")
 
+    # F95 — ⚠ janela datada FORA da janela do dono (jan–set/2027):
+    # TOO_EARLY (início < jan/2027 — Mondelez ago/2026, keplercheuvreux
+    # jan/2026) + TOO_LATE (> set/2027). Linha INFORMATIVA (display-only,
+    # doutrina F62: o dono decide — "o enviou mesmo assim"); nunca mexe
+    # em score/ranking/filtro. Sem conflitos -> linha AUSENTE (o digest
+    # é byte a byte o de antes). Report pré-F95 (sem o campo) -> ausente.
+    te = int(sea.get("too_early") or 0)
+    tl = int(sea.get("too_late") or 0)
+    if te or tl:
+        total_oc = te + tl
+        parts = []
+        if te:
+            parts.append(f"{te} antes de jan/2027")
+        if tl:
+            parts.append(f"{tl} depois de set/2027")
+        lines.append(f"  ⚠ início fora da janela (jan–set/2027): "
+                     f"{total_oc} {'vaga' if total_oc == 1 else 'vagas'} "
+                     f"({'; '.join(parts)}) — display-only, o dono decide")
+
+    # F95 — 🚫 work-auth: vagas com nível right_to_work_required no campo
+    # 3-níveis (ITENS ITEM 2 — display-only; a exclusão F61 segue pelo
+    # padrão endereçado-a-não-UE e estas frases novas NÃO excluem —
+    # decisão da F95, blast radius medido: 77 vagas Amazon). Fonte =
+    # seasonality_summary (import lazy de app_intel, best-effort).
+    wa = sea.get("work_auth_flagged")
+    if wa:
+        wa = int(wa)
+        lines.append(f"  🚫 work-auth: {wa} "
+                     f"{'vaga' if wa == 1 else 'vagas'} com exigência de "
+                     f"autorização no início — display-only, o dono decide")
+
     # 📌 cauda pessoal (event log F41) — só quando existem eventos.
     if app:
         parts = ", ".join(

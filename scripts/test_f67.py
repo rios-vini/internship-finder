@@ -421,6 +421,23 @@ def _strip_badges(html: str) -> str:
     html = re.sub(
         r' <span class="flag"[^>]*>⚠️ (?:tipo ambíguo|ambiguous type)'
         r'[^<]*</span>', "", html)
+    # F95 — delta da fase (data-nl + 🇳🇱 + 🔒/🤝/🎓 + ⚠ de janela datada):
+    # strip cirúrgico nos DOIS lados; o A/B continua valendo módulo o
+    # delta F95 declarado (fixture sem sinais F95 = no-op nos cards,
+    # mas data-nl/legenda estão em TODA página).
+    html = re.sub(r' data-nl="[^"]*"', "", html)
+    html = html.replace(
+        ' <span class="nl"><span aria-hidden="true">🇳🇱</span></span>', "")
+    html = re.sub(
+        r'<dt><span aria-hidden="true">🇳🇱</span> holandês \(sinal\)</dt>'
+        r"<dd>.*?</dd>", "", html, flags=re.DOTALL)
+    html = re.sub(
+        r' <span class="flag"[^>]*>(?:🔒|🤝|🎓) [^<]*</span>', "", html)
+    html = re.sub(
+        r' <span class="flag"[^>]*>⚠️ '
+        r"(?:início (?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)"
+        r"|start (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))"
+        r"/\d{4}[^<]*</span>", "", html)
     return re.sub(
         r' <span class="flag"[^>]*>' + re.escape(WARN)
         + r' (?:início imediato[^<]*|immediate start[^<]*)</span>',

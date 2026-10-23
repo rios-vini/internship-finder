@@ -126,6 +126,23 @@ def _strip_f86(html: str) -> str:
     return html.replace(_F86_LEGEND_NEW, _F86_LEGEND_OLD)
 
 
+# F95 — delta de render da fase (data-nl + badge 🇳🇱 + item 🇳🇱 da legenda;
+# badges 🔒/🤝/🎓/⚠ de janela não acendem nas fixtures sem sinais F95).
+# Strip cirúrgico, padrão _strip_f60.
+_F95_NL_ATTR_RE = re.compile(r' data-nl="[^"]*"')
+_F95_NL_BADGE = ' <span class="nl"><span aria-hidden="true">🇳🇱</span></span>'
+_F95_NL_LEGEND_RE = re.compile(
+    r'<dt><span aria-hidden="true">🇳🇱</span> holandês \(sinal\)</dt>'
+    r"<dd>.*?</dd>", re.DOTALL)
+
+
+def _strip_f95(html: str) -> str:
+    """Remove o delta F95 de render — A/B módulo F95."""
+    html = _F95_NL_ATTR_RE.sub("", html)
+    html = html.replace(_F95_NL_BADGE, "")
+    return _F95_NL_LEGEND_RE.sub("", html)
+
+
 def check(name: str, ok: bool, detail: str = "") -> None:
     global N
     N += 1
@@ -271,9 +288,9 @@ def group_b_ab() -> None:
         # F86 — idem para o terceiro sinal da legenda ⏳/⚠️ (tipo
         # ambíguo Werkstudent/Praktikum — sem fixture com título duplo,
         # strip = no-op nos cards).
-        cur_net = _strip_f86(_strip_f83(_strip_f60(cur)))
+        cur_net = _strip_f95(_strip_f86(_strip_f83(_strip_f60(cur))))
         check(f"B{1 if not full else 2} pt == main byte a byte "
-              f"módulo adições F60+F83+F86 ({regime})",
+              f"módulo adições F60+F83+F86+F95 ({regime})",
               cur_net == head,
               f"{len(cur_net.encode('utf-8'))}B vs "
               f"{len(head.encode('utf-8'))}B")
