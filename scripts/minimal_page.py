@@ -1743,6 +1743,22 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         else:
             badge_bits.append(
                 f' <span class="flag">⚠️ {_esc(na_flag)}</span>')
+    # F104 — country mismatch (display-only): city→country sanity flag.
+    # Badge ⚠ "localização fora dos 5 mercados" quando a cidade da vaga
+    # indica país fora dos 5 alvos mas o country_iso diz que está dentro.
+    # O texto vem de countries.country_mismatch_flag(job).
+    country_mismatch_txt = ""
+    if isinstance(job.get("country_mismatch"), bool) and job["country_mismatch"]:
+        from internship_finder.countries import country_mismatch_flag
+        country_mismatch_txt = country_mismatch_flag(job)
+    if country_mismatch_txt:
+        if lang == "en":
+            badge_bits.append(
+                f' <span class="flag"{_i18n_attr(country_mismatch_txt)}>⚠️ '
+                f'{_esc(country_mismatch_txt)}</span>')
+        else:
+            badge_bits.append(
+                f' <span class="flag">⚠️ {_esc(country_mismatch_txt)}</span>')
     if duration_flag:
         if lang == "en":
             badge_bits.append(

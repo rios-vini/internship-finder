@@ -429,6 +429,22 @@ def run_filter_pipeline(
         intel_map=_load_applicability_intel() if applicability else None,
     )
     print_cascade(counts, country)
+
+    # F104 — sanity check cidade→país: flag aditiva country_mismatch
+    # (display-only, nunca exclusão). Roda após select_eligible porque
+    # precisa do country_iso canonico que select_eligible grava de volta.
+    from internship_finder.countries import check_city_country_mismatch
+    country_mismatch_count = 0
+    for job in selected:
+        if check_city_country_mismatch(job):
+            job["country_mismatch"] = True
+            country_mismatch_count += 1
+    if country_mismatch_count:
+        print(
+            f"=== F104 country_mismatch: {country_mismatch_count} vagas com "
+            "localização fora dos 5 mercados (country_iso divergente) ==="
+        )
+
     # F92 — estágio de normalização de ingestão (ANTES do dedup, por spec):
     # (1) aliases canônicos de empresa (config/company_aliases.json, fail-
     #     closed): label sujo upstream ("SUSONITY" = Merck) e descasamento
@@ -551,6 +567,8 @@ def run_filter_pipeline(
                 "filtered": counts["pais"],
                 "dedup_removed": sum(dedup_stats.values()) if dedup else 0,
                 "eligible": len(selected),
+                # F104 — métrica country_mismatch (display-only; F75 padrão)
+                "country_mismatch": country_mismatch_count,
                 # F18 — contagem por motivo do hard exclude (first-match;
                 # chaves ausentes quando applicability=False).
                 **{
