@@ -6,7 +6,8 @@ borderline ficam espalhados no registro. Este módulo gera o
 ``data/MANUAL-CHECK.md`` no run diário (estágio do refresh, junto ao
 digest) com UMA linha por item: empresa, cargo, **link DIRETO** (o alvo
 final, não o redirect — resolve cadeias rdr/jump), motivo
-(saml_wall | empty_desc | js_only | cookie_wall | borderline) e a data
+(saml_wall | empty_desc | js_only | cookie_wall | borderline |
+external_agreement_gate [F105] | id_collision) e a data
 do sighting.
 
 População da fila (spec F96):
@@ -17,7 +18,13 @@ População da fila (spec F96):
   wall SAML ganha ``manual_check_required``);
 - ``id_collision`` (F96/ITEM 7-typo — colisão de ID entre empresas
   vivas/mortas: Consultport recruitee "2100111" colidindo com a Simvia
-  morta; flag p/ revisão manual, NUNCA remove, NUNCA funde).
+  morta; flag p/ revisão manual, NUNCA remove, NUNCA funde);
+- ``external_agreement_gate`` (F105 — o empregador exige o acordo padrão
+  DELE assinado pela universidade: J&J Belgium "External agreements
+  cannot be accepted"; Danone "3-party internship agreement signed by
+  your university"). A vaga segue ELEGÍVEL — o gate é externo e
+  resolvível pela universidade do dono — e entra na fila com o motivo
+  claro; flag persistida no registro (padrão id_collision).
 
 Doutrina herdada (F87, mantida pela spec F96): a fila é PARALELA —
 nenhuma vaga sai do ranking, do Top-5 ou de qualquer superfície. O dono
@@ -60,6 +67,7 @@ import datetime
 import json
 import re
 import sqlite3
+import unicodedata
 import urllib.parse
 from pathlib import Path
 
@@ -73,6 +81,12 @@ MOTIVO_JS_ONLY = "js_only"
 MOTIVO_COOKIE_WALL = "cookie_wall"
 MOTIVO_BORDERLINE = "borderline"
 MOTIVO_ID_COLLISION = "id_collision"
+# F105 — acordo padrao do empregador assinado pela universidade: gate
+# EXTERNO a candidatura (resolvivel pela universidade do dono — ex. J&J
+# Belgium: "External agreements cannot be accepted"). A vaga SEGUE
+# elegivel e entra na fila com o motivo claro (doutrina F96: a fila e
+# PARALELA, nunca exclui).
+MOTIVO_EXTERNAL_AGREEMENT_GATE = "external_agreement_gate"
 
 # F87 (not_assessable) -> vocabulário da spec F96.
 F87_MOTIVO_MAP = {
@@ -84,10 +98,15 @@ F87_MOTIVO_MAP = {
 # Prioridade quando a vaga tem MAIS DE UM sinal (o mais acionável para o
 # dono primeiro). ``desc_curta`` (borderline) perde para qualquer detalhe
 # de liveness unknown: 584 chars de SAML wall são, antes de tudo, um wall.
+# F105: o gate de acordo externo perde para os walls (SAML/desc vazia —
+# o problema da máquina vem primeiro) mas vence js_only/cookie_wall (que
+# não têm produtor hoje): é o motivo mais acionável da família
+# "vaga avaliável, ação é com o dono/universidade".
 _MOTIVO_PRIORITY = (
     MOTIVO_ID_COLLISION,
     MOTIVO_SAML_WALL,
     MOTIVO_EMPTY_DESC,
+    MOTIVO_EXTERNAL_AGREEMENT_GATE,
     MOTIVO_JS_ONLY,
     MOTIVO_COOKIE_WALL,
 )
@@ -111,10 +130,11 @@ def motivo_of(job: dict) -> str | None:
     """Motivo da fila manual-check p/ a vaga (pura; ``None`` = fora da fila).
 
     Ordem de prioridade (o mais acionável primeiro): ``id_collision`` >
-    ``saml_wall`` > ``empty_desc`` > ``js_only``/``cookie_wall`` >
-    detalhe cru de liveness unknown > ``borderline``. Vagas com
-    ``liveness_status: dead`` NÃO entram (a máquina julgou: morta — a
-    fila é para o que a máquina NÃO consegue julgar).
+    ``saml_wall`` > ``empty_desc`` > ``external_agreement_gate`` (F105) >
+    ``js_only``/``cookie_wall`` > detalhe cru de liveness unknown >
+    ``borderline``. Vagas com ``liveness_status: dead`` NÃO entram (a
+    máquina julgou: morta — a fila é para o que a máquina NÃO consegue
+    julgar).
     """
     if not isinstance(job, dict):
         return None
@@ -127,6 +147,8 @@ def motivo_of(job: dict) -> str | None:
     na = str(job.get("not_assessable") or "").strip()
     if na:
         candidates.append(F87_MOTIVO_MAP.get(na, na))
+    if str(job.get("external_agreement_gate") or "").strip():
+        candidates.append(MOTIVO_EXTERNAL_AGREEMENT_GATE)
     if status == _LIVENESS_UNKNOWN or job.get("manual_check_required"):
         detail = _unknown_detail(job)
         if "saml" in detail.lower():
@@ -222,6 +244,126 @@ def resolve_direct_link(url: str, final_url: str | None = None) -> str:
     ):
         return final
     return url
+
+
+# ---------------------------------------------------------------------------
+# Preferência por portal oficial (F105) — agregador geobloqueante × portal
+# oficial quando AMBOS existem no mesmo ranking
+# ---------------------------------------------------------------------------
+
+# Medido 23/10 (registro, abertura do Brasil): o AGREGADOR absolventa.de
+# bloqueia geograficamente; o portal OFICIAL Bertelsmann/Arvato
+# (jobsearch.createyourowncareer.com) abre normalmente. Doutrina F96: o
+# link direto aponta para o ALVO aplicável ao dono (o que abre), não para
+# o redirect/agregador. Listas extensíveis POR MEDIDA (nova medição no
+# registro -> nova entrada, nunca chute).
+GEOBLOCKED_AGGREGATOR_HOSTS = ("absolventa.de",)
+OFFICIAL_PORTAL_HOSTS = ("createyourowncareer.com",)
+
+# Metadata de tenant medida (registro 23/10): Bertelsmann/Arvato publica
+# as vagas em portal próprio (createyourowncareer.com — multi-empregador:
+# ARVATO/Arvato_Systems/RTL/BFS/Bertelsmann_Corporate) e a CANDIDATURA
+# roda no SmartRecruiters corporativo (formulário abre do Brasil). O
+# portal preference abaixo usa os hosts; este mapa documenta a rota
+# completa para o drift-check da doc de providers.
+TENANT_PORTAL_METADATA = {
+    "bertelsmann": {
+        "aggregator": "www.absolventa.de (geoblock medido do Brasil)",
+        "official_portal": "jobsearch.createyourowncareer.com",
+        "apply": "jobs.smartrecruiters.com/Bertelsmann-Jobs/",
+    },
+}
+
+# O par AGREGADOR × OFICIAL exige prova de MESMA vaga: os labels de
+# empresa divergem por construção (o agregador traz "Apply now!", o
+# oficial traz o label do tenant — par Arvato medido), então empresa NÃO
+# é chave aqui. Prova usada: título normalizado IGUAL + mesmo país +
+# overlap de descrição (Jaccard de tokens) — o agregador copia o texto do
+# empregador. Calibração (23/10, eligible de produção): o único par misto
+# do funil tem Jaccard 0.744; 0.5 é a folga conservadora. Descrição
+# vazia/degenerada em qualquer lado => SEM swap (fail-closed, honesto).
+_PORTAL_TWIN_MIN_JACCARD = 0.5
+
+
+def _url_host(url: str) -> str:
+    """Host da URL (sem www., casefold); '' quando não parseável."""
+    try:
+        netloc = urllib.parse.urlsplit(str(url or "")).netloc
+    except ValueError:
+        return ""
+    return netloc.removeprefix("www.").casefold()
+
+
+def _host_matches(url: str, hosts: tuple[str, ...]) -> bool:
+    host = _url_host(url)
+    return bool(host) and any(
+        host == h or host.endswith("." + h) for h in hosts
+    )
+
+
+def _twin_title_key(title: str) -> str:
+    """Chave de título p/ o par agregador×oficial (F105, LOCAL).
+
+    Aproximação deliberada e documentada do ``dedup.normalize_title``
+    (este módulo se mantém standalone — o refresh tem src/ importável,
+    o teste também): acentos fora, casefold, tokens alfanuméricos em
+    ordem. O par real (Arvato) tem título idêntico; a prova de MESMA
+    vaga fica por conta do overlap de descrição (sinal forte).
+    """
+    norm = unicodedata.normalize("NFKD", str(title or "")).encode(
+        "ascii", "ignore").decode()
+    return " ".join(sorted(re.findall(r"[a-z0-9]+", norm.casefold())))
+
+
+def _desc_tokens(text: str) -> set[str]:
+    """Tokens de palavra (≥3 chars, ascii-folded) da descrição."""
+    norm = unicodedata.normalize("NFKD", str(text or "")).encode(
+        "ascii", "ignore").decode()
+    return {w for w in re.findall(r"[a-z]{3,}", norm.casefold())}
+
+
+def _desc_jaccard(a: str, b: str) -> float | None:
+    """Jaccard dos tokens das duas descrições; None quando degenerado."""
+    ta, tb = _desc_tokens(a), _desc_tokens(b)
+    if not ta or not tb:
+        return None
+    return len(ta & tb) / len(ta | tb)
+
+
+def official_portal_twin_url(job: dict, ranking: list) -> str:
+    """URL do portal oficial do gêmeo agregador (pura; ``''`` = sem swap).
+
+    Dispara SÓ quando a URL da vaga está num agregador geobloqueante E
+    existe, no MESMO ranking, um registro no portal oficial com o MESMO
+    título normalizado, MESMO país e overlap de descrição >=
+    ``_PORTAL_TWIN_MIN_JACCARD``. Sem prova de mesma vaga => sem swap
+    (o link direto fica na URL do registro — nunca inventa alvo).
+    """
+    url = str(job.get("url") or "").strip() if isinstance(job, dict) else ""
+    if not url or not _host_matches(url, GEOBLOCKED_AGGREGATOR_HOSTS):
+        return ""
+    title = _twin_title_key(job.get("title") or "")
+    country = str(job.get("country_iso") or "").strip().casefold()
+    if not title or not country:
+        return ""
+    desc = str(job.get("description") or "")
+    best: tuple[float, str] | None = None
+    for other in ranking:
+        if not isinstance(other, dict) or other is job:
+            continue
+        other_url = str(other.get("url") or "").strip()
+        if not _host_matches(other_url, OFFICIAL_PORTAL_HOSTS):
+            continue
+        if _twin_title_key(other.get("title") or "") != title:
+            continue
+        if str(other.get("country_iso") or "").strip().casefold() != country:
+            continue
+        overlap = _desc_jaccard(desc, str(other.get("description") or ""))
+        if overlap is None or overlap < _PORTAL_TWIN_MIN_JACCARD:
+            continue
+        if best is None or overlap > best[0]:
+            best = (overlap, other_url)
+    return best[1] if best else ""
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +528,75 @@ def detect_id_collisions(ranking: list, history: dict | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# external_agreement_gate (F105) — acordo padrão assinado pela universidade
+# ---------------------------------------------------------------------------
+
+# Família medida no corpus INTEIRO (jobs.json ~109k + eligible, 23/10): os
+# 2 padrões apanham EXATAMENTE a família do gate externo — J&J Belgium ×2
+# ("External agreements cannot be accepted", verbatim R-106104/R-102271) e
+# Danone icims ×5 ("3-party internship agreement signed by your
+# university"). A família de MATRÍCULA local (Continental "Studium an
+# einer deutschen Hochschule", Avery "Currently enrolled at a Dutch
+# university") NÃO acende — é outra classe (exclusão F99 / F106); menções
+# genéricas de acordo (Deutsche Börse "can provide an internship
+# agreement", boilerplate ×90) também não — sem "external agreements"
+# negado nem "signed by your university", não há gate.
+_EXTERNAL_AGREEMENT_RES = (
+    # J&J Belgium: o empregador SÓ aceita o acordo padrão DELE assinado
+    # pela universidade — acordos externos não são aceitos.
+    re.compile(
+        r"external\s+agreements?\s+(?:cannot|can(?:no)?t|can't)\s+be\s+accepted",
+        re.IGNORECASE,
+    ),
+    # Família do acordo assinado pela universidade (Danone): "it is
+    # mandatory to provide a 3-party internship agreement signed by your
+    # university".
+    re.compile(
+        r"agreement[^.\n]{0,80}?signed\s+by\s+(?:your|the)\s+(?:university|school)",
+        re.IGNORECASE,
+    ),
+)
+
+
+def detect_external_agreement_gates(ranking: list) -> dict:
+    """Flag ``external_agreement_gate`` nas vagas do ranking (in place).
+
+    O gate é EXTERNO à candidatura: a vaga SEGUE elegível (score/ordem
+    intactos — doutrina F96/F87) e entra na fila manual-check com o motivo
+    claro, porque a resolução (universidade assinar o acordo padrão do
+    empregador) é ação do dono, não da máquina. NUNCA remove, NUNCA
+    exclui. O valor do flag é o TRECHO-ÂNCORA (evidência legível na
+    fila). Devolve ``{"checked", "flagged", "gates"}``.
+    """
+    flagged = 0
+    checked = 0
+    gates: list[dict] = []
+    for job in ranking:
+        if not isinstance(job, dict):
+            continue
+        desc = str(job.get("description") or "")
+        if not desc:
+            continue
+        checked += 1
+        anchor = None
+        for pattern in _EXTERNAL_AGREEMENT_RES:
+            match = pattern.search(desc)
+            if match:
+                anchor = match.group(0)
+                break
+        if anchor is None:
+            continue
+        job["external_agreement_gate"] = anchor
+        flagged += 1
+        gates.append({
+            "job_id": str(job.get("id") or ""),
+            "company": str(job.get("company") or ""),
+            "anchor": anchor,
+        })
+    return {"checked": checked, "flagged": flagged, "gates": gates}
+
+
+# ---------------------------------------------------------------------------
 # MANUAL-CHECK.md — geração e carry-forward da data de sighting
 # ---------------------------------------------------------------------------
 
@@ -423,7 +634,9 @@ def build_manual_check_rows(ranking: list) -> list[dict]:
 
     Ordenado por empresa (casefold) — o dono varre em ordem estável entre
     runs. ``url`` já é o link DIRETO (alvo final via ``liveness_final_url``
-    quando o liveness resolveu redirect).
+    quando o liveness resolveu redirect); F105: quando a URL do registro é
+    de agregador geobloqueante e o gêmeo no portal oficial existe no
+    MESMO ranking, o link vira o do portal (``portal_oficial=True``).
     """
     rows: list[dict] = []
     for job in ranking:
@@ -435,13 +648,21 @@ def build_manual_check_rows(ranking: list) -> list[dict]:
         original = str(job.get("url") or "")
         direct = resolve_direct_link(
             original, job.get("liveness_final_url"))
+        portal_oficial = False
+        twin = official_portal_twin_url(job, ranking)
+        if twin and twin != direct:
+            direct = twin
+            portal_oficial = True
         rows.append({
             "id": str(job.get("id") or ""),
             "company": str(job.get("company") or "?"),
             "title": str(job.get("title") or "?"),
             "motivo": motivo,
+            # F105 — evidência do gate (trecho-âncora) na linha do dono
+            "gate_anchor": str(job.get("external_agreement_gate") or "").strip(),
             "url": direct,
             "resolved": bool(direct) and direct != original.strip(),
+            "portal_oficial": portal_oficial,
             "date": str(job.get("liveness_checked_at") or "")[:10] or None,
         })
     rows.sort(key=lambda r: (r["company"].casefold(), r["title"].casefold()))
@@ -469,12 +690,18 @@ def write_manual_check_md(path, rows: list[dict], generated_at: str) -> Path:
             date = prev  # sighting original sobrevive à reescrita do run
         if not date:
             date = str(generated_at)[:10]
+        motivo_txt = str(row["motivo"])
+        anchor = str(row.get("gate_anchor") or "").strip()
+        if anchor:
+            motivo_txt += f' — “{anchor}”'
         suffix = ""
-        if row.get("resolved"):
+        if row.get("portal_oficial"):
+            suffix = " _(link direto: portal oficial — agregador geobloqueado)_"
+        elif row.get("resolved"):
             suffix = " _(link direto: alvo final)_"
         lines.append(
             f"- **{row['company']}** — {row['title']} — "
-            f"[abrir]({row['url']}) — motivo: {row['motivo']} — "
+            f"[abrir]({row['url']}) — motivo: {motivo_txt} — "
             f"visto: {date} <!-- id:{jid} -->{suffix}"
         )
     lines.append("")
@@ -498,13 +725,17 @@ def generate_manual_check(
     (``data/eligible_jobs.json`` — todos os annotators F87/F94 já
     rodaram); (2) ``detect_id_collisions`` contra o caderno F70 — e
     PERSISTE o flag no registro (padrão F87/F94, campo JSON-only, o CSV
-    nem muda) quando acende; (3) escreve o arquivo com uma linha por
-    item (carry-forward da data de sighting do arquivo anterior).
+    nem muda) quando acende; (2b, F105) ``detect_external_agreement_gates``
+    — mesmo padrão de flag persistida, motivo ``external_agreement_gate``
+    (gate externo à candidatura, a vaga segue elegível); (3) escreve o
+    arquivo com uma linha por item (carry-forward da data de sighting do
+    arquivo anterior).
 
     ``generated_at`` ISO UTC (default: agora). ``seen_db_path`` default
     ``<data_dir>/dataset_seen.db``. Devolve contadores para o log::
 
-        {"ranking", "rows", "path", "collisions": {...}}
+        {"ranking", "rows", "path", "collisions": {...},
+         "gates": {...}, "persist_error"}
     """
     data_dir = Path(data_dir)
     now = str(generated_at or datetime.datetime.now(
@@ -520,8 +751,9 @@ def generate_manual_check(
     if seen_db_path is None:
         seen_db_path = data_dir / "dataset_seen.db"
     collisions = detect_id_collisions(ranking, load_id_history(seen_db_path))
+    gates = detect_external_agreement_gates(ranking)
     persist_error = None
-    if collisions["flagged"]:
+    if collisions["flagged"] or gates["flagged"]:
         try:
             from internship_finder.cli import _write_json_atomic
             _write_json_atomic(ranking, eligible_path)
@@ -535,5 +767,6 @@ def generate_manual_check(
         "rows": len(rows),
         "path": str(out_path),
         "collisions": collisions,
+        "gates": gates,
         "persist_error": persist_error,
     }

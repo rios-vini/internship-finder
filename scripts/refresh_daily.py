@@ -3599,12 +3599,15 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001 — sync nunca derruba o run
             log.warning("sync-ranking pessoal falhou (run segue normal): %s", exc)
         # F96 — fila manual-check (MANUAL-CHECK.md): UMA linha por item
-        # não-avaliável/borderline (F87), liveness unknown (F94) e
-        # id_collision (ITEM 7-typo), com link DIRETO (alvo final dos
-        # redirects rdr/jump) e data do sighting. Estágio LOCAL (zero
-        # rede), junto ao digest; best-effort TOTAL: falha vira log e o
-        # run segue com o exit da coleta. Fila PARALELA: nenhuma vaga sai
-        # do ranking/Top-5 (doutrina F87 mantida pela spec F96).
+        # não-avaliável/borderline (F87), liveness unknown (F94),
+        # id_collision (ITEM 7-typo) e external_agreement_gate (F105 —
+        # acordo padrão assinado pela universidade, gate EXTERNO), com
+        # link DIRETO (alvo final dos redirects rdr/jump; F105: portal
+        # oficial preferido ao agregador geobloqueado) e data do sighting.
+        # Estágio LOCAL (zero rede), junto ao digest; best-effort TOTAL:
+        # falha vira log e o run segue com o exit da coleta. Fila
+        # PARALELA: nenhuma vaga sai do ranking/Top-5 (doutrina F87
+        # mantida pela spec F96).
         try:
             mc_stats = manual_check.generate_manual_check(
                 data_dir, generated_at=utcnow_iso(),
@@ -3612,8 +3615,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             log.info(
                 "F96 manual-check: %d linha(s) na fila (colisao de id: "
-                "%d) — %s", mc_stats["rows"],
-                mc_stats["collisions"]["flagged"], mc_stats["path"])
+                "%d, gate de acordo externo: %d) — %s", mc_stats["rows"],
+                mc_stats["collisions"]["flagged"],
+                mc_stats["gates"]["flagged"], mc_stats["path"])
         except Exception as exc:  # noqa: BLE001 — F96 nunca derruba o run
             log.warning("F96: MANUAL-CHECK.md nao gerado (run segue "
                         "normal): %s: %s", type(exc).__name__, exc)

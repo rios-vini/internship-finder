@@ -139,3 +139,60 @@ expansão do registry — nunca no CI):
   (domínio custom): o resolver devolve None **por desenho** — o caminho é
   `validate_slug(ats, slug)`, e para SF/phenom o slug É a URL completa do
   board (`url_as_slug=True`, espelhando o `URL_SLUG_ATS` do coletor).
+
+## 6. Notas operacionais de tenant (F105 — medições 23/10/2026)
+
+Fatos MEDIDOS no registro do dono (abertura ao vivo, do Brasil) que
+atravessam a regra por ATS — código e docs no MESMO PR (contrato F73:
+docs↔código sem drift). Re-sondar estas URLs só em re-medição datada; a
+suíte é OFFLINE e consome fixtures verbatim do registro.
+
+### 6.1 Vetter — migração do formato de URL de vaga
+
+- **Legado MORTO**: `careers.vetter-pharma.com/jobs/<ID>` → **404**.
+- **Vivo**: `careers.vetter-pharma.com/job/<slug>/<ID>/` (IDs
+  inalterados; 7 vagas ATIVAS verificadas 23/10).
+- Apply: botão "Jetzt bewerben" na página da vaga → Bewerberkonto no
+  SuccessFactors (`career5.successfactors.eu`, `company=Vetter`) — uma
+  conta serve as 7. Sem geoblock.
+- Guard executável: `discovery_rules.TENANT_JOB_URL_FORMATS["vetter"]` +
+  `job_url_format_status(url)` → `"current"` | `"legacy_dead"` | `None`.
+  O formato legado é reconhecido como morto e NUNCA seguido/reconstruído
+  (não existe reescrita no código — o guard só classifica; o consumo é o
+  drift-check manual).
+
+### 6.2 Arvato Systems — preferência pelo portal oficial Bertelsmann
+
+- O geoblock que derrubou o dossier era **SÓ do agregador**
+  `absolventa.de`; o portal oficial `jobsearch.createyourowncareer.com`
+  (multi-empregador: ARVATO/Arvato_Systems/RTL/BFS/Bertelsmann_Corporate)
+  **abre do Brasil**, e a candidatura roda no SmartRecruiters
+  corporativo (`jobs.smartrecruiters.com/Bertelsmann-Jobs/…` —
+  formulário abre normalmente).
+- Regra executável (link DIRETO do MANUAL-CHECK, doutrina F96: o alvo
+  aplicável ao dono): `manual_check.official_portal_twin_url` — quando a
+  vaga na fila está num agregador geobloqueante
+  (`GEOBLOCKED_AGGREGATOR_HOSTS`) e o gêmeo no portal oficial
+  (`OFFICIAL_PORTAL_HOSTS`) existe no MESMO ranking (título normalizado
+  igual + mesmo país + overlap de descrição Jaccard ≥ 0.5; o único par
+  misto medido do funil tem 0.744), a linha da fila aponta pro portal,
+  marcada `_(link direto: portal oficial — agregador geobloqueado)_`.
+  Sem prova de mesma vaga → sem swap (fail-closed).
+- Rota completa de candidatura no mapa `manual_check.TENANT_PORTAL_METADATA`.
+
+### 6.3 J&J Beerse (BE) — gate EXTERNO de acordo (manual-check)
+
+- A vaga só começa se a universidade assinar o **standardized Belgium
+  internship agreement** do próprio J&J ("External agreements cannot be
+  accepted" — verbatim R-106104/R-102271). Gate EXTERNO à candidatura:
+  a vaga SEGUE elegível (resolvível pela universidade do dono) e entra
+  na fila manual-check com o motivo novo
+  `external_agreement_gate` (`manual_check.MOTIVO_EXTERNAL_AGREEMENT_GATE`,
+  flag persistida no padrão id_collision; NUNCA exclui).
+- Detector: `manual_check.detect_external_agreement_gates` — família
+  medida no corpus inteiro: J&J ×2 (padrão "external agreements cannot
+  be accepted") + Danone ×5 ("3-party internship agreement signed by
+  your university"). A família de MATRÍCULA local (Continental
+  "Studium an einer deutschen Hochschule", Avery "enrolled at a Dutch
+  university" — exclusão F99 / card F106) e menções genéricas de acordo
+  (boilerplate "can provide an internship agreement") NÃO acendem.
