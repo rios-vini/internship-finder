@@ -49,6 +49,14 @@ from internship_finder import filters
 from internship_finder import ranking as ranking_mod
 from internship_finder.enrichment import present as enr_present
 from internship_finder.materials_ranking import rank_materials_jobs
+from internship_finder.repost_flag import (
+    build_previous_index,
+    flag_reposts,
+    format_repost_suffix,
+    is_repost_flag_enabled,
+    load_repost_config,
+    repost_metric,
+)
 
 # ---------------------------------------------------------------------------
 # Limites do digest (exibicao; NAO sao regras de ranking)
@@ -1057,6 +1065,46 @@ def assessability_lines(
         return []
 
 
+def country_mismatch_line(
+    current: list[dict],
+    excluded_ids: set[str] | None = None,
+    *,
+    top: int = DIGEST_TOP,
+) -> str | None:
+    """F104 — linha do digest para country_mismatch (display-only).
+
+    Conta vagas no corte Top ``top`` (menos excluídas) com o flag
+    ``country_mismatch=True`` (setado no pipeline F104 após select_eligible).
+
+    Retorna uma linha resumida ou ``None`` quando count == 0 (regressão zero).
+    Formato:
+        "⚠️ Localização fora dos 5 mercados: 2 no Top 30 — Adaptyv Lab Automation Intern (Lausanne); ..."
+    Pura; nunca levanta.
+    """
+    try:
+        excluded = {str(i) for i in (excluded_ids or set())}
+        flagged: list[dict] = []
+        for pos, job in top_positions(current, top):
+            jid = str(job.get("id") or "")
+            if jid in excluded:
+                continue
+            if job.get("country_mismatch"):
+                flagged.append(job)
+        if not flagged:
+            return None
+        # Até 2 exemplos no digest
+        examples = "; ".join(
+            f"{_short_title(job)} ({_short_location(job)})"
+            for job in flagged[:2]
+        )
+        head = f"⚠️ Localização fora dos 5 mercados: {len(flagged)} no Top {top}"
+        if examples:
+            head = f"{head} — {examples}"
+        return head
+    except Exception:  # noqa: BLE001 — linha de digest nunca derruba nada
+        return None
+
+
 def new_since_lines(
     diff: tuple[set[str], set[str]] | None,
     current: list[dict],
@@ -1105,10 +1153,12 @@ def new_since_lines(
     picked = _company_capped(candidates, limit=max_shown)
     for shown, job in enumerate(picked, 1):
         url = _apply_url_of(job) or "—"
+        # F103 — sufixo de re-post/twin na linha 🆕 (display-only)
+        repost_suffix = format_repost_suffix(job)
         lines.append(
             f"  {shown}. {_short_title(job)} — "
             f"{job.get('company') or '—'} — {_score_text(job.get('score'))} "
-            f"— {url}"  # F12.5: URL inteira, NUNCA clipada (link quebrado = 404)
+            f"— {url}{repost_suffix}"  # F12.5: URL inteira, NUNCA clipada (link quebrado = 404)
         )
     if len(new_ids) > len(picked):
         lines.append(f"  (+{len(new_ids) - len(picked)} outras novas — ver página)")
@@ -1594,6 +1644,14 @@ def digest_sections(
     run anterior); sem snapshot (primeiro run), o digest avisa que a
     comparacao comeca no proximo run — nunca trata todo o Top 30 como novo.
 
+    F103: flag de re-post/twin (display-only) — jobs do run atual cuja chave
+    (titulo_norm + empresa_norm + local_norm) existia no run anterior ganham
+    o campo ``repost_match`` em memoria e o sufixo 🔄 na linha 🆕. Config
+    versionada fail-closed (config/repost_window.json ausente/corrompido =
+    flag OFF, digest byte a byte o de antes). A METRICA do run nao vem
+    daqui — o chamador usa ``repost_flag.count_reposts_from_paths`` (mesmas
+    entradas, mesmo resultado deterministico).
+
     F13: ``watchlist_path`` = ``config/company_watchlist.json`` (default
     ``None`` = radar desligado — secao 🎯 ausente e o digest e byte a byte
     o de antes). A secao de radar reusa o MESMO diff de IDs da secao 🆕
@@ -1645,6 +1703,22 @@ def digest_sections(
     previous = load_ranking(previous_path)
     excluded = {str(i) for i in (excluded_ids or set())}
 
+    # F103 — flag de re-post/twin (display-only): compara run atual contra
+    # run anterior usando chave (titulo_norm + empresa_norm + local_norm).
+    # Config versionada fail-closed: config/repost_window.json ausente/corrompido
+    # = flag OFF sem erro. A METRICA do run (repost_flagged) e computada
+    # pelo chamador via repost_flag.count_reposts_from_paths (mesmas
+    # entradas, resultado deterministico identico).
+    try:
+        repost_config = load_repost_config()
+        if is_repost_flag_enabled(repost_config) and previous:
+            previous_index = build_previous_index(previous)
+            previous_ids = {str(j.get("id")) for j in previous if j.get("id")}
+            current, _flagged = flag_reposts(current, previous_index,
+                                             previous_ids=previous_ids)
+    except Exception:  # noqa: BLE001 — flag nunca derruba o digest
+        pass
+
     lines: list[str] = [""]
     lines.extend(profile_lines(country_spec))
 
@@ -1664,6 +1738,14 @@ def digest_sections(
     if na_lines:
         lines.append("")
         lines.extend(na_lines)
+
+    # F104 — linha ⚠️ country_mismatch: quantas vagas no corte exibido
+    # têm localização fora dos 5 mercados (city→country sanity flag).
+    # Display-only; aparece só quando count > 0 (regressão zero).
+    cm_line = country_mismatch_line(current, excluded, top=top)
+    if cm_line:
+        lines.append("")
+        lines.append(cm_line)
 
     if not previous:
         lines.append("")

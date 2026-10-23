@@ -3622,6 +3622,28 @@ def main(argv: list[str] | None = None) -> int:
                   "publication_allowed negativo)", exit_code,
                   summary.get("eligible"))
 
+    # F103 — métrica de re-post/twin flagged (display-only; padrão F75).
+    # Mesmas entradas do digest (eligible atual × snapshot da rotação) —
+    # resultado determinístico idêntico ao flag do display. Best-effort.
+    try:
+        from internship_finder.repost_flag import count_reposts_from_paths
+        repost_flagged_count = count_reposts_from_paths(
+            data_dir / "eligible_jobs.json",
+            archive_dir / "eligible_jobs.json")
+        if repost_flagged_count > 0:
+            from internship_finder.repost_flag import repost_metric
+            metric_entry = repost_metric(repost_flagged_count)
+            metric_entry.update({
+                "type": "repost_flag",
+                "run_id": summary.get("run_id") or utcnow_iso(),
+                "timestamp": utcnow_iso(),
+            })
+            with (data_dir / "collection_metrics.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(metric_entry, ensure_ascii=False) + "\n")
+            log.info("F103 repost_flagged: %d", repost_flagged_count)
+    except Exception as exc:  # noqa: BLE001 — métrica nunca derruba o run
+        log.warning("F103: métrica de re-post nao gravada (run segue): %s", exc)
+
     message = build_message(summary, report["alerts"], exit_code,
                             always_notify=args.always_notify,
                             disk_pct=disk_pct,

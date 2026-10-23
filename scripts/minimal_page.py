@@ -120,6 +120,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from internship_finder.repost_flag import repost_badge_html, repost_card_attr
+
 __all__ = [
     "PAGE_TOP", "PAGE_TOP_FULL", "PAGE_TARGET_BYTES", "COMPANY_MAX_CARDS",
     "NEW_SINCE_SECTION_TOP", "MATERIALS_SECTION_TOP", "EU_SECTION_TOP",
@@ -1639,7 +1641,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           sponsorship_flag_pt: str = "",
           dual_track_flag_txt: str = "",
           dual_track_flag_pt: str = "",
-          nl_level: str = "none") -> str:
+          nl_level: str = "none",
+          repost_flag: bool = False) -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -1684,6 +1687,9 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     (top-3 do breakdown — tooltip nativo montado client-side; sem JS o
     atributo é inerte e a página renderiza idêntica). Sem ``f53`` nenhum
     byte novo sai do card.
+
+    F103: ``repost_flag`` = flag de re-post/twin (display-only). Quando
+    True, adiciona ``data-repost`` ao card e badge discreto 🔄 re-post.
     """
     # F51 — texto do badge de qualidade (compacto: "⭐ 4,0"/"🏆 GPTW")
     # computado UMA vez; a explicação vive na legenda única.
@@ -1725,6 +1731,9 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         badge_bits.append(f' <span class="eq">{quality_text}</span>')
     if is_new:
         badge_bits.append(' <span class="newb"><span aria-hidden="true">🆕</span></span>')
+    # F103 — badge de re-post/twin (display-only; mesmo estilo .flag).
+    if repost_flag:
+        badge_bits.append(repost_badge_html(job, lang=lang))
     # F87 — não-avaliável (display-only; campo anotado pelo refresh).
     if na_flag:
         if lang == "en":
@@ -1901,7 +1910,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         f' data-data="{1 if is_data_bi_title(job) else 0}"'
         f' data-ia="{1 if inapplicable else 0}"'
         f'{data_ps}{prof_html}'
-        f' data-q="{_esc(qtext)}">'
+        f' data-q="{_esc(qtext)}"'
+        f'{repost_card_attr(job)}>'
         f'<span class="r">{rank}</span><span class="s"{factors_attr}>{score}</span>'
         f'<div class="bd">{inner}{en_title_html}<div class="m">{meta}</div>{snip}{btn}</div></li>'
     )
@@ -2457,6 +2467,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             factors_attr=(_score_factors_attr(job, score_key)
                           if f53 else ""),
             lang=lang,
+            repost_flag=bool(job.get("repost_match")),
         ))
     return rows
 

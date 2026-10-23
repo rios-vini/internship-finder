@@ -275,7 +275,7 @@ REPO = Path(__file__).resolve().parent.parent
 # entradas de coleta ao SEED e bumpa docstrings — as fixtures da F53 não
 # dependem do SEED, o byte a byte segue válido módulo os strips. Lição F58
 # aplicada: âncora movida NO commit da fase (head pré-squash 355ca62).
-_AB_BASELINE_SHA = "46518a35f600505beea5ec30151c34ffe1e91591"
+_AB_BASELINE_SHA = "c1a88d342614d2d419f15d0a508331c5036865e9"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
