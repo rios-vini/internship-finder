@@ -540,7 +540,7 @@ APPLICABILITY_REASON_LABELS: dict[str, str] = {
     "visa_blocked": "🛂 Exige autorização/residência já válida (não-UE)",
     "thesis_title": "📝 Tese no título (Abschlussarbeit/Thesis)",
     "werkstudent_puro": "⏰ Werkstudent puro (exige matrícula na Alemanha)",
-    "master_required": "🎓 Exige mestrado (completo ou em curso)",
+    "master_required": "📚 Exige mestrado (completo ou em curso)",
     "eu_citizenship_required": "🇪🇺 EU-national-only (cidadania/nacionalidade UE)",
     "nl_enrolment_required": "🇳🇱 local-enrollment NL (matrícula na universidade holandesa)",
     "phd_position": "🔬 Posição de PhD/doutorado",
