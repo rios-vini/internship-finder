@@ -157,11 +157,22 @@ agreement **Kendall tau +0.651** (`docs/ranking_benchmark.md`,
 **Outputs.** GitHub Pages (top 100 with client-side search, filters and
 a 🛂 visa-friendly badge), a Telegram daily digest (top 5, what's new,
 tracker follow-up reminders), a personal application tracker (applied
+<<<<<<< HEAD
 badge, weekly funnel metrics), a company radar (🎯 alerts when watched
 companies post), the full JSON/CSV set — and, before any cover letter is
 reused between same-employer postings, an offline JD-similarity check
 (`scripts/jd_similarity.py`) that answers *reuse / reuse_with_edits /
 regenerate* and lists the topics the letter must cite.
+=======
+badge, weekly funnel metrics), a candidature log with reply cadence
+(`templates/registro_candidaturas.md` + `scripts/reply_tracking.py`:
+Sent/Interview/Offer/Rejected/Responded statuses, nudge at +7d, ping at
++14d, close at +28d, and a 30-day company-wide rejection guard that
+expires — a past rejection never permanently blocks an employer; the
+owner's holistic 1–5 score and APLICAR/VALE/OVERRIDE/CONTRA verdict are
+owner-only columns — the LLM never ranks or decides), a company radar
+(🎯 alerts when watched companies post), and the full JSON/CSV set.
+>>>>>>> e9c0fbf (F98: reply-tracking + cadência de followup + score_1_5 do dono (ITENS 12 + 9-restrito))
 
 ## Engineering principles
 
@@ -208,7 +219,11 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **145 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
+<<<<<<< HEAD
 | **135** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+=======
+| **132** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+>>>>>>> e9c0fbf (F98: reply-tracking + cadência de followup + score_1_5 do dono (ITENS 12 + 9-restrito))
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **227** | commits, one feature PR per change (git log, first-parent) |
 
@@ -298,7 +313,12 @@ provedor colidindo entre empresa viva e morta) vira fila diária
 `data/MANUAL-CHECK.md` com link direto, motivo e data — fila paralela,
 o Top-5 não é filtrado. Produtos: página
 pública diária (GitHub Pages), digest no Telegram, tracker pessoal de
-candidaturas e radar de empresas-alvo. Documentação operacional
+candidaturas, radar de empresas-alvo e registro de candidaturas com
+cadência de followup (reply-tracking F98: status da resposta, nudge
++7d/ping +14d/encerra +28d, guard de 30d por empresa que VENCE —
+rejeição antiga não é bloqueio eterno — e as colunas `score_1_5` +
+`verdict` do DONO; o pipeline nunca decide veredito e o score 0–10
+interno fica intocado). Documentação operacional
 completa (PT-BR) em `docs/README-operacional.md`.
 
 ## License
