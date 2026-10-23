@@ -666,9 +666,16 @@ def check_liveness_v2(
             # ---- F94 — wall SAML (csod/IdP) ANTES de qualquer check de
             # corpo: autenticação na frente do anúncio PROVA nada sobre a
             # vaga. unknown + manual_check_required, NUNCA dead.
+            # F96 — vereditos do caminho 2xx carregam ``final_url`` quando
+            # o opener seguiu redirect (alvo ≠ URL original): é o "alvo
+            # final" da fila manual-check. Wall/homepage NUNCA viram link
+            # direto no consumidor (o final da henkel é a página do IdP).
+            extra: dict = (
+                {"final_url": final_url} if final_url != url else {})
             saml = _is_saml_wall(final_url, body_text)
             if saml is not None:
                 verdicts[jid] = {
+                    **extra,
                     "status": "unknown",
                     "detail": f"saml wall ({saml})",
                 }
@@ -684,7 +691,8 @@ def check_liveness_v2(
                 dead.add(jid)
                 soft_dead += 1
                 soft_dead_ids.add(jid)
-                verdicts[jid] = {"status": "dead", "detail": f"marker {marker}"}
+                verdicts[jid] = {
+                    **extra, "status": "dead", "detail": f"marker {marker}"}
                 _info("soft-dead %s: corpo contem %r (%s)", jid, marker, url)
                 continue
             # F87 — 200-falso textual em corpo curto (Festo "bereits
@@ -697,6 +705,7 @@ def check_liveness_v2(
                 soft_dead += 1
                 soft_dead_ids.add(jid)
                 verdicts[jid] = {
+                    **extra,
                     "status": "dead",
                     "detail": f"fake200 {fake_marker}",
                 }
@@ -707,7 +716,8 @@ def check_liveness_v2(
                 dead.add(jid)
                 soft_dead += 1
                 soft_dead_ids.add(jid)
-                verdicts[jid] = {"status": "dead", "detail": "redirect homepage"}
+                verdicts[jid] = {
+                    **extra, "status": "dead", "detail": "redirect homepage"}
                 _info("soft-dead %s: redirect para homepage (%s -> %s)",
                       jid, url, final_url)
                 continue
@@ -715,7 +725,8 @@ def check_liveness_v2(
                 dead.add(jid)
                 soft_dead += 1
                 soft_dead_ids.add(jid)
-                verdicts[jid] = {"status": "dead", "detail": "spa shell"}
+                verdicts[jid] = {
+                    **extra, "status": "dead", "detail": "spa shell"}
                 _info("soft-dead %s: shell SPA de board (%d bytes, %s)",
                       jid, body_len, url)
                 continue
@@ -723,7 +734,7 @@ def check_liveness_v2(
             # F94 — sobreviveu a todos os checks: viva. Para stub de
             # redirect, este é o veredito DO ALVO (o opener seguiu o
             # redirect — caso Lidl Ref 753653: alvo 200 de 209KB = viva).
-            verdicts[jid] = {"status": "alive", "detail": ""}
+            verdicts[jid] = {**extra, "status": "alive", "detail": ""}
 
             # ---- hidratacao (vaga VIVA com descricao curta) ----
             if want_bodies and jid not in dead:

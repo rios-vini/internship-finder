@@ -134,6 +134,7 @@ from internship_finder.storage.sqlite_backup import (  # backup do jobs.db (P3)
     backup_jobs_db,
     cleanup_backups,
 )
+import manual_check  # F96: fila manual-check (MANUAL-CHECK.md) + id_collision
 import minimal_page  # F6: render da pagina publica (cap 2/empresa F11)
 import publish_pages  # publicacao do ranking em GitHub Pages (Fase 1)
 import ranking_digest  # digest do ranking no Telegram (Fase 2)
@@ -1590,6 +1591,12 @@ def _annotate_assessability(ranking: list) -> dict:
 # ---------------------------------------------------------------------------
 LIVENESS_STATUS_FIELD = "liveness_status"
 LIVENESS_CHECKED_AT_FIELD = "liveness_checked_at"
+# F96 — persistidos junto ao estado (mesmo passe): o DETALHE do veredito
+# (o "porquê" — saml wall / http 403 / network / marker) alimenta o motivo
+# da fila manual-check, e o ALVO FINAL do redirect segue no registro quando
+# a vaga está viva (link direto da fila; final de IdP/homepage nunca vira).
+LIVENESS_DETAIL_FIELD = "liveness_detail"
+LIVENESS_FINAL_URL_FIELD = "liveness_final_url"
 MANUAL_CHECK_FIELD = "manual_check_required"
 STALE_POSTING_FIELD = "stale_posting"
 POSTING_AGE_DAYS_FIELD = "posting_age_days"
@@ -1644,6 +1651,18 @@ def _annotate_liveness_state(
             continue  # veredito malformado: estado anterior permanece
         job[LIVENESS_STATUS_FIELD] = status
         job[LIVENESS_CHECKED_AT_FIELD] = checked_at
+        # F96 — detalhe do veredito consultável (motivo da fila manual-check
+        # lê isto) + alvo final do redirect quando a vaga está VIVA (o
+        # "link direto" da fila). ``alive`` gerencia o campo do alvo: sem
+        # redirect no run => campo apaga (cura idempotente, padrão F87);
+        # dead/unknown mantêm o anterior (persistência F94 — veredito de
+        # hoje não apaga evidência de ontem).
+        job[LIVENESS_DETAIL_FIELD] = str(verdict.get("detail") or "")
+        verdict_final = str(verdict.get("final_url") or "").strip()
+        if status == "alive" and verdict_final:
+            job[LIVENESS_FINAL_URL_FIELD] = verdict_final
+        elif status == "alive":
+            job.pop(LIVENESS_FINAL_URL_FIELD, None)
         annotated += 1
         if status == "alive":
             alive += 1
@@ -3579,6 +3598,25 @@ def main(argv: list[str] | None = None) -> int:
             _sync_personal_ranking(root, data_dir)
         except Exception as exc:  # noqa: BLE001 — sync nunca derruba o run
             log.warning("sync-ranking pessoal falhou (run segue normal): %s", exc)
+        # F96 — fila manual-check (MANUAL-CHECK.md): UMA linha por item
+        # não-avaliável/borderline (F87), liveness unknown (F94) e
+        # id_collision (ITEM 7-typo), com link DIRETO (alvo final dos
+        # redirects rdr/jump) e data do sighting. Estágio LOCAL (zero
+        # rede), junto ao digest; best-effort TOTAL: falha vira log e o
+        # run segue com o exit da coleta. Fila PARALELA: nenhuma vaga sai
+        # do ranking/Top-5 (doutrina F87 mantida pela spec F96).
+        try:
+            mc_stats = manual_check.generate_manual_check(
+                data_dir, generated_at=utcnow_iso(),
+                seen_db_path=data_dir / "dataset_seen.db",
+            )
+            log.info(
+                "F96 manual-check: %d linha(s) na fila (colisao de id: "
+                "%d) — %s", mc_stats["rows"],
+                mc_stats["collisions"]["flagged"], mc_stats["path"])
+        except Exception as exc:  # noqa: BLE001 — F96 nunca derruba o run
+            log.warning("F96: MANUAL-CHECK.md nao gerado (run segue "
+                        "normal): %s: %s", type(exc).__name__, exc)
     else:
         log.info("digest/sync pulados (exit %d com eligible %s — gate "
                   "publication_allowed negativo)", exit_code,
