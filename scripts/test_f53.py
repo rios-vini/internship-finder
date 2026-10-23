@@ -286,7 +286,16 @@ REPO = Path(__file__).resolve().parent.parent
 # ciclo da fase (5b09ca2b = commit da fase, SÓ src/+scripts+README; o
 # commit seguinte edita testes — src/ idêntico, o diff segue vazio na
 # branch, no CI raso ([SKIP]) e no main pós-squash).
-_AB_BASELINE_SHA = "5b09ca2b7d4b6db109291a2c78e62049117f50a2"
+# F105 (23/10): src/ moveu de novo (discovery_rules.py — camada
+# TENANT_JOB_URL_FORMATS/job_url_format_status p/ o formato de URL de
+# vaga do Vetter, guard do legado morto; zero mudança de render — as
+# fixtures da F53 não usam discovery_rules, o byte a byte segue válido
+# módulo os strips). Padrão F56/F88/F100/F104: âncora move para o commit
+# da fase que tocou src/ (5b6e85e = commit da fase, rebased sobre o main
+# pós-F104 #205); o commit da âncora não toca src/ — o diff da
+# pré-condição segue vazio na branch, no CI raso ([SKIP]) e no main
+# pós-squash.
+_AB_BASELINE_SHA = "5b6e85e172346b839dd64d45db4831d23d686a92"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):

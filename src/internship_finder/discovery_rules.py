@@ -34,6 +34,12 @@ Drift tem DOIS eixos (o mecanismo e LEVE por definicao):
 2. Doc upstream <-> regras: procedimento MANUAL leve (nunca CI — rede):
    ver ``docs/f76_1_discovery_rules.md`` §drift-check.
 
+F105 (23/10): alem das regras por ATS, tenants medidos com MIGRACAO de
+formato de URL DE VAGA ganham a camada ``TENANT_JOB_URL_FORMATS`` (guard
+do formato vivo x legado morto — caso Vetter: ``/jobs/<ID>`` da 404,
+``/job/<slug>/<ID>/`` ativo, IDs inalterados). Mesma natureza: regra
+derivada de medicao, consumo manual/drift-check, zero pipeline.
+
 Nao e estagio do pipeline: discovery de tenant e procedimento humano
 assistido (candidatas ao registry); nada aqui roda no cron.
 """
@@ -482,6 +488,72 @@ def tenant_key(ats: str, slug_or_url: str) -> str:
     else:
         s = s.rstrip("/")
     return f"{(ats or '').casefold()}:{s}"
+
+
+# ---------------------------------------------------------------------------
+# F105 — Formato de URL DE VAGA por tenant (medido; guard de migracao)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TenantJobUrlFormat:
+    """Formato de URL DE VAGA medido p/ um tenant do registry (F105).
+
+    O ``RULES`` acima descreve a descoberta de TENANT (board de careers);
+    tenants medidos podem MIGRAR o formato da URL de vaga — a regra existe
+    como GUARD: URL no formato ``legacy`` esta MORTA (404 medido) e NUNCA
+    e seguida/reconstruida/divulgada como link; URL no formato ``current``
+    e a viva. Tenant sem medicao (ou URL de outro shape) => ``None`` — a
+    ausencia de evidencia nunca vira veredito (mesmo padrao do
+    ``provider_id_plausible`` da F96).
+    """
+
+    tenant: str  # nome do tenant no registry (ex. "Vetter")
+    ats: str  # ATS do tenant (``rule_for(ats)`` e a regra-mae)
+    current: "re.Pattern[str]"  # formato VIVO (o feed emite hoje)
+    legacy: tuple["re.Pattern[str]", ...]  # formatos MORTOS (404 medido)
+    evidence: str  # medicao (data + metodo) — nunca opiniao
+
+
+TENANT_JOB_URL_FORMATS: dict[str, TenantJobUrlFormat] = {
+    "vetter": TenantJobUrlFormat(
+        tenant="Vetter",
+        ats="successfactors",
+        current=re.compile(
+            r"https://careers\.vetter-pharma\.com/job/[^/?#]+/\d+/"),
+        legacy=(
+            re.compile(r"https://careers\.vetter-pharma\.com/jobs/\d+/?"),
+        ),
+        evidence=(
+            "registro 23/10/2026: portal migrou de formato — "
+            "careers.vetter-pharma.com/jobs/<ID> da 404; novo "
+            "/job/<slug>/<ID>/ ATIVO (7 vagas verificadas, IDs "
+            "inalterados); apply = botao \"Jetzt bewerben\" na pagina da "
+            "vaga -> Bewerberkonto no SuccessFactors "
+            "(career5.successfactors.eu, company=Vetter); sem geoblock"
+        ),
+    ),
+}
+
+
+def job_url_format_status(url: str) -> str | None:
+    """Status do formato da URL DE VAGA p/ tenants com regra (F105).
+
+    ``"current"`` = formato vivo (o que o feed deve emitir);
+    ``"legacy_dead"`` = formato morto (404 medido — NUNCA seguir);
+    ``None`` = sem regra p/ a URL (tenant sem medicao ou outro shape) —
+    silencio honesto, nunca veredito inventado.
+    """
+    u = str(url or "").strip()
+    if not u:
+        return None
+    for fmt in TENANT_JOB_URL_FORMATS.values():
+        if fmt.current.fullmatch(u):
+            return "current"
+        for dead in fmt.legacy:
+            if dead.fullmatch(u):
+                return "legacy_dead"
+    return None
 
 
 # ---------------------------------------------------------------------------
