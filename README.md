@@ -157,13 +157,6 @@ agreement **Kendall tau +0.651** (`docs/ranking_benchmark.md`,
 **Outputs.** GitHub Pages (top 100 with client-side search, filters and
 a 🛂 visa-friendly badge), a Telegram daily digest (top 5, what's new,
 tracker follow-up reminders), a personal application tracker (applied
-<<<<<<< HEAD
-badge, weekly funnel metrics), a company radar (🎯 alerts when watched
-companies post), the full JSON/CSV set — and, before any cover letter is
-reused between same-employer postings, an offline JD-similarity check
-(`scripts/jd_similarity.py`) that answers *reuse / reuse_with_edits /
-regenerate* and lists the topics the letter must cite.
-=======
 badge, weekly funnel metrics), a candidature log with reply cadence
 (`templates/registro_candidaturas.md` + `scripts/reply_tracking.py`:
 Sent/Interview/Offer/Rejected/Responded statuses, nudge at +7d, ping at
@@ -171,8 +164,11 @@ Sent/Interview/Offer/Rejected/Responded statuses, nudge at +7d, ping at
 expires — a past rejection never permanently blocks an employer; the
 owner's holistic 1–5 score and APLICAR/VALE/OVERRIDE/CONTRA verdict are
 owner-only columns — the LLM never ranks or decides), a company radar
-(🎯 alerts when watched companies post), and the full JSON/CSV set.
->>>>>>> e9c0fbf (F98: reply-tracking + cadência de followup + score_1_5 do dono (ITENS 12 + 9-restrito))
+(🎯 alerts when watched companies post), the full JSON/CSV set — and,
+before any cover letter is reused between same-employer postings, an
+offline JD-similarity check (`scripts/jd_similarity.py`) that answers
+*reuse / reuse_with_edits / regenerate* and lists the topics the letter
+must cite.
 
 ## Engineering principles
 
@@ -219,11 +215,7 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **145 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-<<<<<<< HEAD
-| **135** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
-=======
-| **132** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
->>>>>>> e9c0fbf (F98: reply-tracking + cadência de followup + score_1_5 do dono (ITENS 12 + 9-restrito))
+| **136** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **227** | commits, one feature PR per change (git log, first-parent) |
 
