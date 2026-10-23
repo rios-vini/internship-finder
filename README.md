@@ -62,7 +62,7 @@ flowchart LR
     RS["research sources<br/>MPG · TU Berlin · Leibniz · job boards"] -->|"RSS / HTML / API"| F
     BA --> F
     F["eligibility filters<br/>student type + target area + country"] --> A
-    A["applicability exclusions<br/>German-required · visa-blocked ·<br/>thesis · master-only"] --> D
+    A["applicability exclusions<br/>German-required · native-language ·<br/>visa-blocked · thesis · master-only ·<br/>EU-national · NL-enrolment · duration"] --> D
     D["dedup · 4 keys<br/>+ DE/EN mirror collapse"] --> H
     H["selective description hydration<br/>(only postings missing text)"] --> R
     R["deterministic ranking<br/>2 profiles · score breakdown"] --> P
@@ -97,9 +97,16 @@ internship, working student) in Supply Chain / Procurement / BI /
 Analytics, in Germany (primary, ~74% of the current eligible volume)
 plus Luxembourg, Netherlands, Finland and Belgium. **Applicability** then removes
 postings that are technically eligible but not applicable to one
-specific candidate (German-required, visa-blocked, thesis titles,
-master-only, pure Werkstudent) — each exclusion reason is counted and
-logged, never silently dropped.
+specific candidate (German-required, native-language requirements,
+EU-national-only, Dutch-university enrollment, master-level targets,
+recent-graduate targets, >6-month durations, visa-blocked, thesis titles,
+pure Werkstudent, prior-experience requirements) — each exclusion reason is counted and
+logged, never silently dropped. Postings whose hydrated description later
+reveals a hard-eligibility hit (`native_language`, `duration_conflict`,
+`recent_graduate`, `german_required`, `job_type_non_internship`,
+`experience_required`) are removed from the eligible JSON entirely; the
+remaining reasons keep the posting with a 🚫 inapplicable badge, demoted
+from the displayed top.
 
 **Dedup.** Four independent keys (canonical URL with tracking params
 stripped, platform id, normalized title+company, DE/EN translation of
@@ -191,7 +198,7 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **145 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-| **132** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+| **133** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **227** | commits, one feature PR per change (git log, first-parent) |
 
