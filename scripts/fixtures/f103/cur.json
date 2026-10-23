@@ -1,0 +1,11 @@
+[
+  {"id": "PI-13231277", "title": "Praktikum SAP BI", "company": "Lidl", "location": "Neckarsulm, DE", "score": 16.5, "source": "praktikum_info"},
+  {"id": "LIDL-1426446133", "title": "Praktikant Controlling Projekte", "company": "Lidl", "location": "Neckarsulm, DE", "score": 15.8, "source": "jobs.lidl", "ref": "735605"},
+  {"id": "new-1", "title": "Praktikant Import Beschaffung", "company": "Würth", "location": "Künzelsau, DE", "score": 14.2, "source": "absolventa"},
+  {"id": "new-2", "title": "Praktikum Risk & Purchasing", "company": "Vitesco", "location": "Regensburg, DE", "score": 13.9, "source": "successfactors"},
+  {"id": "new-3", "title": "Praktikant Legal Tech", "company": "RELX", "location": "München, DE", "score": 13.5, "source": "praktikum_info"},
+  {"id": "new-4", "title": "Praktikum Non-Financial Risk", "company": "Deutsche Börse", "location": "Frankfurt, DE", "score": 13.2, "source": "successfactors"},
+  {"id": "SR-744000155984519", "title": "Internship Risk & Purchasing", "company": "BoschGroup", "location": "Gerlingen, DE", "score": 14.8, "source": "successfactors"},
+  {"id": "genuinely-new-1", "title": "Praktikant Novelty", "company": "NovaEmpresa", "location": "Berlin, DE", "score": 15.0, "source": "newsource"},
+  {"id": "genuinely-new-2", "title": "Werkstudent Fresh", "company": "OutraEmpresa", "location": "München, DE", "score": 14.5, "source": "newsource"}
+]

@@ -1,0 +1,10 @@
+[
+  {"id": "SF-1436050633", "title": "Praktikum SAP BI", "company": "Lidl", "location": "Neckarsulm, DE", "score": 16.5, "source": "successfactors"},
+  {"id": "SF-1441979333", "title": "Praktikant Controlling Projekte", "company": "Lidl", "location": "Neckarsulm, DE", "score": 15.8, "source": "successfactors", "ref": "753653"},
+  {"id": "done-1", "title": "Praktikant Import Beschaffung", "company": "Würth", "location": "Künzelsau, DE", "score": 14.2, "source": "absolventa"},
+  {"id": "applied-1", "title": "Praktikum Risk & Purchasing", "company": "Vitesco", "location": "Regensburg, DE", "score": 13.9, "source": "successfactors"},
+  {"id": "old-1", "title": "Praktikant Legal Tech", "company": "RELX", "location": "München, DE", "score": 13.5, "source": "praktikum_info"},
+  {"id": "applied-2", "title": "Praktikum Non-Financial Risk", "company": "Deutsche Börse", "location": "Frankfurt, DE", "score": 13.2, "source": "successfactors"},
+  {"id": "AA-REF298898V", "title": "Praktikum Risk & Purchasing", "company": "BoschGroup", "location": "Gerlingen, DE", "score": 14.8, "source": "arbeitsagentur"},
+  {"id": "other-1", "title": "Praktikant Antigo", "company": "EmpresaAntiga", "location": "Hamburg, DE", "score": 12.0, "source": "successfactors"}
+]
