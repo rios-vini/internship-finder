@@ -366,7 +366,7 @@ def _loads_lenient(text: str):
     ``None`` quando nenhum passo parseia (o chamador pula o bloco — mesmo
     comportamento de hoje para lixo real). Estritamente aditivo: bloco
     que parseava continua idêntico; bloco que falhava silenciosamente
-    agora parseia (F20/F65/F91 hidratam descrições de absolutenta).
+    agora parseia (F20/F65/F91 hidratam descrições de absolventa).
     """
     import json as _json
     import re as _re

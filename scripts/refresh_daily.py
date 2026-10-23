@@ -249,7 +249,7 @@ EXTENDED_HYDRATION_DEADLINE_S = 600.0
 # ---------------------------------------------------------------------------
 # F91 — hidratacao dos CEGOS: description para as vagas desc-empty do pool
 # (< BLIND_DESCRIPTION_LIMIT chars), terceiro estagio flag-gated (padrao
-# F65), budget PROPRIO. Alvo medido 21/10: absolutenta 30/30 fetchaveis
+# F65), budget PROPRIO. Alvo medido 21/10: absolventa 30/30 fetchaveis
 # (JSON-LD JobPosting malformado — chars de controle crus + escapes
 # invalidos — curado pelo parse leniente F91 no url_liveness) e
 # praktikum_info 1/1; sf_dataset:bundesagentur fica FORA da lista de

@@ -35,7 +35,7 @@ JSON ilegível => estágio pula, guard de URL não-http, retro-compat do
 ``_hydration_budget`` (knob histórico do F65/F87 intacto).
 
 Fixtures VERBATIM da medição: refnr BMW 12462-1601017-1-S (404 no detail
-v4, 410 na página), descrições absolutenta com controle cru/escape
+v4, 410 na página), descrições absolventa com controle cru/escape
 inválido. Zero rede (fetch injetável); tempdir para data/; nada de data/
 de produção.
 
