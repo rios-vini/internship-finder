@@ -505,6 +505,16 @@ from internship_finder.countries import (
 # não-UE, MAHLE verbatim) além do critério de intel; o contador existente
 # passa a contar os dois caminhos. Reversível: ``--no-applicability``
 # desliga o estágio inteiro (comportamento pré-F18).
+# F106 (23/10): 1 motivo novo na cadeia — ``de_enrolment_required``
+# (matrícula em universidade ALEMÃ, irmã da classe NL; detector
+# ``requires_de_enrolment`` com âncoras "an/in einer deutschen",
+# "einer deutschen Hochschule/Universität", "Hochschule/Universität in
+# Deutschland", EN "(at|in) a German university"/"university based in
+# Germany"/"at a university in Germany"). Passo 0 medido: os 2 hits do
+# eligible (Continental REF99687I, novemcore) eram requisitos reais →
+# EXCLUSÃO (não flag), mesma trilha F37.3 da classe NL; contra-casos
+# Bosch SPO (matrícula genérica), Duale Hochschule (DUAL) e "based in
+# Germany" de residência não casam.
 APPLICABILITY_EXCLUSION_REASONS = (
     "german_required",
     "native_language",
@@ -514,6 +524,11 @@ APPLICABILITY_EXCLUSION_REASONS = (
     "master_required",
     "eu_citizenship_required",
     "nl_enrolment_required",
+    # F106 (23/10): matrícula em universidade ALEMÃ — irmã da classe NL,
+    # motivo PRÓPRIO (a legenda NL carrega 🇳🇱; a DE é 🇩🇪). Passo 0
+    # medido: os 2 hits do eligible eram requisitos reais (Continental
+    # REF99687I, novemcore) → EXCLUSÃO na cascata, mesma trilha F37.3.
+    "de_enrolment_required",
     "phd_position",
     "duration_over_6m",
     "duration_conflict",
@@ -659,6 +674,102 @@ _NL_ENROLMENT_RES = [
     re.compile(r"\bamsterdam\s+university\s+of\s+applied\s+sciences\b", re.IGNORECASE),
 ]
 
+# (2b) Matrícula em universidade ALEMÃ obrigatória (F106, 23/10) — irmã da
+# classe NL acima: o dono é matriculado na UFSCar (BR), então exigir
+# matrícula em Hochschule/Universität alemã é bloqueio duro da mesma
+# família. Casos medidos (23/10): Continental REF99687I "Studium der
+# Chemie, ... an einer deutschen Hochschule"; novemcore 14171261
+# "Laufendes Bachelor- oder Master-Studium an einer deutschen Hochschule
+# oder Universität"; InterNations 744000145780559 "enrolled at a German
+# university"; DHL 384551 "university based in Germany" (registro 22/10 —
+# fora do dataset vivo). Corpus inteiro (jobs.json 23/10, 118.785
+# vagas): 98 spans "an/in einer deutschen" + 1 "Semester einer deutschen
+# Hochschule" + 7 "Hochschule/Universität in Deutschland" + 27
+# "(at|in) a German university" + 4 "at a university in Germany" —
+# TODOS requisitos de matrícula, 0 falso positivo.
+# ÂNCORAS OBRIGATÓRIAS (padrão solto "deutsche Hochschule" é proibido):
+# "Immatrikulation an einer Hochschule" GENÉRICA (Bosch Pflichtpraktikum
+# gem. SPO; 478 spans) NÃO é matrícula local — estudante internacional
+# satisfaz; "Duale Hochschule" (BASF/KPMG/SAP DHBW) é classe DUAL
+# (job_type F86) e não menciona "an/in einer deutschen"; "based in
+# Germany" SOLTO é residência/localização (BASF "team based in Germany",
+# Tesla "Role is based in Germany", Bayer "You are based in Germany" —
+# outra classe, fora de escopo); "Studium an spannenden Projekten"
+# (KPMG) não tem "einer deutschen"; "aus einer deutschen
+# Erfolgsgeschichte" (Würth) não tem palavra de instituição nem
+# preposição an/in.
+_DE_ENROLMENT_RES = [
+    # Continental REF99687I / novemcore / Fraunhofer ×N / join_com ×N /
+    # eures ×N / Carrier / Essity / TU Berlin: "Studium ... an einer
+    # deutschen Hochschule", "Gültige Immatrikulation an einer deutschen
+    # Hochschule oder Universität", "in einer deutschen Hochschule
+    # immatrikuliert" (SYNLAB), "in einer Deutschen Hochschule
+    # eingeschrieben" (Believe, maiúscula irregular coberta pelo
+    # IGNORECASE). GUARD EMPÍRICO (medido no corpus 23/10): em 95/95
+    # spans, a palavra após "(an|in) einer deutschen" é INSTITUIÇÃO
+    # (hochschule ×67, universität ×22, compostos "hochschule/
+    # universität" ×2, typos "universitit"/"hochschuke",
+    # fachhochschule ×1) — o padrão exige a palavra de instituição, o
+    # que veda FPs do tipo "in einer deutschen Stadt"/"an einer
+    # deutschen Firma" (superfície real em anúncios futuros).
+    re.compile(
+        r"\b(?:an|in)\s+einer\s+deutschen?\s+"
+        r"(?:hochsch|universit|fachhochsch)",
+        re.IGNORECASE,
+    ),
+    # inserção PONTUADA entre artigo-adjetivo e instituição (a única
+    # forma medida com algo no meio): "an einer deutschen/europäischen
+    # Hochschule oder Universität" (Fraunhofer — alemã OU europeia, o
+    # dono não tem nenhuma) e "an einer deutschen (Fach-) Hochschule
+    # oder Universität" (TUM Klinikum).
+    re.compile(
+        r"\b(?:an|in)\s+einer\s+deutschen?\s*[/((-]\s*"
+        r"[\w\s/()-]{0,28}?(?:hochsch|universit|fachhochsch)",
+        re.IGNORECASE,
+    ),
+    # egc-fmde: "mindestens im 3. Semester einer deutschen Hochschule
+    # eingeschrieben" — SEM preposição an/in antes; a palavra de
+    # instituição logo depois é o guard (não casa "aus einer deutschen
+    # Erfolgsgeschichte", Würth — o único span não-instituição do
+    # corpus inteiro).
+    re.compile(
+        r"\beiner\s+deutschen?\s+(?:hochsch|universit|fachhochsch)",
+        re.IGNORECASE,
+    ),
+    # Fraunhofer ×2 / tanzstudio-gregor ×2 / sobi: "Gültige
+    # Immatrikulation an einer Hochschule oder Universität in
+    # Deutschland", "Eingeschrieben an Hochschule oder Universität in
+    # Deutschland", "...staatlich anerkannten Hochschule in
+    # Deutschland". A alternância cobre o 2º termo do par
+    # "Hochschule/ Universität in Deutschland" (com espaço após a barra,
+    # grafia real da fixture).
+    re.compile(
+        r"\b(?:hochschule|universit\w*|fachhochsch\w*)\s+in\s+deutschland\b",
+        re.IGNORECASE,
+    ),
+    # InterNations ×3 / Aptiv ×2 / Lonza / clariness / Allianz ×2 / TE
+    # Connectivity / Nordex ×2 / Hermès / akirolabs / Deutsche Börse /
+    # Fraunhofer EN ×6 / qwist: "enrolled at a German university",
+    # "enrolled in a German university", "Valid enrollment at a German
+    # university or college", "Ongoing studies at a German university",
+    # "registered student at a German university" (Hermès). O par
+    # "at/in a German university" é a âncora — 27/27 spans medidos são
+    # requisitos de matrícula, 0 menção cooperativa ("with a German
+    # university" = 0 spans no corpus).
+    re.compile(
+        r"\b(?:at|in)\s+a\s+german\s+(?:university|college|hochschule)\b",
+        re.IGNORECASE,
+    ),
+    # DHL 384551 (registro 22/10, fora do dataset vivo): "university
+    # based in Germany" — a UNIVERSIDADE é que fica na Alemanha.
+    re.compile(r"\buniversity\s+based\s+in\s+germany\b", re.IGNORECASE),
+    # Deutsche Börse Sustainability / lano / zentioio: "Ongoing Bachelor
+    # or Master's studies ... at a university in Germany", "pursuing a
+    # degree ... at a university in Germany", "Currently enrolled at a
+    # university in Germany (Werkstudent status required)".
+    re.compile(r"\bat\s+a\s+university\s+in\s+germany\b", re.IGNORECASE),
+]
+
 # (3) PhD/doctoral — perfil é aluno de graduação (bachelor). Casos medidos:
 # SAP "PhD Internship" (título), conxai "MS or PhD" (descrição). Só o
 # requisito EXPLÍCITO de PhD atual (não mestrado — master_required existe).
@@ -681,6 +792,11 @@ def requires_eu_citizenship(title: str, description: str | None) -> bool:
 def requires_nl_enrolment(title: str, description: str | None) -> bool:
     """A vaga exige matrícula/residência no sistema NL (F37)?"""
     return _res_fire(_NL_ENROLMENT_RES, f"{title} {description or ''}")
+
+
+def requires_de_enrolment(title: str, description: str | None) -> bool:
+    """A vaga exige matrícula em universidade ALEMÃ (F106)?"""
+    return _res_fire(_DE_ENROLMENT_RES, f"{title} {description or ''}")
 
 
 def requires_phd(title: str, description: str | None) -> bool:
@@ -1567,6 +1683,7 @@ def applicability_exclusion_reason(
     ``german_required`` → ``native_language`` → ``visa_blocked`` →
     ``thesis_title`` → ``werkstudent_puro`` → ``master_required`` →
     ``eu_citizenship_required`` → ``nl_enrolment_required`` →
+    ``de_enrolment_required`` →
     ``phd_position`` → ``duration_over_6m`` → ``duration_conflict`` →
     ``full_time_permanent`` → ``job_type_non_internship`` →
     ``erasmus_program`` → ``spontaneous_pool`` → ``experience_required`` →
@@ -1618,6 +1735,21 @@ def applicability_exclusion_reason(
       o dono tem passaporte BR.
     - ``nl_enrolment_required`` (F37): matrícula/residência obrigatória
       no sistema holandês (Vanderlande R31, Parfumado R12 HBO/WO).
+    - ``de_enrolment_required`` (F106): matrícula obrigatória em
+      universidade ALEMÃ (``requires_de_enrolment`` — Continental
+      REF99687I verbatim "Studium der Chemie, ... an einer deutschen
+      Hochschule"; novemcore "Laufendes Bachelor- oder Master-Studium an
+      einer deutschen Hochschule oder Universität"; InterNations
+      "enrolled at a German university"; DHL 384551 "university based in
+      Germany"). Irmã da classe NL (o dono é matriculado na UFSCar/BR);
+      motivo PRÓPRIO porque a legenda NL carrega 🇳🇱. Âncoras
+      OBRIGATÓRIAS — "Immatrikulation an einer Hochschule" GENÉRICA
+      (Bosch Pflichtpraktikum gem. SPO, 478 spans) NÃO é matrícula
+      local (estudante internacional satisfaz), "Duale Hochschule" é
+      classe DUAL (job_type F86) e "based in Germany" sem "university"
+      é residência/localização do CANDIDATO (BASF/Tesla/Bayer — outra
+      classe). Exclusão na cascata (mesma trilha NL); NÃO entra em
+      ``APPLICABILITY_JSON_EXCLUSION_REASONS`` (padrão nl_enrolment).
     - ``phd_position`` (F37): PhD/doctoral exigido (SAP PhD Internship) —
       perfil é aluno de graduação.
     - ``duration_over_6m`` (F37): título cita duração da vaga acima do
@@ -1673,6 +1805,14 @@ def applicability_exclusion_reason(
     com guard non-) e matrícula NL ("enrolled at a Dutch university",
     Avery Dennison 744000155457544; AUAS/Amsterdam University of Applied
     Sciences, YETI JR102248).
+    F106 (23/10): a classe de matrícula local ganha o irmão ALEMÃO
+    ``de_enrolment_required`` (detector próprio ``requires_de_enrolment``,
+    âncoras "an/in einer deutschen"/"einer deutschen
+    Hochschule/Universität"/"in Deutschland"/"(at|in) a German
+    university"/"university based in Germany"/"at a university in
+    Germany") — o grep pré-fase provou que o detector F99 era CEGO à
+    classe DE: Continental REF99687I e novemcore estavam no eligible
+    com "an einer deutschen Hochschule" no texto.
     """
     from internship_finder.app_intel import german_level
 
@@ -1730,6 +1870,13 @@ def applicability_exclusion_reason(
 
     if requires_nl_enrolment(title, description):
         return "nl_enrolment_required"
+
+    # F106 (23/10): matrícula em universidade ALEMÃ — irmã da classe NL
+    # acima (mesma cadeia F37.3, motivo próprio: a legenda NL é 🇳🇱 e a
+    # DE é 🇩🇪). Posições adjacentes preservam o first-match dos motivos
+    # anteriores; nenhum caso medido de overlap NL×DE no corpus.
+    if requires_de_enrolment(title, description):
+        return "de_enrolment_required"
 
     if requires_phd(title, description):
         return "phd_position"

@@ -295,7 +295,16 @@ REPO = Path(__file__).resolve().parent.parent
 # pós-F104 #205); o commit da âncora não toca src/ — o diff da
 # pré-condição segue vazio na branch, no CI raso ([SKIP]) e no main
 # pós-squash.
-_AB_BASELINE_SHA = "5b6e85e172346b839dd64d45db4831d23d686a92"
+# F106 (23/10): src/ moveu de novo (filters.py — detector
+# requires_de_enrolment + motivo de_enrolment_required na cadeia F37.3;
+# ptbr.py — legenda 🇩🇪 da classe nova; funnel_report.py — rótulo no
+# ✂ do digest; zero mudança de render — as fixtures da F53 não tocam
+# matrícula local, o byte a byte segue válido módulo os strips). Padrão
+# F56/F88/F100/F104/F105: âncora move para o commit da fase que tocou
+# src/ (7d9d6da = commit da fase, SÓ src/+scripts+README; o commit
+# seguinte edita testes — src/ idêntico, o diff segue vazio na branch,
+# no CI raso ([SKIP]) e no main pós-squash).
+_AB_BASELINE_SHA = "7d9d6da787f6b76c870e03a8a32d3340736042d2"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):

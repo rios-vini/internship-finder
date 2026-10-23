@@ -90,6 +90,7 @@ DEATH_LABELS = {
     "master_required": "mestrado exigido",
     "eu_citizenship_required": "cidadania UE exigida",
     "nl_enrolment_required": "matrícula NL exigida",
+    "de_enrolment_required": "matrícula DE exigida",
     "phd_position": "posição de doutorado",
     "duration_over_6m": "duração > 6 meses",
     "full_time_permanent": "tempo integral permanente",
