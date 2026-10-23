@@ -585,12 +585,12 @@ parsed, usage, latency, attempts, error = llm.extract(
 check("llm: timeout de rede esgota 3 tentativas",
       attempts == 3 and error == "request_error:ReadTimeout")
 
-# payload do POST: temperatura 0, max_tokens 8000, model flash
+# payload do POST: temperatura 0, max_tokens 8000, model = llm.MODEL (default vivo)
 payload = tracked.calls[0]["payload"] if tracked.calls else {}
 check("llm: payload temperature=0", payload.get("temperature") == 0)
 check("llm: payload max_tokens=8000", payload.get("max_tokens") == 8000)
-check("llm: model do payload == llm.MODEL (contrato) e default F50.1 = normal",
-      payload.get("model") == llm.MODEL and llm.MODEL == "z-ai/glm-5.3")
+check("llm: model do payload == llm.MODEL (contrato) e default F102 = nemotron-3-ultra",
+      payload.get("model") == llm.MODEL and llm.MODEL == "nvidia/nemotron-3-ultra-550b-a55b")
 
 # ---------------------------------------------------------------------------
 # 8. Persistencia atomica + upsert + preservacao + load tolerante
