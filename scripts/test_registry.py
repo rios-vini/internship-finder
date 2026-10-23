@@ -37,7 +37,7 @@ FAILURES: list[str] = []
 # de empresas bumpa o numero deliberadamente aqui (1 lugar, nao 12 literais).
 # Os demais checks sao invariantes estruturais derivados do proprio SEED
 # (ordem alfabetica, unicidade, presenca via get()).
-EXPECTED_SEED_N = 145  # 127 pré-F88 + 18 top-up de frescor (onda F88, registry.py)
+EXPECTED_SEED_N = 147  # 127 pré-F88 + 18 F88 (top-up) + 2 F100 (curadoria EN-source)
 CANONICAL = sorted(e.name for e in SEED)
 
 

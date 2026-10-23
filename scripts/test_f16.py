@@ -84,7 +84,7 @@ F16_PENDENCIES = [
 # Paramétrico desde a F32 (13/10/2026): contagens absolutas em 1 constante;
 # o contrato da F16 (onda só acrescenta, nenhuma entrada alterada) e
 # verificado pelos checks T4c/T6 abaixo com contagens RELATIVAS.
-SEED_COUNT = 127 + 18  # 127 pré-F88 + 18 da onda F88 (paramétrico: F16/F24 nao alteram o SEED)
+SEED_COUNT = 127 + 18 + 2  # 127 pré-F88 + 18 F88 + 2 da onda F100 (paramétrico: F16/F24 nao alteram o SEED)
 
 
 def main() -> int:

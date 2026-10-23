@@ -173,7 +173,7 @@ MANIFEST_COMPANIES_CSV_LAST_MODIFIED = "2026-08-23"
 
 # Paramétrico desde a F32 (13/10/2026): a propriedade testada pela F24
 # é 'a F24 não alterou o SEED' — o número absoluto vive em 1 constante.
-SEED_COUNT = 127 + 18  # 127 pré-F88 + 18 da onda F88 (paramétrico: F16/F24 nao alteram o SEED)
+SEED_COUNT = 127 + 18 + 2  # 127 pré-F88 + 18 F88 + 2 da onda F100 (paramétrico: F16/F24 nao alteram o SEED)
 
 
 def main() -> int:

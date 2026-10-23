@@ -47,7 +47,7 @@ class RegistryEntry(BaseModel):
     enabled: bool = True  # false desabilita a empresa sem removê-la do registry
 
 
-# --- Seed: 145 empresas operacionais (12 da validação inicial + 27 da
+# --- Seed: 147 empresas operacionais (12 da validação inicial + 27 da
 # --- expansão E2 + 25 da expansão internacional P3 #23: 8 DE + 17 NL/CH/AT
 # --- + 17 da expansão de cobertura 15/09/2026 + 6 da auditoria 16/09/2026
 # --- + 9 da auditoria próxima fronteira 17/09/2026 + 5 da última onda de
@@ -64,7 +64,9 @@ class RegistryEntry(BaseModel):
 # --- + 18 da onda F88 top-up de frescor 21/10/2026: KPMG DE, Vetter, AGCO,
 # --- mllerservi (Theo Müller), Deutsche Börse, Witglobal (Würth), Levio,
 # --- Indie Campers, Vitesco, Marquardt Group, Kraft Heinz, aumovio,
-# --- Vodafone, Vanderlande, Stryker, Endress+Hauser, Pirelli, GALERIA).
+# --- Vodafone, Vanderlande, Stryker, Endress+Hauser, Pirelli, GALERIA
+# --- + 2 da onda F100 curadoria EN-source 22/10/2026: Issgovernance,
+# --- JACOBS DOUWE EGBERTS).
 # --- Nomes canônicos = consulta real do ``--companies``
 # --- (README.md + docs/empresas_verificacao.md + docs/relatorio_expansao.md +
 # --- docs da auditoria de cobertura 15/09 + auditoria próxima onda 16/09).
@@ -428,6 +430,33 @@ SEED = [
     RegistryEntry(name="Endress+Hauser", ats="successfactors", tenant="successfactors:careers"),
     RegistryEntry(name="Pirelli", ats="successfactors", tenant="successfactors:jobs"),
     RegistryEntry(name="GALERIA", ats="cornerstone", tenant="cornerstone:galeria"),
+    # --- 2 da onda F100 curadoria EN-source (2026-10-22, spec F100 item (b):
+    # --- varredura do eligible [N=708] por empresas com >=3 vagas EN e
+    # --- score médio >=5 ausentes do registry; 4 candidatas brutas, 2
+    # --- cobertas [Amazon: conector próprio amazon_jobs; 'Kraftheinz':
+    # --- tenant Kraft Heinz da F88, residual de alias F88 §9], 2 validadas
+    # --- AO VIVO com o scraper REAL [discovery_rules.validate_slug] e
+    # --- adicionadas; A/B de dedup coletado no clone: o dedup 3-pass
+    # --- removeu os pares tenant x dataset [ISS: tier company+title+location,
+    # --- URL do dataset difere da do tenant; JDE: estágio URL, mesma URL
+    # --- space do SmartRecruiters] — zero duplicação pós-filtro. Origem do
+    # --- Passo 0: Infineon/Zalando/Celonis JÁ têm tenants vivos no SEED
+    # --- [gap era de funil, não de curadoria]; Siemens AG = portal custom
+    # --- jobs.siemens.com, ATS fora dos 14 suportados — documentado, sem
+    # --- entry [patologia 'empty silencioso' F58]. Evidências e A/B:
+    # --- relatório F100 ~/.hermes/handoff/f100-registry-gap/) ---
+    # Issgovernance (Institutional Shareholder Services — proxy advisory,
+    # board workday issgovernance.wd1.myworkdayjobs.com/isscareers): 75 vagas
+    # validadas ao vivo (POST wday/cxs, 6,5 s); internships EN em Berlim
+    # (Corporate Governance Data Procurement etc.), fatia de hoje = 4
+    # eligible; coleta tenant 75 -> funil 7 tipo -> 1 área -> 1 país.
+    RegistryEntry(name="Issgovernance", ats="workday", tenant="workday:issgovernance/isscareers"),
+    # JACOBS DOUWE EGBERTS (JDE Peet's — café, board SmartRecruiters
+    # careers.smartrecruiters.com/JACOBSDOUWEEGBERTS): 175 vagas validadas
+    # ao vivo (GET api.smartrecruiters.com, 18 s); internships EN Supply
+    # Chain/Planning em Bruxelas [be], fatia de hoje = 3 eligible; coleta
+    # tenant 175 -> funil 25 tipo -> 4 área -> 4 país.
+    RegistryEntry(name="JACOBS DOUWE EGBERTS", ats="smartrecruiters", tenant="smartrecruiters:JACOBSDOUWEEGBERTS"),
 ]
 
 
