@@ -275,7 +275,18 @@ REPO = Path(__file__).resolve().parent.parent
 # entradas de coleta ao SEED e bumpa docstrings — as fixtures da F53 não
 # dependem do SEED, o byte a byte segue válido módulo os strips. Lição F58
 # aplicada: âncora movida NO commit da fase (head pré-squash 355ca62).
-_AB_BASELINE_SHA = "c1a88d342614d2d419f15d0a508331c5036865e9"
+# F104 (23/10): src/ moveu de novo (countries.py — lógica core do sanity
+# cidade→país [loader fail-closed + check_city_country_mismatch];
+# cli.py — flag country_mismatch pós select_eligible + métrica no JSONL).
+# Port do resgate F104 (branch rescue + stash^3 → PR; a F104 original foi
+# executada direto na produção sem commit). Nenhuma mudança de render do
+# legado: o badge ⚠ do country_mismatch só acrescenta bytes quando o job tem
+# country_mismatch=True — fixture da F53 não tem, byte a byte segue válido
+# módulo os strips F60/F83/F86. Lição F58/F103 aplicada: âncora movida NO
+# ciclo da fase (5b09ca2b = commit da fase, SÓ src/+scripts+README; o
+# commit seguinte edita testes — src/ idêntico, o diff segue vazio na
+# branch, no CI raso ([SKIP]) e no main pós-squash).
+_AB_BASELINE_SHA = "5b09ca2b7d4b6db109291a2c78e62049117f50a2"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):

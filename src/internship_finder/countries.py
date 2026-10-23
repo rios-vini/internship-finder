@@ -19,11 +19,34 @@ F7 — expansao multi-pais: ``TARGET_COUNTRIES`` e a lista de producao
 multi-pais (``parse_country_spec`` aceita lista ISO desde a extracao do
 modulo); a F7 conecta essa capacidade aos ESTAGIOS de coleta (prefilter do
 dataset e locationCodes do EURES).
+
+F104 — sanity check cidade→país: mapa conservador ``config/city_country.json``
+(fail-closed) para sinalizar vagas onde a localização indica país fora dos
+5 mercados-alvo enquanto o ``country_iso`` diz que está dentro. Display-only
+(flag ``country_mismatch`` + badge ⚠ + linha no digest); métrica
+``country_mismatch: N`` no stats do run.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import re
+from pathlib import Path
+
+__all__ = [
+    "COUNTRY_CODES",
+    "TARGET_COUNTRIES",
+    "EUROPE_COUNTRIES",
+    "COUNTRY_NAMES",
+    "infer_country_iso",
+    "is_remote",
+    "parse_country_spec",
+    "matches_country",
+    # F104
+    "check_city_country_mismatch",
+    "country_mismatch_flag",
+]
 
 # ---------------------------------------------------------------------------
 # Pais / localizacao
@@ -44,6 +67,113 @@ COUNTRY_CODES = frozenset(
     SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR
     TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW
     """.lower().split())
+
+log = logging.getLogger(__name__)
+
+# F104 — mapa conservador cidade→país (fail-closed: ausente/corrompido/vazio = OFF).
+# Apenas cidades INEQUÍVOCAS fora dos 5 mercados-alvo (de,lu,nl,fi,be).
+# Match: casefold exato do 1º segmento da location; sem substring solta.
+_CITY_COUNTRY_MAP: dict[str, str] | None = None
+_CITY_COUNTRY_LOAD_ERROR: Exception | None = None
+
+
+def _load_city_country_map() -> dict[str, str] | None:
+    """Carrega ``config/city_country.json``; falha silenciosa = feature OFF.
+
+    Retorna ``None`` se arquivo ausente, corrompido, vazio ou sem chave
+    ``city_to_country`` — o chamador trata como feature desligada sem erro.
+    """
+    global _CITY_COUNTRY_MAP, _CITY_COUNTRY_LOAD_ERROR
+    if _CITY_COUNTRY_MAP is not None or _CITY_COUNTRY_LOAD_ERROR is not None:
+        return _CITY_COUNTRY_MAP
+    try:
+        path = Path(__file__).resolve().parents[2] / "config" / "city_country.json"
+        if not path.is_file():
+            _CITY_COUNTRY_LOAD_ERROR = FileNotFoundError(path)
+            return None
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+        if not isinstance(data, dict):
+            raise ValueError("raiz nao e objeto")
+        city_map = data.get("city_to_country")
+        if not isinstance(city_map, dict) or not city_map:
+            raise ValueError("city_to_country ausente/vaazio")
+        # Normaliza chaves/valores para minusculas (comparacoes usam casefold)
+        normalized = {
+            str(k).strip().casefold(): str(v).strip().casefold()
+            for k, v in city_map.items()
+            if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip()
+        }
+        if not normalized:
+            raise ValueError("nenhuma entrada valida apos normalizacao")
+        _CITY_COUNTRY_MAP = normalized
+        return _CITY_COUNTRY_MAP
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        _CITY_COUNTRY_LOAD_ERROR = exc
+        log.debug("F104 city_country.json indisponivel (%s); feature OFF", exc)
+        return None
+
+
+def _extract_city_from_location(location: str | None) -> str | None:
+    """Extrai a cidade (1º segmento da location) normalizada para casefold.
+
+    Mesmo padrao do ``_short_location`` (minimal_page) e do digest:
+    primeiro pedaco antes da virgula, strip, casefold.
+    """
+    if not location:
+        return None
+    first = str(location).split(",", 1)[0].strip()
+    return first.casefold() if first else None
+
+
+def check_city_country_mismatch(job: dict) -> bool:
+    """F104 — verifica se a cidade da vaga indica pais fora dos 5 mercados
+    enquanto o ``country_iso`` diz que esta dentro.
+
+    Retorna ``True`` quando:
+      - ha mapa cidade->pais carregado (feature ON)
+      - a cidade (1º segmento da location) esta no mapa
+      - o pais do mapa NAO e um dos 5 alvos (de,lu,nl,fi,be)
+      - o ``country_iso`` da vaga E um dos 5 alvos
+
+    Caso contrario (mapa OFF, cidade nao mapeada, pais do mapa e alvo,
+    country_iso nao e alvo, location vazia) -> ``False``.
+
+    Pura, sem efeitos colaterais, nunca levanta excecao.
+    """
+    city_map = _load_city_country_map()
+    if city_map is None:
+        return False  # feature OFF (fail-closed)
+
+    city = _extract_city_from_location(job.get("location"))
+    if not city:
+        return False
+
+    expected_country = city_map.get(city)
+    if not expected_country:
+        return False  # cidade nao esta no mapa de exclusao
+
+    # So sinaliza se o mapa diz que a cidade e de um pais FORA dos 5 alvos
+    if expected_country in TARGET_COUNTRIES:
+        return False
+
+    # E o country_iso da vaga diz que esta DENTRO dos 5 alvos
+    job_iso = str(job.get("country_iso") or "").strip().casefold()
+    if job_iso not in TARGET_COUNTRIES:
+        return False
+
+    return True
+
+
+def country_mismatch_flag(job: dict) -> str:
+    """Texto do badge F104 para exibicao (display-only).
+
+    Retorna ``"⚠ localização fora dos 5 mercados"`` quando ha mismatch,
+    string vazia caso contrario. O chamador decide onde/quando renderizar.
+    """
+    if check_city_country_mismatch(job):
+        return "⚠ localização fora dos 5 mercados"
+    return ""
 
 # ---------------------------------------------------------------------------
 # F7 — paises-alvo da producao
@@ -112,17 +242,16 @@ COUNTRY_NAMES: dict[str, str] = {
     "madagascar": "mg", "malawi": "mw", "malaysia": "my", "maldives": "mv",
     "mali": "ml", "malta": "mt", "martinique": "mq", "mauritania": "mr",
     "mauritius": "mu", "mayotte": "yt", "mexico": "mx", "micronesia": "fm",
-    "moldova": "md", "monaco": "mc", "mongolia": "mn", "montenegro": "me",
-    "montserrat": "ms", "morocco": "ma", "mozambique": "mz", "myanmar": "mm",
-    "namibia": "na", "nauru": "nr", "nepal": "np", "netherlands": "nl",
-    "new caledonia": "nc", "new zealand": "nz", "nicaragua": "ni", "niger": "ne",
-    "nigeria": "ng", "north korea": "kp", "north macedonia": "mk",
-    "norway": "no", "oman": "om", "pakistan": "pk", "palau": "pw",
-    "palestine": "ps", "panama": "pa", "papua new guinea": "pg",
-    "paraguay": "py", "peru": "pe", "philippines": "ph", "poland": "pl",
-    "portugal": "pt", "puerto rico": "pr", "qatar": "qa", "reunion": "re",
-    "romania": "ro", "russia": "ru", "russian federation": "ru",
-    "rwanda": "rw", "samoa": "ws", "san marino": "sm",
+    "moldova": "md", "monaco": "mc", "montenegro": "me", "montserrat": "ms",
+    "morocco": "ma", "mozambique": "mz", "myanmar": "mm", "namibia": "na",
+    "nauru": "nr", "nepal": "np", "netherlands": "nl", "new caledonia": "nc",
+    "new zealand": "nz", "nicaragua": "ni", "niger": "ne", "nigeria": "ng",
+    "north korea": "kp", "north macedonia": "mk", "norway": "no",
+    "oman": "om", "pakistan": "pk", "palau": "pw", "palestine": "ps",
+    "panama": "pa", "papua new guinea": "pg", "paraguay": "py", "peru": "pe",
+    "philippines": "ph", "poland": "pl", "portugal": "pt", "puerto rico": "pr",
+    "qatar": "qa", "reunion": "re", "romania": "ro", "russia": "ru",
+    "russian federation": "ru", "rwanda": "rw", "samoa": "ws", "san marino": "sm",
     "sao tome and principe": "st", "saudi arabia": "sa", "senegal": "sn",
     "serbia": "rs", "seychelles": "sc", "sierra leone": "sl",
     "singapore": "sg", "slovakia": "sk", "slovenia": "si",
