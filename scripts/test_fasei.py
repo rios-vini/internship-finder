@@ -224,7 +224,8 @@ def _main_body() -> int:
 
     print("== B: escopo cirúrgico da chave ==")
     check("B1 mapa tem exatamente a entrada SAP",
-          set(TENANT_URL_OVERRIDES) == {("successfactors", "jobs", "SAP")})
+          set(TENANT_URL_OVERRIDES) == {("successfactors", "jobs", "SAP"),
+                                         ("successfactors", "lidlstiftuP2", "LIDL")})
     padded = _company(" SAP ", "successfactors", "jobs", "https://jobs.sap.com")
     check("B2 name com whitespace ainda casa (strip)",
           scraper_slug(padded) == "https://careers.sap.com")
