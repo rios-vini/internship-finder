@@ -312,7 +312,10 @@ REPO = Path(__file__).resolve().parent.parent
 # do lidlstiftuP2 em ats_scraper.py); âncora -> commit src/ REBASADO da
 # fase (0ce5a79) — diff HEAD↔âncora em src/ segue vazio (tests no commit
 # seguinte). Padrão 7d9d6da.
-_AB_BASELINE_SHA = "0ce5a7937fbab1cdb3dfff5382b961105d303540"
+# F117 (24/10, pós-rebase sobre F116+F114): src/ moveu (discovery_rules.py
+# en_locale_variant + manual_check EN); âncora -> commit src/ REBASADO da
+# fase = 11c0e57 (último commit que toca src/ — d857077+6032740+11c0e57); diff HEAD↔âncora em src/ vazio.
+_AB_BASELINE_SHA = "11c0e570140a6ae80bbd4846f1ed1f40ba140e31"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
