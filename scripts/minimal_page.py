@@ -873,6 +873,41 @@ def start_conflict_flag_text(job: dict, lang: str = "pt") -> str:
         return ""
 
 
+# F109 — start_date_ambiguous: "ab <mês>" SEM ano (ex.: "Ab August /
+# September"). Flag informativa própria, NÃO conflito (nunca decide
+# TOO_EARLY/TOO_LATE sem ano). Display-only.
+# O label do seasonality_label JÁ inclui "(sem ano)" (ex.: "ago/set (sem ano)").
+START_DATE_AMBIGUOUS_FLAG_TEXT = "início ambíguo: {label} — jan/2027?"
+
+
+def start_date_ambiguous_flag_text(job: dict, lang: str = "pt") -> str:
+    """F109: badge ⚠ quando a vaga tem início ambíguo (mês sem ano).
+
+    Usa ``seasonality.start_date_ambiguous_of`` (mesmo parser da F45/F95).
+    O label vem de ``seasonality_label`` do hit ambiguo (ex.: "ago/set").
+    Best-effort: nunca lança.
+    """
+    try:
+        _sd = Path(__file__).resolve().parent
+        if str(_sd) not in sys.path:
+            sys.path.insert(0, str(_sd))
+        import seasonality  # parser puro da F45 (zero I/O)
+        if not seasonality.start_date_ambiguous_of(job):
+            return ""
+        # Pega o label do hit ambiguo para mostrar os meses
+        text = seasonality.job_window_text(job)
+        hits = seasonality.parse_seasonality(text)
+        amb_hits = [h for h in hits if h.get("kind") == "ambiguous_start"]
+        if not amb_hits:
+            return ""
+        label = seasonality.seasonality_label(amb_hits[0]) or "mês ambíguo"
+        if lang == "en":
+            return f"ambiguous start: {label} — Jan/2027?"
+        return START_DATE_AMBIGUOUS_FLAG_TEXT.replace("{label}", label)
+    except Exception:  # noqa: BLE001 — display best-effort, nunca erro
+        return ""
+
+
 # F95 — work-auth (ITENS ITEM 2; campo 3-níveis
 # ``app_intel.work_auth_requirement``): DISPLAY-ONLY. A exclusão F61 segue
 # pelo padrão endereçado-a-não-UE (MAHLE); as frases novas (Amazon
@@ -1633,6 +1668,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           duration_flag_pt: str = "",
           start_conflict_flag: str = "",
           start_conflict_flag_pt: str = "",
+          start_date_ambiguous_flag: str = "",
+          start_date_ambiguous_flag_pt: str = "",
           na_flag: str = "",
           na_flag_pt: str = "",
           work_auth_flag_txt: str = "",
@@ -1789,6 +1826,19 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
         else:
             badge_bits.append(
                 f' <span class="flag">⚠️ {_esc(start_conflict_flag)}</span>')
+    # F109 — start_date_ambiguous: "ab <mês>" SEM ano (display-only).
+    # Badge ⚠ "início ambíguo: ago/set (sem ano — jan/2027?)". Entra DEPOIS
+    # do conflito datado (TOO_EARLY/TOO_LATE/IMMEDIATE) e ANTES do tipo
+    # ambíguo (F86) — mesma semântica de "decisão pendente do dono".
+    if start_date_ambiguous_flag:
+        if lang == "en":
+            badge_bits.append(
+                f' <span class="flag"'
+                f'{_i18n_attr("⚠️ " + start_date_ambiguous_flag_pt)}>⚠️ '
+                f'{_esc(start_date_ambiguous_flag)}</span>')
+        else:
+            badge_bits.append(
+                f' <span class="flag">⚠️ {_esc(start_date_ambiguous_flag)}</span>')
     # F86 — tipo ambíguo Werkstudent/Praktikum (display-only; a vaga FICA
     # no eligible — o badge marca a decisão que o dono precisa tomar).
     if jt_ambiguous_flag_txt:
@@ -2462,6 +2512,9 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             start_conflict_flag=start_conflict_flag_text(job, lang),
             start_conflict_flag_pt=(start_conflict_flag_text(job, "pt")
                                     if lang == "en" else ""),
+            start_date_ambiguous_flag=start_date_ambiguous_flag_text(job, lang),
+            start_date_ambiguous_flag_pt=(start_date_ambiguous_flag_text(job, "pt")
+                                          if lang == "en" else ""),
             work_auth_flag_txt=work_auth_flag_text(job, lang),
             work_auth_flag_pt=(work_auth_flag_text(job, "pt")
                                if lang == "en" else ""),
