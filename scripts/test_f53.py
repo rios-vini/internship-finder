@@ -304,7 +304,7 @@ REPO = Path(__file__).resolve().parent.parent
 # src/ (7d9d6da = commit da fase, SÓ src/+scripts+README; o commit
 # seguinte edita testes — src/ idêntico, o diff segue vazio na branch,
 # no CI raso ([SKIP]) e no main pós-squash).
-_AB_BASELINE_SHA = "5fb31fdb242efb09e6fb1f0bc0e165389e76f9d3"
+_AB_BASELINE_SHA = "40a0db5fdb3755ab8d7efb72ec980517037621a3"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
