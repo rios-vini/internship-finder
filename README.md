@@ -233,7 +233,7 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **147 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-| **148** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+| **149** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **227** | commits, one feature PR per change (git log, first-parent) |
 
@@ -245,7 +245,7 @@ sources are files in this repo.
 ## Tech stack
 
 **Python 3.12+** stdlib-heavy · pydantic (canonical `Job` model) ·
-sqlite3 · requests / BeautifulSoup · GitHub Actions (67 suites on a
+sqlite3 · requests / BeautifulSoup · GitHub Actions (69 suites on a
 clean runner, no network, no local data) · GitHub Pages · Telegram Bot
 API · Oracle Linux VPS + cron. Zero frontend framework — the page is a
 single self-contained HTML with vanilla JS.
