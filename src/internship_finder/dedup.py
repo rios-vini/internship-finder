@@ -59,9 +59,11 @@ Regra do "vencedor" quando duas versoes da mesma vaga existem (deterministica):
 from __future__ import annotations
 
 import base64
+import json
 import re
 import unicodedata
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 # F5 — aliases de cidade EN->DE do Company Intelligence (mesma fonte da
@@ -341,13 +343,111 @@ KEY_COMPANY_TITLE_LOCATION_DE_EN = "company+title+location+de/en"
 # dos demais tiers). A MESMA label serve aos DOIS lados do par, para o
 # ``seen`` do ``deduplicate`` casar independentemente da ordem de chegada.
 KEY_BA_EURES_MIRROR = "ba_eures_mirror"
+
+# F110 — 6o tier: cross-ATS mirror para fontes espelhadas conhecidas
+# (ex.: jobs.lidl via sf_dataset:successfactors <-> praktikum_info).
+# Chave: (empresa_canonica, titulo_normalizado) — SEM localizacao,
+# pois formatos divergem entre ATS. So aplica quando a fonte da vaga
+# faz parte de um par espelhado curado (config/dedup_mirrored_sources.json).
+# O mapa de aliases resolve o label do tenant para o nome canonico
+# ANTES da comparacao. Fail-closed: arquivo ausente/ilegivel = {}.
+KEY_CROSS_ATS_MIRROR = "cross_ats_mirror"
+
 KEY_LABELS = [
     KEY_EXTERNAL_ID,
     KEY_URL,
     KEY_COMPANY_TITLE_LOCATION,
     KEY_COMPANY_TITLE_LOCATION_DE_EN,
     KEY_BA_EURES_MIRROR,
+    KEY_CROSS_ATS_MIRROR,
 ]
+
+# Caminho default para o mapa de fontes espelhadas (ancorado no repo).
+_DEFAULT_MIRRORED_SOURCES_PATH = Path(__file__).resolve().parents[2] / "config" / "dedup_mirrored_sources.json"
+
+
+def _load_mirrored_sources(path: str | Path | None = None) -> dict:
+    """Carrega o mapa de fontes espelhadas F110 (fail-closed -> {}).
+    
+    Estrutura esperada:
+    {
+      "mirrored_pairs": [
+        {
+          "name": "unique_id",
+          "source_a": "sf_dataset:successfactors",
+          "source_b": "praktikum_info",
+          "company_aliases": {"lidlstiftup2": "Lidl Stiftung & Co. KG"}
+        }
+      ]
+    }
+    Retorna dict {source: {paired_source, aliases}} para lookup O(1).
+    """
+    target = Path(path) if path is not None else _DEFAULT_MIRRORED_SOURCES_PATH
+    try:
+        raw = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    pairs = raw.get("mirrored_pairs")
+    if not isinstance(pairs, list) or not pairs:
+        return {}
+    out: dict[str, dict] = {}
+    for pair in pairs:
+        if not isinstance(pair, dict):
+            return {}
+        source_a = str(pair.get("source_a", "")).strip()
+        source_b = str(pair.get("source_b", "")).strip()
+        aliases_raw = pair.get("company_aliases")
+        if not source_a or not source_b or not isinstance(aliases_raw, dict):
+            return {}
+        # Valida aliases: str->str, casefold keys, sem colisao
+        aliases: dict[str, str] = {}
+        for k, v in aliases_raw.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                return {}
+            k_cf = k.strip().casefold()
+            v_stripped = v.strip()
+            if not k_cf or not v_stripped:
+                return {}
+            if k_cf in aliases and aliases[k_cf] != v_stripped:
+                return {}  # colisao casefold
+            aliases[k_cf] = v_stripped
+        out[source_a] = {"paired_source": source_b, "aliases": aliases}
+        out[source_b] = {"paired_source": source_a, "aliases": aliases}
+    return out
+
+
+def _canonical_company_mirror(company: str | None, aliases: dict[str, str]) -> str | None:
+    """Resolve label do tenant para nome canonico (match casefold exato, passo unico)."""
+    if not company or not aliases:
+        return company
+    key = str(company).strip().casefold()
+    return aliases.get(key, company)
+
+
+def _is_mirrored_pair(source_a: str, source_b: str) -> bool:
+    """Verifica se duas fontes formam um par espelhado conhecido (F110)."""
+    mirrored = _get_mirrored_sources()
+    if not mirrored:
+        return False
+    pair_a = mirrored.get(source_a)
+    if not pair_a:
+        return False
+    return pair_a.get("paired_source") == source_b
+
+
+# Cache do mapa de fontes espelhadas F110 (carregado uma vez, fail-closed).
+_MIRRORED_SOURCES_CACHE: dict | None = None
+
+
+def _get_mirrored_sources() -> dict:
+    """Retorna o mapa de fontes espelhadas (carrega no primeiro uso)."""
+    global _MIRRORED_SOURCES_CACHE
+    if _MIRRORED_SOURCES_CACHE is None:
+        _MIRRORED_SOURCES_CACHE = _load_mirrored_sources()
+    return _MIRRORED_SOURCES_CACHE
+
 
 # F20 — sufixos de fonte usados nos external_ids espelhados: a referência
 # vive no id de fontes "*:bundesagentur" (cru) e "*:eures" (base64).
@@ -512,6 +612,23 @@ def candidate_keys(job: dict[str, Any]) -> list[tuple[str, str | tuple[str, str]
     if mirror is not None:
         keys.append((KEY_BA_EURES_MIRROR, mirror))
 
+    # F110 — tier cross-ATS mirror: fontes espelhadas conhecidas
+    # (ex.: sf_dataset:successfactors <-> praktikum_info para Lidl).
+    # Chave: (empresa_canonica_casefold, titulo_normalizado) — SEM localizacao.
+    # So gera a chave se a fonte faz parte de um par espelhado curado.
+    mirrored_sources = _get_mirrored_sources()
+    if mirrored_sources:
+        source = str(job.get("source") or "").strip()
+        pair_info = mirrored_sources.get(source)
+        if pair_info:
+            aliases = pair_info.get("aliases", {})
+            company_raw = (job.get("company") or "").strip()
+            company_canon = _canonical_company_mirror(company_raw, aliases)
+            company_cf = (company_canon or "").strip().casefold()
+            title = normalize_title(job.get("title"))
+            if company_cf and title:
+                keys.append((KEY_CROSS_ATS_MIRROR, (company_cf, title)))
+
     return keys
 
 
@@ -565,6 +682,13 @@ def deduplicate(
         matched: tuple[str, Any] | None = None
         for label, key in keys:
             if key in seen:
+                # F110: para cross_ats_mirror, só casa se as fontes formam par espelhado conhecido
+                if label == KEY_CROSS_ATS_MIRROR:
+                    existing_job = seen[key]
+                    source_a = str(job.get("source") or "").strip()
+                    source_b = str(existing_job.get("source") or "").strip()
+                    if not _is_mirrored_pair(source_a, source_b):
+                        continue  # não é par espelhado válido, ignora este match
                 matched = (label, key)
                 break
 

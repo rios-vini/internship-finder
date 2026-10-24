@@ -108,12 +108,15 @@ reveals a hard-eligibility hit (`native_language`, `duration_conflict`,
 remaining reasons keep the posting with a 🚫 inapplicable badge, demoted
 from the displayed top.
 
-**Dedup.** Four independent keys (canonical URL with tracking params
-stripped, platform id, normalized title+company, DE/EN translation of
-title+city) plus a **mirror collapse** keyed on requisition id: the same
-internship posted in German and English on two platforms becomes one row. The
-registry's wildcard "mehrere Standorte" postings are collapsed against
-their concrete-city twins.
+**Dedup.** Five independent keys in the classic cascade (canonical URL with tracking params
+stripped, platform id, normalized title+company+location, DE/EN translation of
+title+city, BA/EURES mirror by base64 reference) plus a **cross-ATS mirror** tier
+for known mirrored source pairs (e.g., jobs.lidl via SuccessFactors dataset
+↔ praktikum.info): when two curated sources mirror the same employer, a
+(normalized title × canonical company) key collapses them without needing
+matching ids or locations. The registry's wildcard "mehrere Standorte"
+postings are collapsed against their concrete-city twins, and a mirror
+collapse keyed on requisition id merges DE/EN mirrors on the same tenant.
 
 **Selective hydration.** Postings that arrive without a description get
 one, fetched individually from the ATS (detail endpoints verified for
