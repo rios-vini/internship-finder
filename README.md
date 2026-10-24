@@ -339,3 +339,4 @@ completa (PT-BR) em `docs/README-operacional.md`.
 ## License
 
 [MIT](LICENSE) © 2026 Vinícius Rios
+# CI trigger
