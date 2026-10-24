@@ -63,7 +63,10 @@ from internship_finder.cross_source_dedup import (  # noqa: E402
     deduplicate_cross_source,
     load_company_aliases,
 )
-from internship_finder.dedup import deduplicate  # noqa: E402
+from internship_finder.dedup import (  # noqa: E402
+    KEY_CROSS_ATS_MIRROR,
+    deduplicate,
+)
 
 CHECKS: list[tuple[str, bool, str]] = []
 
@@ -488,10 +491,12 @@ def test_contra_cases() -> None:
           {d["id"] for _, d, _ in r_a} <= {j["id"] for j in uni} - {j["id"] for j in o_a}
           and len(o_a) + len(r_a) == len(uni),
           f"out={len(o_a)} removed={len(r_a)} in={len(uni)}")
-    # tiers classicos (1-5) INTACTOS: sem alias, mesmo par nao funde neles
+    # tiers classicos (1-5) INTACTOS: sem alias cross-fonte, mesmo par nao funde neles
+    # F110: NOVO tier 6 (cross_ats_mirror) AGORA funde pares de fontes espelhadas conhecidas
     out_cls, stats_cls, _ = deduplicate([dict(LIDL_SF), dict(LIDL_REPOST)])
-    check("H10 tiers classicos (1-5) NAO fundem o par Lidl (dominio do alias e SO o F48)",
-          len(out_cls) == 2, f"out={len(out_cls)}")
+    check("H10 tiers classicos (1-5) NAO fundem o par Lidl sem F110; COM F110 tier 6 cross_ats_mirror FUNDE",
+          len(out_cls) == 1 and stats_cls.get(KEY_CROSS_ATS_MIRROR) == 1,
+          f"out={len(out_cls)} stats={stats_cls}")
 
 
 def copy_dicts(jobs):

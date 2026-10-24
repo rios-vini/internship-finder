@@ -1,0 +1,14 @@
+{
+  "_comment": "F110 — pares de fontes espelhadas conhecidas para dedup cross-ATS por título-normalizado×empresa-canônica. Cada entrada define um par de fontes que espelham o mesmo conteúdo (ex.: jobs.lidl via sf_dataset:successfactors ↔ praktikum_info). A chave de dedup usa (empresa_canonica, titulo_normalizado) — SEM localização, pois formatos divergem entre ATS. O mapa de aliases resolve o label do tenant (ex.: 'lidlstiftup2') para o nome canônico da empresa real (ex.: 'Lidl Stiftung & Co. KG') ANTES da comparação. Curadoria estrita: só entra par auditado (slugs/URLs confirmam mesmo empregador). Zero FP no corpus inteiro (padrão F66: 20 twins zero FP).",
+  "mirrored_pairs": [
+    {
+      "name": "lidl_jobs_lidl_praktikum_info",
+      "description": "jobs.lidl (SuccessFactors dataset) ↔ praktikum.info — mesmo empregador Lidl Stiftung & Co. KG",
+      "source_a": "sf_dataset:successfactors",
+      "source_b": "praktikum_info",
+      "company_aliases": {
+        "lidlstiftup2": "Lidl Stiftung & Co. KG"
+      }
+    }
+  ]
+}

@@ -108,12 +108,15 @@ reveals a hard-eligibility hit (`native_language`, `duration_conflict`,
 remaining reasons keep the posting with a 🚫 inapplicable badge, demoted
 from the displayed top.
 
-**Dedup.** Four independent keys (canonical URL with tracking params
-stripped, platform id, normalized title+company, DE/EN translation of
-title+city) plus a **mirror collapse** keyed on requisition id: the same
-internship posted in German and English on two platforms becomes one row. The
-registry's wildcard "mehrere Standorte" postings are collapsed against
-their concrete-city twins.
+**Dedup.** Five independent keys in the classic cascade (canonical URL with tracking params
+stripped, platform id, normalized title+company+location, DE/EN translation of
+title+city, BA/EURES mirror by base64 reference) plus a **cross-ATS mirror** tier
+for known mirrored source pairs (e.g., jobs.lidl via SuccessFactors dataset
+↔ praktikum.info): when two curated sources mirror the same employer, a
+(normalized title × canonical company) key collapses them without needing
+matching ids or locations. The registry's wildcard "mehrere Standorte"
+postings are collapsed against their concrete-city twins, and a mirror
+collapse keyed on requisition id merges DE/EN mirrors on the same tenant.
 
 **Selective hydration.** Postings that arrive without a description get
 one, fetched individually from the ATS (detail endpoints verified for
@@ -229,7 +232,7 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **147 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-| **146** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+| **147** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **227** | commits, one feature PR per change (git log, first-parent) |
 
