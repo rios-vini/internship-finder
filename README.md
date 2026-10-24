@@ -233,14 +233,21 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **147 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-| **150** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+| **151** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
-| **228** | commits, one feature PR per change (git log, first-parent) |
+| **229** | commits, one feature PR per change (git log, first-parent) |
 
 **F112 (2026-10-24)** — GO/NO-GO measurement for blind hydration extension:
 - **arbeitsagentur (MTU 7×, refnr 12951-*)**: NO-GO — 7/7 pages return HTTP 200 soft-404 (homepage, no JobPosting JSON-LD)
 - **KPMG portal (4×, jobs.kpmg.de)**: NO-GO — 4/4 pages return SuccessFactors SPA shell (JS-heavy, no JobPosting JSON-LD, no "Sehr gute Deutschkenntnisse" phrase)
 - Result: `BLIND_HYDRATION_SOURCES` unchanged (`absolventa`, `praktikum_info`), pattern F91 (bundesagentur 74/74 NO-GO)
+
+**F118 (2026-10-24)** — GO/NO-GO csod/henkel AJAX (henkel, hella, BIL, Luxair):
+- **hella (csod 18876, site_id=3)**: NO-GO — SPA puro, search `queryresults/asJson` retorna HTML (não JSON), detail sem JSON-LD, APIs 404/403
+- **henkel (site_id=1)**: NO-GO — SAML wall na busca + SPA puro no detail
+- **BIL (site_id=1)**: NO-GO — SAML wall na busca + SPA puro no detail
+- **Luxair (site_id=27)**: NO-GO — SAML wall na busca + SPA puro no detail
+- Result: `BLIND_HYDRATION_SOURCES` inalterada (`absolventa`, `praktikum_info`), padrão F91/F112 (0/4 GO → zero código)
 
 ## Tech stack
 
