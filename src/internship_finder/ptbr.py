@@ -544,6 +544,7 @@ APPLICABILITY_REASON_LABELS: dict[str, str] = {
     "eu_citizenship_required": "🇪🇺 EU-national-only (cidadania/nacionalidade UE)",
     "nl_enrolment_required": "🇳🇱 local-enrollment NL (matrícula na universidade holandesa)",
     "de_enrolment_required": "🇩🇪 local-enrollment DE (matrícula em universidade alemã)",
+    "eu_enrolment_required": "🇪🇺 local-enrollment EU (matrícula em universidade/HBO da UE)",
     "phd_position": "🔬 Posição de PhD/doutorado",
     "duration_over_6m": "⏳ Duração > 6 meses citada no título (teto §16e)",
     "duration_conflict": "🚫 1-year-conflict (duração > 6 meses na descrição, teto §16e)",
