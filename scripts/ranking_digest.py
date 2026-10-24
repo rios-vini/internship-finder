@@ -23,6 +23,16 @@ Principios (escopo Fase 2, "comunicacao/monitoramento"):
 - **"Nova vaga" != "vaga que subiu"**: nova = id AUSENTE do ranking elegivel
   anterior (nao existia no snapshot). Vaga antiga que entrou no Top 30 vai
   para "Mudancas no ranking" (entrou), nunca para "Novas vagas".
+- **F107 — contagem honesta por URL**: o ID do dataset chuma entre runs
+  (re-index do ATS, flip do vencedor dedup cross-fonte) — o mesmo anuncio
+  reaparece com ID novo e a contagem por ID infla "novas". O diff honesto
+  (``new_postings_diff``) classifica os IDs novos pela URL canonica
+  (``normalize_url`` do dedup): "genuinamente novas" (URL ausente do
+  snapshot) vs "re-sightings" (mesma URL, ID reciclado — nao contam). O 🆕
+  mostra o TOTAL real + a fatia "no Top-30" (escopo explicito — o numero da
+  secao Top 30 nunca mais e lido como total) + o ponteiro do arquivo
+  ``data/NEW-<date>.md`` com a lista completa; pães-velhos (``stale_posting``
+  da F94) carregam ⏳ + idade.
 - **Best-effort**: digest nunca derruba o run (chamador envolve em
   try/except) e so e montado para coleta VALIDA (exit 0) — mesmo gate da
   publicacao do GitHub Pages (nunca apresenta ranking parcial como oficial).
@@ -42,11 +52,13 @@ import json
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from internship_finder import filters
 from internship_finder import ranking as ranking_mod
+from internship_finder.dedup import normalize_url
 from internship_finder.enrichment import present as enr_present
 from internship_finder.materials_ranking import rank_materials_jobs
 from internship_finder.repost_flag import (
@@ -337,10 +349,13 @@ def new_top_entries(
 ) -> list[tuple[int, dict]]:
     """Vagas NOVAS no Top 30: id ausente do ranking elegivel anterior.
 
-    O conceito central da Fase 2 ([enunciado]): "nova vaga" = nao existia na
-    execucao anterior. Vaga antiga que subiu para o Top 30 NAO entra aqui
-    (entra em ``ranking_changes`` -> 'entrou'): sem snapshot, todo o Top 30
-    seria "novo" e o alerta perderia o significado.
+    ESCOPO EXPLICITO (F107): esta secao e a FATIA Top-30 das novas — o
+    total real vem do diff completo (``new_postings_diff``/seção 🆕 "Novas
+    desde ontem"); o número daqui NUNCA deve ser lido como "total de
+    novas". O conceito central da Fase 2 ([enunciado]): "nova vaga" = nao
+    existia na execucao anterior. Vaga antiga que subiu para o Top 30 NAO
+    entra aqui (entra em ``ranking_changes`` -> 'entrou'): sem snapshot,
+    todo o Top 30 seria "novo" e o alerta perderia o significado.
     """
     previous_ids = _ids(previous)
     return [
@@ -348,6 +363,79 @@ def new_top_entries(
         for pos, job in top_positions(current, top)
         if job.get("id") not in previous_ids
     ]
+
+
+# F107 — nome do artefato da lista completa das novas (gravado pelo
+# refresh_daily no mesmo estágio do MANUAL-CHECK; o digest referencia o
+# caminho relativo ``data/<nome>`` no header da seção 🆕).
+NEW_LIST_FILE = "NEW-{date}.md"
+
+
+def new_postings_diff(
+    current: list[dict],
+    previous: list[dict] | None,
+) -> dict | None:
+    """Diff URL-honesto das novas (F107; pura).
+
+    O diff F11 (``new_since_previous``) é por ID — e o ID do dataset chuma
+    entre runs (re-index do ATS, flip do vencedor do dedup cross-fonte): o
+    MESMO anúncio reaparece com ID novo e infla a contagem de "novas" (caso
+    real 23/10: 100 IDs novos, 54 com URL já vista — 46 postagens
+    genuinamente novas; relatório manual contou exatamente esses 46).
+
+    Esta função classifica os IDs novos pela URL canônica
+    (``dedup.normalize_url`` — sem fragmento/tracking, a MESMA identidade
+    do dedup F5)::
+
+        {
+          "new_ids":       set[str],   # diff F11 (todos os IDs novos)
+          "gone_ids":      set[str],   # IDs que saíram (passthrough F11)
+          "genuinely_new": list[dict], # URL ausente do snapshot (ordem oficial)
+          "re_seen":       list[dict], # mesma URL, ID reciclado (ordem oficial)
+        }
+
+    ``previous=None`` (sem snapshot usável) -> ``None``: o chamador omite a
+    seção, sem erro. Vaga sem URL => sem identidade comparável => vai para
+    ``genuinely_new`` (conservador: nunca esconde uma vaga por falta de URL).
+    A classificação é display-only: nada aqui filtra/exclui vaga do ranking.
+    """
+    if previous is None:
+        return None
+    prev_ids = _ids(previous)
+    new_ids, gone_ids = _ids(current) - prev_ids, prev_ids - _ids(current)
+    prev_urls = {normalize_url(j.get("url")) for j in previous}
+    prev_urls.discard("")
+    genuinely_new: list[dict] = []
+    re_seen: list[dict] = []
+    for job in current:  # ordem oficial do ranking preservada
+        if not job.get("id") or job["id"] not in new_ids:
+            continue
+        url = normalize_url(job.get("url"))
+        if url and url in prev_urls:
+            re_seen.append(job)
+        else:
+            genuinely_new.append(job)
+    return {
+        "new_ids": new_ids,
+        "gone_ids": gone_ids,
+        "genuinely_new": genuinely_new,
+        "re_seen": re_seen,
+    }
+
+
+def top_new_count(
+    current: list[dict],
+    genuinely_new: list[dict],
+    top: int = DIGEST_TOP,
+) -> int:
+    """Fatia Top-30 das novas genuínas (F107; pura) — o ``M`` do header 🆕.
+
+    O header do 🆕 mostra ``N novas (M no Top-30 ...)`` para o escopo ficar
+    explicito: quem lê ``27`` sabe que é o total, quem lê ``4 no Top-30``
+    sabe que é a fatia visível no corte.
+    """
+    top_ids = {job.get("id") for _, job in top_positions(current, top)}
+    return sum(1 for job in genuinely_new if job.get("id") in top_ids)
 
 
 def ranking_changes(
@@ -539,12 +627,13 @@ def resolve_pages_url(root: str | Path) -> str:
 def _job_entry(pos: int, job: dict) -> list[str]:
     """Linha compatta de uma vaga: posicao, titulo, empresa, local, score,
     link (formato proposto no enunciado: ``#3 — titulo — empresa — local —
-    score`` + link)."""
+    score`` + link). F107: pão-velho (``stale_posting`` F94) ganha ⏳ +
+    idade — a seção 🆕 do Top 30 nunca vende vaga antiga como fresca."""
     url = job.get("url")
     return [
         f"#{pos} — {_short_title(job)} — "
         f"{job.get('company') or '—'} — {_short_location(job)} — "
-        f"{_score_text(job.get('score'))}",
+        f"{_score_text(job.get('score'))}{format_stale_suffix(job)}",
     ] + ([url] if url else [])
 
 
@@ -1105,64 +1194,204 @@ def country_mismatch_line(
         return None
 
 
+def format_stale_suffix(job: dict) -> str:
+    """Sufixo ⏳ de pão-velho na linha 🆕/lista de novas (F107; display-only).
+
+    Lê o CAMPO persistido ``stale_posting`` da F94 (nunca recomputa —
+    display/digest leem o campo; NUNCA exclusão: vaga velha pode estar
+    VIVA, o caso Lidl re-post). Idade do campo ``posting_age_days`` e data
+    de ``posted_at`` — sem evidência de data cai para a idade do caderno;
+    sem nada, marca seco. Formato: `` ⏳ postada 17/07 (~3 meses)``.
+    """
+    if not job.get("stale_posting"):
+        return ""
+    posted = str(job.get("posted_at") or "").strip()
+    age = job.get("posting_age_days")
+    try:
+        age_days = int(age) if age is not None else None
+    except (TypeError, ValueError):
+        age_days = None
+    date_txt = ""
+    if posted:
+        try:
+            date_txt = f"{datetime.fromisoformat(posted):%d/%m}"
+        except ValueError:
+            date_txt = ""
+    if date_txt and age_days is not None:
+        if age_days >= 60:
+            return f" ⏳ postada {date_txt} (~{round(age_days / 30.44)} meses)"
+        return f" ⏳ postada {date_txt} ({age_days} dias)"
+    if date_txt:
+        return f" ⏳ postada {date_txt}"
+    if age_days is not None:
+        return f" ⏳ no acervo há ~{age_days} dias"
+    return " ⏳ postagem antiga"
+
+
 def new_since_lines(
-    diff: tuple[set[str], set[str]] | None,
+    diff: tuple[set[str], set[str]] | dict | None,
     current: list[dict],
     *,
     max_shown: int = NEW_SINCE_MAX_SHOWN,
     big_diff: int = NEW_SINCE_BIG_DIFF,
+    top: int = DIGEST_TOP,
+    new_list_path: str | None = None,
 ) -> list[str]:
-    """Secao '🆕 Novas desde ontem' do digest (F11 T1; contagem + top 3).
+    """Secao '🆕 Novas desde ontem' do digest (F11 T1; F107 contagem honesta).
 
-    ``diff`` = saida de ``new_since_previous`` (None = sem snapshot; secao
-    ausente). Diff gigante (>= ``big_diff`` novas — evento de dataset
-    novo, ex. onboarding de fonte): mostra SO a contagem, NUNCA a lista
-    (o +1.793 de 03/10 nao caberia e seria desinformacao util).
+    ``diff`` = saída de ``new_since_previous`` (tupla F11, contagem por ID)
+    OU o dict de ``new_postings_diff`` (F107, contagem URL-honesta).
+    ``None`` = sem snapshot; secao ausente. Diff gigante (>= ``big_diff``
+    novas — evento de dataset novo, ex. onboarding de fonte): mostra SO a
+    contagem, NUNCA a lista (o +1.793 de 03/10 nao caberia e seria
+    desinformacao util).
 
-    O top-3 e escaneado em ordem oficial (score do pipeline) entre as
-    novas; cada linha: titulo, empresa, score, apply_url (mesma prioridade
-    da pagina — raw.apply_url com fallback job.url).
+    F107 — o header carrega o TOTAL REAL de postagens genuinamente novas
+    (URL ausente do snapshot anterior — IDs reciclados da mesma URL não
+    contam) + a fatia visível + o ponteiro do artefato com a lista
+    completa::
 
-    F93: cap de empresa no top-3 listado (mesma regra do site F11 T4) —
+        🆕 Novas desde ontem: N nova(s) (M no Top-30 · lista completa: data/NEW-<date>.md)
+
+    O escopo fica explicito na própria linha — o ``M no Top-30`` nunca mais
+    é lido como total (evidência 23/10: "27 novas" lido como total). Sem
+    ``new_list_path`` (chamadores legados/testes) o ponteiro é omitido. Os
+    re-sightings (mesma URL, ID reciclado) viram 1 linha de contagem no
+    corpo — a vaga não é listada nem contada como nova. Pães-velhos entre
+    as genuínas (``stale_posting`` F94) ganham ⏳ + idade na linha.
+
+    O corte listado segue em ordem oficial (score do pipeline) entre as
+    genuínas; cada linha: titulo, empresa, score, apply_url (mesma
+    prioridade da página — raw.apply_url com fallback job.url).
+
+    F93: cap de empresa no corte listado (mesma regra do site F11 T4) —
     máx. ``COMPANY_MAX_CARDS`` vagas/empresa entre as listadas; a 3ª+ de
     uma empresa é pulada e a nova seguinte de outra empresa sobe. A
     CONTAGEM do header segue exata (nenhuma vaga some da conta); as
-    deslocadas do top-3 viram a linha "N vagas ocultas pelo cap" do
-    digest (montada pelo digest_sections). Sem repetição >2/empresa a
-    saída é byte a byte a de antes (regressão zero).
+    deslocadas do corte viram a linha "N vagas ocultas pelo cap" do
+    digest (montada pelo digest_sections).
     """
     if diff is None:
         return []
-    new_ids, gone_ids = diff
+    if isinstance(diff, dict):  # F107 — diff URL-honesto
+        new_ids = set(diff.get("new_ids") or set())
+        gone_ids = set(diff.get("gone_ids") or set())
+        genuine = list(diff.get("genuinely_new") or [])
+        re_seen = list(diff.get("re_seen") or [])
+    else:  # F11 legado — tupla de IDs (sem classificação por URL)
+        new_ids, gone_ids = diff
+        genuine = [job for job in current if job.get("id") in new_ids]
+        re_seen = []
     if not new_ids:
         lines = ["🆕 Novas desde ontem: 0 (nenhuma vaga nova no dataset)"]
         if gone_ids:
             lines.append(f"({len(gone_ids)} vaga(s) saíram do dataset)")
         return lines
-    lines = [f"🆕 Novas desde ontem: {len(new_ids)}"]
+    # evento de dataset: contagem ÚNICA — honesta no dict F107 (genuínas),
+    # por ID no tupla F11 (comportamento exato da F11, byte a byte)
+    big_count = (len(genuine) if isinstance(diff, dict) else len(new_ids))
     if len(new_ids) >= big_diff:
+        lines = [f"🆕 Novas desde ontem: {big_count}"]
         lines.append(
             "(evento de dataset novo — onboarding de fonte; o dia a dia "
             "volta no próximo run)"
         )
         return lines
-    # F93 — cap de empresa no corte listado (regra do site): as novas em
-    # ordem oficial passam pelo apply_company_cap com o MESMO teto da
-    # seção (``max_shown``) — máx. 2/empresa entre as listadas.
-    candidates = [job for job in current if job.get("id") in new_ids]
-    picked = _company_capped(candidates, limit=max_shown)
+    # F11 legado (tupla): a contagem do header é a da F11 (por ID) — o
+    # formato novo só acrescenta a fatia Top-30; dict F107: TOTAL honesto.
+    header_count = len(new_ids) if not isinstance(diff, dict) else len(genuine)
+    m_top = top_new_count(current, genuine, top=top)
+    header = f"🆕 Novas desde ontem: {header_count} nova(s) ({m_top} no Top-30"
+    if new_list_path:
+        header += f" · lista completa: {new_list_path}"
+    lines = [header + ")"]
+    # F93 — cap de empresa no corte listado (regra do site): as novas
+    # GENUÍNAS em ordem oficial passam pelo apply_company_cap com o MESMO
+    # teto da seção (``max_shown``) — máx. 2/empresa entre as listadas.
+    # Re-sightings (IDs reciclados) não entram no corte: não são novas.
+    picked = _company_capped(genuine, limit=max_shown)
     for shown, job in enumerate(picked, 1):
         url = _apply_url_of(job) or "—"
         # F103 — sufixo de re-post/twin na linha 🆕 (display-only)
         repost_suffix = format_repost_suffix(job)
+        # F107 — sufixo ⏳ de pão-velho (stale_posting F94 surfacing)
+        stale_suffix = format_stale_suffix(job)
         lines.append(
             f"  {shown}. {_short_title(job)} — "
             f"{job.get('company') or '—'} — {_score_text(job.get('score'))} "
-            f"— {url}{repost_suffix}"  # F12.5: URL inteira, NUNCA clipada (link quebrado = 404)
+            f"— {url}{repost_suffix}{stale_suffix}"  # F12.5: URL inteira, NUNCA clipada
         )
-    if len(new_ids) > len(picked):
-        lines.append(f"  (+{len(new_ids) - len(picked)} outras novas — ver página)")
+    if len(genuine) > len(picked):
+        lines.append(f"  (+{len(genuine) - len(picked)} outras novas — ver página)")
+    if re_seen:
+        lines.append(
+            f"  (+{len(re_seen)} re-sightings de IDs reciclados — "
+            "mesma vaga, não contam como novas)"
+        )
     return lines
+
+
+# ---------------------------------------------------------------------------
+# F107 — artefato data/NEW-<date>.md: a lista COMPLETA das novas (todas, não
+# só o Top-30), gravada pelo refresh_daily no mesmo estágio do MANUAL-CHECK.
+# O Telegram tem cap físico de 4096 chars — a lista inteira vive no ARQUIVO;
+# o digest mostra o TOTAL + a fatia Top-30 + o ponteiro.
+# ---------------------------------------------------------------------------
+
+
+def new_list_markdown(
+    postings_diff: dict,
+    current: list[dict],
+    *,
+    previous_name: str,
+    generated_at: str,
+    top: int = DIGEST_TOP,
+) -> str:
+    """Conteúdo markdown do artefato ``data/NEW-<date>.md`` (F107; pura).
+
+    1 linha por vaga GENUINAMENTE nova (URL ausente do snapshot anterior),
+    em ordem oficial: ``empresa · cargo · local · score · link direto`` +
+    ⏳ + idade nos pães-velhos (F94) + comentário ``<!-- id:... -->`` para
+    cruzar com o registro de triagem (mesmo padrão do MANUAL-CHECK).
+    Re-sightings (mesma URL, ID reciclado) NÃO são listados — não são
+    novas; entram só na contagem do cabeçalho. Link = ``_apply_url_of``
+    (raw.apply_url com fallback job.url — o "link direto" da página).
+    Vazio (nenhuma genuína) => ``""``: o chamador NÃO grava arquivo.
+    """
+    genuine = list(postings_diff.get("genuinely_new") or [])
+    re_seen = list(postings_diff.get("re_seen") or [])
+    if not genuine:
+        return ""
+    m_top = top_new_count(current, genuine, top=top)
+    breakdown = [f"{m_top} no Top-30"]
+    if re_seen:
+        breakdown.append(
+            f"{len(re_seen)} re-sightings de IDs reciclados (não listadas)"
+        )
+    head = [
+        "# Novas do refresh — lista completa",
+        "",
+        f"_Gerado em {generated_at} (run diário, F107). Diff URL-honesto de "
+        f"eligible_jobs.json × {previous_name}/eligible_jobs.json — IDs "
+        "reciclados da mesma URL não contam como novas (identidade = "
+        "normalize_url do dedup F5)._",
+        "",
+        f"**{len(genuine)} novas** ({' · '.join(breakdown)}) — o 🆕 do "
+        "digest mostra este total + a fatia Top-30; a lista abaixo é "
+        "completa (não só o Top-30).",
+        "",
+    ]
+    for i, job in enumerate(genuine, 1):
+        company = str(job.get("company") or "—").strip() or "—"
+        title = " ".join(str(job.get("title") or "").split()) or "sem título"
+        location = str(job.get("location") or "—").strip() or "—"
+        url = _apply_url_of(job) or "—"
+        line = (f"{i}. {company} · {title} · {location} · "
+                f"{_score_text(job.get('score'))} · {url}")
+        line += format_stale_suffix(job)
+        jid = str(job.get("id") or "").replace("--", "__")
+        head.append(f"{line} <!-- id:{jid} -->")
+    return "\n".join(head) + "\n"
 
 
 # ---------------------------------------------------------------------------
@@ -1635,6 +1864,7 @@ def digest_sections(
     intel_freshness_paths: tuple | None = None,
     excluded_ids: set[str] | None = None,
     visa_countdown: bool = True,
+    new_list_path: str | None = None,
 ) -> list[str] | None:
     """Secoes do digest do Telegram; ``None`` quando nao ha ranking atual.
 
@@ -1643,6 +1873,15 @@ def digest_sections(
     a ultima linha). ``previous_path`` e o snapshot da rotacao (ranking do
     run anterior); sem snapshot (primeiro run), o digest avisa que a
     comparacao comeca no proximo run — nunca trata todo o Top 30 como novo.
+
+    F107 — ``new_list_path`` = display do artefato ``data/NEW-<date>.md``
+    (lista completa das novas, gravado pelo refresh_daily no mesmo estágio
+    do MANUAL-CHECK). A seção 🆕 "Novas desde ontem" passa a mostrar o
+    TOTAL REAL de postagens genuinamente novas (diff URL-honesto:
+    ``new_postings_diff`` — IDs reciclados da mesma URL não contam), a
+    fatia ``(M no Top-30)`` com o escopo explicito e o ponteiro do arquivo;
+    pães-velhos (``stale_posting`` F94) ganham ⏳ + idade. O radar F13
+    segue no diff F11 por ID (alerta de empresa-alvo, fora do escopo F107).
 
     F103: flag de re-post/twin (display-only) — jobs do run atual cuja chave
     (titulo_norm + empresa_norm + local_norm) existia no run anterior ganham
@@ -1719,6 +1958,15 @@ def digest_sections(
     except Exception:  # noqa: BLE001 — flag nunca derruba o digest
         pass
 
+    # F107 — diff URL-honesto das novas (UMA computação, usada pela fatia
+    # Top-30 e pela seção 🆕 "Novas desde ontem"): IDs reciclados da mesma
+    # URL (re-index do ATS, flip do dedup cross-fonte) não são novas.
+    previous_for_diff = load_ranking_or_none(previous_path)
+    postings_diff = new_postings_diff(current, previous_for_diff)
+    genuine_ids: set = (
+        {j.get("id") for j in postings_diff["genuinely_new"]}
+        if postings_diff is not None else set())
+
     lines: list[str] = [""]
     lines.extend(profile_lines(country_spec))
 
@@ -1757,6 +2005,10 @@ def digest_sections(
         lines.extend(_top5_section(current, excluded_ids=excluded))
     else:
         novas = new_top_entries(current, previous, top=top)
+        # F107 — a fatia Top-30 segue o MESMO diff URL-honesto da seção 🆕:
+        # re-sightings (mesma URL, ID reciclado) não são "novas vagas".
+        novas = [(pos, job) for pos, job in novas
+                 if job.get("id") in genuine_ids]
         lines.append("")
         lines.extend(_novas_section(novas, country_spec))
         lines.append("")
@@ -1789,23 +2041,27 @@ def digest_sections(
     # o dono). Falha em qualquer secao nova NUNCA derruba o digest.
     ns_hidden: list[dict] = []  # F93 — ocultas do cap na seção 🆕
     try:
-        previous_for_diff = load_ranking_or_none(previous_path)
-        diff = new_since_previous(current, previous_for_diff)
-        ns_lines = new_since_lines(diff, current)
+        # F107 — header carrega o TOTAL real (genuínas) + a fatia Top-30
+        # (escopo explicito) + o ponteiro do artefato data/NEW-<date>.md
+        # (quando o run gravou a lista completa).
+        ns_lines = new_since_lines(postings_diff, current, top=top,
+                                   new_list_path=new_list_path)
         if ns_lines:
             lines.append("")
             lines.extend(ns_lines)
         # F93 — ocultas do cap da 🆕: MESMA janela que a seção lista
         # (diff válido, contagem < big_diff — quando a seção mostra SÓ
-        # a contagem não há lista que o cap desloque). Mesma fonte do
-        # corte interno de new_since_lines (ordem oficial ∩ new_ids) —
-        # o teste trava a igualança.
-        if diff is not None:
-            ns_new_ids = diff[0]
-            if ns_new_ids and len(ns_new_ids) < NEW_SINCE_BIG_DIFF:
+        # a contagem não há lista que o cap desloque). F107: mesma fonte
+        # do corte interno de new_since_lines (as GENUÍNAS em ordem
+        # oficial — re-sightings não entram no corte) — o teste trava a
+        # igualança.
+        if postings_diff is not None:
+            genuine = postings_diff.get("genuinely_new") or []
+            if (genuine
+                    and len(postings_diff.get("new_ids") or set())
+                    < NEW_SINCE_BIG_DIFF):
                 ns_hidden = company_cap_hidden(
-                    [j for j in current if j.get("id") in ns_new_ids],
-                    limit=NEW_SINCE_MAX_SHOWN)
+                    genuine, limit=NEW_SINCE_MAX_SHOWN)
     except Exception:  # noqa: BLE001 — secao nova nunca derruba o digest
         pass
     try:

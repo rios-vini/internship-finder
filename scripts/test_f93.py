@@ -204,9 +204,11 @@ def test_b_monopoly() -> None:
         check("B4 display-only: contagem do run intacta (8 elegíveis)",
               "(8 vagas elegíveis)" in text)
         # B5: 🆕 desde ontem sem repetição -> intacta (3 novas listadas)
+        # F107: header ganhou "nova(s) (M no Top-30)" — contagem/fatia intactas
         ns = rg.new_since_section_lines(sec or [])
         check("B5 🆕 intacta quando as novas são distintas (3 listadas)",
-              ns[0] == "🆕 Novas desde ontem: 3" and len(ns) == 4)
+              ns[0] == "🆕 Novas desde ontem: 3 nova(s) (3 no Top-30)"
+              and len(ns) == 4)
 
 
 # ---------------------------------------------------------------------------
@@ -243,8 +245,9 @@ def test_c_regressao() -> None:
               [l.split(" — ")[1].split(" (")[0] for l in resumo]
               == [f"Firma {i} GmbH" for i in range(5)])
         ns = rg.new_since_section_lines(sec or [])
+        # F107: header honesto — contagem + fatia (escopo explicito)
         check("C4 🆕 intacta: 3 novas distintas listadas (sem cap, sem ocultas)",
-              ns[0] == "🆕 Novas desde ontem: 3"
+              ns[0] == "🆕 Novas desde ontem: 3 nova(s) (3 no Top-30)"
               and "Firma 5 GmbH" in ns[1] and "ocultas" not in "\n".join(ns))
 
 
@@ -357,9 +360,10 @@ def test_f_watchlist_newsince() -> None:
         check("F2 ⚡ capped: 2 Lidl no corte",
               len([l for l in t5 if "— Lidl — " in l]) == 2)
         # F3: 🆕 top-3 com cap — 2 Lidl + 1 Bosch; contagem exata (7)
+        # F107: header honesto — contagem + fatia (escopo explicito)
         ns = rg.new_since_section_lines(sec or [])
         check("F3 🆕 top-3 com cap: 2 Lidl + Bosch; contagem exata 7",
-              ns[0] == "🆕 Novas desde ontem: 7"
+              ns[0] == "🆕 Novas desde ontem: 7 nova(s) (7 no Top-30)"
               and "Lidl" in ns[1] and "Lidl" in ns[2] and "Bosch" in ns[3]
               and "(+4 outras novas — ver página)" in ns[-1])
         # F4: linha de ocultas = UNIÃO por id (l2 oculta no ⚡ E na 🆕 = 1;
@@ -373,14 +377,14 @@ def test_f_watchlist_newsince() -> None:
         ns4 = rg.new_since_lines(({j["id"] for j in four}, set()),
                                  four + [_job("b", "Bosch", 1.0)])
         check("F5 4 novas Lidl -> 2 listadas; contagem 4; (+2 outras)",
-              ns4[0] == "🆕 Novas desde ontem: 4"
+              ns4[0] == "🆕 Novas desde ontem: 4 nova(s) (4 no Top-30)"  # F107: header honesto
               and len([l for l in ns4 if "Lidl" in l]) == 2
               and any("(+2 outras novas" in l for l in ns4))
         check("F6 sem repetição a 🆕 é byte a byte a de antes (3 distintas)",
               rg.new_since_lines(({"a", "b", "c"}, set()),
                                  [_job("a", "A", 3.0), _job("b", "B", 2.0),
                                   _job("c", "C", 1.0)])
-              == ["🆕 Novas desde ontem: 3",
+              == ["🆕 Novas desde ontem: 3 nova(s) (3 no Top-30)",  # F107: header honesto
                   "  1. Praktikum Einkauf — A — 3 — https://apply.com/a",
                   "  2. Praktikum Einkauf — B — 2 — https://apply.com/b",
                   "  3. Praktikum Einkauf — C — 1 — https://apply.com/c"])
