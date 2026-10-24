@@ -1,60 +1,21 @@
 #!/usr/bin/env python3
-"""Test F113 — visa-friendly count no dashboard bate com o JSON (fonte única de verdade).
+"""Testes da Fase F113 — visa_friendly count: fonte única de verdade
+(100% offline, HERMÉTICO — sem dependência de data/, que é git-ignored
+e não existe no checkout do CI; o teste original lia data/eligible_jobs.json
+direto e quebraria qualquer checkout limpo).
 
-O contador do rodapé (n_vf) deve ser igual à contagem de visa_friendly=True
-no eligible_jobs.json completo — não ao subconjunto exibido (shown), que
-sofre cap 2/empresa, remoção de dead links, etc.
-
-Fixture: usa o eligible_jobs.json real do data/ (688 vagas, 237 visa_friendly).
-O teste roda o render_minimal_html e verifica que o rodapé contém "237".
+Origem: varredura 237 — dashboard 235 × JSON 237. Causa medida: o contador
+somava `shown` (cap 2/empresa + dead links) em vez da lista COMPLETA.
+Evidência real (23/10, documentação não-fixture): eligible 688 vagas,
+237 visa_friendly; shown exibia 235 → drift. A verificação end-to-end com
+o JSON real roda na bateria do orquestrador (produção tem data/).
 """
-
 from __future__ import annotations
-
-import json
 from pathlib import Path
 import sys
-
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-
 import minimal_page
-
-
-def test_f113_visa_friendly_count_matches_json() -> None:
-    """O n_vf do rodapé deve bater com visa_friendly do eligible_jobs.json."""
-    # Carrega o JSON real (fonte de verdade)
-    eligible_path = ROOT / "data" / "eligible_jobs.json"
-    with eligible_path.open(encoding="utf-8") as fh:
-        jobs = json.load(fh)
-
-    # Contagem direta do campo visa_friendly (já preenchido pelo pipeline)
-    expected_vf = sum(1 for j in jobs if j.get("visa_friendly") is True)
-    total_eligible = len(jobs)
-
-    # Render minimal page (full-list regime, como no publish)
-    html = minimal_page.render_minimal_html(
-        jobs=jobs,
-        total_eligible=total_eligible,
-        generated_at="2026-10-24 07:00",
-        full_list=True,
-        lang="en",  # publish usa EN
-    )
-
-    # O rodapé EN contém: "{shown} · {n_vf} with 🛂 (employer with a stated visa policy)..."
-    # Verifica se o n_vf esperado aparece no HTML
-    expected_marker = f"{expected_vf} with 🛂"
-    assert expected_marker in html, (
-        f"Rodapé não contém a contagem visa_friendly esperada ({expected_vf}). "
-        f"Procurado: '{expected_marker}'"
-    )
-
-    # Também verifica que NÃO aparece o valor antigo incorreto (235)
-    assert "235 with 🛂" not in html, "Valor antigo (drift) ainda presente no rodapé"
-
-    print(f"✓ F113 OK: visa_friendly count = {expected_vf} (bate com JSON)")
-
-
 def test_f113_contador_nao_usa_shown() -> None:
     """Garante que o contador n_vf usa 'jobs' (lista completa) e não 'shown'."""
     # Cria jobs sintéticos: 10 vagas, 5 visa_friendly
