@@ -98,7 +98,8 @@ Analytics, in Germany (primary, ~74% of the current eligible volume)
 plus Luxembourg, Netherlands, Finland and Belgium. **Applicability** then removes
 postings that are technically eligible but not applicable to one
 specific candidate (German-required, native-language requirements,
-EU-national-only, Dutch-university enrollment, master-level targets,
+EU-national-only, Dutch-university enrollment, **EU-university enrollment**,
+German-university enrollment, master-level targets,
 recent-graduate targets, >6-month durations, visa-blocked, thesis titles,
 pure Werkstudent, prior-experience requirements) — each exclusion reason is counted and
 logged, never silently dropped. Postings whose hydrated description later
@@ -235,6 +236,11 @@ sources are files in this repo.
 | **147** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **227** | commits, one feature PR per change (git log, first-parent) |
+
+**F112 (2026-10-24)** — GO/NO-GO measurement for blind hydration extension:
+- **arbeitsagentur (MTU 7×, refnr 12951-*)**: NO-GO — 7/7 pages return HTTP 200 soft-404 (homepage, no JobPosting JSON-LD)
+- **KPMG portal (4×, jobs.kpmg.de)**: NO-GO — 4/4 pages return SuccessFactors SPA shell (JS-heavy, no JobPosting JSON-LD, no "Sehr gute Deutschkenntnisse" phrase)
+- Result: `BLIND_HYDRATION_SOURCES` unchanged (`absolventa`, `praktikum_info`), pattern F91 (bundesagentur 74/74 NO-GO)
 
 ## Tech stack
 
