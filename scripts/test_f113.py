@@ -49,6 +49,19 @@ def test_f113_contador_nao_usa_shown() -> None:
     print("✓ F113 OK: contador ignora cap/empresa e lê do JSON completo")
 
 
+def test_f113_codigo_usa_jobs_nao_shown() -> None:
+    """Guard de fonte: a linha do contador soma sobre 'jobs', não 'shown'."""
+    src = Path(__file__).resolve().parent.parent.joinpath(
+        "scripts", "minimal_page.py").read_text(encoding="utf-8")
+    linha = [l for l in src.splitlines() if "n_vf = sum(" in l]
+    assert linha, "linha 'n_vf = sum(' não encontrada no minimal_page.py"
+    assert any("for j in jobs" in l for l in linha), (
+        "contador n_vf não soma sobre 'jobs' (lista completa) — regressão "
+        "para 'shown' reintroduziria o drift 235×237"
+    )
+    print("✓ F113: guard de fonte — contador soma sobre 'jobs'")
+
+
 if __name__ == "__main__":
     test_f113_contador_nao_usa_shown()
     test_f113_codigo_usa_jobs_nao_shown()
