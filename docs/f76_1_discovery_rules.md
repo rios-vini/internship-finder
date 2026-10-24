@@ -196,3 +196,64 @@ suíte é OFFLINE e consome fixtures verbatim do registro.
   "Studium an einer deutschen Hochschule", Avery "enrolled at a Dutch
   university" — exclusão F99 / card F106) e menções genéricas de acordo
   (boilerplate "can provide an internship agreement") NÃO acendem.
+
+### 6.4 CSOD — padrão geral `/home/requisition/<ID>` vs `/job/<ID>` (F108, 23/10/2026)
+
+**Evidência medida (relatório 23/10 §5.3/5.4 + GO#2/#4):**
+- URLs `/job/<ID>` da Luxair/Henkel no CSOD redirecionam para ADFS/SAML
+  (login wall) — **NUNCA linkar diretamente** (o alvo final é a página
+  do IdP, não a vaga).
+- Formato VIVO: `/home/requisition/<ID>?c=<tenant>&lang=...` — a vaga
+  abre normalmente (ex.: Luxair req5377 ALIVE medido 23/10).
+- Portal oficial `luxair.lu/en/careers` dá 404 — **sempre usar o link
+  CSOD direto** (tenant `luxair` / `henkel`).
+- **Regra geral documentada**: portais CSOD linkam por `requisition`,
+  **nunca** por `/job/` (ADFS = login wall).
+
+Guard executável (camada por tenant do F105, mesma estrutura Vetter):
+- `discovery_rules.TENANT_JOB_URL_FORMATS["luxair"]` — current:
+  `csod.com/.../home?c=luxair&...` | legacy: `csod.com/.../job/<ID>`
+- `discovery_rules.TENANT_JOB_URL_FORMATS["henkel"]` — current:
+  `csod.com/.../home?c=henkel&...` | legacy: `csod.com/.../job/<ID>`
+- `job_url_format_status(url)` → `"current"` | `"legacy_dead"` | `None`
+
+Fixtures verbatim (registro 23/10):
+- Luxair req5377: `https://luxair.csod.com/ux/ats/careersite/1/home?c=luxair&lang=en&requisitionId=5377` (ALIVE)
+- Luxair req5376: `https://luxair.csod.com/ux/ats/careersite/1/home?c=luxair&lang=en&requisitionId=5376` (ALIVE)
+- Henkel csod ×4: mesmo padrão `c=henkel` (reforça SAML case F94)
+
+### 6.5 Wilhelm Fricke — site oficial morto → canal absolventa (F108, 23/10/2026)
+
+- Empresa: Wilhelm Fricke (absolventa ID 13461829, GO).
+- Site oficial `wilhelm-fricke.com`: **certificado EXPIRADO** (fora do ar)
+  — medido 23/10/2026.
+- Listing no absolventa: **ATIVO** (liveness OK, medido).
+- **Doutrina F96 aplicada**: o link direto do MANUAL-CHECK aponta para o
+  **canal VIVO** (absolventa), não para o site oficial morto.
+- Metadata em `manual_check.TENANT_PORTAL_METADATA["fricke"]`:
+  `site_morto` (data + detalhe) + `canal_vivo` (absolventa) + `note`.
+
+### 6.6 Heurística EURES → ATS (Workday) documentada (F108, 23/10/2026)
+
+**Contexto**: EURES às vezes não expõe link de aplicação direto (guid
+base64 opaco). Quando isso ocorre, a triagem humana pode rastrear a
+vaga no Workday/ATS oficial da empresa.
+
+**Receita (heurística de triagem humana — medida funcionando no TTI):**
+1. Extrair do EURES: **título da vaga** + **cidade/país** (o guid EURES
+   não é açãoável direto).
+2. Buscar no Workday da empresa (ex.: `tti.wdX.myworkdayjobs.com/...`)
+   pelo título normalizado + cidade.
+3. Confirmar match: título idêntico (ou variação trivial) + mesma cidade
+   + descrição consistente → vaga oficial rastreada.
+
+**Exemplo medido (TTI, 23/10/2026):**
+- EURES guid (base64) → **Workday JR4997** rastreada.
+- Heurística "título + cidade" funcionou: a vaga no Workday tem o
+  mesmo título e cidade do registro EURES.
+- **Não-escopo**: rastreamento automático EURES→Workday (é heurística
+  de triagem humana por enquanto — documentar primeiro).
+
+**Fixture verbatim (TTI EURES→Workday):**
+- EURES: guid base64 (opaco, sem apply direto)
+- Workday: `https://tti.wd5.myworkdayjobs.com/TTI/job/.../JR4997` (ALIVE)

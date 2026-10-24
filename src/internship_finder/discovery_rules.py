@@ -533,6 +533,40 @@ TENANT_JOB_URL_FORMATS: dict[str, TenantJobUrlFormat] = {
             "(career5.successfactors.eu, company=Vetter); sem geoblock"
         ),
     ),
+    # F108 (23/10/2026) — padrão CSOD: /home/requisition/<ID>?c=<tenant>...
+    # é o formato VIVO; /job/<ID> redireciona para ADFS (login wall) e
+    # NUNCA deve ser linkado diretamente. Portal luxair.lu/en/careers = 404.
+    "luxair": TenantJobUrlFormat(
+        tenant="Luxair",
+        ats="cornerstone",
+        current=re.compile(
+            r"https://[^/]+\.csod\.com/ux/ats/careersite/\d+/home\?c=luxair&[^#]*"),
+        legacy=(
+            re.compile(r"https://[^/]+\.csod\.com/ux/ats/careersite/\d+/job/\d+/?"),
+        ),
+        evidence=(
+            "registro 23/10/2026: Luxair csod — /job/<ID> (ex. req5377/5376) "
+            "redireciona para ADFS (login wall); vivo = "
+            "/home/requisition/<ID>?c=luxair&lang=... (req5377 ALIVE medido); "
+            "portal luxair.lu/en/careers = 404 -> sempre link csod direto; "
+            "padrão csod geral: link por requisition, NUNCA por /job/ (ADFS)"
+        ),
+    ),
+    "henkel": TenantJobUrlFormat(
+        tenant="Henkel",
+        ats="cornerstone",
+        current=re.compile(
+            r"https://[^/]+\.csod\.com/ux/ats/careersite/\d+/home\?c=henkel&[^#]*"),
+        legacy=(
+            re.compile(r"https://[^/]+\.csod\.com/ux/ats/careersite/\d+/job/\d+/?"),
+        ),
+        evidence=(
+            "registro 23/10/2026: Henkel csod ×4 (F96/SAML case F94) — "
+            "/job/<ID> redireciona para ADFS/SAML (login wall); vivo = "
+            "/home/requisition/<ID>?c=henkel&lang=...; padrão csod geral "
+            "documentado: portais csod linkam por requisition, nunca por /job/"
+        ),
+    ),
 }
 
 

@@ -266,11 +266,19 @@ OFFICIAL_PORTAL_HOSTS = ("createyourowncareer.com",)
 # roda no SmartRecruiters corporativo (formulário abre do Brasil). O
 # portal preference abaixo usa os hosts; este mapa documenta a rota
 # completa para o drift-check da doc de providers.
+# F108 (23/10/2026) — Wilhelm Fricke (13461829 absolventa): site da empresa
+# com certificado EXPIRADO (fora do ar) — canal vivo é absolventa.
+# Doutrina F96: link direto do MANUAL-CHECK aponta pro canal VIVO.
 TENANT_PORTAL_METADATA = {
     "bertelsmann": {
         "aggregator": "www.absolventa.de (geoblock medido do Brasil)",
         "official_portal": "jobsearch.createyourowncareer.com",
         "apply": "jobs.smartrecruiters.com/Bertelsmann-Jobs/",
+    },
+    "fricke": {
+        "site_morto": "wilhelm-fricke.com (cert expirado 23/10/2026 — fora do ar)",
+        "canal_vivo": "absolventa.de (listing 13461829 ATIVO medido)",
+        "note": "site oficial morto -> link direto aponta pro canal vivo absolventa (F96)",
     },
 }
 
