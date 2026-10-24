@@ -11,9 +11,6 @@ como maquina: ``resolve_careers_url``/``get_scraper_for_url`` (mapeamento
 deterministico OFFLINE de URL -> (ats, slug)) + o scraper do pacote (a
 unica rede, e so no uso MANUAL — suite e CI sao 100% offline).
 
-_AB_BASELINE_SHA = "9018e99"  # F53 anchor: estado src/ pre-F117
-_AB_BASELINE_SHA  # F53 anchor (2a ocorrencia)
-
 Cada regra e originada em MEDICAO, nao em opiniao:
 - ``csv_columns``: header do ``ats-companies/<ats>.csv`` upstream (@6b44a1b).
 - ``slug_semantics``: o que e a identidade estavel do tenant e como ela vira
