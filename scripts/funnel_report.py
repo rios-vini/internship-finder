@@ -334,19 +334,27 @@ def seasonality_summary(jobs: list[dict]) -> dict:
     ``work_auth_flagged`` = vagas com nível right_to_work_required do
     campo 3-níveis (ITENS ITEM 2 — display-only, a exclusão F61 segue
     intacta; import LAZY de app_intel, best-effort: módulo ausente ->
-    contagem ausente, nunca erro)."""
+    contagem ausente, nunca erro).
+
+    F109: ``ambiguous_start`` = vagas com 'ab <mês>' SEM ano (flag
+    informativa, NÃO conflito).
+    """
     texts = [seasonality.job_window_text(j) for j in jobs]
     calendar = seasonality.seasonality_calendar(texts)
     too_early = 0
     too_late = 0
+    ambiguous_start = 0
     for j in jobs:
         sc = seasonality.start_conflict_of(j)
         if not sc:
-            continue
-        if sc.get("conflict") == "TOO_EARLY":
+            pass
+        elif sc.get("conflict") == "TOO_EARLY":
             too_early += 1
         elif sc.get("conflict") == "TOO_LATE":
             too_late += 1
+        # F109: flag ambígua (independente do conflito)
+        if seasonality.start_date_ambiguous_of(j):
+            ambiguous_start += 1
     work_auth_flagged = None
     try:
         from internship_finder import app_intel as _ai
@@ -364,6 +372,7 @@ def seasonality_summary(jobs: list[dict]) -> dict:
         "immediate_context": seasonality.immediate_context_count(texts),
         "too_early": too_early,
         "too_late": too_late,
+        "ambiguous_start": ambiguous_start,  # F109
     }
     if work_auth_flagged is not None:
         out["work_auth_flagged"] = work_auth_flagged

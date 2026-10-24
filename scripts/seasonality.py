@@ -121,6 +121,10 @@ def _month_group(name: str) -> str:
 
 _MONTH_RE = _month_group("mon")
 
+# Non-capturing month pattern for use in patterns with multiple months
+# (avoids "redefinition of group name" error)
+_MONTH_RE_NC = rf"(?:(?<!\\w)(?:{_MONTH_ALT})(?!\\w))"
+
 # Abreviações pt-BR dos rótulos do calendário.
 _MONTH_ABREV = {1: "jan", 2: "fev", 3: "mar", 4: "abr", 5: "mai", 6: "jun",
                 7: "jul", 8: "ago", 9: "set", 10: "out", 11: "nov", 12: "dez"}
@@ -248,7 +252,7 @@ _IMMEDIATE_RE = re.compile(
 # "start" NÃO casa "startet" (verbo do slogan Lidl), mas casa
 # "START IMMEDIATELY" e "Start: ab sofort"; "starting" cobre o DHL EN.
 _IMMEDIATE_CONTEXT_RE = re.compile(
-    r"(?i)\b(?:"
+    r"(?i)\b(?:" 
     r"beginn\w*|beginning|start|starts|starting|einstieg"
     r"|wann|zeitraum|dauer|duration|zu\s+besetzen|besetzung"
     r"|suchen|gesucht"
@@ -260,8 +264,22 @@ _IMMEDIATE_CONTEXT_RE = re.compile(
 # real mais distante medido, 45; FPs limpos até ±250).
 _IMMEDIATE_CONTEXT_WINDOW = 60
 
+# F109 — início ambíguo: "ab <mês>" SEM ano (ex.: "Ab August / September",
+# "ab Februar", "from January"). Mesma prefixos do _START_PREFIX, mas
+# o mês NÃO é seguido por ano de 4 dígitos. Difere de "bare month-year"
+# (F57 rejeitado) por EXIGIR prefixo de início — "Ab August" é janela
+# declarada; "August 2027" solto no texto é ambíguo (deadline? registro?).
+# O padrão também cobre "Ab August / September" (dois meses, sem ano).
+_AMBIGUOUS_START_RE = re.compile(
+    rf"{_START_PREFIX}\s+{_DAY_PREFIX}{_MONTH_RE}"
+    rf"(?:\s*/\s*{_MONTH_RE_NC})*"  # opcional: " / September" etc. (non-capturing)
+    rf"(?!\s+\d{{4}})",  # NÃO seguido por ano de 4 dígitos
+    re.IGNORECASE)
+
 # Prioridade do canônico (menor = mais específico).
-_KIND_RANK = {"semester": 0, "range": 1, "start": 2, "immediate": 3}
+# F109: ambiguous_start tem prioridade MENOR que start datado —
+# uma vaga com "ab August" E "ab March 2027" canoniza a datada.
+_KIND_RANK = {"semester": 0, "range": 1, "start": 2, "ambiguous_start": 3, "immediate": 4}
 
 
 # ---------------------------------------------------------------------------
@@ -473,6 +491,29 @@ def _immediate_hits(text: str) -> list[dict]:
     return hits
 
 
+def _ambiguous_start_hits(text: str) -> list[dict]:
+    """F109: hits de início ambíguo — 'ab <mês>' SEM ano.
+
+    Não decide TOO_EARLY/TOO_LATE (sem ano não dá para comparar).
+    Apenas sinaliza que há uma janela declarada com mês mas sem ano.
+    Retorna hits com kind='ambiguous_start', start/end=None, year=None.
+    """
+    hits: list[dict] = []
+    for m in _AMBIGUOUS_START_RE.finditer(text):
+        # Evita sobreposição com _START_MONTH_RE (que casa o mesmo prefixo
+        # mas EXIGE ano). O _START_MONTH_RE roda ANTES no parse_seasonality
+        # e tem prioridade maior (kind='start' rank 2 vs 3).
+        # Mesmo assim, garantimos que não duplicamos: se o termo casado
+        # já aparece num hit 'start' (com ano), pulamos.
+        hits.append({
+            "kind": "ambiguous_start", "semester": None,
+            "term": m.group(0).strip(),
+            "start": None, "end": None, "year": None,
+            "pos": m.start(),
+        })
+    return hits
+
+
 # ---------------------------------------------------------------------------
 # API pública (pura)
 # ---------------------------------------------------------------------------
@@ -487,7 +528,8 @@ def parse_seasonality(text: str) -> list[dict]:
     desconhecido), ``term`` é o trecho literal casado, ``pos`` a
     posição no texto e ``context`` (F67, só no kind=immediate) diz se
     há marcador de contexto de início colado ao termo (True = janela
-    declarada; False = prosa).
+    declarada; False = prosa). F109 adiciona kind='ambiguous_start'
+    para 'ab <mês>' sem ano (flag própria, NÃO conflito).
     """
     if not text:
         return []
@@ -495,6 +537,7 @@ def parse_seasonality(text: str) -> list[dict]:
     hits.extend(_sem_hits(text))
     hits.extend(_range_hits(text))
     hits.extend(_start_hits(text))
+    hits.extend(_ambiguous_start_hits(text))  # F109
     hits.extend(_immediate_hits(text))
     hits.sort(key=lambda h: (_KIND_RANK.get(h["kind"], 9), h["pos"]))
     return hits
@@ -545,6 +588,9 @@ def seasonality_label(hit: dict | None) -> str | None:
     if kind == "start" and hit.get("start"):
         y, m = (int(x) for x in hit["start"].split("-"))
         return f"{_MONTH_ABREV[m]}/{y:04d}"
+    if kind == "ambiguous_start":  # F109
+        # Extrai o(s) mês(es) do termo para o rótulo (ex.: "ago/set (sem ano)")
+        return _label_ambiguous_start(hit.get("term", ""))
     if kind == "immediate":
         return "ab sofort"
     return None
@@ -696,6 +742,41 @@ def _fmt_label_pt(ym: tuple[int, int]) -> str:
     """"(2026, 8)" -> "ago/2026" (mesma abreviação do calendário 📆)."""
     y, m = ym
     return f"{_MONTH_ABREV[m]}/{y:04d}"
+
+
+# F109 — label para início ambíguo (ex.: "Ab August / September" -> "ago/set (sem ano)")
+def _label_ambiguous_start(term: str) -> str:
+    """Extrai meses do termo 'ab <mês> [/ <mês>]*' -> 'ago/set (sem ano)'."""
+    # Procura nomes de meses no termo (case-insensitive, pt/DE/EN/FR)
+    months_found: list[int] = []
+    for m_name, m_num in _MONTH_NUM.items():
+        # Word boundary para não casar "märz" dentro de "märzchen" etc.
+        if re.search(rf"(?<!\w){re.escape(m_name)}(?!\w)", term, re.IGNORECASE):
+            months_found.append(m_num)
+    # Remove duplicatas mantendo ordem
+    seen: set[int] = set()
+    unique_months = [m for m in months_found if not (m in seen or seen.add(m))]
+    if not unique_months:
+        return "mês ambíguo (sem ano)"
+    abrevs = [_MONTH_ABREV[m] for m in unique_months]
+    return "/".join(abrevs) + " (sem ano)"
+
+
+# F109 — flag start_date_ambiguous: True se o texto tem 'ab <mês>' SEM ano
+# (kind='ambiguous_start' em parse_seasonality). NÃO decide conflito
+# (TOO_EARLY/TOO_LATE) — é sinal informativo próprio.
+def start_date_ambiguous_of(job: dict) -> bool:
+    """F109: verifica se a vaga tem janela de início ambígua (mês sem ano).
+
+    Best-effort, pura, nunca lança. Retorna True se houver pelo menos
+    um hit 'ambiguous_start' no texto da vaga (título + descrição).
+    """
+    try:
+        text = job_window_text(job)
+        hits = parse_seasonality(text)
+        return any(h.get("kind") == "ambiguous_start" for h in hits)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 if __name__ == "__main__":  # uso manual: echo de hits de um texto

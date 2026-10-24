@@ -145,6 +145,20 @@ direct link (redirect chains resolved to their final target), the
 reason and the first-sighting date. The queue is parallel: nothing
 leaves the ranking or the Top-5.
 
+**Temporal eligibility (F95/F109).** Every posting is scanned for its
+declared start window: German semesters (SoSe/WiSe), explicit date
+ranges, "ab <Month> <Year>" patterns, and "ab sofort" with context
+(F67). The canonical window is compared against the owner's availability
+(Jan–Sep 2027 per §16e visa) and flagged **display-only** as:
+`TOO_EARLY` (before Jan 2027), `IMMEDIATE` (ab sofort with context or
+ASAP formulas), `TOO_LATE` (after Sep 2027). **F109 adds `start_date_ambiguous`**:
+"ab <Month>" **without a year** (e.g. Lidl's "Ab August / September") gets
+its own flag — never decides TOO_EARLY/TOO_LATE because the year is
+unknown; the badge shows the months (e.g. "início ambíguo: ago/set — jan/2027?").
+Corpus measurement: 777 postings with "ab <Month>" no year. The IMMEDIATE
+flag already fires on 5/6 recurring Lidl "Ab sofort" repostings (the 6th
+has no description).
+
 **Ranking.** Deterministic, reproducible scoring (no ML) over the same
 eligible set, with a full per-component breakdown; ties broken by score
 → title → company → id. Two independent profiles rank it: the primary
@@ -215,7 +229,7 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **147 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-| **145** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+| **146** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **227** | commits, one feature PR per change (git log, first-parent) |
 
