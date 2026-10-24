@@ -308,7 +308,7 @@ REPO = Path(__file__).resolve().parent.parent
 # TENANT_EXCLUDES p/ cornerstone:kuehne-nagel + oracle:fa-exow-saasfaprod1/cx_1).
 # Padrão F56/F88/F100/F104/F105: âncora move para o HEAD do main
 # antes da fase (9018e99 = origin/main pré-F116).
-_AB_BASELINE_SHA = "9018e997a520dfb87af1212bb14f8c07d2025d8e"
+_AB_BASELINE_SHA = "c27ae95c6a65d8d2d944434fd3269519b40bd2c7"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
