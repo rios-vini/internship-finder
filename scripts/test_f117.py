@@ -14,11 +14,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Ensure src is importable
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Ensure src and scripts are importable
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 from internship_finder.discovery_rules import en_locale_variant
-from scripts.manual_check import build_manual_check_rows, write_manual_check_md
+import manual_check as mc  # noqa: E402
 
 
 def test_en_locale_variant_bmw_slug_suffix() -> None:
@@ -134,7 +136,7 @@ def test_manual_check_includes_en_variant() -> None:
         "liveness_final_url": None,
     }
     
-    rows = build_manual_check_rows([job_bmw])
+    rows = mc.build_manual_check_rows([job_bmw])
     assert len(rows) == 1
     row = rows[0]
     assert row["en_variant"] is not None
@@ -153,7 +155,7 @@ def test_manual_check_includes_en_variant() -> None:
         "liveness_final_url": None,
     }
     
-    rows = build_manual_check_rows([job_vetter])
+    rows = mc.build_manual_check_rows([job_vetter])
     assert len(rows) == 1
     row = rows[0]
     assert row["en_variant"] is None
@@ -180,7 +182,7 @@ def test_write_manual_check_md_includes_en_render_link() -> None:
     
     with tempfile.TemporaryDirectory() as tmpdir:
         out_path = Path(tmpdir) / "MANUAL-CHECK.md"
-        write_manual_check_md(out_path, rows, "2026-10-24T10:00:00Z")
+        mc.write_manual_check_md(out_path, rows, "2026-10-24T10:00:00Z")
         content = out_path.read_text(encoding="utf-8")
         
         # Verifica link principal
@@ -206,7 +208,7 @@ def test_manual_check_rwe_talentcommunity_en_render() -> None:
         "liveness_final_url": None,
     }
     
-    rows = build_manual_check_rows([job_rwe])
+    rows = mc.build_manual_check_rows([job_rwe])
     assert len(rows) == 1
     row = rows[0]
     assert row["en_variant"] == "https://jobs.rwe.com/talentcommunity/apply/789/?locale=en_GB"
@@ -214,7 +216,7 @@ def test_manual_check_rwe_talentcommunity_en_render() -> None:
     import tempfile
     with tempfile.TemporaryDirectory() as tmpdir:
         out_path = Path(tmpdir) / "MANUAL-CHECK.md"
-        write_manual_check_md(out_path, rows, "2026-10-24T10:00:00Z")
+        mc.write_manual_check_md(out_path, rows, "2026-10-24T10:00:00Z")
         content = out_path.read_text(encoding="utf-8")
         
         assert "[abrir (EN render)](https://jobs.rwe.com/talentcommunity/apply/789/?locale=en_GB)" in content
