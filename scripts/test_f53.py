@@ -308,7 +308,11 @@ REPO = Path(__file__).resolve().parent.parent
 # TENANT_EXCLUDES p/ cornerstone:kuehne-nagel + oracle:fa-exow-saasfaprod1/cx_1).
 # Padrão F56/F88/F100/F104/F105: âncora move para o HEAD do main
 # antes da fase (9018e99 = origin/main pré-F116).
-_AB_BASELINE_SHA = "c27ae95c6a65d8d2d944434fd3269519b40bd2c7"
+# F114 (24/10, pós-rebase sobre F116): src/ moveu (legacy-feed override
+# do lidlstiftuP2 em ats_scraper.py); âncora -> commit src/ REBASADO da
+# fase (0ce5a79) — diff HEAD↔âncora em src/ segue vazio (tests no commit
+# seguinte). Padrão 7d9d6da.
+_AB_BASELINE_SHA = "0ce5a7937fbab1cdb3dfff5382b961105d303540"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
