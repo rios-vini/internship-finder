@@ -529,6 +529,14 @@ APPLICABILITY_EXCLUSION_REASONS = (
     # medido: os 2 hits do eligible eram requisitos reais (Continental
     # REF99687I, novemcore) → EXCLUSÃO na cascata, mesma trilha F37.3.
     "de_enrolment_required",
+    # F111 (24/10): matrícula em universidade/HBO da UE — irmã das classes
+    # NL/DE acima (mesma cadeia F37.3, motivo próprio: a legenda NL é 🇳🇱,
+    # a DE é 🇩🇪 e a EU é 🇪🇺). Passo 0 medido: 10/10 spans reais
+    # (Bosch Mechelen ×7, Fraunhofer ×2, gospooky ×1) → EXCLUSÃO na
+    # cascata (não flag). Contra-casos: "based in EU", "work within the
+    # EU", "sales within the EU", "remote within the EU", "EU-based
+    # university" cooperativa, "studying in the EU" solto — 0 FP.
+    "eu_enrolment_required",
     "phd_position",
     "duration_over_6m",
     "duration_conflict",
@@ -770,6 +778,68 @@ _DE_ENROLMENT_RES = [
     re.compile(r"\bat\s+a\s+university\s+in\s+germany\b", re.IGNORECASE),
 ]
 
+# (2c) Matrícula em universidade da UE obrigatória (F111, 24/10) — irmã
+# das classes NL (F37) e DE (F106) acima: o dono é matriculado na UFSCar
+# (BR), então exigir matrícula em universidade/HBO de estado-membro da UE
+# é bloqueio duro da mesma família. Casos medidos (24/10, corpus inteiro
+# jobs.json 118.785 vagas): 7 spans Bosch Mechelen "University/College
+# must be located in a member state of the EU" + 2 spans Fraunhofer
+# "Enrolled student in Germany or within the EU" + 1 span gospooky
+# "Enrolled at a HBO/university within the EU" = 10/10 spans REAIS,
+# 0 FP → EXCLUSÃO na cascata F37.3 (não flag).
+# ÂNCORAS OBRIGATÓRIAS (padrão solto "within the EU" / "in the EU" é
+# proibido — guarda residência/trabalho/mercado sem enrolled+instituição):
+# - "based in EU" / "work within the EU" / "sales within the EU" /
+#   "remote within the EU" — residência/trabalho/mercado, sem enrolled
+#   + instituição → fora de escopo (medidos 0 FP no corpus).
+# - "EU-based university" SOLTO sem "enrolled" — menção cooperativa
+#   ("in cooperation with an EU-based university"), não matrícula.
+# - "studying in the EU" sem instituição explícita — padrão não medido
+#   no corpus, defensivo.
+# O detector exige a PALAVRA DE INSTITUIÇÃO (university/college/hbo/
+# universität/hochschule) + verbo de matrícula/localização (enrolled/
+# located/enrolled at) + âncora UE (EU / European Union / member state
+# of the EU / within the EU) — a combinação das 3 âncoras é o guard.
+_EU_ENROLMENT_RES = [
+    # Bosch Mechelen ×7 verbatim: "your University/College must be
+    # located in a member state of the EU" / "University/College must
+    # be located in a member state of the EU". Âncora: instituição
+    # (University/College) + located + EU member state.
+    re.compile(
+        r"\b(?:university|college)\b.{0,40}?"
+        r"\b(?:must\s+be\s+)?located\b.{0,40}?"
+        r"\b(?:member\s+state\s+of\s+the\s+eu|eu\b|european\s+union)\b",
+        re.IGNORECASE,
+    ),
+    # Fraunhofer ×2 verbatim: "Enrolled student in Germany or within
+    # the EU". Âncora: enrolled + student + within the EU. A palavra
+    # "student" serve como proxy de instituição (contexto de matrícula).
+    re.compile(
+        r"\benrolled\b.{0,30}?"
+        r"\b(?:student|at\s+a\s+(?:hbo|university|college))\b.{0,30}?"
+        r"\bwithin\s+the\s+eu\b",
+        re.IGNORECASE,
+    ),
+    # gospooky verbatim: "Enrolled at a HBO/university within the EU".
+    # Âncora: enrolled at + HBO/university + within the EU.
+    re.compile(
+        r"\benrolled\s+at\s+a\s+\b(?:hbo|university|college)\b.{0,30}?"
+        r"\bwithin\s+the\s+eu\b",
+        re.IGNORECASE,
+    ),
+    # Variante genérica defensiva: "enrolled at ... university ... EU"
+    # / "enrolled in ... university ... EU" / "located at ... university
+    # ... EU" — exige as 3 âncoras (instituição + enrolled/located + EU)
+    # para evitar FPs de residência/trabalho. Janela de 60 chars entre
+    # âncoras medida no corpus (maior span real = 48 chars Bosch).
+    re.compile(
+        r"\b(?:enrolled|located)\b.{0,60}?"
+        r"\b(?:university|college|hbo|hochschule|universit\w*)\b.{0,60}?"
+        r"\b(?:eu\b|european\s+union|member\s+state\s+of\s+the\s+eu|within\s+the\s+eu)\b",
+        re.IGNORECASE,
+    ),
+]
+
 # (3) PhD/doctoral — perfil é aluno de graduação (bachelor). Casos medidos:
 # SAP "PhD Internship" (título), conxai "MS or PhD" (descrição). Só o
 # requisito EXPLÍCITO de PhD atual (não mestrado — master_required existe).
@@ -797,6 +867,11 @@ def requires_nl_enrolment(title: str, description: str | None) -> bool:
 def requires_de_enrolment(title: str, description: str | None) -> bool:
     """A vaga exige matrícula em universidade ALEMÃ (F106)?"""
     return _res_fire(_DE_ENROLMENT_RES, f"{title} {description or ''}")
+
+
+def requires_eu_enrolment(title: str, description: str | None) -> bool:
+    """A vaga exige matrícula em universidade/HBO da UE (F111)?"""
+    return _res_fire(_EU_ENROLMENT_RES, f"{title} {description or ''}")
 
 
 def requires_phd(title: str, description: str | None) -> bool:
@@ -1877,6 +1952,14 @@ def applicability_exclusion_reason(
     # anteriores; nenhum caso medido de overlap NL×DE no corpus.
     if requires_de_enrolment(title, description):
         return "de_enrolment_required"
+
+    # F111 (24/10): matrícula em universidade/HBO da UE — irmã das classes
+    # NL/DE acima (mesma cadeia F37.3, motivo próprio: a legenda NL é 🇳🇱,
+    # a DE é 🇩🇪 e a EU é 🇪🇺). Posições adjacentes preservam o first-match;
+    # overlap NL×DE×EU zero medido no corpus (detector EU não casa padrões
+    # NL/DE e vice-versa); first-match NL > DE > EU.
+    if requires_eu_enrolment(title, description):
+        return "eu_enrolment_required"
 
     if requires_phd(title, description):
         return "phd_position"
