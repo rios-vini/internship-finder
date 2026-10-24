@@ -235,7 +235,7 @@ sources are files in this repo.
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
 | **150** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
-| **227** | commits, one feature PR per change (git log, first-parent) |
+| **228** | commits, one feature PR per change (git log, first-parent) |
 
 **F112 (2026-10-24)** — GO/NO-GO measurement for blind hydration extension:
 - **arbeitsagentur (MTU 7×, refnr 12951-*)**: NO-GO — 7/7 pages return HTTP 200 soft-404 (homepage, no JobPosting JSON-LD)
