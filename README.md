@@ -340,3 +340,4 @@ completa (PT-BR) em `docs/README-operacional.md`.
 
 [MIT](LICENSE) © 2026 Vinícius Rios
 # CI trigger
+# CI trigger
