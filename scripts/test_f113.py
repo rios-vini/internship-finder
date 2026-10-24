@@ -50,6 +50,6 @@ def test_f113_contador_nao_usa_shown() -> None:
 
 
 if __name__ == "__main__":
-    test_f113_visa_friendly_count_matches_json()
     test_f113_contador_nao_usa_shown()
+    test_f113_codigo_usa_jobs_nao_shown()
     print("\n=== F113: todos os testes passaram ===")
