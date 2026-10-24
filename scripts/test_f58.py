@@ -192,7 +192,8 @@ check("C7 chave estrita: nome diferente NÃO reescreve",
       resolve_tenant_migration(wrong_name).ats == "avature")
 check("C8 override de URL da Fase I (SAP) intacto ao lado do novo mapa",
       TENANT_URL_OVERRIDES
-      == {("successfactors", "jobs", "SAP"): "https://careers.sap.com"})
+      == {("successfactors", "jobs", "SAP"): "https://careers.sap.com",
+          ("successfactors", "lidlstiftuP2", "LIDL"): "https://career5.successfactors.eu/career?company=lidlstiftuP2"})
 
 
 # ---------------------------------------------------------------------------
