@@ -8,6 +8,7 @@ build/
 dist/
 # Virtual environment
 .venv/
+.venv312/
 # Lockfile gerado localmente pelo uv (o projeto nao versiona lockfile)
 uv.lock
 # VS Code
