@@ -2724,8 +2724,12 @@ def render_minimal_html(
         f53=full_list,
         lang=lang,
     ))
-    n_vf = sum(1 for j in shown if _visa_friendly(
-        j, entry_cache.get(str(j.get("id") or ""))))
+    # F113 — contador visa_friendly lê do JSON (fonte única de verdade):
+    # usa a lista COMPLETA de elegíveis (jobs), não o subconjunto exibido
+    # (shown), para bater com o eligible_jobs.json que já traz o campo
+    # visa_friendly preenchido pelo pipeline. Evita drift (ex.: 235 vs 237)
+    # causado por cap 2/empresa, dead links, etc.
+    n_vf = sum(1 for j in jobs if j.get("visa_friendly") is True)
 
     # Seção 🆕 — top 10 por score ENTRE as novas (a ordem oficial ja e
     # por score; sem snapshot usavel a secao e omitida, sem erro).
