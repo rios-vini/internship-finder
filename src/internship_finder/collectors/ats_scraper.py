@@ -63,6 +63,13 @@ TENANT_URL_OVERRIDES: dict[tuple[str, str, str], str] = {
     # (RMK legacy, feed sitemal.xml vivo e completo). Verificada em
     # 29/09/2026: 913 itens, identidade/overlap historico 825/913.
     ("successfactors", "jobs", "SAP"): "https://careers.sap.com",
+    # Lidl: jobs.lidl/sitemal.xml = 95 MB, ~5 min download (timeout crônico 85s).
+    # O RCM do SuccessFactors serve o feed legacy via career5.successfactors.eu
+    # com company=lidlstiftuP2 (Job-Listing XML, ~200 KB, <5s). Validado AO VIVO
+    # 24/10/2026: feed legacy responde HTTP 200, XML válido, vagas parseáveis.
+    # O scraper detecta host legacy (career*.successfactors.eu) e usa o caminho
+    # /career?company=ID&career_ns=job_listing_summary&resultType=XML.
+    ("successfactors", "lidlstiftuP2", "LIDL"): "https://career5.successfactors.eu/career?company=lidlstiftuP2",
 }
 
 
