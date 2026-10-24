@@ -143,6 +143,30 @@ TENANT_ATS_OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
 }
 
 
+# F116 (24/10/2026): exclusão de tenants CRÔNICOS mortos/homônimos que o
+# manifest upstream insiste em resolver, gerando FETCH_ERROR recorrente a
+# cada run (39/38 runs desde ~10/09). Estas empresas JÁ TÊM tenants de
+# referência VIVOS no registry (phenom:nan p/ Kuehne+Nagel; successfactors:sma
+# p/ SMA) — a exclusão é cirúrgica no tenant problemático, NÃO na empresa.
+# Chave: (ats, slug, company_name) — mesma identidade do TENANT_ATS_OVERRIDES.
+# Remoção: quando o upstream remover a linha morta do manifest, remover a
+# entrada daqui — o mapa é auto-contido e a ausência restaura o comportamento
+# puro do inventário.
+TENANT_EXCLUDES: set[tuple[str, str, str]] = {
+    # Kuehne+Nagel: cornerstone:kuehne-nagel (kuehne-nagel.csod.com NXDOMAIN
+    # desde ~10/09; careersite extinto, K+N migrou p/ phenom jobs.kuehne-nagel.com).
+    # Registry já declara phenom:nan como referência (1.064–1.115 vagas/dia,
+    # 32/32 runs ok — medição F49 §2.1, 17/10/2026).
+    ("cornerstone", "kuehne-nagel", "Kuehne+Nagel"),
+    # SMA: oracle:fa-exow-saasfaprod1/cx_1 (fa-exow-saasfaprod1.oraclecloud.com
+    # NXDOMAIN; homônimo confirmado 17/09 = academia marítima em Sharjah/UAE,
+    # 7 vagas faculty Marine Engineering/Maritime Business. Oracle scraper
+    # exige URL completa (oracle ∉ URL_SLUG_ATS) → FETCH_ERROR crônico).
+    # Registry já declara successfactors:sma como referência (sma.jobs vivo).
+    ("oracle", "fa-exow-saasfaprod1/cx_1", "SMA"),
+}
+
+
 def resolve_tenant_migration(company: Company) -> Company:
     """Reescreve o tenant de uma empresa cujo ATS migrou (F58).
 
@@ -378,6 +402,19 @@ def collect_company(
         # reescreve o tenant resolvido para a plataforma validada ANTES de
         # qualquer consumo; empresas fora do mapa seguem o inventario puro.
         company = resolve_tenant_migration(company)
+        # F116: exclusão cirúrgica de tenants crônicos mortos/homônimos
+        # (mesma chave de identidade do TENANT_ATS_OVERRIDES/TENANT_EXCLUDES).
+        exclude_key = (company.ats, company.slug, (company.name or "").strip())
+        if exclude_key in TENANT_EXCLUDES:
+            log.info(
+                "[%s] %s excluído por F116 (tenant crônico morto/homônimo — "
+                "registry já tem referência viva); pulando coleta",
+                name,
+                company.source,
+            )
+            summary["skipped"].append(company.source)
+            summary["companies"][company.source] = company.name or company.query
+            continue
         if not collector.has_scraper(company):
             log.warning("[%s] %s sem scraper registrado; pulando", name, company.source)
             summary["skipped"].append(company.source)
