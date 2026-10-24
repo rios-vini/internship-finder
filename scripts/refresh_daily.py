@@ -3460,6 +3460,50 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("F94: anotação stale_posting falhou (run segue sem os "
                     "flags): %s: %s", type(exc).__name__, exc)
 
+    # F107 — lista COMPLETA das novas em data/NEW-<date>.md (mesmo estágio
+    # do MANUAL-CHECK; display-only). O diff URL-honesto
+    # (``ranking_digest.new_postings_diff``) classifica os IDs novos do
+    # snapshot anterior em "genuinamente novas" (URL ausente) e
+    # "re-sightings" (mesma URL, ID reciclado) — o 🆕 do digest mostra o
+    # TOTAL real + a fatia Top-30 + o ponteiro para o arquivo, que carrega
+    # TODAS as novas (o cap 4096 do Telegram é físico; a lista vive no
+    # ARQUIVO). Roda DEPOIS da anotação F94 (o ⏳ lê o campo persistido) e
+    # ANTES do digest (o header referencia o caminho). Best-effort TOTAL.
+    new_list_display: str | None = None
+    try:
+        prev_path = archive_dir / "eligible_jobs.json"
+        prev_ranking = None
+        if prev_path.exists():
+            prev_ranking = json.loads(
+                prev_path.read_text(encoding="utf-8"))
+        cur_path = data_dir / "eligible_jobs.json"
+        cur_ranking: list = []
+        if cur_path.exists():
+            cur_ranking = json.loads(cur_path.read_text(encoding="utf-8"))
+        postings_diff = ranking_digest.new_postings_diff(
+            cur_ranking, prev_ranking)
+        if postings_diff and postings_diff.get("genuinely_new"):
+            date_str = f"{datetime.now(UTC):%Y-%m-%d}"
+            new_list_path = data_dir / ranking_digest.NEW_LIST_FILE.format(
+                date=date_str)
+            text = ranking_digest.new_list_markdown(
+                postings_diff, cur_ranking,
+                previous_name=prev_path.parent.name,
+                generated_at=utcnow_iso())
+            new_list_path.write_text(text, encoding="utf-8")
+            new_list_display = f"data/{new_list_path.name}"
+            log.info(
+                "F107 novas: %d genuinamente nova(s) (%d no Top-30), "
+                "%d re-sighting(s) de IDs reciclados -> %s",
+                len(postings_diff["genuinely_new"]),
+                ranking_digest.top_new_count(
+                    cur_ranking, postings_diff["genuinely_new"]),
+                len(postings_diff.get("re_seen") or []),
+                new_list_display)
+    except Exception as exc:  # noqa: BLE001 — F107 nunca derruba o run
+        log.warning("F107: lista de novas nao gravada (run segue normal): "
+                    "%s: %s", type(exc).__name__, exc)
+
     # F25 — as inaplicáveis do backlog hidratado descem das superfícies
     # exibidas JUNTO com as do liveness (MESMA semântica F20: o publish
     # recebe o conjunto unificado de inaplicáveis; mortas seguem separadas
@@ -3554,6 +3598,9 @@ def main(argv: list[str] | None = None) -> int:
                 # da página. O JSON/CSV ficam intocados. F87: mortas do
                 # 1º sighting (intake) entram no MESMO conjunto.
                 excluded_ids=dead_ids | inapplicable_ids | intake_dead_ids,
+                # F107 — display do artefato da lista completa das novas
+                # (data/NEW-<date>.md, gravado acima): entra no header do 🆕.
+                new_list_path=new_list_display,
             )
         except Exception as exc:  # noqa: BLE001 — digest e best-effort
             log.warning("digest do ranking nao montado (run segue normal): %s", exc)
