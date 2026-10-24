@@ -304,7 +304,11 @@ REPO = Path(__file__).resolve().parent.parent
 # src/ (7d9d6da = commit da fase, SÓ src/+scripts+README; o commit
 # seguinte edita testes — src/ idêntico, o diff segue vazio na branch,
 # no CI raso ([SKIP]) e no main pós-squash).
-_AB_BASELINE_SHA = "b350577ecfce82180b9958e83b5d7b7ec57e5cb0"
+# F116 (24/10): src/ moveu de novo (collectors/ats_scraper.py —
+# TENANT_EXCLUDES p/ cornerstone:kuehne-nagel + oracle:fa-exow-saasfaprod1/cx_1).
+# Padrão F56/F88/F100/F104/F105: âncora move para o HEAD do main
+# antes da fase (9018e99 = origin/main pré-F116).
+_AB_BASELINE_SHA = "c27ae95c6a65d8d2d944434fd3269519b40bd2c7"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
