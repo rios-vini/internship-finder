@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Callable
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ats_scrapers import (
@@ -587,6 +588,181 @@ def job_url_format_status(url: str) -> str | None:
         for dead in fmt.legacy:
             if dead.fullmatch(u):
                 return "legacy_dead"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# F117 — Variante EN de locale por tenant SF (medido; fail-closed)
+# ---------------------------------------------------------------------------
+#
+# Tenants SuccessFactors servem variantes de locale por URL. Dois padroes
+# medidos no Passo 0 (24/10/2026):
+# 1. Query param: ``?locale=en_GB`` ou ``?locale=en_US`` (RWE talentcommunity,
+#    BASF/SAP/Schaeffler RM, Kaufland, LIDL) — o parametro NAO garante que o
+#    conteudo mude (medido: BASF/SAP/Schaeffler ja servem EN por default;
+#    Kaufland/LIDL/RWE RM mantem DE).
+# 2. Slug suffix: ``-en_US`` / ``-de_DE`` (BMW) — formato verificado, conteudo
+#    ja em EN.
+#
+# A funcao ``en_locale_variant`` SÓ devolve URL para tenants com formato
+# VERIFICADO no Passo 0. Desconhecido -> None (NUNCA reescrever URL de
+# formato incerto). O consumidor (MANUAL-CHECK F96) decide se usa o link.
+
+
+@dataclass(frozen=True)
+class TenantEnLocaleFormat:
+    """Formato de variante EN de locale medido p/ tenant SF (F117).
+
+    Segue o mesmo principio do ``TenantJobUrlFormat`` (F105): regra derivada
+    de medicao, consumo manual, zero pipeline. ``tenant`` = chave do registry
+    (ex. "BMW AG", "RWE"), ``ats`` = "successfactors".
+    """
+
+    tenant: str
+    ats: str
+    # Padrao da URL base (sem locale) — identifica o tenant
+    base_pattern: "re.Pattern[str]"
+    # Funcao que recebe a URL base e devolve a variante EN (ou None)
+    en_variant_fn: Callable[[str], str | None]
+    evidence: str  # medicao (data + metodo) — nunca opiniao
+
+
+def _bmw_en_variant(url: str) -> str | None:
+    """BMW: slug suffix -en_US (medido 24/10/2026).
+    
+    URL base: https://jobs.bmwgroup.com/job/<slug>/<ID>/
+    EN variant: https://jobs.bmwgroup.com/job/<slug>/<ID>-en_US/
+    """
+    # Remove trailing slash, add -en_US, restore slash
+    u = url.rstrip("/")
+    if u.endswith("-de_DE") or u.endswith("-en_US"):
+        return None  # already has locale suffix
+    return u + "-en_US/"
+
+
+def _rwe_talentcommunity_en_variant(url: str) -> str | None:
+    """RWE talentcommunity: query param ?locale=en_GB (spec F117).
+    
+    URL base: https://jobs.rwe.com/talentcommunity/apply/<ID>/
+    EN variant: https://jobs.rwe.com/talentcommunity/apply/<ID>/?locale=en_GB
+    """
+    if "talentcommunity/apply/" not in url:
+        return None
+    u = url.rstrip("/")
+    if "?locale=" in u:
+        return None  # already has locale param
+    return u + "/?locale=en_GB"
+
+
+def _rm_en_variant(url: str) -> str | None:
+    """SuccessFactors RM (Recruiting Marketing): query param ?locale=en_GB.
+    
+    Applies to: BASF (basf.jobs), SAP (careers.sap.com), Schaeffler (jobs.schaeffler.com),
+    Kaufland (jobs.kaufland.com), LIDL (jobs.lidl), and other RM tenants.
+    
+    Note: Measured 24/10/2026 — parameter does NOT guarantee content change.
+    BASF/SAP/Schaeffler already serve EN; Kaufland/LIDL stay DE.
+    Function returns variant URL; caller decides whether to use it.
+    """
+    u = url.rstrip("/")
+    if "?locale=" in u:
+        return None
+    return u + "/?locale=en_GB"
+
+
+TENANT_EN_LOCALE_FORMATS: dict[str, TenantEnLocaleFormat] = {
+    "bmw_ag": TenantEnLocaleFormat(
+        tenant="BMW AG",
+        ats="successfactors",
+        base_pattern=re.compile(r"https://jobs\.bmwgroup\.com/job/[^/?#]+/\d+/?$"),
+        en_variant_fn=_bmw_en_variant,
+        evidence=(
+            "registro 24/10/2026: BMW SF — slug suffix -de_DE/-en_US verificado "
+            "(final_url vivo: .../197707-de_DE/); conteudo ja em EN por default"
+        ),
+    ),
+    "rwe_talentcommunity": TenantEnLocaleFormat(
+        tenant="RWE",
+        ats="successfactors",
+        base_pattern=re.compile(r"https://jobs\.rwe\.com/talentcommunity/apply/\d+/?$"),
+        en_variant_fn=_rwe_talentcommunity_en_variant,
+        evidence=(
+            "registro 24/10/2026 (spec F117): RWE talentcommunity — "
+            "?locale=en_GB no path /talentcommunity/apply/<ID>/; "
+            "render EN mostra 'Fluent written and spoken English' + "
+            "'German language skills advantageous' (caso RWE 23/10)"
+        ),
+    ),
+    # RM tenants with ?locale=en_GB parameter (format verified, content change not guaranteed)
+    "basf_rm": TenantEnLocaleFormat(
+        tenant="BASF",
+        ats="successfactors",
+        base_pattern=re.compile(r"https://basf\.jobs/[^/]+/job/[^/?#]+/\d+/?$"),
+        en_variant_fn=_rm_en_variant,
+        evidence=(
+            "registro 24/10/2026: BASF RM (basf.jobs/dark_blue_EMEA) — "
+            "?locale=en_GB aceito; conteudo ja em EN por default"
+        ),
+    ),
+    "sap_rm": TenantEnLocaleFormat(
+        tenant="SAP",
+        ats="successfactors",
+        base_pattern=re.compile(r"https://careers\.sap\.com/job/[^/?#]+/\d+/?$"),
+        en_variant_fn=_rm_en_variant,
+        evidence=(
+            "registro 24/10/2026: SAP RM (careers.sap.com) — "
+            "?locale=en_GB aceito; conteudo ja em EN por default"
+        ),
+    ),
+    "schaeffler_rm": TenantEnLocaleFormat(
+        tenant="Schaeffler",
+        ats="successfactors",
+        base_pattern=re.compile(r"https://jobs\.schaeffler\.com/job/[^/?#]+/\d+/?$"),
+        en_variant_fn=_rm_en_variant,
+        evidence=(
+            "registro 24/10/2026: Schaeffler RM (jobs.schaeffler.com) — "
+            "?locale=en_GB aceito; conteudo ja em EN por default"
+        ),
+    ),
+    "kaufland_rm": TenantEnLocaleFormat(
+        tenant="Kaufland",
+        ats="successfactors",
+        base_pattern=re.compile(r"https://jobs\.kaufland\.com/[^/]+/job/[^/?#]+/\d+/?$"),
+        en_variant_fn=_rm_en_variant,
+        evidence=(
+            "registro 24/10/2026: Kaufland RM (jobs.kaufland.com) — "
+            "?locale=en_GB aceito; conteudo mantem DE (nao muda)"
+        ),
+    ),
+    "lidl_rm": TenantEnLocaleFormat(
+        tenant="Lidl",
+        ats="successfactors",
+        base_pattern=re.compile(r"https://jobs\.lidl/sti/job/[^/?#]+/\d+/?$"),
+        en_variant_fn=_rm_en_variant,
+        evidence=(
+            "registro 24/10/2026: LIDL RM (jobs.lidl/sti) — "
+            "?locale=en_GB aceito; conteudo mantem DE (nao muda)"
+        ),
+    ),
+}
+
+
+def en_locale_variant(url: str) -> str | None:
+    """Variante EN de locale para URL de vaga SF (F117).
+
+    Recebe uma URL de vaga SuccessFactors e devolve a variante EN se o
+    tenant tiver formato VERIFICADO no Passo 0; caso contrario, None.
+
+    Fail-closed: NUNCA reescreve URL de formato incerto. O consumidor
+    (ex.: MANUAL-CHECK F96) recebe a variante EN quando existe e decide
+    se usa (ex.: adiciona nota "(EN render)" no link direto).
+    """
+    u = str(url or "").strip()
+    if not u:
+        return None
+    for fmt in TENANT_EN_LOCALE_FORMATS.values():
+        if fmt.base_pattern.fullmatch(u):
+            return fmt.en_variant_fn(u)
     return None
 
 
