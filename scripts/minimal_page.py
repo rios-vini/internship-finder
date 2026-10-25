@@ -3082,27 +3082,25 @@ def render_minimal_html(
 
     # F120 — seção única "programas" (display-only, uma única seção no fim
     # da página, mais eficiente em bytes que badges inline repetidos em
-    # top/🆕/🧪/🇪🇺). Renderiza um item por cidade de cada programa multi-site.
+    # top/🆕/🧪/🇪🇺). Renderiza uma linha compacta por programa multi-site.
     programas_section = ""
     if multisite_programs_full:
         items = []
         items_en: list[str] = []
         for prog_key, prog_info in multisite_programs_full.items():
-            for city in prog_info["cities"]:
-                items.append(f"📍 {city}")
-                items_en.append(f"📍 {city}")
+            cities_str = ", ".join(prog_info["cities"])
+            items.append(f"📍 multi-site: {cities_str}")
+            items_en.append(f"📍 multi-site: {cities_str}")
         if items:
-            # Sem <h2> para economizar bytes — lista simples no fim
+            # Formato ultra-compacto: uma linha por programa, sem <ul>/<li>
             if lang == "en":
-                programas_section = (
-                    '<ul class="spot">' + "".join(
-                        f'<li{_i18n_attr(pt)}>{_esc(en)}</li>'
-                        for pt, en in zip(items, items_en)) + "</ul>"
+                programas_section = "".join(
+                    f'<div{_i18n_attr(pt)}>{_esc(en)}</div>'
+                    for pt, en in zip(items, items_en)
                 )
             else:
-                programas_section = (
-                    '<ul class="spot">' + "".join(
-                        f"<li>{_esc(l)}</li>" for l in items) + "</ul>"
+                programas_section = "".join(
+                    f"<div>{_esc(l)}</div>" for l in items
                 )
 
     # F43 — comentário do bloco 🧪 atualizado (o corte em si é o original

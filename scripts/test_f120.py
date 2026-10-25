@@ -282,29 +282,28 @@ def test_b_main_page() -> None:
         top=10, lang="pt"
     )
 
-    # B1: seção 'programas' presente (ul.spot com itens)
-    check("B1 seção 'programas' presente (ul.spot)", '<ul class="spot">' in html)
+    # B1: seção 'programas' presente (div com badge)
+    check("B1 seção 'programas' presente (div)", '<div>📍 multi-site:' in html)
     check("B1b texto 'multi-site' presente", "multi-site" in html)
 
     # B2: seção lista as cidades
     import re
-    # Procura na seção programas (ul.spot)
-    programas_match = re.search(r'<ul class="spot">(.*?)</ul>', html, re.DOTALL)
+    # Procura na seção programas (div)
+    programas_match = re.search(r'<div>📍 multi-site: ([^<]+)</div>', html)
     check("B2 seção programas lista cidades", programas_match is not None)
     if programas_match:
-        cities = [c.strip() for c in re.findall(r'<li[^>]*>([^<]+)</li>', programas_match.group(1))]
+        cities = [c.strip() for c in programas_match.group(1).split(",")]
         check(f"B2b {len(cities)} cidades listadas (esperado 12)", len(cities) == 12)
-        # As cidades vêm com prefixo "📍 "
-        check("B2c Berlin incluída", any("Berlin" in c for c in cities))
-        check("B2d München incluída", any("München" in c for c in cities))
+        check("B2c Berlin incluída", "Berlin" in cities)
+        check("B2d München incluída", "München" in cities)
 
     # B3: seção programas está no final (antes do rodapé)
-    programas_idx = html.find('<ul class="spot">')
+    programas_idx = html.find('<div>📍 multi-site:')
     footer_idx = html.find('<p class="f"')
     check("B3 seção programas antes do rodapé", programas_idx != -1 and programas_idx < footer_idx)
 
     # B4: apenas 1 seção programas (não repetida)
-    programas_count = html.count('<ul class="spot">')
+    programas_count = html.count('<div>📍 multi-site:')
     check("B4 apenas 1 seção programas", programas_count == 1)
 
     # B5: JSON/CSV intocados — o render NÃO altera a lista de jobs
@@ -335,22 +334,21 @@ def test_c_sections() -> None:
     )
 
     # C1: seção programas presente uma única vez mesmo com múltiplas seções
-    programas_count = html.count('<ul class="spot">')
+    programas_count = html.count('<div>📍 multi-site:')
     check(f"C1 seção programas presente uma vez = {programas_count}", programas_count == 1)
 
     # C2: seção programas contém todas as cidades
     import re
-    programas_match = re.search(r'<ul class="spot">(.*?)</ul>', html, re.DOTALL)
+    programas_match = re.search(r'<div>📍 multi-site: ([^<]+)</div>', html)
     check("C2 seção programas lista cidades", programas_match is not None)
     if programas_match:
-        cities = [c.strip() for c in re.findall(r'<li[^>]*>([^<]+)</li>', programas_match.group(1))]
+        cities = [c.strip() for c in programas_match.group(1).split(",")]
         check(f"C2b {len(cities)} cidades listadas (esperado 12)", len(cities) == 12)
-        # As cidades vêm com prefixo "📍 "
-        check("C2c Berlin incluída", any("Berlin" in c for c in cities))
-        check("C2d München incluída", any("München" in c for c in cities))
+        check("C2c Berlin incluída", "Berlin" in cities)
+        check("C2d München incluída", "München" in cities)
 
     # C3: seção programas está no final (antes do rodapé)
-    programas_idx = html.find('<ul class="spot">')
+    programas_idx = html.find('<div>📍 multi-site:')
     footer_idx = html.find('<p class="f"')
     check("C3 seção programas antes do rodapé", programas_idx != -1 and programas_idx < footer_idx)
 
@@ -406,7 +404,7 @@ def test_e_render_en() -> None:
         top=10, lang="en"
     )
 
-    check("E1 seção 'programas' no render EN (ul.spot)", '<ul class="spot">' in html_en)
+    check("E1 seção 'programas' no render EN (div com data-i18n-pt)", 'data-i18n-pt="📍 multi-site:' in html_en)
     check("E2 texto EN 'multi-site'", "multi-site" in html_en)
     check("E3 cidades listadas no EN", "Berlin" in html_en and "München" in html_en)
 
@@ -423,9 +421,9 @@ def test_f_css() -> None:
         top=10, lang="pt"
     )
 
-    check("F1 classe .spot no CSS (usada pela seção programas)", ".spot" in html)
-    check("F2 seção programas usa ul.spot", '<ul class="spot">' in html)
-    check("F3 lista usa li", "<li>" in html)
+    check("F1 classe .spot no CSS (ainda presente para outros usos)", ".spot" in html)
+    check("F2 seção programas usa div", '<div>📍 multi-site:' in html)
+    check("F3 texto multi-site presente", "multi-site" in html)
 
 
 # ---------------------------------------------------------------------------
