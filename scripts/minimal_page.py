@@ -121,6 +121,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from internship_finder.repost_flag import repost_badge_html, repost_card_attr
+from internship_finder.geoblock_badge import geoblock_badge_html
 
 __all__ = [
     "PAGE_TOP", "PAGE_TOP_FULL", "PAGE_TARGET_BYTES", "COMPANY_MAX_CARDS",
@@ -1679,7 +1680,8 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
           dual_track_flag_txt: str = "",
           dual_track_flag_pt: str = "",
           nl_level: str = "none",
-          repost_flag: bool = False) -> str:
+          repost_flag: bool = False,
+          geoblock_flag: str = "") -> str:
     """Card compacto de uma vaga (mobile-first) com atributos F11.
 
     F12: ``en_title_html`` = linha EN abaixo do título (HTML pronto, vazio
@@ -1727,6 +1729,10 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
 
     F103: ``repost_flag`` = flag de re-post/twin (display-only). Quando
     True, adiciona ``data-repost`` ao card e badge discreto 🔄 re-post.
+
+    F121: ``geoblock_flag`` = badge de risco geoblock absolventa (display-only).
+    Quando não-vazio, adiciona badge "⚠ risco geoblock (agregador absolventa
+    — canal direto recomendado)" na área de badges .flag.
     """
     # F51 — texto do badge de qualidade (compacto: "⭐ 4,0"/"🏆 GPTW")
     # computado UMA vez; a explicação vive na legenda única.
@@ -1771,6 +1777,9 @@ def _card(rank: int, job: dict, *, visa: bool, salary: str,
     # F103 — badge de re-post/twin (display-only; mesmo estilo .flag).
     if repost_flag:
         badge_bits.append(repost_badge_html(job, lang=lang))
+    # F121 — badge de risco geoblock absolventa (display-only).
+    if geoblock_flag:
+        badge_bits.append(geoblock_flag)
     # F87 — não-avaliável (display-only; campo anotado pelo refresh).
     if na_flag:
         if lang == "en":
@@ -2366,7 +2375,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     skip_ids: set[str] | None = None,
                     display_aliases: dict | None = None,
                     f53: bool = False,
-                    lang: str = "pt") -> list[str]:
+                    lang: str = "pt",
+                    ranking_for_geoblock: list[dict] | None = None) -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -2488,6 +2498,11 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
             snippet, snippet_is_en = _snippet_en_fallback(job, translation_cache)
         else:
             snippet, snippet_is_en = "", False
+        # F121 — compute geoblock badge (needs full ranking for twin detection)
+        geoblock_flag = ""
+        if ranking_for_geoblock is not None:
+            geoblock_flag = geoblock_badge_html(job, ranking_for_geoblock, lang=lang)
+
         rows.append(_card(
             i, dview, visa=visa, salary=salary,
             snippet=snippet, snippet_is_en=snippet_is_en,
@@ -2537,6 +2552,7 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                           if f53 else ""),
             lang=lang,
             repost_flag=bool(job.get("repost_match")),
+            geoblock_flag=geoblock_flag,
         ))
     return rows
 
@@ -2723,6 +2739,7 @@ def render_minimal_html(
         display_aliases=display_aliases,
         f53=full_list,
         lang=lang,
+        ranking_for_geoblock=jobs,  # F121: full ranking for twin detection
     ))
     # F113 — contador visa_friendly lê do JSON (fonte única de verdade):
     # usa a lista COMPLETA de elegíveis (jobs), não o subconjunto exibido
@@ -2758,6 +2775,7 @@ def render_minimal_html(
             display_aliases=display_aliases,
             f53=full_list,
             lang=lang,
+            ranking_for_geoblock=jobs,  # F121: full ranking for twin detection
         ))
         new_section = (
             f'<h2{_i18n_attr(n_h2_pt) if lang == "en" else ""}>'
@@ -2798,6 +2816,7 @@ def render_minimal_html(
             display_aliases=display_aliases,
             f53=full_list,
             lang=lang,
+            ranking_for_geoblock=jobs,  # F121: full ranking for twin detection
         ))
         radar_pt = I18N["radar_line"]["pt"].format(n=len(watchlist_events))
         radar_en = I18N["radar_line"]["en"].format(n=len(watchlist_events))
@@ -2917,6 +2936,7 @@ def render_minimal_html(
                       else None),
             f53=full_list,
             lang=lang,
+            ranking_for_geoblock=jobs,  # F121: full ranking for twin detection
         ))
         mat_header_pt, mat_header_en = _i18n_pair("prof_header_top")
         mat_note_pt, mat_note_en = _i18n_pair("mat_note")
@@ -2969,6 +2989,7 @@ def render_minimal_html(
                       else None),
             f53=full_list,
             lang=lang,
+            ranking_for_geoblock=jobs,  # F121: full ranking for twin detection
         ))
         eu_header_pt, eu_header_en = _i18n_pair("prof_header_top")
         eu_note_pt, eu_note_en = _i18n_pair("eu_note")
