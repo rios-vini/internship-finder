@@ -1493,6 +1493,8 @@ I18N: dict[str, dict[str, str]] = {
     # -- F120 multi-site programas --------------------------------------------
     "multisite_badge": {"pt": "📍 multi-site: {n} cidades — {cities}",
                         "en": "📍 multi-site: {n} cities — {cities}"},
+    "programas_h2": {"pt": "📍 Programas multi-site",
+                     "en": "📍 Multi-site programs"},
 }
 
 
@@ -2603,29 +2605,15 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     profile_attrs = profile_maps is not None
     skip_ids = skip_ids or set()
     multisite_programs = multisite_programs or {}
-    multisite_rendered: set[str] = set()  # program_keys já renderizados nesta seção
+    # F120 — badge de programa multi-site NÃO é renderizado inline aqui.
+    # Em vez disso, uma seção única "programas" é adicionada no final da página
+    # em render_minimal_html — mais eficiente em bytes (uma única seção vs
+    # repetição em top/🆕/🧪/🇪🇺).
 
     for i, job in enumerate(jobs, rank_start):
         jid = str(job.get("id") or "")
         if jid in skip_ids:
             continue  # F43 — já exibido na lista única; seção = atalho
-
-        # F120 — badge de programa multi-site antes do primeiro card do programa
-        for prog_key, prog_info in multisite_programs.items():
-            if jid in prog_info["job_ids"] and prog_key not in multisite_rendered:
-                # Renderiza o badge de agrupamento
-                # USA a lista completa de cidades do programa (prog_info["cities"])
-                # não só as cidades dos jobs exibidos nesta seção
-                cities_str = ", ".join(prog_info["cities"])
-                badge_text = T("multisite_badge", lang).format(
-                    n=len(prog_info["cities"]), cities=cities_str)
-                rows.append(
-                    f'<li class="multisite-badge" data-multisite="{_esc(prog_key)}">'
-                    f'<span class="ms-badge">{_esc(badge_text)}</span></li>')
-                multisite_rendered.add(prog_key)
-                break  # um job pertence a no máximo 1 programa multi-site
-
-        # F54 — VIEW de display (cópia rasa): mojibake corrigido em
         # title/company/location + alias de empresa. O job ORIGINAL
         # segue para intel/quality/salary (match por string exata do
         # dataset — alias/mojibake NÃO podem contaminar o pipeline).
@@ -3092,6 +3080,37 @@ def render_minimal_html(
                         f"<li>{_esc(l)}</li>" for l in lines) + "</ul>"
                 )
 
+    # F120 — seção única "programas" (display-only, uma única seção no fim
+    # da página, mais eficiente em bytes que badges inline repetidos em
+    # top/🆕/🧪/🇪🇺). Renderiza um item por cidade de cada programa multi-site.
+    programas_section = ""
+    if multisite_programs_full:
+        items = []
+        items_en: list[str] = []
+        for prog_key, prog_info in multisite_programs_full.items():
+            cities = prog_info["cities"]
+            # Cada cidade vira um item separado na lista
+            for city in cities:
+                badge_pt = f"📍 multi-site: {city}"
+                badge_en = f"📍 multi-site: {city}"
+                items.append(badge_pt)
+                items_en.append(badge_en)
+        if items:
+            p_h2_pt, p_h2_en = _i18n_pair("programas_h2")
+            if lang == "en":
+                programas_section = (
+                    f'<h2{_i18n_attr(p_h2_pt)}>{_esc(p_h2_en)}</h2>'
+                    + '<ul class="spot">' + "".join(
+                        f'<li{_i18n_attr(pt)}>{_esc(en)}</li>'
+                        for pt, en in zip(items, items_en)) + "</ul>"
+                )
+            else:
+                programas_section = (
+                    f'<h2>{_esc(p_h2_pt)}</h2>'
+                    + '<ul class="spot">' + "".join(
+                        f"<li>{_esc(l)}</li>" for l in items) + "</ul>"
+                )
+
     # F43 — comentário do bloco 🧪 atualizado (o corte em si é o original
     # da F36.1; no full o dedupe tira as duplicatas da lista única).
     # Seção Materials — perfil alternativo, ranking proprio (digest ja
@@ -3408,6 +3427,7 @@ def render_minimal_html(
 {materials_section}
 {eu_section}
 {sweet_section}
+{programas_section}
 <p class="f"{_i18n_attr(footer_pt) if _en else ''}>{_esc(footer_note)}</p>
 </main>
 <script>{_JS}</script>{_script_f43}{_script_i18n}

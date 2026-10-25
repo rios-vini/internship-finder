@@ -275,39 +275,39 @@ def test_a_helpers() -> None:
 # ---------------------------------------------------------------------------
 
 def test_b_main_page() -> None:
-    section("B: página principal (top-N) com badge visual")
+    section("B: página principal (top-N) com seção 'programas'")
 
     html = mp.render_minimal_html(
         AMAZON_12, total_eligible=12, generated_at="2026-10-24 10:00",
         top=10, lang="pt"
     )
 
-    # B1: badge aparece
-    check("B1 badge multisite-badge presente", "multisite-badge" in html)
-    check("B1b texto 'programa multi-site' presente", "programa multi-site" in html)
+    # B1: seção 'programas' presente
+    check("B1 seção 'programas' presente", "programas_section" in html or "Programas multi-site" in html)
+    check("B1b texto 'multi-site' presente", "multi-site" in html)
 
-    # B2: badge lista as cidades
+    # B2: seção lista as cidades
     import re
-    badge_match = re.search(r'programa multi-site: \d+ cidades — ([^<]+)', html)
-    check("B2 cidades listadas no badge", badge_match is not None)
-    if badge_match:
-        cities = [c.strip() for c in badge_match.group(1).split(",")]
+    # Procura na seção programas (permite tags intermediárias como </h2>)
+    programas_match = re.search(r'Programas multi-site.*?<ul[^>]*>(.*?)</ul>', html, re.DOTALL)
+    check("B2 seção programas lista cidades", programas_match is not None)
+    if programas_match:
+        cities = [c.strip() for c in re.findall(r'<li[^>]*>([^<]+)</li>', programas_match.group(1))]
         check(f"B2b {len(cities)} cidades listadas (esperado 12)", len(cities) == 12)
-        check("B2c Berlin incluída", "Berlin" in cities)
-        check("B2d München incluída", "München" in cities)
+        # As cidades vêm com prefixo "📍 multi-site: "
+        check("B2c Berlin incluída", any("Berlin" in c for c in cities))
+        check("B2d München incluída", any("München" in c for c in cities))
 
-    # B3: badge ANTES do primeiro card do programa (ordem)
-    # O badge deve aparecer antes do primeiro card de vaga (qualquer)
-    first_job_card_idx = html.find('<li class="c')
-    badge_idx = html.find('class="multisite-badge"')
-    check("B3 badge antes do primeiro card de vaga", badge_idx != -1 and badge_idx < first_job_card_idx)
+    # B3: seção programas está no final (antes do rodapé)
+    programas_idx = html.find("Programas multi-site")
+    footer_idx = html.find('<p class="f"')
+    check("B3 seção programas antes do rodapé", programas_idx != -1 and programas_idx < footer_idx)
 
-    # B4: apenas 1 badge para o programa (não repetido)
-    badge_count = html.count('class="multisite-badge"')
-    check("B4 apenas 1 badge para o programa", badge_count == 1)
+    # B4: apenas 1 seção programas (não repetida)
+    programas_count = html.count("Programas multi-site")
+    check("B4 apenas 1 seção programas", programas_count == 1)
 
     # B5: JSON/CSV intocados — o render NÃO altera a lista de jobs
-    # (verificado implicitamente: a lista de entrada não é mutada)
     check("B5 lista de entrada não mutada", len(AMAZON_12) == 12)
 
 
@@ -316,7 +316,7 @@ def test_b_main_page() -> None:
 # ---------------------------------------------------------------------------
 
 def test_c_sections() -> None:
-    section("C: badge em múltiplas seções")
+    section("C: seção 'programas' em múltiplos renders")
 
     # Jobs com materials_score para testar seção 🧪
     jobs_with_mat = []
@@ -334,17 +334,25 @@ def test_c_sections() -> None:
         top=10, lang="pt", materials=materials, new_since_ids=new_ids
     )
 
-    import re
-    badges = re.findall(r'class="multisite-badge"', html)
-    # Espera: 1 no topo + 1 na seção 🆕 (2 novas fazem parte) + 1 na 🧪 (3 com materials)
-    # = 3 badges total
-    check(f"C1 badges em múltiplas seções (top + 🆕 + 🧪) = {len(badges)}", len(badges) >= 2)
+    # C1: seção programas presente uma única vez mesmo com múltiplas seções
+    programas_count = html.count("Programas multi-site")
+    check(f"C1 seção programas presente uma vez = {programas_count}", programas_count == 1)
 
-    # Verifica que cada seção tem seu badge
-    sections = re.split(r'<h2[^>]*>', html)
-    # Primeira seção é o topo, depois vêm 🆕, 🧪, etc.
-    badge_per_section = [s.count('class="multisite-badge"') for s in sections]
-    check("C2 badge distribuído entre seções", sum(badge_per_section) == len(badges))
+    # C2: seção programas contém todas as cidades
+    import re
+    programas_match = re.search(r'Programas multi-site.*?<ul[^>]*>(.*?)</ul>', html, re.DOTALL)
+    check("C2 seção programas lista cidades", programas_match is not None)
+    if programas_match:
+        cities = [c.strip() for c in re.findall(r'<li[^>]*>([^<]+)</li>', programas_match.group(1))]
+        check(f"C2b {len(cities)} cidades listadas (esperado 12)", len(cities) == 12)
+        # As cidades vêm com prefixo "📍 multi-site: "
+        check("C2c Berlin incluída", any("Berlin" in c for c in cities))
+        check("C2d München incluída", any("München" in c for c in cities))
+
+    # C3: seção programas está no final (antes do rodapé)
+    programas_idx = html.find("Programas multi-site")
+    footer_idx = html.find('<p class="f"')
+    check("C3 seção programas antes do rodapé", programas_idx != -1 and programas_idx < footer_idx)
 
 
 # ---------------------------------------------------------------------------
@@ -391,15 +399,15 @@ def test_d_ab_byte_identity() -> None:
 # ---------------------------------------------------------------------------
 
 def test_e_render_en() -> None:
-    section("E: render EN também tem badge")
+    section("E: render EN também tem seção 'programas'")
 
     html_en = mp.render_minimal_html(
         AMAZON_12, total_eligible=12, generated_at="2026-10-24 10:00",
         top=10, lang="en"
     )
 
-    check("E1 badge no render EN", "multisite-badge" in html_en)
-    check("E2 texto EN 'multi-site program'", "multi-site program" in html_en)
+    check("E1 seção 'programas' no render EN", "Multi-site programs" in html_en)
+    check("E2 texto EN 'multi-site'", "multi-site" in html_en)
     check("E3 cidades listadas no EN", "Berlin" in html_en and "München" in html_en)
 
 
@@ -408,16 +416,16 @@ def test_e_render_en() -> None:
 # ---------------------------------------------------------------------------
 
 def test_f_css() -> None:
-    section("F: CSS do badge presente")
+    section("F: CSS da seção 'programas' presente")
 
     html = mp.render_minimal_html(
         AMAZON_12, total_eligible=12, generated_at="2026-10-24 10:00",
         top=10, lang="pt"
     )
 
-    check("F1 classe .multisite-badge no CSS", ".multisite-badge" in html)
-    check("F2 classe .ms-badge no CSS", ".ms-badge" in html)
-    check("F3 estilos do badge (bg, border-left)", "background:#151d27" in html and "border-left:3px solid #4da3ff" in html)
+    check("F1 classe .spot no CSS (usada pela seção programas)", ".spot" in html)
+    check("F2 seção programas usa ul.spot", '<ul class="spot">' in html)
+    check("F3 lista usa li", "<li>" in html)
 
 
 # ---------------------------------------------------------------------------
