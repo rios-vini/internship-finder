@@ -3088,13 +3088,9 @@ def render_minimal_html(
         items = []
         items_en: list[str] = []
         for prog_key, prog_info in multisite_programs_full.items():
-            cities = prog_info["cities"]
-            # Cada cidade vira um item separado na lista
-            for city in cities:
-                badge_pt = f"📍 multi-site: {city}"
-                badge_en = f"📍 multi-site: {city}"
-                items.append(badge_pt)
-                items_en.append(badge_en)
+            for city in prog_info["cities"]:
+                items.append(f"📍 {city}")
+                items_en.append(f"📍 {city}")
         if items:
             p_h2_pt, p_h2_en = _i18n_pair("programas_h2")
             if lang == "en":
