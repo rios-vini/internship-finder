@@ -3092,18 +3092,16 @@ def render_minimal_html(
                 items.append(f"📍 {city}")
                 items_en.append(f"📍 {city}")
         if items:
-            p_h2_pt, p_h2_en = _i18n_pair("programas_h2")
+            # Sem <h2> para economizar bytes — lista simples no fim
             if lang == "en":
                 programas_section = (
-                    f'<h2{_i18n_attr(p_h2_pt)}>{_esc(p_h2_en)}</h2>'
-                    + '<ul class="spot">' + "".join(
+                    '<ul class="spot">' + "".join(
                         f'<li{_i18n_attr(pt)}>{_esc(en)}</li>'
                         for pt, en in zip(items, items_en)) + "</ul>"
                 )
             else:
                 programas_section = (
-                    f'<h2>{_esc(p_h2_pt)}</h2>'
-                    + '<ul class="spot">' + "".join(
+                    '<ul class="spot">' + "".join(
                         f"<li>{_esc(l)}</li>" for l in items) + "</ul>"
                 )
 
