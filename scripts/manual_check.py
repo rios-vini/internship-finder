@@ -71,6 +71,9 @@ import unicodedata
 import urllib.parse
 from pathlib import Path
 
+# F117 — variante EN de locale SF
+from internship_finder.discovery_rules import en_locale_variant
+
 # ---------------------------------------------------------------------------
 # Vocabulário de motivo (ITEM 8/11) + F96
 # ---------------------------------------------------------------------------
@@ -703,6 +706,8 @@ def build_manual_check_rows(ranking: list) -> list[dict]:
     quando o liveness resolveu redirect); F105: quando a URL do registro é
     de agregador geobloqueante e o gêmeo no portal oficial existe no
     MESMO ranking, o link vira o do portal (``portal_oficial=True``).
+    F117: quando a URL é de tenant SF com variante EN verificada, adiciona
+    ``en_variant`` com nota "(EN render)".
     F119: linhas informativas para vagas dead do espelho BA com gêmeo vivo
     (``f119_mirror_dead=True``, ``twin_url`` preenchido) — display-only,
     NÃO entram na fila por motivo, liveness_status PERMANECE dead.
@@ -723,6 +728,8 @@ def build_manual_check_rows(ranking: list) -> list[dict]:
         if twin and twin != direct:
             direct = twin
             portal_oficial = True
+        # F117 — variante EN de locale SF (fail-closed: só tenants verificados)
+        en_variant = en_locale_variant(direct)
         rows.append({
             "id": str(job.get("id") or ""),
             "company": str(job.get("company") or "?"),
@@ -733,6 +740,7 @@ def build_manual_check_rows(ranking: list) -> list[dict]:
             "url": direct,
             "resolved": bool(direct) and direct != original.strip(),
             "portal_oficial": portal_oficial,
+            "en_variant": en_variant,  # F117
             "date": str(job.get("liveness_checked_at") or "")[:10] or None,
         })
     # 2) F119 — linhas informativas: dead BA mirror com gêmeo vivo
@@ -793,6 +801,10 @@ def write_manual_check_md(path, rows: list[dict], generated_at: str) -> Path:
             suffix = " _(link direto: portal oficial — agregador geobloqueado)_"
         elif row.get("resolved"):
             suffix = " _(link direto: alvo final)_"
+        # F117 — variante EN de locale SF
+        en_variant = row.get("en_variant")
+        if en_variant:
+            suffix += f" _[abrir (EN render)]({en_variant})_"
         lines.append(
             f"- **{row['company']}** — {row['title']} — "
             f"[abrir]({row['url']}) — motivo: {motivo_txt} — "
