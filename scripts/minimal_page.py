@@ -1491,8 +1491,8 @@ I18N: dict[str, dict[str, str]] = {
     "rss_item_meta": {"pt": "{company} · {location} · score {score}",
                       "en": "{company} · {location} · score {score}"},
     # -- F120 multi-site programas --------------------------------------------
-    "multisite_badge": {"pt": "📍 programa multi-site: {n} cidades — {cities}",
-                        "en": "📍 multi-site program: {n} cities — {cities}"},
+    "multisite_badge": {"pt": "📍 multi-site: {n} cidades — {cities}",
+                        "en": "📍 multi-site: {n} cities — {cities}"},
 }
 
 
@@ -2210,7 +2210,7 @@ a.t:hover{text-decoration:underline}
 @media(min-width:640px){main{padding:24px 20px 56px}h1{font-size:1.25rem}}
 /* F120 — badge de programa multi-site (display-only) */
 .multisite-badge{list-style:none;margin:0;padding:0;border-bottom:1px solid #2a343e}
-.ms-badge{display:block;padding:8px 10px;background:#151d27;color:#9aa7b4;font-size:.78rem;font-weight:500;border-left:3px solid #4da3ff}
+.ms-badge{display:block;padding:4px 8px;background:#151d27;color:#9aa7b4;font-size:.7rem;font-weight:500;border-left:2px solid #4da3ff}
 @media(min-width:640px){main{padding:24px 20px 56px}h1{font-size:1.25rem}}
 """
 
