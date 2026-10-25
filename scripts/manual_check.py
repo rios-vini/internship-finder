@@ -379,6 +379,62 @@ def official_portal_twin_url(job: dict, ranking: list) -> str:
     return best[1] if best else ""
 
 
+# F119 — gêmeo BA morto × portal oficial vivo (reusa lógica F105)
+# Hosts de portais oficiais que podem ser gêmeos de espelhos BA
+BA_OFFICIAL_HOSTS = (
+    "careers.kaercher.com",
+    "www.linkedin.com",
+    # extensível por medição
+)
+
+
+def ba_mirror_twin_url(job: dict, ranking: list) -> str:
+    """URL do portal oficial do gêmeo BA morto (pura; ``''`` = sem twin).
+
+    Dispara SÓ quando:
+    - A vaga tem ``liveness_status == \"dead\"`` E ``source`` BA
+    - Existe, no MESMO ranking, um registro com ``liveness_status == \"alive\"``
+      em portal oficial conhecido (BA_OFFICIAL_HOSTS)
+    - Título normalizado IGUAL + mesmo país + overlap de descrição Jaccard >= 0.5
+
+    Reusa a MESMA lógica do F105 (``official_portal_twin_url``) — sem máquina nova.
+    Sem prova de mesma vaga => ``''`` (nunca inventa alvo).
+    """
+    url = str(job.get("url") or "").strip() if isinstance(job, dict) else ""
+    if not url:
+        return ""
+    if str(job.get("liveness_status") or "").strip().lower() != "dead":
+        return ""
+    if str(job.get("source") or "").strip().lower() != "sf_dataset:bundesagentur":
+        return ""
+
+    title = _twin_title_key(job.get("title") or "")
+    country = str(job.get("country_iso") or "").strip().casefold()
+    if not title or not country:
+        return ""
+    desc = str(job.get("description") or "")
+
+    best: tuple[float, str] | None = None
+    for other in ranking:
+        if not isinstance(other, dict) or other is job:
+            continue
+        if str(other.get("liveness_status") or "").strip().lower() != "alive":
+            continue
+        other_url = str(other.get("url") or "").strip()
+        if not _host_matches(other_url, BA_OFFICIAL_HOSTS):
+            continue
+        if _twin_title_key(other.get("title") or "") != title:
+            continue
+        if str(other.get("country_iso") or "").strip().casefold() != country:
+            continue
+        overlap = _desc_jaccard(desc, str(other.get("description") or ""))
+        if overlap is None or overlap < _PORTAL_TWIN_MIN_JACCARD:
+            continue
+        if best is None or overlap > best[0]:
+            best = (overlap, other_url)
+    return best[1] if best else ""
+
+
 # ---------------------------------------------------------------------------
 # id_collision (ITEM 7-typo) — validação de ID plausível por provedor
 # ---------------------------------------------------------------------------
