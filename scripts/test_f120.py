@@ -282,14 +282,14 @@ def test_b_main_page() -> None:
         top=10, lang="pt"
     )
 
-    # B1: seção 'programas' presente (div com badge)
-    check("B1 seção 'programas' presente (div)", '<div>📍 multi-site:' in html)
+    # B1: seção 'programas' presente (texto com <br>)
+    check("B1 seção 'programas' presente (texto)", "📍 multi-site:" in html)
     check("B1b texto 'multi-site' presente", "multi-site" in html)
 
     # B2: seção lista as cidades
     import re
-    # Procura na seção programas (div)
-    programas_match = re.search(r'<div>📍 multi-site: ([^<]+)</div>', html)
+    # Procura na seção programas (texto com <br>)
+    programas_match = re.search(r'📍 multi-site: ([^<]+)(?:<br>|$)', html)
     check("B2 seção programas lista cidades", programas_match is not None)
     if programas_match:
         cities = [c.strip() for c in programas_match.group(1).split(",")]
@@ -298,12 +298,12 @@ def test_b_main_page() -> None:
         check("B2d München incluída", "München" in cities)
 
     # B3: seção programas está no final (antes do rodapé)
-    programas_idx = html.find('<div>📍 multi-site:')
+    programas_idx = html.find('📍 multi-site:')
     footer_idx = html.find('<p class="f"')
     check("B3 seção programas antes do rodapé", programas_idx != -1 and programas_idx < footer_idx)
 
     # B4: apenas 1 seção programas (não repetida)
-    programas_count = html.count('<div>📍 multi-site:')
+    programas_count = html.count('📍 multi-site:')
     check("B4 apenas 1 seção programas", programas_count == 1)
 
     # B5: JSON/CSV intocados — o render NÃO altera a lista de jobs
@@ -334,12 +334,12 @@ def test_c_sections() -> None:
     )
 
     # C1: seção programas presente uma única vez mesmo com múltiplas seções
-    programas_count = html.count('<div>📍 multi-site:')
+    programas_count = html.count('📍 multi-site:')
     check(f"C1 seção programas presente uma vez = {programas_count}", programas_count == 1)
 
     # C2: seção programas contém todas as cidades
     import re
-    programas_match = re.search(r'<div>📍 multi-site: ([^<]+)</div>', html)
+    programas_match = re.search(r'📍 multi-site: ([^<]+)(?:<br>|$)', html)
     check("C2 seção programas lista cidades", programas_match is not None)
     if programas_match:
         cities = [c.strip() for c in programas_match.group(1).split(",")]
@@ -348,7 +348,7 @@ def test_c_sections() -> None:
         check("C2d München incluída", "München" in cities)
 
     # C3: seção programas está no final (antes do rodapé)
-    programas_idx = html.find('<div>📍 multi-site:')
+    programas_idx = html.find('📍 multi-site:')
     footer_idx = html.find('<p class="f"')
     check("C3 seção programas antes do rodapé", programas_idx != -1 and programas_idx < footer_idx)
 
@@ -404,7 +404,7 @@ def test_e_render_en() -> None:
         top=10, lang="en"
     )
 
-    check("E1 seção 'programas' no render EN (div)", '<div>📍 multi-site:' in html_en)
+    check("E1 seção 'programas' no render EN (texto)", "📍 multi-site:" in html_en)
     check("E2 texto EN 'multi-site'", "multi-site" in html_en)
     check("E3 cidades listadas no EN", "Berlin" in html_en and "München" in html_en)
 
@@ -422,7 +422,7 @@ def test_f_css() -> None:
     )
 
     check("F1 classe .spot no CSS (ainda presente para outros usos)", ".spot" in html)
-    check("F2 seção programas usa div", '<div>📍 multi-site:' in html)
+    check("F2 seção programas usa texto direto", "📍 multi-site:" in html)
     check("F3 texto multi-site presente", "multi-site" in html)
 
 
