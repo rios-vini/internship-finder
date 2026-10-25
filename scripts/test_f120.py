@@ -397,14 +397,14 @@ def test_d_ab_byte_identity() -> None:
 # ---------------------------------------------------------------------------
 
 def test_e_render_en() -> None:
-    section("E: render EN também tem seção 'programas'")
+    section("E: render EN também tem seção 'programas' (mesmo texto que PT)")
 
     html_en = mp.render_minimal_html(
         AMAZON_12, total_eligible=12, generated_at="2026-10-24 10:00",
         top=10, lang="en"
     )
 
-    check("E1 seção 'programas' no render EN (div com data-i18n-pt)", 'data-i18n-pt="📍 multi-site:' in html_en)
+    check("E1 seção 'programas' no render EN (div)", '<div>📍 multi-site:' in html_en)
     check("E2 texto EN 'multi-site'", "multi-site" in html_en)
     check("E3 cidades listadas no EN", "Berlin" in html_en and "München" in html_en)
 

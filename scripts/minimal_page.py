@@ -3086,22 +3086,15 @@ def render_minimal_html(
     programas_section = ""
     if multisite_programs_full:
         items = []
-        items_en: list[str] = []
         for prog_key, prog_info in multisite_programs_full.items():
             cities_str = ", ".join(prog_info["cities"])
+            # EN e PT usam o mesmo texto — sem data-i18n-pt para economizar bytes
             items.append(f"📍 multi-site: {cities_str}")
-            items_en.append(f"📍 multi-site: {cities_str}")
         if items:
             # Formato ultra-compacto: uma linha por programa, sem <ul>/<li>
-            if lang == "en":
-                programas_section = "".join(
-                    f'<div{_i18n_attr(pt)}>{_esc(en)}</div>'
-                    for pt, en in zip(items, items_en)
-                )
-            else:
-                programas_section = "".join(
-                    f"<div>{_esc(l)}</div>" for l in items
-                )
+            programas_section = "".join(
+                f"<div>{_esc(l)}</div>" for l in items
+            )
 
     # F43 — comentário do bloco 🧪 atualizado (o corte em si é o original
     # da F36.1; no full o dedupe tira as duplicatas da lista única).
