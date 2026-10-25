@@ -293,6 +293,175 @@ def _score_factors_attr(job: dict, score_key: str = "score") -> str:
     return f' data-factors="{_esc(" · ".join(parts))}"'
 
 
+# F120 — normalização para agrupamento visual de programas multi-site.
+# Mesma empresa normalizada + mesmo título normalizado em N>=3 vagas
+# com locais distintos = 1 "programa multi-site". Display-only: o
+# ranking/JSON/digest NÃO mudam (A/B byte a byte obrigatório).
+def _normalize_company_for_grouping(company: str | None) -> str:
+    """Normaliza nome da empresa para detecção de programa multi-site.
+
+    Remove sufixos jurídicos (GmbH, AG, SE, etc.), prefixos 'Amazon',
+    'Deutschland', códigos de site (N16, S18, E4...), sufixos de localização
+    (Gattendorf, Gera, M44, K75...), e normaliza 'Transport'/'Logistik'
+    para forma canônica. O objetivo é agrupar todas as entidades Amazon
+    Transport/Logistik GmbH sob a mesma identidade de programa.
+    """
+    if not company:
+        return ""
+    c = str(company).strip().casefold()
+    # Remove sufixos jurídicos comuns
+    for suffix in (" gmbh", " ag", " se", " kg", " gmbh & co", " gmbh und co",
+                   " gmbh u. co", " ug", " ug (haftungsbeschränkt)"):
+        c = c.replace(suffix, "")
+    # Normaliza prefixos Amazon para forma canônica
+    c = c.replace("amazon deutschland", "amazon")
+    c = c.replace("amazon", "amazon")
+    c = c.replace("deutschland", "")
+    # Normaliza Transport/Logistik para forma canônica (chave do agrupamento)
+    c = c.replace("transport", "transport")
+    c = c.replace("logistik", "transport")  # Logistik -> Transport (mesmo programa)
+    c = c.replace("vertriebs", "")
+    c = c.replace("services", "")
+    c = c.replace("fulfillment", "")
+    c = c.replace("distribution", "")
+    c = c.replace("fba", "")
+    c = c.replace("aws", "")
+    # Se começar com "amazon " e não tiver "transport", assume transport
+    # (caso de Amazon Gattendorf, Amazon Gera, etc. que são do mesmo programa)
+    if c.startswith("amazon ") and "transport" not in c:
+        c = c.replace("amazon ", "amazon transport ")
+    # Remove códigos de site tipo N16, S18, E4, W11, S42, E3, K97, M44, K75, etc.
+    c = re.sub(r"\b([nsew]\d+|[nsew]\d+[a-z]?|[a-z]\d+)\b", "", c)
+    # Remove sufixos de localização conhecidos (cidades que aparecem no nome da empresa)
+    # Ex.: 'gattendorf', 'gera', 'graben', 'pforzheim', 'dummerstorf', etc.
+    for loc_suffix in (" gattendorf", " gera", " graben", " pforzheim", " dummerstorf",
+                       " koblenz", " kaiserslautern", " wolfhagen", " südhessen",
+                       " berlin", " münchen", " hamburg", " frankfurt", " köln",
+                       " stuttgart", " dresden", " leipzig", " nürnberg", " düsseldorf",
+                       " bremen", " hannover", " dortmund", " essen", " münster",
+                       " bonn", " bielefeld", " wuppertal", " bochum", " karlsruhe",
+                       " mannheim", " augsburg", " wiesbaden", " mönchengladbach",
+                       " gelsenkirchen", " braunschweig", " chemnitz", " kiel",
+                       " aachen", " halle", " magdeburg", " freiburg", " krefeld",
+                       " lübeck", " oberhausen", " erfurt", " mainz", " rostock",
+                       " kassel", " hagen", " potsdam", " saarbrücken", " hamm",
+                       " mülheim", " ludwigshafen", " oldenburg", " leverkusen",
+                       " osnabrück", " solingen", " heidelberg", " herne", " neuss",
+                       " darmstadt", " paderborn", " regensburg", " ingolstadt",
+                       " würzburg", " fürth", " wolfsburg", " offenbach", " ulm",
+                       " heilbronn", " pforzheim", " göttingen", " bottrop",
+                       " regensburg", " reutlingen", " koblenz", " bremerhaven",
+                       " bergisch gladbach", " jena", " ratingen", " erlangen",
+                       " moers", " siegen", " gütersloh", " hildesheim", " cottbus"):
+        c = c.replace(loc_suffix, "")
+    # Remove hífens, pontos, parênteses, aspas
+    c = c.replace("-", " ").replace(".", " ").replace("(", " ").replace(")", " ")
+    c = c.replace("'", " ").replace('"', " ")
+    # Colapsa espaços
+    c = " ".join(c.split())
+    return c
+
+
+def _normalize_title_for_grouping(title: str | None) -> str:
+    """Normaliza título para detecção de programa multi-site.
+
+    Remove sufixos de localização (cidade, 'Start 2027', etc.), marcadores
+    de gênero (m/w/d), e normaliza espaços/case. O objetivo é agrupar
+    'Praktikum im Bereich Logistik - Berlin - Start 2027' e
+    'Praktikum im Bereich Logistik - München - Start 2027' sob o mesmo
+    título base.
+    """
+    if not title:
+        return ""
+    t = str(title).strip().casefold()
+    # Remove marcadores de gênero
+    for pattern in (r"\s*\(m/w/d\)", r"\s*\(m/w/x\)", r"\s*\(m/f/d\)",
+                    r"\s*\(m/w\)", r"\s*\(f/m\)", r"\s*m/w/d", r"\s*m/w/x"):
+        t = re.sub(pattern, "", t)
+    # Remove sufixos de localização e data (padrões com hífen)
+    # '- Cidade - Start 2027' / '- Cidade - 2027' / '- Cidade'
+    t = re.sub(r"\s*-\s*[a-zäöüß\s]+\s*-\s*(start\s*)?\d{4}", "", t)
+    t = re.sub(r"\s*-\s*[a-zäöüß\s]+$", "", t)
+    # Remove 'Cidade Start 2027' / 'Cidade 2027' no final (sem hífen)
+    # Padrão: palavra(s) seguida de 'start 2027' ou apenas ano no final
+    t = re.sub(r"\s+[a-zäöüß]+\s+(start\s*)?\d{4}$", "", t)
+    t = re.sub(r"\s+[a-zäöüß]+\s+\d{4}$", "", t)
+    # Remove 'start 2027' / 'ab 2027' / 'ab januar 2027' etc. (no final ou standalone)
+    t = re.sub(r"\b(start|ab)\s+\d{4}\b", "", t)
+    t = re.sub(r"\b(start|ab)\s+[a-zäöüß]+\s+\d{4}\b", "", t)
+    # Remove hífens soltos
+    t = t.replace("-", " ")
+    # Colapsa espaços
+    t = " ".join(t.split())
+    return t
+
+
+def _extract_city_from_location(location: str | None) -> str:
+    """Extrai a cidade principal de uma string de localização.
+
+    Ex.: 'Berlin, Berlin, DEU' -> 'Berlin'
+         'Blankenfelde-Mahlow, Brandenburg, DEU' -> 'Blankenfelde-Mahlow'
+         'Hoppegarten, Brandenburg, DEU' -> 'Hoppegarten'
+    """
+    if not location:
+        return ""
+    loc = str(location).strip()
+    # Pega a primeira parte antes da primeira vírgula
+    city = loc.split(",")[0].strip()
+    return city
+
+
+def _detect_multisite_programs(jobs: list[dict], min_sites: int = 3) -> dict[str, dict]:
+    """Detecta programas multi-site na lista de vagas.
+
+    Retorna dict: program_key -> {
+        'norm_company': str,
+        'norm_title': str,
+        'cities': list[str],
+        'job_ids': list[str],
+        'count': int
+    }
+
+    Um programa multi-site é: mesma empresa normalizada + mesmo título
+    normalizado em N>=min_sites vagas com cidades distintas.
+    """
+    from collections import defaultdict
+
+    # Agrupa por (norm_company, norm_title)
+    groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for job in jobs:
+        company = job.get("company") or ""
+        title = job.get("title") or ""
+        location = job.get("location") or ""
+        norm_company = _normalize_company_for_grouping(company)
+        norm_title = _normalize_title_for_grouping(title)
+        city = _extract_city_from_location(location)
+        if norm_company and norm_title and city:
+            groups[(norm_company, norm_title)].append({
+                "job": job,
+                "city": city,
+                "company_raw": company,
+                "title_raw": title,
+            })
+
+    programs = {}
+    for (norm_company, norm_title), entries in groups.items():
+        # Conta cidades distintas
+        cities = sorted(set(e["city"] for e in entries if e["city"]))
+        if len(cities) >= min_sites:
+            job_ids = [str(e["job"].get("id") or "") for e in entries]
+            program_key = f"{norm_company}|{norm_title}"
+            programs[program_key] = {
+                "norm_company": norm_company,
+                "norm_title": norm_title,
+                "cities": cities,
+                "job_ids": job_ids,
+                "count": len(entries),
+            }
+
+    return programs
+
+
 _PERIOD_DISPLAY = {"month": "mês", "monat": "mês", "year": "ano",
                    "jahr": "ano", "hour": "hora", "stunde": "hora",
                    "week": "semana", "woche": "semana", "day": "dia",
@@ -1322,6 +1491,11 @@ I18N: dict[str, dict[str, str]] = {
               "employer quality and visa policy."},
     "rss_item_meta": {"pt": "{company} · {location} · score {score}",
                       "en": "{company} · {location} · score {score}"},
+    # -- F120 multi-site programas --------------------------------------------
+    "multisite_badge": {"pt": "📍 multi-site: {n} cidades — {cities}",
+                        "en": "📍 multi-site: {n} cities — {cities}"},
+    "programas_h2": {"pt": "📍 Programas multi-site",
+                     "en": "📍 Multi-site programs"},
 }
 
 
@@ -2047,6 +2221,14 @@ a.t:hover{text-decoration:underline}
 @media(min-width:640px){main{padding:24px 20px 56px}h1{font-size:1.25rem}}
 """
 
+# F120 — CSS do badge de programa multi-site (display-only). Vive SEPARADO
+# de ``_CSS`` e só entra na página quando há programas detectados (zero
+# bytes no legado — contratos byte-a-byte do test_f53).
+_CSS_F120 = """/* F120 — badge de programa multi-site (display-only) */
+.multisite-badge{list-style:none;margin:0;padding:0;border-bottom:1px solid #2a343e}
+.ms-badge{display:block;padding:4px 8px;background:#151d27;color:#9aa7b4;font-size:.7rem;font-weight:500;border-left:2px solid #4da3ff}
+"""
+
 # F43 — CSS do regime full (tabs por perfil + lazy-render + contador). Vive
 # SEPARADO de ``_CSS`` e só entra na página do regime full: o regime top-N
 # legado segue byte a byte o mesmo HTML (contrato do A/B F43).
@@ -2376,7 +2558,8 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
                     display_aliases: dict | None = None,
                     f53: bool = False,
                     lang: str = "pt",
-                    ranking_for_geoblock: list[dict] | None = None) -> list[str]:
+ranking_for_geoblock: list[dict] | None = None,
+                    multisite_programs: dict | None = None) -> list[str]:
     """Cards de uma lista JA CORTADA (mesmo formato para todas as secoes).
 
     ``score_key``: campo exibido na coluna de score — "score" (perfil
@@ -2435,11 +2618,16 @@ def _cards_section(jobs: list[dict], *, company_intel_map: dict | None,
     profile_ranks_map = (profile_maps or {}).get("ranks") or {}
     profile_attrs = profile_maps is not None
     skip_ids = skip_ids or set()
+    multisite_programs = multisite_programs or {}
+    # F120 — badge de programa multi-site NÃO é renderizado inline aqui.
+    # Em vez disso, uma seção única "programas" é adicionada no final da página
+    # em render_minimal_html — mais eficiente em bytes (uma única seção vs
+    # repetição em top/🆕/🧪/🇪🇺).
+
     for i, job in enumerate(jobs, rank_start):
         jid = str(job.get("id") or "")
         if jid in skip_ids:
             continue  # F43 — já exibido na lista única; seção = atalho
-        # F54 — VIEW de display (cópia rasa): mojibake corrigido em
         # title/company/location + alias de empresa. O job ORIGINAL
         # segue para intel/quality/salary (match por string exata do
         # dataset — alias/mojibake NÃO podem contaminar o pipeline).
@@ -2697,6 +2885,11 @@ def render_minimal_html(
     # corte com a regra 2/empresa percorre a lista JA sem as mortas.
     # Regra de exibicao; o JSON/CSV (base de dados) e intocavel.
     alive = [j for j in jobs if str(j.get("id") or "") not in excluded]
+
+    # F120 — detecta programas multi-site na lista COMPLETA de elegíveis (alive)
+    # para que o badge liste TODAS as cidades do programa, não só as exibidas.
+    multisite_programs_full = _detect_multisite_programs(alive)
+
     # F43 — regime full-list: a lista única passa a ser o UNIVERSO inteiro
     # de vagas vivas (sem corte top-N, sem cap 2/empresa — cap/empresa é
     # regra de EXIBIÇÃO do regime top-N e causava ~20 ausências ocultas no
@@ -2740,6 +2933,7 @@ def render_minimal_html(
         f53=full_list,
         lang=lang,
         ranking_for_geoblock=jobs,  # F121: full ranking for twin detection
+        multisite_programs=multisite_programs_full,
     ))
     # F113 — contador visa_friendly lê do JSON (fonte única de verdade):
     # usa a lista COMPLETA de elegíveis (jobs), não o subconjunto exibido
@@ -2776,6 +2970,7 @@ def render_minimal_html(
             f53=full_list,
             lang=lang,
             ranking_for_geoblock=jobs,  # F121: full ranking for twin detection
+            multisite_programs=multisite_programs_full,
         ))
         new_section = (
             f'<h2{_i18n_attr(n_h2_pt) if lang == "en" else ""}>'
@@ -2817,6 +3012,7 @@ def render_minimal_html(
             f53=full_list,
             lang=lang,
             ranking_for_geoblock=jobs,  # F121: full ranking for twin detection
+            multisite_programs=multisite_programs_full,
         ))
         radar_pt = I18N["radar_line"]["pt"].format(n=len(watchlist_events))
         radar_en = I18N["radar_line"]["en"].format(n=len(watchlist_events))
@@ -2907,6 +3103,20 @@ def render_minimal_html(
                         f"<li>{_esc(l)}</li>" for l in lines) + "</ul>"
                 )
 
+    # F120 — seção única "programas" (display-only, uma única seção no fim
+    # da página, mais eficiente em bytes que badges inline repetidos em
+    # top/🆕/🧪/🇪🇺). Renderiza uma linha compacta por programa multi-site.
+    programas_section = ""
+    if multisite_programs_full:
+        items = []
+        for prog_key, prog_info in multisite_programs_full.items():
+            cities_str = ", ".join(prog_info["cities"])
+            # EN e PT usam o mesmo texto — sem wrapper para economizar bytes
+            items.append(f"📍 multi-site: {cities_str}")
+        if items:
+            # Formato ultra-compacto: texto direto, sem <div>/<span>
+            programas_section = "<br>".join(_esc(l) for l in items) + "<br>"
+
     # F43 — comentário do bloco 🧪 atualizado (o corte em si é o original
     # da F36.1; no full o dedupe tira as duplicatas da lista única).
     # Seção Materials — perfil alternativo, ranking proprio (digest ja
@@ -2937,6 +3147,7 @@ def render_minimal_html(
             f53=full_list,
             lang=lang,
             ranking_for_geoblock=jobs,  # F121: full ranking for twin detection
+            multisite_programs=multisite_programs_full,
         ))
         mat_header_pt, mat_header_en = _i18n_pair("prof_header_top")
         mat_note_pt, mat_note_en = _i18n_pair("mat_note")
@@ -2990,6 +3201,7 @@ def render_minimal_html(
             f53=full_list,
             lang=lang,
             ranking_for_geoblock=jobs,  # F121: full ranking for twin detection
+            multisite_programs=multisite_programs_full,
         ))
         eu_header_pt, eu_header_en = _i18n_pair("prof_header_top")
         eu_note_pt, eu_note_en = _i18n_pair("eu_note")
@@ -3098,6 +3310,8 @@ def render_minimal_html(
         )
     _css_f43 = _CSS_F43 if full_list else ""
     _css_f53 = _CSS_F53 if full_list else ""
+    # F120 — CSS do badge multisite só quando há programas (legado: zero bytes)
+    _css_f120 = _CSS_F120 if programas_section else ""
     _script_f43 = f"<script>{extra_js}</script>" if extra_js else ""
     # F46 — toggle de idioma + bootstrap i18n + link RSS: SÓ no render EN
     # (o render PT não ganha um byte — contrato A/B).
@@ -3199,7 +3413,7 @@ def render_minimal_html(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="{'dark light' if vitrine else 'dark'}">
 <title{_i18n_attr(title_pt) if _en else ''}>{page_title}</title>{_meta_f52}{_meta_f46}
-<style>{_CSS}{_css_f43}{_css_f53}{_css_f52}{_css_f46}</style>
+<style>{_CSS}{_css_f43}{_css_f53}{_css_f52}{_css_f46}{_css_f120}</style>
 </head>
 <body>
 <main>
@@ -3222,7 +3436,7 @@ def render_minimal_html(
 {watch_section}
 {materials_section}
 {eu_section}
-{sweet_section}
+{sweet_section}{programas_section}
 <p class="f"{_i18n_attr(footer_pt) if _en else ''}>{_esc(footer_note)}</p>
 </main>
 <script>{_JS}</script>{_script_f43}{_script_i18n}

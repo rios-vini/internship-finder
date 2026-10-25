@@ -233,9 +233,9 @@ sources are files in this repo.
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
 | **147 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-| **156** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+| **157** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
-| **234** | commits, one feature PR per change (git log, first-parent) |
+| **235** | commits, one feature PR per change (git log, first-parent) |
 
 **F112 (2026-10-24)** — GO/NO-GO measurement for blind hydration extension:
 - **arbeitsagentur (MTU 7×, refnr 12951-*)**: NO-GO — 7/7 pages return HTTP 200 soft-404 (homepage, no JobPosting JSON-LD)
