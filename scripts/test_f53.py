@@ -315,7 +315,7 @@ REPO = Path(__file__).resolve().parent.parent
 # F117 (24/10, pós-rebase sobre F116+F114): src/ moveu (discovery_rules.py
 # en_locale_variant + manual_check EN); âncora -> commit src/ REBASADO da
 # fase = 11c0e57 (último commit que toca src/ — d857077+6032740+11c0e57); diff HEAD↔âncora em src/ vazio.
-_AB_BASELINE_SHA = "c57acea60ac2f0a95050a6feedf7f58a1617b391"
+_AB_BASELINE_SHA = "6cf38284614e6a11c2c95d5024bf68573f58e7bc"
 _AB_LEGACY_PAGE_SHA = "1b548c1"
 
 # F60 — adições determinísticas da fase ao render (todas as línguas):
