@@ -828,6 +828,21 @@ def generate_manual_check(
         seen_db_path = data_dir / "dataset_seen.db"
     collisions = detect_id_collisions(ranking, load_id_history(seen_db_path))
     gates = detect_external_agreement_gates(ranking)
+    # F119 — detecção de espelhos BA mortos com original vivo
+    f119_mirror_dead = {"count": 0, "pairs": []}
+    for job in ranking:
+        if not isinstance(job, dict):
+            continue
+        if (str(job.get("liveness_status") or "").strip().lower() == "dead" and
+            str(job.get("source") or "").strip().lower() == "sf_dataset:bundesagentur"):
+            twin = ba_mirror_twin_url(job, ranking)
+            if twin:
+                f119_mirror_dead["count"] += 1
+                f119_mirror_dead["pairs"].append({
+                    "dead_company": str(job.get("company") or ""),
+                    "dead_id": str(job.get("id") or ""),
+                    "alive_url": twin,
+                })
     persist_error = None
     if collisions["flagged"] or gates["flagged"]:
         try:
@@ -844,5 +859,6 @@ def generate_manual_check(
         "path": str(out_path),
         "collisions": collisions,
         "gates": gates,
+        "f119_mirror_dead": f119_mirror_dead,
         "persist_error": persist_error,
     }
