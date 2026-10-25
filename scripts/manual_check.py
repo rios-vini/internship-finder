@@ -378,6 +378,64 @@ def official_portal_twin_url(job: dict, ranking: list) -> str:
 
 
 # ---------------------------------------------------------------------------
+# F119 — Dead-mirror rescue: BA 410 com original vivo
+# Linha informativa display-only no MANUAL-CHECK (NUNCA ressuscita)
+# Reusa a MESMA lógica de gêmeos do F105 (_twin_title_key, _desc_jaccard,
+# _PORTAL_TWIN_MIN_JACCARD) — sem máquina nova.
+# ---------------------------------------------------------------------------
+
+# Fonte do espelho BA (dataset:bundesagentur / direct:bundesagentur)
+BA_MIRROR_SOURCES = ("sf_dataset:bundesagentur", "direct:bundesagentur")
+
+
+def _is_ba_mirror(job: dict) -> bool:
+    """Verifica se a vaga é do espelho BA (dataset:bundesagentur ou direct:bundesagentur)."""
+    source = str(job.get("source") or "")
+    return any(source.startswith(s) for s in BA_MIRROR_SOURCES)
+
+
+def ba_mirror_twin_url(job: dict, ranking: list) -> str:
+    """URL do portal oficial VIVO do gêmeo do espelho BA morto (pura; ``''`` = sem twin).
+
+    Dispara SÓ quando:
+    - A vaga tem ``liveness_status == 'dead'`` E é do espelho BA;
+    - Existe, no MESMO ranking, um registro VIVO (``liveness_status == 'alive'``)
+      com o MESMO título normalizado, MESMO país e overlap de descrição >=
+      ``_PORTAL_TWIN_MIN_JACCARD`` (0.5, mesma calibração F105).
+
+    Sem prova de mesma vaga => ``''`` (nunca inventa alvo).
+    A vaga-fonte PERMANECE dead; o link é SÓ informativo no MANUAL-CHECK.
+    """
+    if not isinstance(job, dict):
+        return ""
+    if str(job.get("liveness_status") or "").strip().lower() != "dead":
+        return ""
+    if not _is_ba_mirror(job):
+        return ""
+    title = _twin_title_key(job.get("title") or "")
+    country = str(job.get("country_iso") or "").strip().casefold()
+    if not title or not country:
+        return ""
+    desc = str(job.get("description") or "")
+    best: tuple[float, str] | None = None
+    for other in ranking:
+        if not isinstance(other, dict) or other is job:
+            continue
+        if str(other.get("liveness_status") or "").strip().lower() != "alive":
+            continue
+        if _twin_title_key(other.get("title") or "") != title:
+            continue
+        if str(other.get("country_iso") or "").strip().casefold() != country:
+            continue
+        overlap = _desc_jaccard(desc, str(other.get("description") or ""))
+        if overlap is None or overlap < _PORTAL_TWIN_MIN_JACCARD:
+            continue
+        if best is None or overlap > best[0]:
+            best = (overlap, str(other.get("url") or "").strip())
+    return best[1] if best else ""
+
+
+# ---------------------------------------------------------------------------
 # id_collision (ITEM 7-typo) — validação de ID plausível por provedor
 # ---------------------------------------------------------------------------
 
@@ -650,8 +708,12 @@ def build_manual_check_rows(ranking: list) -> list[dict]:
     MESMO ranking, o link vira o do portal (``portal_oficial=True``).
     F117: quando a URL é de tenant SF com variante EN verificada, adiciona
     ``en_variant`` com nota "(EN render)".
+    F119: linhas informativas para vagas dead do espelho BA com gêmeo vivo
+    (``f119_mirror_dead=True``, ``twin_url`` preenchido) — display-only,
+    NÃO entram na fila por motivo, liveness_status PERMANECE dead.
     """
     rows: list[dict] = []
+    # 1) Fila regular (motivo não-avaliável/borderline/colisão/gate)
     for job in ranking:
         if not isinstance(job, dict):
             continue
@@ -681,6 +743,26 @@ def build_manual_check_rows(ranking: list) -> list[dict]:
             "en_variant": en_variant,  # F117
             "date": str(job.get("liveness_checked_at") or "")[:10] or None,
         })
+    # 2) F119 — linhas informativas: dead BA mirror com gêmeo vivo
+    for job in ranking:
+        if not isinstance(job, dict):
+            continue
+        twin = ba_mirror_twin_url(job, ranking)
+        if not twin:
+            continue
+        rows.append({
+            "id": str(job.get("id") or ""),
+            "company": str(job.get("company") or "?"),
+            "title": str(job.get("title") or "?"),
+            "motivo": None,  # NÃO é item da fila — linha informativa
+            "gate_anchor": "",
+            "url": twin,
+            "resolved": False,
+            "portal_oficial": False,
+            "date": str(job.get("liveness_checked_at") or "")[:10] or None,
+            "f119_mirror_dead": True,
+            "twin_url": twin,
+        })
     rows.sort(key=lambda r: (r["company"].casefold(), r["title"].casefold()))
     return rows
 
@@ -689,16 +771,20 @@ def write_manual_check_md(path, rows: list[dict], generated_at: str) -> Path:
     """Escreve o MANUAL-CHECK.md (fila PARALELA — nada sai do ranking)."""
     path = Path(path)
     prev_dates = _read_previous_dates(path)
+    # Separar linhas da fila regular vs linhas informativas F119
+    queue_rows = [r for r in rows if not r.get("f119_mirror_dead")]
+    f119_rows = [r for r in rows if r.get("f119_mirror_dead")]
     lines = [
-        f"# Manual check — {len(rows)} item(ns)",
+        f"# Manual check — {len(queue_rows)} item(ns) na fila",
         "",
         f"_Gerado em {generated_at} UTC (run diário, F96). Fila PARALELA: "
         "nenhuma vaga sai do ranking/Top-5 (doutrina F87)._",
         "",
     ]
-    if not rows:
+    if not queue_rows and not f119_rows:
         lines.append("_Fila vazia — nenhum item não-avaliável/borderline/colisão._")
-    for row in rows:
+    # Linhas da fila regular
+    for row in queue_rows:
         jid = row["id"]
         date = row.get("date") or None
         prev = prev_dates.get(jid)
@@ -724,6 +810,28 @@ def write_manual_check_md(path, rows: list[dict], generated_at: str) -> Path:
             f"[abrir]({row['url']}) — motivo: {motivo_txt} — "
             f"visto: {date} <!-- id:{jid} -->{suffix}"
         )
+    # F119 — linhas informativas: dead BA mirror com gêmeo vivo
+    if f119_rows:
+        lines.append("")
+        lines.append("## ⚠ Espelho BA morto — original vivo (F119, display-only)")
+        lines.append("")
+        lines.append("_Estas vagas têm ``liveness_status=dead`` no espelho BA (410), mas o "
+                       "portal oficial está VIVO. O status **não muda** — a linha é só informativa._")
+        lines.append("")
+        for row in f119_rows:
+            jid = row["id"]
+            date = row.get("date") or None
+            prev = prev_dates.get(jid)
+            if prev and (date is None or prev < date):
+                date = prev
+            if not date:
+                date = str(generated_at)[:10]
+            twin_url = row.get("twin_url") or row.get("url")
+            lines.append(
+                f"- **{row['company']}** — {row['title']} — "
+                f"⚠ mirror morto — original vivo: [abrir]({twin_url}) — "
+                f"visto: {date} <!-- id:{jid} -->"
+            )
     lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
@@ -780,13 +888,26 @@ def generate_manual_check(
         except Exception as exc:  # noqa: BLE001 — persistência best-effort
             persist_error = f"{type(exc).__name__}: {exc}"
     rows = build_manual_check_rows(ranking)
+    # F119 stats
+    f119_rows = [r for r in rows if r.get("f119_mirror_dead")]
+    f119_count = len(f119_rows)
+    f119_pairs = [
+        {"dead_id": r["id"], "dead_company": r["company"], "dead_title": r["title"],
+         "alive_url": r.get("twin_url") or r.get("url")}
+        for r in f119_rows
+    ]
     out_path = write_manual_check_md(
         data_dir / MANUAL_CHECK_MD_NAME, rows, now)
     return {
         "ranking": len(ranking),
-        "rows": len(rows),
+        "rows": len([r for r in rows if not r.get("f119_mirror_dead")]),
         "path": str(out_path),
         "collisions": collisions,
         "gates": gates,
         "persist_error": persist_error,
+        # F119
+        "f119_mirror_dead": {
+            "count": f119_count,
+            "pairs": f119_pairs,
+        },
     }
