@@ -6,7 +6,7 @@ ingles essencial; Alemanha). Heuristica deterministica, sem ML.
 
 Componentes do score (``score_job`` -> ``Score.total`` + ``breakdown``):
 
-- **registry** — F3: o registry de 153 empresas vira LISTA DE INTERESSE:
+- **registry** — F3: o registry de 159 empresas vira LISTA DE INTERESSE:
     ``+WEIGHT_REGISTRY_INTEREST`` quando a empresa da vaga bate com um nome
     canonico do registry (casefold exato OU substring — "Robert Bosch GmbH"
     contem "bosch"). NAO e filtro: vaga fora do registry entra no eligible

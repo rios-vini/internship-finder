@@ -373,6 +373,28 @@ RULES: dict[str, DiscoveryRule] = {
         resolvable=False,  # dominio custom: resolver -> None (por desenho)
         url_as_slug=True,  # input do scraper e a URL completa do board
     ),
+    "oracle": DiscoveryRule(
+        ats="oracle",
+        csv_columns=("name", "slug", "url"),
+        slug_semantics=(
+            "URL COMPLETA do site Oracle Recruiting Cloud (https://{sub}.fa."
+            "{regiao}.oraclecloud.com/hcmUI/CandidateExperience/en/sites/{CX}). "
+            "oracle.py do pacote (0.3.0) e EXPERIMENTAL: envelope requisitionList "
+            "varia por tenant; descoberta manual F126 — SEM CSV no inventario "
+            "upstream (raw oracle.csv 404); configs locais em us_centric_tenants.py"
+        ),
+        canonical_endpoint=(
+            "GET {base}/hcmRestApi/resources/latest/recruitingCEJobRequisitions"
+            "?onlyData=true&limit=200&offset=0&finder=findReqs;siteNumber={site} "
+            "(REST sem auth; URL completa como company_slug)"
+        ),
+        jobs_signal="json:requisitionList (requisitionSummary; siteNumber na URL)",
+        success=_SUCCESS,
+        invalid=_BASELINE_INVALID + (Invalid.UNRESOLVABLE_URL,),
+        sample_url="https://edbz.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1",
+        resolvable=False,  # sem CSV upstream: resolver -> None (por desenho)
+        url_as_slug=True,  # input do scraper e a URL completa do board
+    ),
 }
 
 

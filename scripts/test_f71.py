@@ -50,8 +50,8 @@ from internship_finder.registry import SEED, RegistryEntry  # noqa: E402
 
 FAILURES: list[str] = []
 
-# Contrato de contagem da especificacao F71 (153 empresas: 127 pre-F88 + 18 F88 + 2 F100 + 4 F123 + 2 F125).
-REGISTRY_TOTAL = 153
+# Contrato de contagem da especificacao F71 (159 empresas: 127 pre-F88 + 18 F88 + 2 F100 + 4 F123 + 2 F125 + 6 F124+F126).
+REGISTRY_TOTAL = 159
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
@@ -94,7 +94,7 @@ def _token_or_url(s: str) -> bool:
 # forma sem nenhuma entry = linha morta (a mesma secao 1 exige remocao).
 ATS_SLUG_SHAPES: dict[str, tuple[str, Callable[[str], bool]]] = {
     "successfactors": ("tenant (1 token; empresas compartilham o tenant — o runtime desambigua por URL, URL_SLUG_ATS)", _token_ok),
-    "workday": ("empresa/pagina (2 segmentos, sem '/' extra)", _workday_ok),
+    "workday": ("empresa/pagina (2 segmentos, sem '/' extra) OU URL completa https de careers", lambda s: _workday_ok(s) or _is_https_url(s)),
     "smartrecruiters": ("empresa (1 token)", _token_ok),
     "phenom": ("empresa (token; 'nan' = artefato do manifest upstream) OU URL completa https de careers", _token_or_url),
     "eightfold": ("empresa (1 token)", _token_ok),
@@ -108,6 +108,7 @@ ATS_SLUG_SHAPES: dict[str, tuple[str, Callable[[str], bool]]] = {
     "personio": ("empresa (1 token)", _token_ok),
     "moka": ("empresa/ID (2 segmentos, ID numerico)", _moka_ok),
     "avature": ("empresa (token slug) OU URL completa https de board custom — F125: URL como company_slug", _token_or_url),
+    "oracle": ("empresa (URL completa https de careers — oracle exige URL completa, nao slug)", _is_https_url),
 }
 
 
