@@ -17,6 +17,8 @@ from internship_finder.adapters.ats import AtsJobAdapter
 from internship_finder.collectors.company import CompanyCollector
 from internship_finder.collectors.phenom_tenants import build_phenom_company, get_phenom_tenant
 from internship_finder.collectors.us_centric_tenants import build_us_centric_company, get_us_centric_tenant
+from internship_finder.collectors.rmk_tenants import build_rmk_company, get_rmk_tenant
+from internship_finder.collectors.avature_tenants import build_avature_company, get_avature_tenant
 from internship_finder.errors import (
     FETCH_STAGE,
     NORMALIZE_STAGE,
@@ -65,13 +67,13 @@ TENANT_URL_OVERRIDES: dict[tuple[str, str, str], str] = {
     # (RMK legacy, feed sitemal.xml vivo e completo). Verificada em
     # 29/09/2026: 913 itens, identidade/overlap historico 825/913.
     ("successfactors", "jobs", "SAP"): "https://careers.sap.com",
-    # Lidl: jobs.lidl/sitemal.xml = 95 MB, ~5 min download (timeout crônico 85s).
-    # O RCM do SuccessFactors serve o feed legacy via career5.successfactors.eu
-    # com company=lidlstiftuP2 (Job-Listing XML, ~200 KB, <5s). Validado AO VIVO
-    # 24/10/2026: feed legacy responde HTTP 200, XML válido, vagas parseáveis.
-    # O scraper detecta host legacy (career*.successfactors.eu) e usa o caminho
-    # /career?company=ID&career_ns=job_listing_summary&resultType=XML.
-    ("successfactors", "lidlstiftuP2", "LIDL"): "https://career5.successfactors.eu/career?company=lidlstiftuP2",
+    # Lidl: OVERRIDE REMOVIDO (F132, 26/10/2026).
+    # O feed legacy career5.successfactors.eu?company=lidlstiftuP2 migrou de conteúdo
+    # e agora serve o board US do Lidl (88 vagas US, zero DE).
+    # O feed original jobs.lidl/sitemal.xml está vivo (108 MB, ~46s download,
+    # ~98s total com parsing) e retorna 21.776 vagas (15.397 DE).
+    # Requer timeout dedicado de 100s (ver TENANT_TIMEOUT_OVERRIDES).
+    # Removido para restaurar o fluxo padrão do inventário (jobs.lidl/sitemal.xml).
 }
 
 
@@ -197,6 +199,20 @@ def resolve_tenant_migration(company: Company) -> Company:
 # margin=...)`` — os testes usam uma margem pequena para timeout rapido sem
 # alterar o comportamento de producao (default 25).
 TIMEOUT_MARGIN = 25.0
+
+# F132 (26/10/2026): override de TIMEOUT por tenant.
+# Alguns feeds (ex.: Lidl sitemal.xml = 108 MB) precisam de mais tempo que
+# o teto global do cron (60s + 25s margem = 85s). Este mapa permite um
+# timeout dedicado por tenant (mesma chave de identidade: (ats, slug, name)).
+# O valor substitui o ``timeout`` passado ao ``fetch_with_timeout`` ANTES de
+# somar a margem. Remocao: quando o feed emagrecer ou o teto global subir,
+# remover a entrada — a ausencia restaura o comportamento global.
+TENANT_TIMEOUT_OVERRIDES: dict[tuple[str, str, str], float] = {
+    # Lidl: jobs.lidl/sitemal.xml = 108 MB, ~46s download + ~52s parsing = ~98s total.
+    # O timeout global de 60s (85s com margem) nao basta. 100s = 125s com margem.
+    # Medido AO VIVO 26/10/2026: 21.776 vagas (15.397 DE) em 97.4s.
+    ("successfactors", "lidlstiftuP2", "LIDL"): 100.0,
+}
 
 # Tempo (segundos) de cada estagio do encerramento forçado: ``terminate()``
 # (SIGTERM) tem uma janela de grace para chamar a cleanup normal; se o
@@ -410,6 +426,24 @@ def collect_company(
         # Replace any database entries with our verified config
         # (database may have wrong ATS or missing entries)
         companies = [us_company] + [c for c in companies if c.ats != us_config.ats or c.url != us_config.url]
+
+    # Check for RMK (SuccessFactors Recruiting Marketing) tenants with local feed URLs
+    # These share the generic `successfactors:jobs` tenant but need custom RSS feed URLs
+    rmk_config = get_rmk_tenant(name)
+    if rmk_config:
+        rmk_company = build_rmk_company(rmk_config, name)
+        # Replace any database entries with our verified feed URL config
+        # The database returns the generic `successfactors:jobs` tenant; we override with the specific feed URL
+        companies = [rmk_company] + [c for c in companies if c.ats != "successfactors" or c.slug != "jobs"]
+
+    # Check for Avature tenants with custom portal URLs (missing from upstream avature.csv)
+    # These use the full portal URL as slug (avature ∈ URL_SLUG_ATS)
+    avature_config = get_avature_tenant(name)
+    if avature_config:
+        avature_company = build_avature_company(avature_config, name)
+        # Replace any database entries with our verified config
+        # (database may not have these custom-domain Avature tenants at all)
+        companies = [avature_company] + [c for c in companies if c.ats != "avature" or c.url != avature_config.portal_url]
     
     summary: dict = {
         "ok": [],
@@ -453,6 +487,17 @@ def collect_company(
             summary["skipped"].append(company.source)
             summary["companies"][company.source] = company.name or company.query
             continue
+        # F132: timeout dedicado por tenant (ex.: Lidl sitemal.xml 108 MB).
+        tenant_key = (company.ats, company.slug, (company.name or "").strip())
+        effective_timeout = TENANT_TIMEOUT_OVERRIDES.get(tenant_key, timeout)
+        if effective_timeout != timeout:
+            log.info(
+                "[%s] %s: usando timeout dedicado %.0fs (global %.0fs)",
+                name,
+                company.source,
+                effective_timeout,
+                timeout,
+            )
         t0 = time.time()
         try:
             # Fase A (D4): Softgarden e a excecao explicita — o feed de vagas
@@ -463,7 +508,7 @@ def collect_company(
             tenant_include_descriptions = (
                 include_descriptions or company.ats == "softgarden"
             )
-            raw_jobs = fetch_with_timeout(company, timeout, tenant_include_descriptions)
+            raw_jobs = fetch_with_timeout(company, effective_timeout, tenant_include_descriptions)
             if limit and len(raw_jobs) > limit:
                 raw_jobs = raw_jobs[:limit]
             # Os dicts ja saem normalizados (single-pass no subprocesso).
