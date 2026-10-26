@@ -58,7 +58,7 @@ Real numbers from the production run — nothing staged for the README:
 ```mermaid
 flowchart LR
     DS["ats-scrapers hosted dataset<br/>~5.1M postings · 63 per-ATS slices<br/>refreshed daily ~14:30 UTC"] -->|"streaming prefilter<br/>(never fully materialized)"| F
-    RG["curated registry<br/>147 companies · 14 ATS platforms"] -->|"per-company fetch"| BA["Bundesagentur API + EURES<br/>direct fetch, Praktikum filter"]
+    RG["curated registry<br/>153 companies · 15 ATS platforms"] -->|"per-company fetch"| BA["Bundesagentur API + EURES<br/>direct fetch, Praktikum filter"]
     RS["research sources<br/>MPG · TU Berlin · Leibniz · job boards"] -->|"RSS / HTML / API"| F
     BA --> F
     F["eligibility filters<br/>student type + target area + country"] --> A
@@ -85,7 +85,7 @@ has done so in production since September 2026.
   (63 per-ATS slices, refreshed daily ~14:30 UTC), consumed by a
   **streaming line-by-line prefilter** — a slice is never fully
   materialized in memory or on disk beyond the active CSV.
-- **Curated registry** — 147 companies across 14 ATS platforms, fetched
+- **Curated registry** — 153 companies across 15 ATS platforms, fetched
   per company, plus direct daily samples from the **Bundesagentur für
   Arbeit API** (facet code 34 = Praktikum/Trainee) and **EURES**
   (Praktikum keyword, description included by the search API).
@@ -231,9 +231,9 @@ sources are files in this repo.
 |---|---|
 | **~5.1M** | job postings streamed daily from the upstream dataset (`docs/historico/f3_sf_dataset.md`) |
 | **126,842 → 783** | postings collected → eligible, run 2026-10-12 (production metrics, snapshot in `docs/historico/PROJECT_STATUS.md` and the metrics JSONL) |
-| **147 / 14** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
+| **153 / 15** | curated companies / ATS platforms in the registry (`src/internship_finder/registry.py`) |
 | **5** | target countries: Germany (primary) + LU, NL, FI, BE |
-| **157** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
+| **158** | CI test suites, all green on every push and pull request (`.github/workflows/ci.yml`) |
 | **+0.651** | Kendall tau vs. a 59-job human-labeled ranking benchmark (`docs/ranking_benchmark.md`) |
 | **235** | commits, one feature PR per change (git log, first-parent) |
 
@@ -326,7 +326,7 @@ shows the current one.
 ## Resumo (PT-BR)
 
 Pipeline pessoal de dados, em produção desde setembro de 2026: coleta
-~5,1M de vagas por dia (dataset upstream + registry de 147 empresas +
+~5,1M de vagas por dia (dataset upstream + registry de 153 empresas +
 APIs da Bundesagentur/EURES + fontes de pesquisa), filtra estágios
 *Praktikum*/*Werkstudent* em procurement/supply chain na Alemanha (+ LU,
 NL, FI, BE), remove inaplicáveis para um perfil específico, deduplica

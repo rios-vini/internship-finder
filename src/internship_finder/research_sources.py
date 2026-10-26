@@ -140,6 +140,11 @@ RESEARCH_BUDGET_SECONDS = 300.0
 
 # --- Endpoints (probe ao vivo 09/10: todos 200) ------------------------------
 MPG_RSS_URL = "https://www.mpg.de/feeds/jobs.rss"
+# F128 — Fraunhofer RSS keyword feed (Praktikum) — mesma plataforma RMK/J2W
+# de careers.sap.com/BMW; 20 itens/feed (truncagem RMK), pubDate presente,
+# description embutida. Feed vivo verificado 25/10/2026: 200 OK, 20 itens,
+# 9 frescos 22-24/10, incluindo Pflichtpraktika Bayreuth (IPA, additive mfg).
+FRAUNHOFER_RSS_URL = "https://jobs.fraunhofer.de/services/rss/job/?locale=en_US&keywords=(Praktikum)"
 TU_BERLIN_LIST_URL = "https://www.jobs.tu-berlin.de/stellenausschreibungen"
 TU_BERLIN_DETAIL_URL = "https://www.jobs.tu-berlin.de/stellenausschreibungen/{job_id}"
 LEIBNIZ_LIST_URL = "https://www.leibniz-gemeinschaft.de/en/careers/jobs"
@@ -158,6 +163,7 @@ FREEHIRE_LIMIT = 100
 
 # Nomes canonicos das fontes (identidade no ``Job.source`` e no summary).
 SOURCE_MPG = "mpg_rss"
+SOURCE_FRAUNHOFER = "fraunhofer_rss"
 SOURCE_TU_BERLIN = "tu_berlin"
 SOURCE_LEIBNIZ = "leibniz"
 SOURCE_ARBEITNOW = "arbeitnow"
@@ -169,6 +175,7 @@ SOURCE_BME = "bme"
 # os jobs pertencem a SOCIEDADE/universidade; institutos individuais (MPG
 # tem ~80) nao sao identificaveis no feed sem detail fetch.
 MPG_COMPANY = "Max Planck Society"
+FRAUNHOFER_COMPANY = "Fraunhofer-Gesellschaft"
 TUM_BERLIN_COMPANY = "Technische Universität Berlin"
 LEIBNIZ_COMPANY = "Leibniz Association"
 # Fallback institucional do portal (item da listagem SEM organizacao — a
@@ -414,6 +421,94 @@ def fetch_mpg_rss(
         stats["error"] = "fetch falhou"
         return [], stats
     jobs = parse_mpg_rss(text)
+    stats["rows_seen"] = len(jobs)
+    stats["jobs"] = len(jobs)
+    if not jobs:
+        stats["status"] = "failed"
+        stats["error"] = "nenhum item parseado"
+    return jobs, stats
+
+
+# ---------------------------------------------------------------------------
+# F128 — Fraunhofer RSS keyword feed (Praktikum) — mesma plataforma RMK/J2W
+# ---------------------------------------------------------------------------
+
+
+def _fraunhofer_item_to_job(item: ET.Element) -> Job | None:
+    """Item RSS Fraunhofer -> Job (None se sem title/link)."""
+    title = _clean(item.findtext("title"))
+    link = _clean(item.findtext("link"))
+    if not title or not link:
+        return None
+    description = _html_to_text(item.findtext("description"))
+    # id estavel da fonte = URL do item; guid do feed carrega sufixo de cache
+    # — o <link> limpo e a chave estavel. Location extraida do titulo (padrao
+    # "Title (City, DE, POSTAL)").
+    location = None
+    import re
+    loc_match = re.search(r"\(([^,]+,\s*DE,\s*\d{5})\)$", title)
+    if loc_match:
+        location = loc_match.group(1)
+        title = title[:loc_match.start()].strip()
+    job = Job(
+        id=f"{FRAUNHOFER_COMPANY}|{SOURCE_FRAUNHOFER}:{_sha16(link)}",
+        source=SOURCE_FRAUNHOFER,
+        title=title,
+        company=FRAUNHOFER_COMPANY,
+        location=location,
+        country="de",
+        url=link,
+        description=description,
+        internship=is_student_role(title, description, None),
+        posted_at=_parse_dt(item.findtext("pubDate")),
+        collected_at=datetime.now(UTC),
+        external_id=link,
+        country_iso="de",
+        raw=None,
+    )
+    return job
+
+
+def parse_fraunhofer_rss(xml_text: str) -> list[Job]:
+    """XML RSS do Fraunhofer -> ``list[Job]`` (itens validos).
+
+    Parse ``xml.etree`` (stdlib) — o feed e RSS 2.0 valido (probe 25/10:
+    20 itens). Malformado -> ``[]`` com log (fail-soft).
+    """
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        log.warning("research_sources: fraunhofer_rss XML malformado (%s)", exc)
+        return []
+    jobs: list[Job] = []
+    for item in root.iter("item"):
+        try:
+            job = _fraunhofer_item_to_job(item)
+        except Exception as exc:  # noqa: BLE001 - item ruim nao derruba o resto
+            log.warning("research_sources: fraunhofer_rss item invalido (%s)", exc)
+            continue
+        if job is not None:
+            jobs.append(job)
+    return jobs
+
+
+def fetch_fraunhofer_rss(
+    *,
+    timeout: float = RESEARCH_HTTP_TIMEOUT,
+    opener: Callable[[urllib.request.Request], Any] | None = None,
+    url: str = FRAUNHOFER_RSS_URL,
+) -> tuple[list[Job], dict[str, Any]]:
+    """RSS do Fraunhofer (keyword=Praktikum) -> ``(jobs, stats)``. Fail-soft."""
+    stats: dict[str, Any] = {
+        "source": SOURCE_FRAUNHOFER, "status": "ok", "rows_seen": 0,
+        "jobs": 0, "details_ok": 0, "details_failed": 0, "error": None,
+    }
+    text = _http_get(url, timeout=timeout, opener=opener)
+    if text is None:
+        stats["status"] = "failed"
+        stats["error"] = "fetch falhou"
+        return [], stats
+    jobs = parse_fraunhofer_rss(text)
     stats["rows_seen"] = len(jobs)
     stats["jobs"] = len(jobs)
     if not jobs:
@@ -1730,6 +1825,7 @@ def fetch_praktikum_info(
 # do budget diario).
 RESEARCH_SOURCE_ORDER: tuple[tuple[str, Callable[..., tuple[list[Job], dict[str, Any]]]], ...] = (
     (SOURCE_MPG, fetch_mpg_rss),
+    (SOURCE_FRAUNHOFER, fetch_fraunhofer_rss),
     (SOURCE_TU_BERLIN, fetch_tu_berlin),
     (SOURCE_LEIBNIZ, fetch_leibniz),
     (SOURCE_ARBEITNOW, fetch_arbeitnow),
@@ -1752,11 +1848,11 @@ def disabled_research_sources(
     """Nomes de fontes desligadas (kill switch sem deploy + default F30).
 
     ``INTERNSHIP_FINDER_RESEARCH_SOURCES_OFF``: CSV de nomes canonicos
-    (``mpg_rss,tu_berlin,leibniz,arbeitnow,remoteok,freehire,bme``), case
+    (``mpg_rss,fraunhofer_rss,tu_berlin,leibniz,arbeitnow,remoteok,freehire,bme``), case
     insensitive, whitespace tolerante. Item desconhecido gera log de aviso
     (visivel) e e ignorado — nunca crasha o run. Sem a var (ou vazia):
     conjunto vazio = todas as fontes ligadas (default ON, spec §2.3).
-    (``mpg_rss,tu_berlin,leibniz,arbeitnow,remoteok,freehire,amazon_jobs,
+    (``mpg_rss,fraunhofer_rss,tu_berlin,leibniz,arbeitnow,remoteok,freehire,amazon_jobs,
     jobmensa,absolventa,praktikum_info``), case insensitive, whitespace
     tolerante. Item desconhecido gera log de aviso (visivel) e e
     ignorado — nunca crasha o run. Sem a var (ou vazia): conjunto vazio.

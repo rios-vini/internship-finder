@@ -1,0 +1,1015 @@
+<?xml version="1.0" encoding="UTF-8" ?><rss version='2.0' xmlns:atom='http://www.w3.org/2005/Atom'><channel><atom:link href='https://jobs.fraunhofer.de/feeds/(Praktikum)/?locale=en_US' rel='self' type='application/rss+xml' /><title>Fraunhofer-Gesellschaft - Custom Search (Praktikum)</title><link>https://jobs.fraunhofer.de/feeds/(Praktikum)/?locale=en_US</link><description>Custom RSS Feed for Fraunhofer-Gesellschaft</description><lastBuildDate>Mon, 26 Oct 2026 05:11:33 GMT</lastBuildDate><language>en-us</language><image><url></url><title><![CDATA[Fraunhofer-Gesellschaft - Custom Search (Praktikum)]]></title><link>https://jobs.fraunhofer.de/feeds/(Praktikum)/?locale=en_US</link></image><ttl>720</ttl> <item><title><![CDATA[Studentische Hilfskräfte/Thesis - Entwicklung von Mikrocontroller-Firmware für eingebettete Systeme (Wachtberg, DE, 53343)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p><strong>Das Fraunhofer FHR </strong>in Wachtberg bei Bonn ist Teil der großen Fraunhofer-Gesellschaft und eines der führenden und größten europäischen Forschungsinstitute auf dem Gebiet der Hochfrequenzphysik und Radartechnik. Das Institut bearbeitet zahlreiche multinationale Forschungsprojekte mit akademischen und industriellen Partnern.<br>Der Bereich <strong>„Industrielle Hochfrequenzsysteme“ (IHS)</strong> entwickelt in vier Abteilungen leistungsfähige Sensoren und Radarsysteme für die Bereiche industrielle Messtechnik, zivile Sicherheit, neue Mobilitätslösungen und Umweltmonitoring oder medizinische Anwendungen. Die Abteilung <strong>„Eingebettete Systeme“</strong> befasst sich mit Forschungsthemen zu verteilten Signalverarbeitungssystemen für hochspezialisierte Radarsysteme im industriellen Umfeld und in der Forschung. Im Fokus stehen die Ansteuerung multifunktionaler Multi-Kanalsysteme sowie deren effiziente und ressourcenschonende Echtzeitverarbeitung.</p>
+<p><br>Die Radartechnologie und deren Signalverarbeitungsalgorithmen sind hochentwickelt, sehr leistungsstark und in der Lage detailgetreue Abbildung einer Szenerie zu liefern. Der Nutzung im zivilen und militärischen Einsatz stehen häufig die anfallende Datenmenge und deren Verarbeitung im Weg. Die Gruppe <strong>„H/W Implementierungen“ </strong>beschäftigt sich mit der Architektur, dem Design und der Implementierung echtzeitfähiger Signalverarbeitungslösungen für sichere und ressourceneffiziente Radartechnik in der industriellen Qualitätssicherung, im Automotive sowie im Luft- und Raumfahrtbereich und leistet damit einen wesentlichen Beitrag zur Realisierung radarbasierter Echtzeit-Messtechnik.</p>
+<p> </p>
+<p>Für unser Team suchen wir dauerhaft engagierte Studentinnen (max. 19,5 Std./Woche), die unsere Wissenschaftlerinnen unterstützen und so zu einem erfolgreichen Forschungsbetrieb beitragen.<br><br>Sie werden von Beginn an in das Team und in laufende Projekte integriert. Wenn Sie Ihr Engagement und Wissen voll einbringen möchten, können Sie früh Verantwortung übernehmen und Aufgaben selbstständig bearbeiten – unabhängig davon, ob im Praktikum, als studentische Hilfskraft oder im Rahmen einer Abschlussarbeit.</p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgst Du für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><p>Mitarbeit an der Entwicklung von Firmware für mikrocontrollerbasierte Radarsensoren</p>
+<ul>
+<li>Implementierung und Optimierung von Signalverarbeitungsalgorithmen (z. B. Filter, FFT, Detektion, Tracking) auf ressourcenbeschränkten Mikrocontroller-Plattformen</li>
+<li>Portierung bestehender Algorithmen von PC-/High-Level-Umgebungen auf Embedded-Firmware</li>
+<li>Anpassung der Firmware an unterschiedliche Zielplattformen (z. B. ARM Cortex-M, DSP-basierte Controller)</li>
+<li>Profiling und Optimierung hinsichtlich Laufzeit, Speicherbedarf und Energieverbrauch</li>
+<li>Implementierung hardwarenaher Treiber und Schnittstellen (z. B. SPI, I²C, UART, ADC, Timer)</li>
+<li>Mitarbeit bei der Integration in bestehende Embedded-Software-Architekturen (z. B. RTOS-basierte Systeme)</li>
+<li>Evaluation neuer Mikrocontroller Strukturen</li>
+<li>Entwicklung von Test- und Debug-Routinen (Unit-Tests, Hardware-in-the-Loop, Logging)</li>
+<li>Planung und Durchführung von Laborversuchen zur Verifikation von Firmware und Signalverarbeitungsalgorithmen</li>
+<li>Erstellung technischer Dokumentation (Code-Dokumentation, Schnittstellenbeschreibungen, Testprotokolle)</li>
+</ul>
+<p> </p>
+<p>Beispiel Thesis-Themen: <br><br><strong>„Implementierung und Strukturierung von Firmware für radarbasierte Echtzeit-Signalverarbeitung auf Mikrocontrollern“</strong><br>Ziel der Arbeit ist die Entwicklung einer modularen Firmware-Architektur und die echtzeitfähige Implementierung ausgewählter Signalverarbeitungsalgorithmen auf einer ressourcenbeschränkten Mikrocontroller-Plattform<br><strong>„Evaluierung und Implementierung von Synchronisationsansätzen für die zeitgenaue Signalerzeugung auf Mikrocontrollern“</strong><br>Ziel der Arbeit ist die Implementierung und experimentelle Bewertung verschiedener Hard- und Software-Synchronisationskonzepte zur präzisen zeitlichen Steuerung der Signalerzeugung auf Mikrocontrollern.</p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringst Du Dich ein</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Aktuelle Immatrikulation in einem mathematischen, naturwissenschaftlichen oder ingenieurwissenschaftlichen Studiengang (z. B. Elektrotechnik, Informatik, Mechatronik, Physik)</li>
+<li>Interesse an eingebetteten Systemen, Mikrocontrollern und digitaler Signalverarbeitung</li>
+<li>Grundlegende Kenntnisse in der Programmierung in C, idealerweise auch in C++</li>
+<li>Grundverständnis der digitalen Signalverarbeitung (z. B. Abtastung, Filterung, Fourier-Transformation)</li>
+<li>Grundkenntnisse zentraler Konzepte der Softwareentwicklung (Versionskontrolle, Dokumentation, modularer Codeaufbau)</li>
+</ul>
+<p> </p>
+<p>Optional:</p>
+<ul>
+<li>Erfahrung mit Mikrocontroller-Entwicklungsumgebungen (z. B. STM32CubeIDE, Keil, IAR, MPLAB, VS-Code)</li>
+<li>Erste Erfahrungen mit RTOS (z. B. FreeRTOS) oder echtzeitnaher Embedded-Programmierung</li>
+<li>Erfahrung im Umgang mit Labor-Messmitteln (Oszilloskop, Logikanalysator, Multimeter)</li>
+<li>Erfahrung mit Debugging-Tools (z. B. JTAG/SWD, In-Circuit-Debugger)</li>
+<li>Grundlagen im Umgang mit Linux-basierten Systemen und der Kommandozeile</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Dich bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Interessante, praxisnahe Aufgabenstellungen</li>
+<li>Einblicke in aktuelle Forschungsprojekte aus Industrie und Grundlagenforschung</li>
+<li>Offenes und kollegiales Arbeitsumfeld mit lockerem Umgang und moderner Ausstattung</li>
+<li>Vielfältige Aufgabenstellungen mit der Möglichkeit zur Einarbeitung in neue Themenfelder</li>
+<li>Attraktive Rahmenbedingungen bei einer der größten Forschungsorganisationen für anwendungsorientierte Forschung in Europa</li>
+<li>Hervorragende Vernetzung innerhalb der internationalen Forschungslandschaft</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p><span style="font-size:14.0px">Die wöchentliche Arbeitszeit beträgt 19,5 Stunden. </span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewirb Dich jetzt, und mach einen Unterschied! Nach Eingang Deiner Online-Bewerbung erhältst Du eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Dir, wie es weitergeht.</strong> </span></p>
+<p style="text-align:justify"> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p><strong>Fragen zu dieser Position beantwortet Dir gerne:<br>Sabine Gütgemann<br>Tel.: +49 160 966 519 27<br>E-Mail: <a href="mailto:sabine.guetgemann@fhr.fraunhofer.de?subject=Ihre%20Ausschreibung%20-%20Kennziffer%2060788">sabine.guetgemann@fhr.fraunhofer.de</a></strong></p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Hochfrequenzphysik und Radartechnik FHR</span></span> </p>
+<p><a href="http://www.fhr.fraunhofer.de" target="_blank" rel="noopener"><span style="font-size:14.0px">www.fhr.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">84692</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Mon, 26 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Wachtberg-Studentische-Hilfskr%C3%A4fteThesis-Entwicklung-von-Mikrocontroller-Firmware-f%C3%BCr-eingebettete-Systeme-53343/1400314733/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Wachtberg-Studentische-Hilfskr%C3%A4fteThesis-Entwicklung-von-Mikrocontroller-Firmware-f%C3%BCr-eingebettete-Systeme-53343/1400314733/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Studentische Hilfskraft (m/w/d) - KI für Virtuelle Machbarkeitsuntersuchungen (Stuttgart, DE, 70569)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p><strong>Ausschreibung für die Fachrichtung wie z. B.: </strong>Automatisierungstechnik, Elektrotechnik, Kybernetik, Maschinenbau, Mechatronik Informatik oder vergleichbare.</p>
+<p> </p>
+<p>Der Forschungsbereich „Automatisierung und Robotik“ gestaltet Automatisierungslösungen für industrielle Anwendungen. Der „Griff-in-die-Kiste“ gilt seit Jahren als Königsdisziplin in der Robotik und steht für die Vereinzelung von chaotisch gelagerten Werkstücken mit Robotern. Die am Fraunhofer IPA entwickelte und mehrfach industriell eingesetzte Software „Bin Picking 3D – bp3™“ ermittelt die Objektlage unter Verwendung von CAD-Modellen und 3D-Sensorinformationen, identifiziert geeignete Greifpunkte und generiert kollisionsfreie Pfade zur Entnahme und definierten Ablage von Bauteilen.</p>
+<p>Der nächste wichtige Entwicklungsschritt steht unter dem Thema „Automatisierung der Automatisierung“. Hier entstehen mehr und mehr Lösungen zur effizienten, ressourcenschonenden und kostenreduzierten Umsetzung von Produktionsprozessen. Im Rahmen des Bin Pickings bietet das Fraunhofer IPA bereits heute hierfür virtuelle Machbarkeitsstudien an. Die Aufgaben bestehen aus der Durchführung dieser sowie in der Konzeptionierung und Ausarbeitung von Skripten zur Automatisierung.<br>Alternativ ist auch die Anstellung in Form eines Praktikums möglich. Eine an die ausgewählte Tätigkeit angeschlossene Erstellung einer Abschlussarbeit ist wünschenswert, aber nicht zwingend erforderlich.</p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgen Sie für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+	<li>Aufbau von Simulationsumgebungen </li>
+	<li>Erweiterung der Skripte zur Optimierung der physikalischen Berechnungen</li>
+	<li>Ausarbeitung von Konzepten zur Automatisierung der Machbarkeitsuntersuchungen</li>
+	<li>Programmieren von Skripten zur Automatisierung der Machbarkeitsuntersuchungen</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringen Sie sich ein </strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Studium im Bereich Maschinenbau, Mechatronik, Kybernetik, Informatik oder vergleichbares Ingenieursstudium mit gültiger Immatrikulation an einer deutschen Hochschule oder Universität</li>
+<li>Sicherer Umgang mit CAD-Programmen; ideal: SolidWorks</li>
+<li>Erste Erfahrungen mit Programmiersprachen; ideal: Python, C++ oder Lua</li>
+<li>Strukturiertes und selbstständiges Arbeiten</li>
+<li>Sehr gute Deutsch- und Englischkenntnisse</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Sie bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Praktische Erfahrungen bei der selbständigen Lösung von industrierelevanten Problemen</li>
+<li>Möglichkeit zur Verbesserung der Programmierfähigkeiten in einem relevanten Umfeld für Industrie und Forschung</li>
+<li>Flexibilität in der Wahl der Arbeitszeit für eine gute Integration in das Studium</li>
+<li>Mitarbeit in einem engagierten und interdisziplinären Team</li>
+<li>Ein offenes und kollegiales Arbeitsumfeld</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewerben Sie sich jetzt, und machen Sie einen Unterschied! Nach Eingang Ihrer Online-Bewerbung erhalten Sie eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Ihnen, wie es weitergeht.</strong> </span><br> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p>Frau Lisa Schäfer<br>Recruiting<br>Tel. +49 711 970-3681</p>
+<p>lisa.schaefer@ipa.fraunhofer.de</p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Produktionstechnik und Automatisierung IPA</span></span> </p>
+<p><a href="http://www.ipa.fraunhofer.de" target="_blank" rel="noopener"><span style="font-size:14.0px">www.ipa.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">66063</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Mon, 26 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Stuttgart-Studentische-Hilfskraft-%28mwd%29-KI-f%C3%BCr-Virtuelle-Machbarkeitsuntersuchungen-70569/939213501/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Stuttgart-Studentische-Hilfskraft-%28mwd%29-KI-f%C3%BCr-Virtuelle-Machbarkeitsuntersuchungen-70569/939213501/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Praktikum - Konstruktion und Strömungstechnik - Gestalten Sie die Zukunft des Leichtbaus mit uns (Stuttgart, DE, 70569)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p><strong>Ausschreibung für die Fachrichtungen wie z. B.:</strong> Automatisierungstechnik, Elektrotechnik, Luft- und Raumfahrttechnik, Maschinenbau, Mechatronik, Regelungstechnik, technische Informatik, Technologiemanagement, Vermessungstechnik, Wirtschaftsingenieurwesen oder vergleichbare.</p>
+<p> </p>
+<p>Sie wollen nicht nur Theorie büffeln, sondern echte Forschungsprojekte mitgestalten? Am Zentrum für Leichtbautechnologien des Fraunhofer IPA entwickeln wir innovative Technologien und Verfahren für die Verarbeitung von Leichtbaumaterialien und optimieren bestehende Prozesse. Mit unserem großen Maschinenpark, einem hochmodernen Versuchsfeld und modernster Messtechnik realisieren wir anspruchsvolle Forschungs- und Industrieprojekte auf höchstem Niveau. Als Teil unseres Teams bekommen Sie die Chance, an spannenden, praxisnahen Projekten mitzuwirken und Ihr Wissen in einem zukunftsorientierten Forschungsumfeld deutlich zu erweitern.</p>
+<p> </p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgen Sie für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><p>Als Praktikant (m/w/d) unterstützen Sie unser Team bei spannenden Forschungs- und Industrieprojekten.</p>
+<p>Ihre Aufgaben umfassen:</p>
+<p> </p>
+<ul>
+<li>Aktive Mitarbeit an der Weiterentwicklung und Optimierung von Prozessen und Technologien in der industriellen Praxis</li>
+<li>Unterstützung bei Planung, Durchführung und Auswertung von Messreihen, Experimenten und Tests</li>
+<li>Konstruktion, Auslegung und Bau von Prüfständen und technischen Lösungen </li>
+</ul>
+<p> </p>
+<p>Sie haben Interesse an innovativen Projekten und Begeisterung für Konstruktion und Strömungstechnik? Ein grundlegendes technisches Verständnis bringen Sie mit und möchten praktische Erfahrung in der industrienahen Forschung sammeln? Dann sind Sie bei uns genau richtig!</p>
+<p>Versuche und Messreihen sowie konstruktive Tätigkeiten finden vor Ort bei uns in Stuttgart statt.</p>
+<p>Praktikumsbeginn ist ab Oktober möglich, flexibel anpassbar an Ihre individuelle Zeitplanung.</p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringen Sie sich ein </strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Gültige Immatrikulation an einer Hochschule oder Universität</li>
+<li>Freude an Planung, Entwurf und Durchführung experimenteller Untersuchungen</li>
+<li>Grundkenntnisse in Konstruktion und CAD</li>
+<li>Handwerkliches Geschick</li>
+<li>Grundkenntnisse in Strömungstechnik von Vorteil</li>
+<li>Hohe Motivation, selbständige und methodische Arbeitsweise</li>
+<li>Organisations- und Kommunikationsstärke</li>
+<li>Sehr gute Deutschkenntnisse in Wort und Schrift</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Sie bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Abwechslungsreiche Aufgaben in einer angenehmen Teamatmosphäre</li>
+<li>Wertvolle erste Kontakte für Ihren beruflichen Werdegang</li>
+<li>Viel eigener Gestaltungsspielraum bei Ihren Projekten</li>
+<li>Flexible Arbeitszeiten – ganz nach Ihrem persönlichen Rhythmus</li>
+<li>Top-Ausstattung in unserem neu eröffneten Gebäude mit erstklassiger Infrastruktur</li>
+<li>Direkte Mitarbeit an großen, praxisrelevanten Forschungs- und Industrieprojekten</li>
+<li>Die einzigartige Chance, an der Schnittstelle zwischen Forschung und Industrie zu arbeiten</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewerben Sie sich jetzt, und machen Sie einen Unterschied! Nach Eingang Ihrer Online-Bewerbung erhalten Sie eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Ihnen, wie es weitergeht.</strong> </span><br> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p>Frau Lisa Schäfer</p>
+<p>Recruiting</p>
+<p>+49 711 970-3681</p>
+<p><a href="mailto:lisa.bauer@ipa.fraunhofer.de">lisa.schaefer@ipa.fraunhofer.de</a> </p>
+<p> </p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Produktionstechnik und Automatisierung IPA</span></span> </p>
+<p><a href="http://​www.ipa.fraunhofer.de​" target="_blank" rel="noopener"><span style="font-size:14.0px">www.ipa.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">85412</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Thu, 22 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Stuttgart-Praktikum-Konstruktion-und-Str%C3%B6mungstechnik-Gestalten-Sie-die-Zukunft-des-Leichtbaus-mit-uns-70569/1429570733/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Stuttgart-Praktikum-Konstruktion-und-Str%C3%B6mungstechnik-Gestalten-Sie-die-Zukunft-des-Leichtbaus-mit-uns-70569/1429570733/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Pflichtpraktikum im Bereich Multi-Material-3D-Druck (Bayreuth, DE, 95447)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p><strong>Ausschreibung für die Fachrichtungen wie z. B.: </strong>Maschinenbau, Wirtschaftsingenieurwesen, Materialwissenschaften oder vergleichbare ingenieurwissenschaftliche Studiengänge.</p>
+<p> </p>
+<p>Sie möchten Teil der anwendungsorientierten Forschung werden und gemeinsam mit Wissenschaftlerinnen und Wissenschaftlern an Zukunftstechnologien der additiven Fertigung arbeiten? Dann sind Sie beim Fraunhofer IPA genau richtig.<br>Für ein Pflichtpraktikum im Bereich der pulverbettbasierten additiven Fertigung von Multi-Material-Bauteilen suchen wir motivierte Studierende, die aktuelle Forschungs- und Industrieprojekte aktiv mitgestalten möchten.<br>Im Forschungsteam Additive Prozesse für innovative Materialien arbeiten wir eng mit Industriepartnern an zukunftsweisenden Technologien der additiven Fertigung. Ein besonderer Schwerpunkt liegt dabei auf der pulverbettbasierten Fertigung von Multi-Material-Bauteilen. Hierzu entwickeln und untersuchen wir Verfahren, mit denen unterschiedliche pulverförmige Werkstoffe – beispielsweise Polymere, Keramiken und Metalle – gezielt innerhalb eines Bauteils verarbeitet werden können.<br>Ein zentraler Ansatz ist die selektive Pulverdeposition mit anschließender Sinterung. Dabei werden unterschiedliche Pulverwerkstoffe mithilfe einer speziell entwickelten Vorrichtung selektiv und pixelweise auf einer Bauplattform abgelegt. Durch die gezielte Kombination verschiedener Pulver innerhalb einzelner Schichten lassen sich Materialeigenschaften lokal variieren und Multi-Material-Bauteile direkt aus digitalen CAD-Daten herstellen. Nach der schichtweisen Pulverdeposition erfolgt die Konsolidierung der Bauteile durch einen nachgelagerten Sinterprozess.<br>Im Rahmen Ihres Praktikums erhalten Sie die Möglichkeit, an der Weiterentwicklung dieser innovativen Technologie mitzuwirken und Einblicke in die Zusammenhänge zwischen Pulvermaterialien, Maschinenparametern, Prozessführung und Bauteileigenschaften zu gewinnen.</p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgen Sie für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>In einer hochmodern ausgestatteten Laborumgebung unterstützen Sie durch Ihren gewissenhaften Umgang mit Maschinen, Anlagen und Materialien ein sauberes und sicheres Arbeitsumfeld</li>
+<li>Sie führen Versuche zur chemischen, physikalischen und thermischen Charakterisierung etablierter und neuartiger Pulverwerkstoffe durch und schaffen damit die Grundlage für deren Einsatz in pulverbettbasierten additiven Fertigungsverfahren</li>
+<li>Sie untersuchen die Eigenschaften und Qualität additiv gefertigter Bauteile mithilfe geeigneter thermischer, chemischer und mechanischer Prüfmethoden</li>
+<li>Sie untersuchen den Einfluss von Materialeigenschaften und Maschinen- bzw. Prozessparametern auf die Bauteileigenschaften und -qualität und werten die Ergebnisse mithilfe geeigneter statistischer Methoden aus</li>
+<li>Sie führen systematische Markt-, Patent- und Literaturrecherchen durch, um den aktuellen Stand von Wissenschaft und Technik zu erfassen</li>
+<li>Sie dokumentieren, analysieren und präsentieren Ihre Ergebnisse nach wissenschaftlichen Standards und leisten damit einen Beitrag zur Weiterentwicklung der pulverbettbasierten Multi-Material-Fertigung</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringen Sie sich ein </strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Sie sind an einer deutschen Universität oder Hochschule in einem ingenieur- oder naturwissenschaftlichen Studiengang eingeschrieben</li>
+<li>Sie haben Freude am wissenschaftlichen und zielorientierten Arbeiten und zeichnen sich durch eine eigenständige, strukturierte und sorgfältige Arbeitsweise aus</li>
+<li>Sie sind mit den grundlegenden Sicherheitsanforderungen im Laborumfeld vertraut und bereit, entsprechende Arbeits- und Sicherheitsvorschriften konsequent einzuhalten</li>
+<li>Sie verfügen über sehr gute Kenntnisse in Microsoft Excel und PowerPoint</li>
+<li>Sie verfügen über sehr gute Deutsch- und Englischkenntnisse in Wort und Schrift</li>
+<li>Vorkenntnisse in der Materialcharakterisierung, im Arbeiten im Labor sowie im Umgang mit statistischen Auswertungsmethoden bzw. -programmen sind von Vorteil</li>
+<li>Idealerweise bringen Sie Interesse an den Themen additive Fertigung, Pulvertechnologie, Materialwissenschaften und Multi-Material-Verarbeitung mit</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Sie bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Praxisnahe Einblicke in die additive Fertigung durch die Mitarbeit an aktuellen Industrie- und Forschungsprojekten im Bereich der pulverbettbasierten Multi-Material-Fertigung</li>
+<li>Ein modernes und interdisziplinäres Arbeitsumfeld mit einer hochmodern ausgestatteten Labor- und Forschungsinfrastruktur</li>
+<li>Eigenverantwortung mit Wirkung durch die Übernahme konkreter Aufgabenpakete und die Möglichkeit, eigene Ideen einzubringen</li>
+<li>Persönliche und fachliche Weiterentwicklung durch den Ausbau von Methoden-, Projekt- und Teamkompetenzen in einem interdisziplinären Forschungsteam</li>
+<li>Eine attraktive Praktikumsstelle, die auf die Anforderungen Ihrer jeweiligen Studienordnung abgestimmt werden kann</li>
+<li>Vergütung nach den Richtlinien des Bundes zur Praktikantenvergütung</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewerben Sie sich jetzt, und machen Sie einen Unterschied! Nach Eingang Ihrer Online-Bewerbung erhalten Sie eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Ihnen, wie es weitergeht.</strong> </span><br> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p>Frau Jennifer Leppich</p>
+<p>Recruiting</p>
+<p>+49 711 970-1415</p>
+<p><a href="mailto:lisa.bauer@ipa.fraunhofer.de">jennifer.leppich@ipa.fraunhofer.de</a> </p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Produktionstechnik und Automatisierung IPA</span></span> </p>
+<p><a href="http://www.ipa.fraunhofer.de" target="_blank" rel="noopener"><span style="font-size:14.0px">www.ipa.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">86027</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Thu, 22 Oct 2026 0:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Bayreuth-Pflichtpraktikum-im-Bereich-Multi-Material-3D-Druck-95447/1450152433/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Bayreuth-Pflichtpraktikum-im-Bereich-Multi-Material-3D-Druck-95447/1450152433/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[MA/BA/Praktikum im Bereich Schaltbare Mixed-Matrix-Membranen für Direct Air Capture (Stuttgart, DE, 70569)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p> </p>
+<p>Am Fraunhofer-Institut für Grenzflächen- und Bioverfahrenstechnik IGB verbinden wir Biologie und Technik in unseren Geschäftsfeldern Gesundheit, Nachhaltige Chemie sowie Umwelt und Klimaschutz. Wir entwickeln Verfahren, Technologien und Produkte für eine auf den Patienten zugeschnittene Gesundheitsversorgung, eine nachhaltige Bioökonomie sowie eine klimaneutrale und ressourceneffiziente Kreislaufwirtschaft und bringen neue Lösungen erfolgreich in die industrielle Umsetzung. Wir forschen an den Standorten Stuttgart, Leuna sowie Straubing und in enger Anbindung an zahlreiche Universitäten und Forschungseinrichtungen im In- und Ausland.</p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgen Sie für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><p> </p>
+<p>Herstellung von Flach- und Hohlfasermembranen mit schaltbaren CO2-Adsorbern<br>Charakterisierung der Membranen hinsichtlich ihrer Struktur, Gaspermeabilität und CO2-Adsorptionskapazität<br>Untersuchung der temperaturabhängigen CO2-Desorption der Membranen</p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringen Sie sich ein </strong></span></span></p>
+<p><span style="font-size:14.0px"><p> </p>
+<ul>
+<li>Eigenständige Arbeitsweise, Kreativität, Flexibilität und Teamfähigkeit</li>
+<li>Ein hohes Maß an Eigeninitiative und Eigenverantwortlichkeit</li>
+<li>Sie sind in der Lage, analytisch und lösungsorientiert zu arbeiten und Aufgabenstellungen sorgfältig und zuverlässig zu lösen</li>
+<li>Fähigkeit zur eigenständigen Bearbeitung wissenschaftlicher Fragestellungen</li>
+<li>Studium der Chemie, Verfahrenstechnik oder verwandten Fachrichtungen Grundkenntnisse in Membranverfahren sind von Vorteil</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Sie bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><p> </p>
+<ul type="disc">
+<li>Eigenes Parkhaus mit kostenfreien Parkplätzen</li>
+<li>Kantine und Cafeteria</li>
+<li>Ein weites Fraunhofer-Netzwerk</li>
+<li>Abwechslungsreiche Tätigkeiten</li>
+<li>Flexibilität in der Arbeitszeitgestaltung und damit optimale Vereinbarkeit von Studium und Praxis</li>
+</ul>
+<p> </p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Die Anfertigung der Thesis / Abschlussarbeit selbst wird nicht vergütet.</span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewerben Sie sich jetzt, und machen Sie einen Unterschied! Nach Eingang Ihrer Online-Bewerbung erhalten Sie eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Ihnen, wie es weitergeht.</strong> </span><br> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p>Fragen zum Bewerbungsverfahren und zur Stelle richten Sie bitte an die Personalabteilung:</p>
+<p>E-Mail: bewerbung@igb.fraunhofer.de</p>
+<p>Telefonnr.: 0711 970 4009</p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Grenzflächen- und Bioverfahrenstechnik IGB</span></span> </p>
+<p><a href="http://www.igb.fraunhofer.de" target="_blank" rel="noopener"><span style="font-size:14.0px">www.igb.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">84642</span>                </span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Wed, 21 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Stuttgart-MABAPraktikum-im-Bereich-Schaltbare-Mixed-Matrix-Membranen-f%C3%BCr-Direct-Air-Capture-70569/1398623633/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Stuttgart-MABAPraktikum-im-Bereich-Schaltbare-Mixed-Matrix-Membranen-f%C3%BCr-Direct-Air-Capture-70569/1398623633/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Praktikum im Bereich Python Entwicklung für ein Deep Learning Annotationstool (Karlsruhe, DE, 76131)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Am Fraunhofer-Institut für Optronik, Systemtechnik und Bildauswertung IOSB machen wir aus neuesten wissenschaftlichen Erkenntnissen technische Innovationen – und leisten so unseren Beitrag zur Gestaltung der Zukunft.</p>
+<p> </p>
+<p>Sie möchten dazu beitragen, KI-Systeme verlässlicher zu machen? Sie wollen Erfahrungen in einem modernen und professionellen Team sammeln und dabei aus der Nähe mitbekommen, wie Forschung und Entwicklung im Bereich videobasierter Assistenzsysteme abläuft? Dann sind Sie bei uns richtig! Wir suchen ab <strong>September oder Oktober 2026 </strong>für sechs Monate Verstärkung für unser Team, das sich mit videobasierten Sicherheits- und Assistenzsysteme beschäftigt. Bitte beachten Sie bei Ihrer Bewerbung, dass wir ausschließlich ein Pflichtpraktikum anbieten können.</p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgen Sie für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul style="list-style-type:disc">
+<li>Sie arbeiten an einem einmaligen Web-Projekt und begleiten dieses von den Requirements über das Design bis hin zur Implementierung</li>
+<li>Sie ermöglichen uns und andere Wissenschaftler*innen Daten im großen Stil und effizient zu annotieren, um den Stand der Technik voranzutreiben</li>
+<li>Sie arbeiten selbstständig in einem agilen Team</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringen Sie sich ein </strong></span></span></p>
+<p><span style="font-size:14.0px"><ul style="list-style-type:disc">
+<li>Sie sind immatrikuliert und studieren Informatik, Medieninformatik oder eine vergleichbare Fachrichtung</li>
+<li>Sie verfügen über erste Erfahrungen mit Python, REST und haben bereits mit Frameworks wie Django erste Erfahrungen gesammelt</li>
+<li>Sie kennen sich aus mit Clean Code, Design Patterns, Testing, Versionsverwaltung, usw.</li>
+<li>Sie haben Spaß daran zu programmieren und neue Sachen auszuprobieren</li>
+<li>Gute Deutsch und Englischkenntnisse</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Sie bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul type="disc">
+<li>Ideale Lage: Nur wenige Minuten Fußweg vom KIT-Campus Süd und sehr gute Anbindung an den ÖPNV.</li>
+<li>Praxiserfahrungen neben dem Studium: Ein sechsmonatiges Praktikum (als Praxissemester bzw. Pflichtpraktikum) mit idealen Rahmenbedingungen für Praxiserfahrungen.</li>
+<li>Arbeit vor Ort: Das Praktikum findet vor Ort am Institut statt (kein mobiles Arbeiten).</li>
+<li>Praxisnahe Projekte: Zusammenarbeit mit Industriepartnern und Anwendung der Forschungsergebnisse in realen Szenarien.</li>
+<li>Individuelle Betreuung und interdisziplinäres Team: Profitieren Sie von unserer professionellen Begleitung und einem offenen, kommunikativen Austausch im Team.</li>
+<li>Freiraum für Ideen: Hohes Maß an Eigenverantwortung und die Möglichkeit, aktiv eigene Ideen einzubringen.</li>
+<li>Option auf Abschlussarbeit: Nach Absprache haben Sie auch die Möglichkeit, Ihre Bachelor- oder Masterarbeit bei uns zu schreiben.</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p><span style="font-size:14.0px">Die Vergütung richtet sich nach den Richtlinien des Bundes über Praktikantenvergütungen.</span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewerben Sie sich jetzt, und machen Sie einen Unterschied! Nach Eingang Ihrer Online-Bewerbung erhalten Sie eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Ihnen, wie es weitergeht.</strong> </span><br> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p><strong>Bei Fragen wenden Sie sich gerne an:</strong></p>
+<p>Dr-Ing. Mickael Cormier<br>Telefon: +49 721 6091-634</p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Optronik, Systemtechnik und Bildauswertung IOSB</span></span> </p>
+<p><a href="http://www.iosb.fraunhofer.de" target="_blank" rel="noopener"><span style="font-size:14.0px">www.iosb.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">84883</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Mon, 19 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Karlsruhe-Praktikum-im-Bereich-Python-Entwicklung-f%C3%BCr-ein-Deep-Learning-Annotationstool-76131/1408254133/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Karlsruhe-Praktikum-im-Bereich-Python-Entwicklung-f%C3%BCr-ein-Deep-Learning-Annotationstool-76131/1408254133/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Internship - Speculative Application for Students (f/m/d) (Kassel, DE, 34117)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Das Fraunhofer IEE in Kassel forscht in den Bereichen Energiewirtschaft und Energiesystemtechnik mit den Schwerpunkten: Energieinformatik, Energiemeteorologie und Geoinformationssysteme, Energiewirtschaft und Systemdesign, Energieverfahrenstechnik und -speicher, Netzplanung und Netzbetrieb, Netzstabilität und Stromrichtertechnik sowie thermische Energietechnik. Rund 450 Wissenschaftlerinnen und Wissenschaftler, Angestellte, Studentinnen und Studenten entwickeln Lösungen für die Energiewende und erwirtschaften rund 40 Mio. Euro Erträge pro Jahr.</p>
+<p> </p>
+<p><strong>Du möchtest die Umsetzung der Energiewende mitgestalten und an der Schnittstelle von Wissenschaft und Wirtschaft arbeiten?</strong></p>
+<p> </p>
+<p>Dann bist du bei uns genau richtig!<br>Das Fraunhofer IEE in Kassel bietet engagierten Schüler*innen die Möglichkeit, im Rahmen eines Praktikums erste spannende Einblicke in die Welt der Forschung rund um erneuerbare Energien und zukunftsfähige Energiesysteme zu gewinnen. Ob Technik, IT oder Verwaltung – entdecke bei uns, wie vielfältig die Arbeitswelt am Forschungsinstitut ist, lerne unsere Fachbereiche kennen und finde heraus, wo deine Interessen liegen. </p></span></p>
+
+<p> </p>
+
+<p><span style="color:#16a085"><span style="font-size:14.0px"><b>What you will do</b></span></span></p>
+
+<p><span style="font-size:14.0px"><ul>
+<li>Einblicke in die Forschung rund um erneuerbare Energien und moderne Energiesysteme</li>
+<li>Kennenlernen verschiedener Arbeitsbereiche wie der Wissenschaft bzw. Forschung, IT oder auch Verwaltung</li>
+<li>Unterstützung bei kleineren Aufgaben innerhalb aktueller Projekte</li>
+<li>Mitarbeit bei Experimenten, Messungen oder einfachen Datenauswertungen</li>
+<li>Beobachtung, wie technische Lösungen und digitale Werkzeuge zur Energiewende beitragen</li>
+<li>Teilnahme an Teammeetings und Einblicke in den Arbeitsalltag am Fraunhofer IEE</li>
+<li>Möglichkeit zum Austausch mit Mitarbeitenden und zum Einbringen eigener Fragen und Ideen</li>
+</ul></span></p>
+
+<p> </p>
+
+<p><span style="color:#16a085"><span style="font-size:14.0px"><b>What you bring to the table</b></span></span></p>
+
+<p><span style="font-size:14.0px"><ul>
+<li>Interesse an technischen, naturwissenschaftlichen oder wirtschaftlichen Themen</li>
+<li>Neugier auf Forschung und die Arbeit an zukunftsrelevanten Fragestellungen</li>
+<li>Spaß am Lernen und Ausprobieren neuer Dinge</li>
+<li>Aufgeschlossenheit, Zuverlässigkeit und Teamfähigkeit</li>
+<li>Bereitschaft, aktiv mitzuarbeiten und Fragen zu stellen</li>
+<li>Idealerweise ein Schulpraktikum im Rahmen der Mittel- oder Oberstufe</li>
+<li>Gute Deutschkenntnisse in Wort und Schrift, Englischkenntnisse von Vorteil</li>
+</ul></span></p>
+
+<p> </p>
+
+<p><span style="font-size:14.0px"><span style="color:#16a085"><b>What you can expect</b></span></span></p>
+
+<p><span style="font-size:14.0px"><ul>
+<li>Einen abwechslungsreichen Praktikumsplatz in einer national und international renommierten Organisation für anwendungsorientierte Forschung in zentraler Lage in Kassel</li>
+<li>Einblick in aktuelle Forschungsthemen rund um die Energiewende</li>
+<li>Mitarbeit in einem offenen, hilfsbereiten Team mit spannenden Aufgaben</li>
+<li>Kennenlernen moderner Arbeitsweisen und Technologien</li>
+<li>Individuelle Betreuung während des gesamten Praktikums</li>
+<li>Teilnahme an institutsinternen Veranstaltungen (z. B. Institutsführungen, Projekteinblicke)</li>
+<li>Ein wertvoller Beitrag zur Berufsorientierung für Deine Zukunft</li>
+</ul></span></p>
+
+<p> </p>
+
+<p><span style="font-size:14.0px">The weekly working time is 39 hours. This position is also available on a part-time basis. We value and promote the diversity of our employees' skills and therefore welcome all applications - regardless of age, gender, nationality, ethnic and social origin, religion, ideology, disability, sexual orientation and identity. Severely disabled persons are given preference in the event of equal suitability. Remuneration according to the federal government guidelines for intern salaries.</span></p>
+
+<p><span style="font-size:14.0px">With its focus on developing key technologies that are vital for the future and enabling the commercial utilization of this work by business and industry, Fraunhofer plays a central role in the innovation process. As a pioneer and catalyst for groundbreaking developments and scientific excellence, Fraunhofer helps shape society now and in the future. </span></p>
+
+<p><b><span style="font-size:14.0px">Interested? Apply online now. We look forward to getting to know you!</span></b></p>
+
+<p style="text-align:justify"> </p>
+
+<p><span style="font-size:14.0px"><span style="font-size:14.0px"><span id="cke_bm_258S" style="display:none"> </span><span style="font-size:14.0px"><span style="font-size:14.0px"><p><strong>Weitere Fragen beantwortet Dir: </strong></p>
+<p>Luzie Barten (Recruiting)</p>
+<p>E-Mail: luzie.barten@iee.fraunhofer.de</p>
+<p>Tel.: +49 (0) 561 / 7294 - 1672</p></span></span></span></span></p>
+
+<p><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer Institute for Energy Economics and Energy System Technology IEE</span></span></span></span> </p>
+
+<p><a href="http://​www.iee.fraunhofer.de​" target="_blank"><span style="font-size:14.0px">www.iee.fraunhofer.de</span></a> </p>
+
+<p> </p>
+
+<p><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px">Requisition Number: <span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px">80047</span></span></span></span>                Application Deadline: <span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px"></span></span></span></span></span></span></span></span></p>
+
+<p style="text-align:right"> </p>
+]]></description><pubDate>Sun, 18 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Kassel-Internship-Speculative-Application-for-Students-%28fmd%29-34117/1210751101/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Kassel-Internship-Speculative-Application-for-Students-%28fmd%29-34117/1210751101/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Studentische Hilfskraft, Praktikum, Werkstudent*in im Bereich Akustik (Stuttgart, DE, 70569)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p class="CxSpFirst"><span style="font-size:10.0pt"><span><span style="font-family:&#39;Frutiger LT Com 45 Light&#39;, sans-serif"><span style="font-size:11.0pt">Die Fraunhofer-Gesellschaft (www.fraunhofer.de) betreibt in Deutschland derzeit 76 Institute und Forschungseinrichtungen und ist die weltweit führende Organisation für anwendungsorientierte Forschung. Rund 30 000 Mitarbeitende erarbeiten das jährliche Forschungsvolumen von 2,9 Milliarden Euro.</span></span></span></span></p>
+
+<p class="CxSpMiddle"><span style="font-size:10.0pt"><span><span style="font-family:&#39;Frutiger LT Com 45 Light&#39;, sans-serif"><span style="font-size:11.0pt">Das Fraunhofer-Institut für Bauphysik IBP arbeitet anwendungsbezogen auf allen aktuellen Gebieten der Bauphysik und befasst sich mit Forschung, Entwicklung, Prüfung, Demonstration und Beratung auf den Gebieten Akustik, Energieeffizienz und Raumklima, Ganzheitliche Bilanzierung, Hygrothermik sowie Bauchemie, Baubiologie und Hygiene.</span></span></span></span></p>
+
+<p class="CxSpMiddle"><span style="font-size:10.0pt"><span><span style="font-family:&#39;Frutiger LT Com 45 Light&#39;, sans-serif"><span style="font-size:11.0pt">Die Abteilung Akustik forscht in den Bereichen Bauakustik, Raumakustik, Technischer Schallschutz, Fahrzeugakustik sowie Psychoakustik und kognitive Ergonomie.</span></span></span></span></p>
+
+<p class="CxSpMiddle"> </p></span></p>
+
+<p> </p>
+
+<p><span style="color:#16a085"><span style="font-size:14.0px"><b>Was Du bei uns tust</b></span></span></p>
+
+<p><span style="font-size:14.0px"><p class="CxSpFirst"><span style="font-size:10.0pt"><span><span style="font-family:&#39;Frutiger LT Com 45 Light&#39;, sans-serif"><span style="font-size:11.0pt">Tatkräftige Unterstützung in den Forschungsgebieten der Abteilung Akustik.</span></span></span></span></p>
+
+<p class="CxSpMiddle"> </p></span></p>
+
+<p> </p>
+
+<p><span style="font-size:14.0px"><span style="color:#16a085"><b>Was Du mitbringst</b></span></span></p>
+
+<p><span style="font-size:14.0px"><ul>
+	<li><span style="font-size:10.0pt"><span><span style="font-family:&#39;Frutiger LT Com 45 Light&#39;, sans-serif"><span style="font-size:11.0pt">Strukturierte und selbstständige Arbeitsweise</span></span></span></span></li>
+	<li><span style="font-size:10.0pt"><span><span style="font-family:&#39;Frutiger LT Com 45 Light&#39;, sans-serif"><span style="font-size:11.0pt">Teamfähigkeit</span></span></span></span></li>
+	<li><span style="font-size:10.0pt"><span><span style="font-family:&#39;Frutiger LT Com 45 Light&#39;, sans-serif"><span style="font-size:11.0pt">Spaß an Messungen, Auswertungen, praktischer Aufbauten sowie deren Erprobung, bei Recherchen und Studien, Computersimulation und akustischen Berechnungen, etc..</span></span></span></span></li>
+</ul></span></p>
+
+<p> </p>
+
+<p><span style="font-size:14.0px"><span style="color:#16a085"><b>Was Du erwarten kannst</b></span></span></p>
+
+<p><span style="font-size:14.0px"><p class="CxSpFirst"><span style="font-size:10.0pt"><span><span style="font-family:&#39;Frutiger LT Com 45 Light&#39;, sans-serif"><span style="font-size:11.0pt">Interessante und herausfordernde Aufgabenstellungen in der angewandten Forschung und Entwicklung.</span></span></span></span></p>
+
+<p class="CxSpMiddle"><span style="font-size:10.0pt"><span><span style="font-family:&#39;Frutiger LT Com 45 Light&#39;, sans-serif"><span style="font-size:11.0pt">Wir bieten flexible Arbeitszeitmodelle und geben dir die Möglichkeit, zeitweise auch von zu Hause aus zu arbeiten.</span></span></span></span></p></span></p>
+
+<p> </p>
+
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. <span style="font-family:Arial, Helvetica, sans-serif"><span>Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt.</span></span></span></p>
+
+<p><span style="font-size:14.0px">Die monatliche Arbeitszeit beträgt bis zu 80 Stunden. </span></p>
+
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+
+<p><span style="font-size:14.0px"><b>Haben wir Dein Interesse geweckt? Dann bewirb Dich jetzt online mit Deinen aussagekräftigen Bewerbungsunterlagen. Wir freuen uns darauf, Dich kennenzulernen!</b> </span></p>
+
+<p style="text-align:justify"> </p>
+
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"></span></span></p>
+
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Bauphysik IBP</span></span> </p>
+
+<p><a href="http://​www.ibp.fraunhofer.de​" target="_blank"><span style="font-size:14.0px">www.ibp.fraunhofer.de</span></a> </p>
+
+<p style="text-align:justify"><br>
+<span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">52742</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+
+<p style="text-align:right"> </p>
+]]></description><pubDate>Sun, 18 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Stuttgart-Studentische-Hilfskraft%2C-Praktikum%2C-Werkstudentin-im-Bereich-Akustik-70569/847717001/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Stuttgart-Studentische-Hilfskraft%2C-Praktikum%2C-Werkstudentin-im-Bereich-Akustik-70569/847717001/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Praktikum - Initiativ für Studierende (m/w/d) (Kassel, DE, 34117)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Das Fraunhofer IEE in Kassel forscht in den Bereichen Energiewirtschaft und Energiesystemtechnik mit den Schwerpunkten: Energieinformatik, Energiemeteorologie und Geoinformationssysteme, Energiewirtschaft und Systemdesign, Energieverfahrenstechnik und -speicher, Netzplanung und Netzbetrieb, Netzstabilität und Stromrichtertechnik sowie thermische Energietechnik. Rund 450 Wissenschaftlerinnen und Wissenschaftler, Angestellte, Studentinnen und Studenten entwickeln Lösungen für die Energiewende und erwirtschaften rund 40 Mio. Euro Erträge pro Jahr.</p>
+<p> </p>
+<p><strong>Du möchtest die Umsetzung der Energiewende mitgestalten und an der Schnittstelle von Wissenschaft und Wirtschaft arbeiten?</strong></p>
+<p> </p>
+<p>Dann bist du bei uns genau richtig!                                                                                                   </p>
+<p>Das Fraunhofer IEE in Kassel bietet engagierten Studierenden die Möglichkeit, im Rahmen eines freiwilligen oder verpflichtenden Praktikums spannende Einblicke in die angewandte Forschung rund um erneuerbare Energien, Energiesystemtechnik und Digitalisierung zu gewinnen. Ob Wissenschaft, Technik, IT, oder Verwaltung – entdecke bei uns die Vielfalt eines modernen Forschungsinstituts, bring dein Wissen ein und finde heraus, wohin dein beruflicher Weg führen könnte. </p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Was Du bei uns tust</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Unterstützung bei aktuellen Forschungsprojekten rund um Energiewende und Energiesystemtechnik</li>
+<li>Mitarbeit in den verschiedenen Bereichen der Datenanalyse, Simulation, IT, Technik oder Verwaltung – je nach Interessen und Vorkenntnissen</li>
+<li>Einblicke in die Arbeitsweise eines führenden Forschungsinstituts</li>
+<li>Austausch mit Wissenschaftlerinnen, Ingenieurinnen und Studierenden</li>
+<li>Unterstützung bei Versuchen, Auswertungen oder in der Projektorganisation</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was Du mitbringst</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Eingeschrieben in einem Studiengang wie z. B. Energietechnik, Informatik, Physik, Maschinenbau, Wirtschaft, Umwelt- oder Naturwissenschaften oder einer vergleichbaren Fachrichtung</li>
+<li>Interesse an den Themen rund um Energiewende, Forschung und Technologie</li>
+<li>Eigeninitiative, Teamgeist und Bereitschaft, Neues zu lernen</li>
+<li>Idealerweise erste praktische oder theoretische Vorkenntnisse – je nach Bereich</li>
+<li>Gute Deutsch- und Englischkenntnisse in Wort und Schrift </li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was Du erwarten kannst</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Einen abwechslungsreichen Praktikumsplatz in einer national und international renommierten Organisation für anwendungsorientierte Forschung in zentraler Lage in Kassel</li>
+<li>Einblick in aktuelle Forschungsthemen rund um die Energiewende</li>
+<li>Mitarbeit in einem offenen, hilfsbereiten Team mit spannenden Aufgaben</li>
+<li>Kennenlernen moderner Arbeitsweisen und Technologien und wertvolle praktische Erfahrungen für den weiteren Berufsweg</li>
+<li>Individuelle Betreuung während des gesamten Praktikums</li>
+<li>Teilnahme an institutsinternen Veranstaltungen (z. B. Institutsführungen, Projekteinblicke)</li>
+<li>Flexible Arbeitszeiten und Option der Remote-Arbeit</li>
+<li>Möglichkeit zur weiteren Zusammenarbeit, z. B. als studentische Hilfskraft oder für Abschlussarbeiten</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. </span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Die wöchentliche Arbeitszeit beträgt 39 Stunden, je nach inhaltlichem Umfang und individueller Absprache sind aber auch weniger Wochenstunden möglich<span style="font-size:14.0px"><span style="font-size:11.0pt;line-height:107%;font-family:Aptos, sans-serif">. </span></span>Die Vergütung richtet sich nach den Richtlinien des Bundes über Praktikantenvergütungen.</span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><strong>Haben wir Dein Interesse geweckt? Dann bewirb Dich jetzt online mit Deinen aussagekräftigen Bewerbungsunterlagen (<span style="font-size:14.0px">inkl. Anschreiben mit gewünschten Praktikumszeitraum, Lebenslauf und aktueller Notenübersicht).</span> Wir freuen uns darauf, Dich kennenzulernen!</strong> </span></p>
+<p style="text-align:justify"> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p><strong>Weitere Fragen beantwortet Dir: </strong></p>
+<p>Luzie Barten (Recruiting)</p>
+<p>E-Mail: luzie.barten@iee.fraunhofer.de</p>
+<p>Tel.: +49 (0) 561 / 7294 - 1672</p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Energiewirtschaft und Energiesystemtechnik IEE</span></span> </p>
+<p><a href="http://​www.iee.fraunhofer.de​" target="_blank" rel="noopener"><span style="font-size:14.0px">www.iee.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">80018</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Sun, 18 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Kassel-Praktikum-Initiativ-f%C3%BCr-Studierende-%28mwd%29-34117/1210751801/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Kassel-Praktikum-Initiativ-f%C3%BCr-Studierende-%28mwd%29-34117/1210751801/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Internship - Unsolicited Application for Students (Kassel, DE, 34117)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Das Fraunhofer IEE in Kassel forscht in den Bereichen Energiewirtschaft und Energiesystemtechnik mit den Schwerpunkten: Energieinformatik, Energiemeteorologie und Geoinformationssysteme, Energiewirtschaft und Systemdesign, Energieverfahrenstechnik und -speicher, Netzplanung und Netzbetrieb, Netzstabilität und Stromrichtertechnik sowie thermische Energietechnik. Rund 450 Wissenschaftlerinnen und Wissenschaftler, Angestellte, Studentinnen und Studenten entwickeln Lösungen für die Energiewende und erwirtschaften rund 40 Mio. Euro Erträge pro Jahr.</p>
+<p> </p>
+<p><strong>Du möchtest die Umsetzung der Energiewende mitgestalten und an der Schnittstelle von Wissenschaft und Wirtschaft arbeiten?</strong></p>
+<p> </p>
+<p>Dann bist du bei uns genau richtig!                                                                                                   </p>
+<p>Das Fraunhofer IEE in Kassel bietet engagierten Studierenden die Möglichkeit, im Rahmen eines freiwilligen oder verpflichtenden Praktikums spannende Einblicke in die angewandte Forschung rund um erneuerbare Energien, Energiesystemtechnik und Digitalisierung zu gewinnen. Ob Wissenschaft, Technik, IT, oder Verwaltung – entdecke bei uns die Vielfalt eines modernen Forschungsinstituts, bring dein Wissen ein und finde heraus, wohin dein beruflicher Weg führen könnte. </p></span></p>
+
+<p> </p>
+
+<p><span style="color:#16a085"><span style="font-size:14.0px"><b>What you will do</b></span></span></p>
+
+<p><span style="font-size:14.0px"><ul>
+<li>Unterstützung bei aktuellen Forschungsprojekten rund um Energiewende und Energiesystemtechnik</li>
+<li>Mitarbeit in den verschiedenen Bereichen der Datenanalyse, Simulation, IT, Technik oder Verwaltung – je nach Interessen und Vorkenntnissen</li>
+<li>Einblicke in die Arbeitsweise eines führenden Forschungsinstituts</li>
+<li>Austausch mit Wissenschaftlerinnen, Ingenieurinnen und Studierenden</li>
+<li>Unterstützung bei Versuchen, Auswertungen oder in der Projektorganisation</li>
+</ul></span></p>
+
+<p> </p>
+
+<p><span style="color:#16a085"><span style="font-size:14.0px"><b>What you bring to the table</b></span></span></p>
+
+<p><span style="font-size:14.0px"><ul>
+<li>Eingeschrieben in einem Studiengang wie z. B. Energietechnik, Informatik, Physik, Maschinenbau, Wirtschaft, Umwelt- oder Naturwissenschaften oder einer vergleichbaren Fachrichtung</li>
+<li>Interesse an den Themen rund um Energiewende, Forschung und Technologie</li>
+<li>Eigeninitiative, Teamgeist und Bereitschaft, Neues zu lernen</li>
+<li>Idealerweise erste praktische oder theoretische Vorkenntnisse – je nach Bereich</li>
+<li>Gute Deutsch- und Englischkenntnisse in Wort und Schrift </li>
+</ul></span></p>
+
+<p> </p>
+
+<p><span style="font-size:14.0px"><span style="color:#16a085"><b>What you can expect</b></span></span></p>
+
+<p><span style="font-size:14.0px"><ul>
+<li>Einen abwechslungsreichen Praktikumsplatz in einer national und international renommierten Organisation für anwendungsorientierte Forschung in zentraler Lage in Kassel</li>
+<li>Einblick in aktuelle Forschungsthemen rund um die Energiewende</li>
+<li>Mitarbeit in einem offenen, hilfsbereiten Team mit spannenden Aufgaben</li>
+<li>Kennenlernen moderner Arbeitsweisen und Technologien und wertvolle praktische Erfahrungen für den weiteren Berufsweg</li>
+<li>Individuelle Betreuung während des gesamten Praktikums</li>
+<li>Teilnahme an institutsinternen Veranstaltungen (z. B. Institutsführungen, Projekteinblicke)</li>
+<li>Flexible Arbeitszeiten und Option der Remote-Arbeit</li>
+<li>Möglichkeit zur weiteren Zusammenarbeit, z. B. als studentische Hilfskraft oder für Abschlussarbeiten</li>
+</ul></span></p>
+
+<p> </p>
+
+<p><span style="font-size:14.0px">The weekly working time is 39 hours. This position is also available on a part-time basis. We value and promote the diversity of our employees' skills and therefore welcome all applications - regardless of age, gender, nationality, ethnic and social origin, religion, ideology, disability, sexual orientation and identity. Severely disabled persons are given preference in the event of equal suitability. Remuneration according to the federal government guidelines for intern salaries.</span></p>
+
+<p><span style="font-size:14.0px">With its focus on developing key technologies that are vital for the future and enabling the commercial utilization of this work by business and industry, Fraunhofer plays a central role in the innovation process. As a pioneer and catalyst for groundbreaking developments and scientific excellence, Fraunhofer helps shape society now and in the future. </span></p>
+
+<p><b><span style="font-size:14.0px">Interested? Apply online now. We look forward to getting to know you!</span></b></p>
+
+<p style="text-align:justify"> </p>
+
+<p><span style="font-size:14.0px"><span style="font-size:14.0px"><span id="cke_bm_258S" style="display:none"> </span><span style="font-size:14.0px"><span style="font-size:14.0px"><p><strong>Weitere Fragen beantwortet Dir: </strong></p>
+<p>Luzie Barten (Recruiting)</p>
+<p>E-Mail: luzie.barten@iee.fraunhofer.de</p>
+<p>Tel.: +49 (0) 561 / 7294 - 1672</p></span></span></span></span></p>
+
+<p><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer Institute for Energy Economics and Energy System Technology IEE</span></span></span></span> </p>
+
+<p><a href="http://​www.iee.fraunhofer.de​" target="_blank"><span style="font-size:14.0px">www.iee.fraunhofer.de</span></a> </p>
+
+<p> </p>
+
+<p><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px">Requisition Number: <span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px">80018</span></span></span></span>                Application Deadline: <span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px"><span style="font-size:14.0px"></span></span></span></span></span></span></span></span></p>
+
+<p style="text-align:right"> </p>
+]]></description><pubDate>Sun, 18 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Kassel-Internship-Unsolicited-Application-for-Students-34117/1210751901/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Kassel-Internship-Unsolicited-Application-for-Students-34117/1210751901/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Praktikum - Initiativ für Schüler/FJN (m/w/d) (Kassel, DE, 34117)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Das Fraunhofer IEE in Kassel forscht in den Bereichen Energiewirtschaft und Energiesystemtechnik mit den Schwerpunkten: Energieinformatik, Energiemeteorologie und Geoinformationssysteme, Energiewirtschaft und Systemdesign, Energieverfahrenstechnik und -speicher, Netzplanung und Netzbetrieb, Netzstabilität und Stromrichtertechnik sowie thermische Energietechnik. Rund 450 Wissenschaftlerinnen und Wissenschaftler, Angestellte, Studentinnen und Studenten entwickeln Lösungen für die Energiewende und erwirtschaften rund 40 Mio. Euro Erträge pro Jahr.</p>
+<p> </p>
+<p><strong>Du möchtest die Umsetzung der Energiewende mitgestalten und an der Schnittstelle von Wissenschaft und Wirtschaft arbeiten?</strong></p>
+<p> </p>
+<p>Dann bist du bei uns genau richtig!<br>Das Fraunhofer IEE in Kassel bietet engagierten Schüler*innen die Möglichkeit, im Rahmen eines Praktikums erste spannende Einblicke in die Welt der Forschung rund um erneuerbare Energien und zukunftsfähige Energiesysteme zu gewinnen. Ob Technik, IT oder Verwaltung – entdecke bei uns, wie vielfältig die Arbeitswelt am Forschungsinstitut ist, lerne unsere Fachbereiche kennen und finde heraus, wo deine Interessen liegen. </p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Was Du bei uns tust</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Einblicke in die Forschung rund um erneuerbare Energien und moderne Energiesysteme</li>
+<li>Kennenlernen verschiedener Arbeitsbereiche wie der Wissenschaft bzw. Forschung, IT oder auch Verwaltung</li>
+<li>Unterstützung bei kleineren Aufgaben innerhalb aktueller Projekte</li>
+<li>Mitarbeit bei Experimenten, Messungen oder einfachen Datenauswertungen</li>
+<li>Beobachtung, wie technische Lösungen und digitale Werkzeuge zur Energiewende beitragen</li>
+<li>Teilnahme an Teammeetings und Einblicke in den Arbeitsalltag am Fraunhofer IEE</li>
+<li>Möglichkeit zum Austausch mit Mitarbeitenden und zum Einbringen eigener Fragen und Ideen</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was Du mitbringst</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Interesse an technischen, naturwissenschaftlichen oder wirtschaftlichen Themen</li>
+<li>Neugier auf Forschung und die Arbeit an zukunftsrelevanten Fragestellungen</li>
+<li>Spaß am Lernen und Ausprobieren neuer Dinge</li>
+<li>Aufgeschlossenheit, Zuverlässigkeit und Teamfähigkeit</li>
+<li>Bereitschaft, aktiv mitzuarbeiten und Fragen zu stellen</li>
+<li>Idealerweise ein Schulpraktikum im Rahmen der Mittel- oder Oberstufe</li>
+<li>Gute Deutschkenntnisse in Wort und Schrift, Englischkenntnisse von Vorteil</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was Du erwarten kannst</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Einen abwechslungsreichen Praktikumsplatz in einer national und international renommierten Organisation für anwendungsorientierte Forschung in zentraler Lage in Kassel</li>
+<li>Einblick in aktuelle Forschungsthemen rund um die Energiewende</li>
+<li>Mitarbeit in einem offenen, hilfsbereiten Team mit spannenden Aufgaben</li>
+<li>Kennenlernen moderner Arbeitsweisen und Technologien</li>
+<li>Individuelle Betreuung während des gesamten Praktikums</li>
+<li>Teilnahme an institutsinternen Veranstaltungen (z. B. Institutsführungen, Projekteinblicke)</li>
+<li>Ein wertvoller Beitrag zur Berufsorientierung für Deine Zukunft</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt.</span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Die wöchentliche Arbeitszeit beträgt 39 Stunden, je nach inhaltlichem Umfang und individueller Absprache sind aber auch weniger Wochenstunden möglich. Die Vergütung richtet sich nach den Richtlinien des Bundes über Praktikantenvergütungen.</span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><strong>Haben wir Dein Interesse geweckt? Dann bewirb Dich jetzt online mit Deinen aussagekräftigen Bewerbungsunterlagen <span style="font-size:14.0px">(inkl. Lebenslauf, Anschreiben mit gewünschten Praktikumszeitraum und letztes Zeugnis)</span>. Wir freuen uns darauf, Dich kennenzulernen!</strong> </span></p>
+<p style="text-align:justify"> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p><strong>Weitere Fragen beantwortet Dir: </strong></p>
+<p>Luzie Barten (Recruiting)</p>
+<p>E-Mail: luzie.barten@iee.fraunhofer.de</p>
+<p>Tel.: +49 (0) 561 / 7294 - 1672</p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Energiewirtschaft und Energiesystemtechnik IEE</span></span> </p>
+<p><a href="http://​www.iee.fraunhofer.de​" target="_blank" rel="noopener"><span style="font-size:14.0px">www.iee.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">80047</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Sun, 18 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Kassel-Praktikum-Initiativ-f%C3%BCr-Sch%C3%BClerFJN-%28mwd%29-34117/1210751001/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Kassel-Praktikum-Initiativ-f%C3%BCr-Sch%C3%BClerFJN-%28mwd%29-34117/1210751001/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Studentische Mitarbeit bei der Weiterentwicklung diamantähnlicher Kohlenstoffschichten (Dresden, DE, 01277)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p><span style="font-family:Arial, Helvetica, sans-serif">Das <a href="https://www.iws.fraunhofer.de/"><b>Fraunhofer-Institut für Werkstoff- und Strahltechnik IWS Dresden</b></a> entwickelt komplexe Systemlösungen in der Laser- und Werkstofftechnik. Wir verstehen uns als Ideentreiber, die Lösungen mit Laseranwendungen, funktionalisierten Oberflächen sowie Werkstoff- und Prozessinnovationen entwickeln – von einfach integrierbaren Individuallösungen über kosteneffiziente Mittelstandslösungen bis hin zu industrietauglichen Komplettlösungen.</span></p>
+
+<p> </p>
+
+<p><span style="font-family:Arial, Helvetica, sans-serif">Am <b>Fraunhofer IWS</b> werden mittels PVD-Verfahren diamantähnliche Kohlenstoffschichten hergestellt. Diese zeichnen sich durch exzellente mechanische, tribologische und elektrochemische Eigenschaften aus. Durch die Dotierung können die Schichteigenschaften zusätzlich, anwendungsorientiert modifiziert werden. Dabei lassen sich die verschiedenen Modifikationen des Kohlenstoffs kombinieren, um neuartige Eigenschaftskombinationen aus Graphit, Graphen und Diamant zu erzeugen.</span></p>
+
+<p> </p>
+
+<p><span style="font-family:Arial, Helvetica, sans-serif">Einsatzgebiete sind neben den klassischen Anwendungen zur Verschleißreduktion an Werkzeugen und Komponenten auch Lageranwendungen, die den supraschmierenden Zustand (Reibwert &lt; 0,01) ausnutzen. Ebenso können die speziell designten Kohlenstoffschichten als Elektrodenmaterial für die Sensorik (Spurenanalytik bei Schwermetallen, Biosensoren) und elektrochemische Umwandlungssysteme (Elektrolyse, Katalyse, Abwasserreinigung) eingesetzt werden.</span><br>
+ </p>
+
+<p><span style="font-family:Arial, Helvetica, sans-serif">Das komplexe System der Schichtbildung ist Gegenstand intensiver Forschung. Das beginnt bei dem Ausgangsmaterial, über die Entladungsparameter, die Plasmaeigenschaften inklusive Plasmafilterung bis hin zu den mechanischen, (elektro-) chemischen und strukturellen Eigenschaften der Schichten. </span></p>
+
+<p> </p>
+
+<p><span style="font-family:Arial, Helvetica, sans-serif">Die Weiterentwicklung der Schichtsysteme und der dazu erforderlichen Anlagentechnik erfolgt dabei immer im Hinblick auf eine potentielle, großtechnische Industrialisierung.</span></p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgst Du für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><p> </p>
+
+<ul>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Kennenlernen der Beschichtungstechnologie und Unterstützung bei der Schichtherstellung</span></li>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Erhebung von Messdaten im Beschichtungsprozess und Schichtcharakterisierung (optisch, mechanisch, tribologisch, elektrisch, elektrochemisch)</span></li>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Korrelation von Schichteigenschaften und Beschichtungsparametern</span></li>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Technische Recherche und Zusammenstellung von Ergebnissen</span></li>
+</ul>
+
+<p> </p>
+
+<p><span style="font-family:Arial, Helvetica, sans-serif">Nach entsprechender Einarbeitung ist auch die Erstellung von Studienarbeiten (Praktikum, Bachelor-/Master-/Diplomarbeit) möglich.</span></p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringst Du Dich ein</strong></span></span></p>
+<p><span style="font-size:14.0px"><p> </p>
+
+<ul>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Sie sind Student*in im Studiengang Verfahrenstechnik, Elektrotechnik, Werkstoffwissenschaft, Chemieingenieurwesen, Maschinenbau, Produktionstechnik, Mechatronik, Chemie, Physik oder einer ähnlichen Studienichtung</span></li>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Hohes Interesse am Themengebiet und Motivation zum eigenständigen Arbeiten</span></li>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Es fällt Ihnen leicht, mit Mitarbeitenden zu kommunizieren, technische Sachverhalte sorgfältig zu dokumentieren und neue Lösungsansätze zu durchdenken</span></li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Dich bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><p> </p>
+
+<ul>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Eine abwechslungsreiche und interessante Tätigkeit in einem motivierten Team</span></li>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Einarbeitung in die Plasmabeschichtungstechnik und Umgang mit moderner Beschichtungsanlagen</span></li>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Verwendung moderner Schichtcharakterisierungsmethoden</span></li>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Analyse und Bewertung der erzielten Ergebnisse im Team</span></li>
+	<li><span style="font-family:Arial, Helvetica, sans-serif">Mitwirkung bei der Entwicklung von Prozess- und Systemtechniklösungen</span></li>
+</ul>
+
+<p> </p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p><span style="font-size:14.0px">Die Vergütung richtet sich nach der Gesamtbetriebsvereinbarung zur Beschäftigung der Hilfskräfte.</span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewirb Dich jetzt, und mach einen Unterschied! Nach Eingang Deiner Online-Bewerbung erhältst Du eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Dir, wie es weitergeht.</strong> </span></p>
+<p style="text-align:justify"> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p><span style="font-family:Arial, Helvetica, sans-serif"><b>Fragen zu dieser Position beantworten Ihnen sehr gerne:</b></span></p>
+
+<p><span style="font-family:Arial, Helvetica, sans-serif">Herr Martin Zawischa<br>
+Tel.: 0351 83391 3096</span></p>
+
+<p> </p>
+
+<p>Herr Falko Hofmann<br>
+Tel.: 0351 83391 3196<br>
+ </p>
+
+<p><span style="font-family:Arial, Helvetica, sans-serif"><b>Organisatorische Fragen beantwortet Ihnen sehr gerne:</b><br>
+Frau Jana Junge (Personalstelle)</span></p>
+
+<p><span style="font-family:Arial, Helvetica, sans-serif">Tel.: 0351 83391-3100</span></p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Werkstoff- und Strahltechnik IWS</span></span> </p>
+<p><a href="http://​www.iws.fraunhofer.de​" target="_blank" rel="noopener"><span style="font-size:14.0px">www.iws.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">78732</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Sun, 18 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Dresden-Studentische-Mitarbeit-bei-der-Weiterentwicklung-diamant%C3%A4hnlicher-Kohlenstoffschichten-01277/1180990401/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Dresden-Studentische-Mitarbeit-bei-der-Weiterentwicklung-diamant%C3%A4hnlicher-Kohlenstoffschichten-01277/1180990401/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Praktikum: Plug-in-Entwicklung zur Energieverbrauchsberechnung in der VIBN (Dresden, DE, 01187)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Die in Dresden ansässige Abteilung IIOT-Steuerungen und technische Kybernetik erarbeitet maschinennahe Methoden und Lösungen zur Umsetzung von Industrie 4.0 in engem Kontakt mit Industriepartnern. </p>
+<p> </p>
+<p>Ökologische Betrachtungen spielen durch politisch festgesetzte Klimaziele und zunehmende gesetzliche Regularien eine immer größere Rolle in der Produktionsplanung. Modellierung und Simulation bietet die Möglichkeit, bereits im Vorfeld Aussagen zum Energieverbrauch einzelner Maschinen oder Prozessschritte zu treffen. So können die simulativ erzielten Ergebnisse als Grundlage für Investitionsentscheidungen oder Optimierungen einzelner Produktionsprozesse dienen. Um Analysen direkt anhand des Steuerungscodes durchzuführen, können Tools zur virtuellen Inbetriebnahme (VIBN) genutzt werden. Sie ermöglichen die Kopplung einer Steuerung an das Modell der Maschine oder Anlage, bieten aber oft keine integrierte Möglichkeit, physikalisch basierte Betrachtungen im Modell anzustellen. </p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgen Sie für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><p>Ihre Aufgabe wird es sein, zu untersuchen, wie sich Betrachtungen zum Energieverbrauch in Tools zur virtuellen Inbetriebnahme integrieren lassen. Angedacht ist ein Plug-in, welches toolübergreifend eingesetzt werden kann. </p>
+<p> </p>
+<p>Schwerpunkte Ihrer Tätigkeit bei uns: </p>
+<ul>
+<li>Recherche zu Energieverbrauchsmodellierung im Produktionsumfeld sowie Schnittstellen der VIBN-Tools,</li>
+<li>Entwicklung eines Konzepts für ein Plug-in zur Simulation des Energieverbrauchs von Maschinen und Anlagen innerhalb der VIBN,</li>
+<li>Tests und Bewertung der Einflüsse auf Rechengeschwindigkeit, Taktzeiten in verschieden Aufbauten (MiL, SiL, HiL),</li>
+<li>Entwicklung eines Plug-ins und Testen mit verschiedenen VIBN-Tools,</li>
+<li>Bewertung und Dokumentation der Ergebnisse.</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringen Sie sich ein </strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Immatrikulation im Studiengang Maschinenbau, Mechatronik, Automatisierungstechnik, Informatik oder vergleichbaren Fächern,</li>
+<li>fließende Deutsch- oder Englischkenntnisse in Wort und Schrift,</li>
+<li>hohes Maß an Eigeninitiative und Teamgeist,</li>
+<li>Begeisterung für interdisziplinäres Arbeiten, analytisches Denken,</li>
+<li>Programmierkenntnisse in C/C++,</li>
+<li>grundlegendes Verständnis über Softwarearchitektur,</li>
+<li>strukturierte Arbeitsweise und Dokumentationsfähigkeit.</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Sie bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Praxisbezogene Arbeitsaufgaben in der Simulation von Produktionssystemen,</li>
+<li>gezielte fachliche Förderung für raschen Kompetenzaufbau,</li>
+<li>Arbeit in einem interdisziplinären Team,</li>
+<li>Möglichkeit einer Weiterbeschäftigung.</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern. Das Gleiche gilt, wenn sie aufgrund einer Behinderung nicht alle Profilanforderungen erfüllen.</span></p>
+<p><span style="font-size:14.0px">Die Vergütung richtet sich nach den Richtlinien des Bundes über Praktikantenvergütungen.</span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewerben Sie sich jetzt, und machen Sie einen Unterschied! Nach Eingang Ihrer Online-Bewerbung erhalten Sie eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Ihnen, wie es weitergeht.</strong> </span><br> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p>Fragen zu dieser Position beantwortet gern:<br>Dipl.-Ing. Leon Hollas <br>+49 351 4772-2612</p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Werkzeugmaschinen und Umformtechnik IWU</span></span> </p>
+<p><a href="http://​www.iwu.fraunhofer.de​" target="_blank" rel="noopener"><span style="font-size:14.0px">www.iwu.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">82264</span>               </span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Sun, 18 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Dresden-Praktikum-Plug-in-Entwicklung-zur-Energieverbrauchsberechnung-in-der-VIBN-01187/1271001201/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Dresden-Praktikum-Plug-in-Entwicklung-zur-Energieverbrauchsberechnung-in-der-VIBN-01187/1271001201/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Schulpraktikum im Büro (Sulzbach-Rosenberg, DE, 92237)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Der Institutsteil Sulzbach-Rosenberg des Fraunhofer Instituts für Umwelt-, Sicherheits- und Energietechnik Fraunhofer UMSICHT (<a href="https://www.umsicht-suro.fraunhofer.de/">www.umsicht-suro.fraunhofer.de</a>) entwickelt verfahrenstechnische Lösungen im Bereich der Kohlenstoffkonversion (Biokraftstoffe der nächsten Generation, Recyclingtechnologien für Kunststoffe und Verbundmaterialien, Biokohlen), der emissionsarmen Verbrennungs- und Feuerungstechnik sowie der Bereitstellung und Speicherung von Prozesswärme. Mit einem Fokus auf Verfahrenstechnik und Anlagenbau begleitet er Auftraggeber von der Projektidee über Pilotanlagen und Demonstratoren bis zur Markteinführung.</p>
+<p> </p>
+<p><strong>Du möchtest Einblicke in die Berufswelt erlangen?</strong></p>
+<p> </p>
+<p>Es ist nie zu früh, sich in einem Praktikum ein eigenes Bild zu machen und einen Blick in die Zukunft zu werfen, um zu schauen, ob ein Beruf auch Deinen Vorstellungen entspricht! Mit einem Praktikum am Fraunhofer UMSICHT hast Du die Möglichkeit, Deine Interessen und Fähigkeiten zu entdecken und auszuprobieren, erste wertvolle Erfahrungen zu sammeln und einen direkten Eindruck von der Arbeitswelt zu bekommen.</p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgst Du für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><p><strong>… im Büro: </strong><br>Im Büroalltag erwarten Dich jede Menge Organisations- und Verwaltungstätigkeiten – klingt eintönig? Nicht bei uns! Wie abwechslungsreich der kaufmännische Beruf im Büromanagement ist, erfährst Du zum Beispiel im Einkauf, in der Buchhaltung, im Controlling oder im Sekretariat. Du lernst, wie man Dokumente verwaltet, Termine koordiniert und mit Kund*innen kommuniziert… und vieles mehr! </p>
+<p> </p>
+<p>Du hast die Möglichkeit Dein Schulpraktikum - nach Abstimmung mit uns – nach Deinen Interessen zu gestalten:</p>
+<p>Ob 1-2 Tage, ob im Pflichtzeitraum oder auch freiwillig in den Ferien – wir sind flexibel.</p></span></p>
+<p> </p>
+<p><strong><span style="color:#16a085"><span style="font-size:14.0px">Was wir für Deine Bewerbung benötigen</span></span></strong></p>
+<ul>
+<li>Anschreiben mit gewünschtem Zeitraum und Bereich </li>
+<li>Lebenslauf </li>
+<li>Aktuelles Schulzeugnis</li>
+</ul>
+<p> </p>
+<p>Teile uns bitte außerdem noch folgendes mit:</p>
+<ul>
+<li>Deine Lieblingsfächer</li>
+<li>Welche Ausbildung bzw. welchen Studiengang Du anstrebst</li>
+</ul>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringst Du Dich ein</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Du strebst einen Haupt-/Realschulabschluss, das (Fach-)Abitur oder einen vergleichbaren Schulabschluss an.</li>
+<li>Du bist aufgeschlossen und neugierig, Neues kennenzulernen.</li>
+<li>Du bist motiviert und hast Freude an Teamwork.</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Dich bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Ein Blick hinter die Kulissen: Erlebe den spannenden Alltag eines Forschungsinstituts.</li>
+<li>Ein Blick in die Zukunft: Die Möglichkeit herauszufinden, ob Dein Traumjob zu Dir passt.</li>
+<li>Ein Blick in die Praxis: Abwechslungsreiche Aufgaben mit der Chance, praktische Erfahrungen zu sammeln.</li>
+<li>Ein Blick in unser Teamleben: Werde für eine kurze Zeit Teil eines motivierten Teams, das Dir gerne zur Seite steht und Dich unterstützt.</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewirb Dich jetzt, und mach einen Unterschied! Nach Eingang Deiner Online-Bewerbung (inklusive Anschreiben, Lebenslauf, Zeugnisse) erhältst Du eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Dir, wie es weitergeht.</strong> </span></p>
+<p style="text-align:justify"> </p>
+<p><span style="font-size:14.0px"><p><strong>Fragen zum Bewerbungsprozess beantworten Dir gerne:</strong></p>
+<p> </p>
+<p>Hannah Wagner</p>
+<p>Tel.: +49 (0) 9661 8155-649</p>
+<p> </p>
+<p><a href="mailto:personal-sr@umsicht.fraunhofer.de">personal-sr@umsicht.fraunhofer.de</a></p></span></p>
+<p><span style="font-size:14.0px">Fraunhofer-Institut für Umwelt-, Sicherheits- und Energietechnik UMSICHT</span> </p>
+<p><a href="http://​www.umsicht-suro.fraunhofer.de​" target="_blank" rel="noopener"><span style="font-size:14.0px">www.umsicht-suro.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: 83424                Bewerbungsfrist: </span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Sun, 18 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Sulzbach-Rosenberg-Schulpraktikum-im-B%C3%BCro-92237/1368116833/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Sulzbach-Rosenberg-Schulpraktikum-im-B%C3%BCro-92237/1368116833/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Initiativbewerbung Praktikum für Studierende (all genders) (Dresden, DE, 01277)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p class="MsoNoSpacing" style="text-align:justify">Das Teilinstitut Dresden des Fraunhofer-Instituts für Fertigungstechnik und Angewandte Materialforschung IFAM mit derzeit ca. 120 Mitarbeitenden ist spezialisiert auf die Grundlagen- und Anwendungsforschung zur lösungsorientierten Werkstoff- und Technologieentwicklung für innovative Sinter- und Verbundwerkstoffe, Funktionswerkstoffe sowie zellulare metallische Werkstoffe für die Energietechnik, Mobilität und Medizintechnik. Im Bereich der Energietechnik nimmt die Wasserstofftechnologie eine tragende Stellung ein.</p>
+<p class="MsoNoSpacing" style="text-align:justify"> </p>
+<p class="MsoNoSpacing" style="text-align:justify">Sie sind auf der Suche nach einer Möglichkeit für ein studienbegleitendes Praktikum? Dann sind Sie bei uns genau richtig! Wir betreuen regelmäßig engagierte Talente, die mit uns Spitzenforschung betreiben möchten. </p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgen Sie für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><p>Während des Praktikum gewinnen Sie Einblicke in den Alltag einer Forschungsinstitution und können theoretische Kenntnisse aus dem Studium oder der Ausbildung praxisnah anwenden. Dabei lernen Sie unsere Strukturen und Prozesse in den wissenschaftlich-technischen Geschäftsbereichen kennen und werden mit verantwortungsvollen und abwechslungsreichen Aufgaben betraut. Nutzen Sie dieses Sprungbrett zum Karrierestart im Forschungs- und Entwicklungsumfeld und machen Sie einen wichtigen Schritt in Ihrer beruflichen Entwicklung.</p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringen Sie sich ein </strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Eingeschrieben in einem ingenieur- und naturwissenschaftlichen Studiengang, wie z.B. Werkstoffwissenschaft, Energie- und Verfahrenstechnik, Maschinenbau, Physik oder Chemie oder einer vergleichbaren Fachrichtung,</li>
+<li>Interesse an den Themen rund um Forschung und Technologie,</li>
+<li>Eigeninitiative, Teamgeist und Bereitschaft, Neues zu lernen,</li>
+<li>Idealerweise erste praktische oder theoretische Vorkenntnisse – je nach Bereich,</li>
+<li>Gute Deutsch- und Englischkenntnisse in Wort und Schrift. </li>
+</ul>
+<p> </p>
+<p>Dann freuen wir uns über Ihre vollständigen Bewerbungsunterlagen (Anschreiben, Lebenslauf, aktuelle Immatrikulationsbescheinigung, Studienleistung, Zeugnisse, Referenzen, etc.).</p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Sie bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Mitarbeit an innovativen Forschungsprojekten in verschiedenen Themenfeldern in einem interdisziplinären Team,</li>
+<li>Erweiterung des theoretischen Studienwissens durch praktische Anwendung,</li>
+<li>ein modern ausgestattetes und international geprägtes Arbeitsumfeld,</li>
+<li>Work-Life-Balance durch flexible Arbeitszeiten; auch zur Vereinbarkeit von Familie und Beruf,</li>
+<li>die Möglichkeit, verschiedenste Studienarbeiten zu verfassen und Praktika durchzuführen.</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Die Vergütung erfolgt nach Praktikantenvergütung nach den Richtlinien des Bundes (je nach Qualifikation). Die Stelle ist befristet und die<strong> wöchentliche</strong> Arbeitszeit beträgt 39 Stunden.</span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewerben Sie sich jetzt mit Ihren <span style="text-decoration:underline">vollständigen</span> Unterlagen, und machen Sie einen Unterschied! Nach Eingang Ihrer Online-Bewerbung erhalten Sie eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Ihnen, wie es weitergeht.</strong> </span><br> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p><strong>Kontakt:</strong></p>
+<p>Personalabteilung</p>
+<p>Jana Keßler, Tel. 0351 2537-457</p>
+<p> </p>
+<p>http://www.ifam-dd.fraunhofer.de</p>
+<p> </p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Fertigungstechnik und Angewandte Materialforschung IFAM, Institutsteil Dresden</span></span> </p>
+<p><a href="http://​www.ifam.fraunhofer.de/de/Ueberuns/Standorte/Dresden.html​" target="_blank" rel="noopener"><span style="font-size:14.0px">www.ifam.fraunhofer.de/de/Ueberuns/Standorte/Dresden.html</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">82365</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Sun, 18 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Dresden-Initiativbewerbung-Praktikum-f%C3%BCr-Studierende-%28all-genders%29-01277/1272969301/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Dresden-Initiativbewerbung-Praktikum-f%C3%BCr-Studierende-%28all-genders%29-01277/1272969301/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Initiativbewerbung Studierende: Hilfswissenschaftler (all genders), Praktikum, Abschlussarbeit (Ilmenau, DE, 98693)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Du hast Deine passende Stelle nicht gefunden, möchtest aber trotzdem unser Team in Ilmenau unterstützen? Wir freuen uns über Deine Initiativbewerbung mit Angabe des gewünschten Eintrittsdatum und Angabe der gewünschten Abteilung/Interessensgebieten.</p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgst Du für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+	<li>Als studentische Hilfskraft (m/w/d) oder Praktikant*in unterstützt Du interessante Projekte unserer unterschiedlichen Forschungsbereiche Kognitive Energiesysteme</li>
+	<li>Im Rahmen einer Bachelor- oder Masterthesis erarbeitest Du ein wissenschaftliches Thema eines Projektes</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringst Du Dich ein</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+	<li>Du begeisterst Dich für technologische Herausforderungen und möchtest uns in industrienahen Forschungsprojekten unterstützen?</li>
+	<li>Laufendes Studium vorzugsweise im ingenieur- / naturwissenschaftlichen Bereich oder in einer verwandten Studienrichtung</li>
+	<li>Eine selbstständige Arbeitsweise und Freude an interdisziplinärer Teamarbeit</li>
+	<li>Gute Sprachkenntnisse in Deutsch und/oder Englisch</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Dich bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li><strong>Forschung und Anwendung vereint:</strong> Auf Augenhöhe mit der Industrie. Zwischen Gegenwart und Zukunft wissenschaftlich exzellent.</li>
+<li><strong>Vielfältigkeit inspiriert:</strong> Vielfältige Unternehmenskultur. Freiraum für Kreativität &amp; Innovationsentfaltung. Offene Forschungslandschaft.</li>
+<li><strong>Flexibilität leben:</strong> New Work im HomeOffice oder Hybrid. Teilzeit, Vollzeit, Flexibel eben.</li>
+<li><strong>Vernetzung verbindet:</strong> Institutsübergreifend und international. Gemeinsam mit über 30.000 Mitarbeitenden.</li>
+<li><strong>Karrierepfade kreieren:</strong> Hervorragende Entwicklungschancen in der wissenschaftlichen Community und Möglichkeit zur Promotion.</li>
+<li><strong>Im Herzen Thüringens zu Hause: </strong>Modernes Institutsgebäude. Erstklassig ausgestattete Labore, Meeting-Points und Kreativbereiche. Lunch&amp;Meet in unserer neuen Kantine.</li>
+<li><strong>Lust auf Mehr?</strong> Willkommen im Team in Ilmenau oder an unserem Standort in Görlitz!</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern. Das Gleiche gilt, wenn sie aufgrund einer Behinderung nicht alle Profilanforderungen erfüllen.</span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Die wöchentliche Arbeitszeit beträgt 15-20 Stunden. Die Stelle ist auf ein Jahr befristet.</span> Die Vergütung richtet sich nach der Gesamtbetriebsvereinbarung zur Beschäftigung der Hilfskräfte.</span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewirb Dich jetzt, und mach einen Unterschied! Nach Eingang Deiner Online-Bewerbung erhältst Du eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Dir, wie es weitergeht.</strong> </span></p>
+<p style="text-align:justify"> </p>
+<p><span style="font-size:14.0px"></span></p>
+<p><span style="font-size:14.0px">Fraunhofer-Institut für Optronik, Systemtechnik und Bildauswertung IOSB</span> </p>
+<p><a href="http://​www.iosb.fraunhofer.de​" target="_blank" rel="noopener"><span style="font-size:14.0px">www.iosb.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: 68521                Bewerbungsfrist: </span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Sun, 18 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Ilmenau-Initiativbewerbung-Studierende-Hilfswissenschaftler-%28all-genders%29%2C-Praktikum%2C-Abschlussarbeit-98693/977995201/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Ilmenau-Initiativbewerbung-Studierende-Hilfswissenschaftler-%28all-genders%29%2C-Praktikum%2C-Abschlussarbeit-98693/977995201/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Initiativbewerbung Pflichtpraktikum Studierende (all genders) (Chemnitz, DE, 09126)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Die besondere Stärke des Fraunhofer-Instituts für Elektronische Nanosysteme ENAS liegt in der Entwicklung von Smart Systems – sogenannten intelligenten Systemen für verschiedenartige Anwendungen. Die Systeme verbinden Elektronikkomponenten, Mikro- und Nanosensoren und <br>-aktoren mit Schnittstellen zur Kommunikation. Fraunhofer ENAS entwickelt Einzelkomponenten, die Technologien für deren Fertigung aber auch Systemkonzepte und Systemintegrationstechnologien und überführt sie in die praktische Nutzung. Fraunhofer ENAS begleitet Kundenprojekte von der Idee über den Entwurf, die Technologieentwicklung oder Umsetzung anhand bestehender Technologien bis hin zum getesteten Prototyp.</p>
+<p><br>Du bist auf der Suche nach einer Möglichkeit für ein studienbegleitendes Pflichtpraktikum? Dann bist Du bei uns genau richtig! Wir betreuen regelmäßig engagierte Talente, die mit uns Spitzenforschung betreiben möchten.</p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgst Du für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><p>Bei uns erhältst Du die Möglichkeit während Deines Pflichtpraktikums Einblicke in spannende Forschungsprojekte zu erhalten und aktiv an innovativen Themen mitzuarbeiten. Bitte gib in Deiner Bewerbung an, für welche Themen oder auch Forschungsschwerpunkte Du Dich interessierst.</p>
+<p><br>Füge Deiner Initiativbewerbung bitte Folgendes bei:<br><br></p>
+<ul>
+<li>ein Motivationsschreiben, aus dem sowohl der angedachte Zeitraum und die Dauer des Praktikums hervorgeht als auch für welches Themengebiet Du Dich interessierst,</li>
+<li>Deinen Lebenslauf, </li>
+<li>die Bestätigung über ein Pflichtpraktikum (Auszug aus der Studienordnung) bzw. die Beschreibung des Praktikumsmoduls,</li>
+<li>Deine aktuelle Notenübersicht, Immatrikulationsbescheinigung, Zeugnisse sowie weitere Referenzen.</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringst Du Dich ein</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Du bist immatrikulierte*r Student*in in Chemnitz, Mittweida, Freiberg, Dresden oder der näheren Umgebung.</li>
+<li>Du studierst in einer naturwissenschaftlichen oder technischen Fachrichtung, wie z.B. Materialwissenschaften, Elektrotechnik, Physik, Chemie, Informatik oder verwandten Disziplinen.</li>
+<li>Dein Notendurchschnitt liegt bei 2,0 oder darüber.</li>
+<li>Du zeichnest Dich durch eine strukturierte und selbstständige Arbeitsweise aus. </li>
+<li>Du hast Freude an interdisziplinärer Zusammenarbeit und Teamwork.</li>
+<li>Idealerweise verfügst Du über erste praktische oder theoretische Vorkenntnisse, je nach Bereich.</li>
+<li>Sehr gute Deutsch- und Englischkenntnisse in Wort und Schrift runden Dein Profil ab.</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Dich bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Mitarbeit an innovativen Forschungsprojekten in einem interdisziplinären Team</li>
+<li>Verknüpfung von theoretischen Erkenntnissen aus dem Studium mit praktischen Erfahrungen</li>
+<li>ein kollegiales und angenehmes Arbeitsumfeld sowie modernste technische Ausstattung</li>
+<li>flexible Arbeitszeitgestaltung und damit die optimale Vereinbarkeit von Studium und Praxis</li>
+<li>feste Ansprechpartner*innen, die Dich im Laufe Deiner Tätigkeit betreuen</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p><span style="font-size:14.0px">Die Vergütung erfolgt nach Praktikantenvergütung nach den Richtlinien des Bundes. Die wöchentliche Arbeitszeit beträgt 39 Stunden. </span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewirb Dich jetzt, und mach einen Unterschied! Nach Eingang Deiner Online-Bewerbung erhältst Du eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Dir, wie es weitergeht.</strong> </span></p>
+<p style="text-align:justify"> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p>Fragen zur Stelle richtest Du bitte an:<br>Michaela Baum<br>recruiting@enas.fraunhofer.de</p>
+<p><br>Aus Datenschutzgründen können wir ausschließlich Bewerbungen über unser Karriereportal berücksichtigen - Vielen Dank.</p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Elektronische Nanosysteme ENAS</span></span> </p>
+<p><a href="http://www.enas.fraunhofer.de" target="_blank" rel="noopener"><span style="font-size:14.0px">www.enas.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">85674</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Fri, 16 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Chemnitz-Initiativbewerbung-Pflichtpraktikum-Studierende-%28all-genders%29-09126/1438069133/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Chemnitz-Initiativbewerbung-Pflichtpraktikum-Studierende-%28all-genders%29-09126/1438069133/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Pflichtpraktikum: Shared Control für mobile Arbeitsmaschinen - Assistenzsysteme für Fahrzeugführung (Ilmenau, DE, 98693)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p><span style="font-size:10.0pt">Auch wir als Fraunhofer IOSB-AST setzen mit unserer Forschung Maßstäbe: Für eine erfolgreiche und sichere Energiewende. Für resiliente Wassersysteme. Für zukunftsweisende autonom fahrende Systeme. Für innovative Desinfektionslösung. Kurzum: Spitzentechnologie für komplexe Systeme.</span></p>
+<p><br><span style="font-size:10.0pt">Gestalte mit uns diese Zukunft und werde Teil unseres interdisziplinären Teams.</span></p>
+<p><span style="font-size:10.0pt">Du möchtest mehr über die aktuellen Forschungsthemen Deiner zukünftigen Kolleginnen und Kollegen erfahren? Dann klicke hier: <a title="Eingebettete Intelligente Systeme" href="https://www.iosb-ast.fraunhofer.de/de/abteilungen/eingebettete-intelligente-systeme.html" target="_blank" rel="noopener">Eingebettete Intelligente Systeme</a></span></p>
+<p> </p>
+<p><span style="font-size:10.0pt"><strong>Der Institutsteil Angewandte Systemtechnik AST in Ilmenau sucht ab dem nächstmöglichen Zeitpunkt für seine Arbeitsgruppe "Eingebettete Intelligente Systeme" eine Praktikantin oder einen Praktikanen für das Pflichtpraktikum.</strong></span></p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgst Du für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li style="margin-top:0.0cm;margin-right:0.0cm;margin-bottom:0.0cm;font-size:10.0pt;font-family:arial, helvetica, sans-serif"><span style="font-size:10.0pt;font-family:arial, helvetica, sans-serif">Entwicklung eines Shared-Control-Ansatzes, bei dem Fahrerkommandos mit automatisierten Assistenzfunktionen kombiniert werden</span></li>
+<li style="margin-top:0.0cm;margin-right:0.0cm;margin-bottom:0.0cm;font-size:10.0pt;font-family:arial, helvetica, sans-serif"><span style="font-size:10.0pt;font-family:arial, helvetica, sans-serif">Ableitung von Führungs- und Assistenzgrößen aus Fahrkorridoren, Trajektorien oder Umgebungsinformationen</span></li>
+<li style="margin-top:0.0cm;margin-right:0.0cm;margin-bottom:0.0cm;font-size:10.0pt;font-family:arial, helvetica, sans-serif"><span style="font-size:10.0pt;font-family:arial, helvetica, sans-serif">Umsetzung unterschiedlicher Assistenzstrategien, beispielsweise Begrenzung, Korrektur oder Gewichtung manueller Steuerkommandos</span></li>
+<li style="margin-top:0.0cm;margin-right:0.0cm;margin-bottom:0.0cm;font-size:10.0pt;font-family:arial, helvetica, sans-serif"><span style="font-size:10.0pt;font-family:arial, helvetica, sans-serif">Erprobung und Bewertung des Assistenzsystems auf mobilen Robotern oder Arbeitsmaschinen in realitätsnahen Fahrszenarien</span></li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringst Du Dich ein</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li style="margin-top:0.0cm;margin-right:0.0cm;margin-bottom:0.0cm;font-size:10.0pt;font-family:arial, helvetica, sans-serif"><span style="font-size:10.0pt;font-family:arial, helvetica, sans-serif">Studium der Technischen Kybernetik und Systemtheorie, Mechatronik, Fahrzeugtechnik, Ingenieurinformatik oder eines vergleichbaren technischen Studiengangs</span></li>
+<li style="margin-top:0.0cm;margin-right:0.0cm;margin-bottom:0.0cm;font-size:10.0pt;font-family:arial, helvetica, sans-serif"><span style="font-size:10.0pt;font-family:arial, helvetica, sans-serif">Grundkenntnisse in Regelungstechnik, Robotik, Fahrzeugdynamik oder autonomer Navigation</span></li>
+<li style="margin-top:0.0cm;margin-right:0.0cm;margin-bottom:0.0cm;font-size:10.0pt;font-family:arial, helvetica, sans-serif"><span style="font-size:10.0pt;font-family:arial, helvetica, sans-serif">Programmierkenntnisse, vorzugsweise in Python oder C++; Erfahrungen mit ROS/ROS 2 sind von Vorteil</span></li>
+<li style="margin-top:0.0cm;margin-right:0.0cm;margin-bottom:0.0cm;font-size:10.0pt;font-family:arial, helvetica, sans-serif"><span style="font-size:10.0pt;font-family:arial, helvetica, sans-serif">Interesse an Fahrerassistenz, Mensch-Maschine-Interaktion und praktischen Versuchen mit realen Robotersystemen</span></li>
+<li style="font-family:arial, helvetica, sans-serif;font-size:10.0pt"><span style="font-family:arial, helvetica, sans-serif;font-size:10.0pt">Fähigkeit an Gesprächen auf Deutsch und Englisch auf mindestens B2 Niveau teilnehmen zu können</span></li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Dich bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li style="font-family:arial, helvetica, sans-serif;font-size:10.0pt"><span style="font-family:arial, helvetica, sans-serif;font-size:10.0pt">Einblick in spannende Projekte</span></li>
+<li style="font-family:arial, helvetica, sans-serif;font-size:10.0pt"><span style="font-family:arial, helvetica, sans-serif;font-size:10.0pt">Praxisrelevante und anwendungsorientierte Themenstellungen</span></li>
+<li style="font-family:arial, helvetica, sans-serif;font-size:10.0pt"><span style="font-family:arial, helvetica, sans-serif;font-size:10.0pt">Ein freundliches und kreatives Arbeitsumfeld</span></li>
+<li style="font-family:arial, helvetica, sans-serif;font-size:10.0pt"><span style="font-family:arial, helvetica, sans-serif;font-size:10.0pt">Optionen auf Bachelor- und Masterarbeit</span></li>
+</ul>
+<p> </p>
+<p><span style="font-family:arial, helvetica, sans-serif;font-size:10.0pt">Eine weiterführende Bearbeitung der Themenstellung im Rahmen von Praktikum, Bachelor- oder Masterarbeit ist möglich. Wir freuen uns insbesondere über die Bewerbungen von motivierten Studenten und Studentinnen. Bitte sende uns Deine vollständigen und aussagekräftigen Bewerbungsunterlagen zu. Im besten Fall lernen wir uns bald persönlich kennen!</span></p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p><span style="font-size:14.0px">Die wöchentliche Arbeitszeit beträgt 39 Stunden. Die Stelle kann auch in Teilzeit besetzt werden. Die Vergütung richtet sich nach den Richtlinien des Bundes über Praktikantenvergütungen.</span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewirb Dich jetzt, und mach einen Unterschied! Nach Eingang Deiner Online-Bewerbung erhältst Du eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Dir, wie es weitergeht.</strong> </span></p>
+<p style="text-align:justify"> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p><span style="font-size:10.0pt">Bei Fragen wende Dich an: </span></p>
+<p><span style="font-size:10.0pt">Norbert Fränzel</span></p>
+<p><span style="font-size:10.0pt">Recruiting@iosb-ast.fraunhofer.de</span></p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Optronik, Systemtechnik und Bildauswertung IOSB</span></span> </p>
+<p><a href="http://www.iosb.fraunhofer.de" target="_blank" rel="noopener"><span style="font-size:14.0px">www.iosb.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">85672</span>                Bewerbungsfrist: <span style="font-size:14.0px">30.10.2026</span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Thu, 15 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Ilmenau-Pflichtpraktikum-Shared-Control-f%C3%BCr-mobile-Arbeitsmaschinen-Assistenzsysteme-f%C3%BCr-Fahrzeugf%C3%BChrung-98693/1437602633/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Ilmenau-Pflichtpraktikum-Shared-Control-f%C3%BCr-mobile-Arbeitsmaschinen-Assistenzsysteme-f%C3%BCr-Fahrzeugf%C3%BChrung-98693/1437602633/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Studentische Hilfskräfte/Thesis - Entwicklung einer universellen Firmwarearchitektur (Wachtberg, DE, 53343)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Das Fraunhofer FHR in Wachtberg bei Bonn ist Teil der großen Fraunhofer-Gesellschaft und eines der führenden und größten europäischen Forschungsinstitute auf dem Gebiet der Hochfrequenzphysik und Radartechnik. Das Institut bearbeitet zahlreiche multinationale Forschungsprojekte mit akademischen und industriellen Partnern.<br>Der Bereich<strong> „Industrielle Hochfrequenzsysteme“ (IHS)</strong> entwickelt in vier Abteilungen leistungsfähige Sensoren und Radarsysteme für die Bereiche industrielle Messtechnik, zivile Sicherheit, neue Mobilitätslösungen und Umweltmonitoring oder medizinische Anwendungen. Die Abteilung<strong> „Eingebettete Systeme“ </strong>befasst sich mit Forschungsthemen zu verteilten Signalverarbeitungssystemen für hochspezialisierte Radarsysteme im industriellen Umfeld und in der Forschung. Im Fokus stehen die Ansteuerung multifunktionaler Multi-Kanalsysteme sowie deren effiziente und ressourcenschonende Echtzeitverarbeitung.</p>
+<p> </p>
+<p>Für unser Team suchen wir dauerhaft Student*innen (max. 19,5 Std./Woche), die unsere Wissenschaftler*innen unterstützen und so zu einem erfolgreichen Forschungsbetrieb beitragen.</p>
+<p> </p>
+<p>Bei uns bist Du von Beginn an in das Team und die laufenden Projekte integriert. Wenn Du dein Engagement und Wissen voll einbringen möchtest, kannst Du schon früh Verantwortung und neue Aufgaben übernehmen und selbstständig bearbeiten – unabhängig davon, ob im Praktikum, als studentische Hilfskraft oder im Rahmen einer Abschlussarbeit.</p>
+<p> </p>
+<p>Die Radartechnologie und deren Signalverarbeitungsalgorithmen sind hochentwickelt, sehr leistungsstark und in der Lage detailgetreue Abbildung einer Szenerie zu liefern. Der Nutzung im zivilen und militärischen Einsatz stehen häufig die anfallende Datenmenge und deren Verarbeitung im Weg. Die Gruppe <strong>„S/W Implementierungen“</strong> beschäftigt sich mit der Architektur, dem Design und der Implementierung echtzeitfähiger Signalverarbeitungslösungen für sichere und ressourceneffiziente Radartechnik in der industriellen Qualitätssicherung, im Automotive sowie im Luft- und Raumfahrtbereich und leistet somit einen wesentlichen Beitrag zur Realisierung von radarbasierter Echtzeit-Messtechnik.</p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgst Du für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Analyse der bestehenden Firmwarearchitektur verschiedener Radarsensoren</li>
+<li>Anforderungsanalyse anhand konkreter Anwendungsszenarien industrieller Radarsensoren</li>
+<li>Analyse gängiger Embedded-Architektur Ansätze (Struktur- und Verhaltensmodelle) und Prüfung auf deren</li>
+<li>Anwendbarkeit auf Basis der erstellten Anforderungsanalyse</li>
+<li>Ausarbeitung einer neuen universellen Firmwarearchitektur (UML):<br>o    Aufstellen von Use-Cases und User-Stories<br>o    Identifikation von Komponenten und deren Anforderungen <br>o    Erstellen von Sequenzen und Aktivitäten<br>o    Ausarbeiten von Schnittstellenspezifikationen<br>o    Komponentendesign in Form von Klassendiagrammen</li>
+<li>Aufbau neuer und Erweiterung bestehender Softwarebibliotheken (C++)</li>
+<li>Planung und Erstellung von Unit-Tests für neue Komponenten</li>
+<li>Implementierung und Testen neuer Komponenten</li>
+<li>Redesign einer bestehenden Firmware auf Basis der neuen Firmwarearchitektur</li>
+<li>Evaluation der neuen Architektur gegenüber den zuvor erstellten Anforderungen</li>
+<li>Dokumentation des Entwicklungsprozesses </li>
+</ul>
+<p> </p>
+<p>Beispiel Thesis-Themen:</p>
+<p> </p>
+<p><strong>"Entwurf und Referenzimplementierung einer modularen Firmware-Architektur für industrielle Radarsensoren"</strong><br>Diese Arbeit entwirft eine wiederverwendbare, modulare Firmware-Architektur für industrielle Radarsensoren unter Berücksichtigung branchenspezifischer Anforderungen wie Echtzeitverarbeitung, Signaldatenfluss und Hardwareabstraktion. Der Architekturentwurf wird mittels UML formal modelliert und durch eine Referenzimplementierung mit zugehöriger Unit-Test-Suite hinsichtlich Korrektheit und Portierbarkeit validiert. Ziel ist eine universell einsetzbare Architekturvorlage, die als Grundlage für verschiedene Radarsensor-Varianten im industriellen Umfeld dient und den Entwicklungsaufwand bei Neuprojekten reduziert.</p>
+<p><strong>"Systematische Bewertung von Softwarearchitekturmustern für ressourcenbeschränkte eingebettete Systeme"</strong><br>Diese Arbeit untersucht etablierte Softwarearchitekturmuster im Kontext eingebetteter Systeme und entwickelt einen strukturierten Bewertungsrahmen hinsichtlich Kriterien wie Echtzeitfähigkeit, Skalierbarkeit, Testbarkeit und Ressourceneffizienz. Anhand ausgewählter Anwendungsszenarien werden die Architekturansätze gegenübergestellt, um praxisnahe Entscheidungshilfen für den systematischen Entwurf von Firmware-Architekturen abzuleiten.</p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringst Du Dich ein</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Aktuelle Immatrikulation in einem mathematischen, naturwissenschaftlichen bzw. ingenieurwissenschaftlichen Studienfach</li>
+<li>Hohes Interesse an Softwarearchitektur und Softwaredesign</li>
+<li>Grundlegende Kenntnisse gängiger Entwurfsmuster und Designgrundsätze</li>
+<li>Grundlegende Kenntnisse in UML</li>
+<li>Interesse an objektorientierter Programmierung und echtzeitfähigen Systemen sowie Spaß am Planen, Optimieren und Implementieren von Softwarelösungen</li>
+<li>Solide theoretische und praktische Grundlagen des objektorientierten Programmierens, idealerweise in C++</li>
+<li>Grundlegende Kenntnisse von zentralen Konzepten der Softwareentwicklung (Entwurfsmuster, Testgetriebende Entwicklung, Versionskontrolle, etc.)</li>
+<li>Erste Erfahrungen im Bereich der Embedded-Entwicklung (uC, SOC, FPGA, o.Ä.)</li>
+</ul>
+<p> </p>
+<p>Optional:</p>
+<ul>
+<li>Erfahrung im Arbeiten unter Linux-basierten Systemen sowie sicherer Umgang mit der Linux-Kommandozeile</li>
+<li>Erfahrung im Umgang mit Build-Systemen (z. B. CMake, QMake, Autotools oder vergleichbare Tools)</li>
+<li>Sichrer Umgang mit Versionskontroll-Systemen wie Git oder SVN</li>
+<li>Kenntnisse in der Entwicklung echtzeitfähiger Anwendungen</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Dich bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Interessante, praxisnahe Aufgabenstellungen</li>
+<li>Einblicke in aktuelle Forschungsprojekte aus Industrie und Grundlagenforschung</li>
+<li>Offenes und kollegiales Arbeitsumfeld mit lockerem Umgang und moderner Ausstattung</li>
+<li>Vielfältige Aufgabenstellungen mit der Möglichkeit zur Einarbeitung in neue Themenfelder</li>
+<li>Attraktive Rahmenbedingungen bei einer der größten Forschungsorganisationen für anwendungsorientierte Forschung in Europa</li>
+<li>Hervorragende Vernetzung innerhalb der internationalen Forschungslandschaft</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span></p>
+<p><span style="font-size:14.0px">Die wöchentliche Arbeitszeit beträgt 39 Stunden. Die Stelle kann auch in Teilzeit besetzt werden. Anstellung, Vergütung und Sozialleistungen richten sich nach dem Tarifvertrag für den öffentlichen Dienst (TVöD).</span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewirb Dich jetzt, und mach einen Unterschied! Nach Eingang Deiner Online-Bewerbung erhältst Du eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Dir, wie es weitergeht.</strong> </span></p>
+<p style="text-align:justify"> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"><p><strong>Fragen zu dieser Position beantwortet Dir gerne:<br>Sabine Gütgemann<br>Tel.: +49 160 966 519 27E-Mail: <a href="mailto:sabine.guetgemann@fhr.fraunhofer.de?subject=Ihre%20Ausschreibung%20-%20Kennziffer%2060788">sabine.guetgemann@fhr.fraunhofer.de</a></strong></p></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Hochfrequenzphysik und Radartechnik FHR</span></span> </p>
+<p><a href="http://www.fhr.fraunhofer.de" target="_blank" rel="noopener"><span style="font-size:14.0px">www.fhr.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">85162</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Thu, 15 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Wachtberg-Studentische-Hilfskr%C3%A4fteThesis-Entwicklung-einer-universellen-Firmwarearchitektur-53343/1418252433/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Wachtberg-Studentische-Hilfskr%C3%A4fteThesis-Entwicklung-einer-universellen-Firmwarearchitektur-53343/1418252433/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item><item><title><![CDATA[Initiativbewerbung für ein Praktikum (Darmstadt, DE, 64295)]]></title><description><![CDATA[<p><span style="font-size:14.0px"><p>Das Fraunhofer-Institut für Sichere Informationstechnologie SIT gehört zu den führenden Forschungs- und Entwicklungseinrichtungen für Cyber-Sicherheit in Deutschland und Europa und ist Teil von ATHENE, dem nationalen Forschungszentrum für angewandte Cybersicherheit. ATHENE ist eine Kooperation der Fraunhofer-Gesellschaft mit der TU Darmstadt, der Hochschule Darmstadt und der Goethe-Universität Frankfurt.</p>
+<p>Unser gemeinsames Ziel: die Welt von morgen sicherer zu machen. Im Fokus stehen die anwendungsorientierte Forschung sowie die Entwicklung innovativer Technologien und Lösungen für aktuelle Herausforderungen in den Bereichen Sicherheit und Datenschutz.</p>
+<p> </p>
+<p>Sie möchten das Fraunhofer SIT im Rahmen eines Praktikums kennenlernen und praktische Erfahrungen sammeln? Dann freuen wir uns über Ihre Initiativbewerbung. </p>
+<p> </p></span></p>
+<p> </p>
+<p><span style="color:#16a085"><span style="font-size:14.0px"><strong>Hier sorgen Sie für Veränderung</strong></span></span></p>
+<p><span style="font-size:14.0px"><p>Bewerben Sie sich gerne initiativ bei uns. Teilen Sie uns dazu bitte möglichst genau mit, in welcher Abteilung, welchem Geschäftsfeld, welchem Institut oder welchem Projekt Sie gerne mitwirken würden.</p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Hiermit bringen Sie sich ein </strong></span></span></p>
+<p><span style="font-size:14.0px"><p>Die Anforderungen richten sich nach dem gewünschten Bereich und der Art des Praktikums. Wir freuen uns über Bewerbungen von Schüler<em>innen, Studierenden sowie Berufseinsteiger</em>innen, die Interesse an einem Praktikum bei Fraunhofer haben und ihre Fähigkeiten einbringen möchten.</p></span></p>
+<p> </p>
+<p><span style="font-size:14.0px"><span style="color:#16a085"><strong>Was wir für Sie bereithalten</strong></span></span></p>
+<p><span style="font-size:14.0px"><ul>
+<li>Mitarbeit an einem renommierten, international führenden Forschungsinstitut</li>
+<li>Einblick in vielfältige, zukunftsorientierte Forschungs- und Entwicklungsprojekte</li>
+<li>Freundliches, offenes und kollegiales Arbeitsumfeld mit dynamischer und kreativer Arbeitsatmosphäre</li>
+</ul></span></p>
+<p> </p>
+<p><span style="font-size:14.0px">Wir wertschätzen und fördern die Vielfalt der Kompetenzen unserer Mitarbeitenden und begrüßen daher alle Bewerbungen – unabhängig von Alter, Geschlecht, Nationalität, ethnischer und sozialer Herkunft, Religion, Weltanschauung, Behinderung sowie sexueller Orientierung und Identität. Schwerbehinderte Menschen werden bei gleicher Eignung bevorzugt eingestellt. Unsere Aufgaben sind vielfältig und anpassbar – für Bewerber*innen mit Behinderung finden wir gemeinsam Lösungen, die ihre Fähigkeiten optimal fördern.</span><span style="font-size:14.0px"> </span></p>
+<p><span style="font-size:14.0px">Mit ihrer Fokussierung auf zukunftsrelevante Schlüsseltechnologien sowie auf die Verwertung der Ergebnisse in Wirtschaft und Industrie spielt die Fraunhofer-Gesellschaft eine zentrale Rolle im Innovationsprozess. Als Wegweiser und Impulsgeber für innovative Entwicklungen und wissenschaftliche Exzellenz wirkt sie mit an der Gestaltung unserer Gesellschaft und unserer Zukunft. </span></p>
+<p><span style="font-size:14.0px"><strong>Bereit für Veränderung? Dann bewerben Sie sich jetzt, und machen Sie einen Unterschied! Nach Eingang Ihrer Online-Bewerbung erhalten Sie eine automatische Empfangsbestätigung. Dann melden wir uns schnellstmöglich und sagen Ihnen, wie es weitergeht.</strong> </span><br> </p>
+<p><span style="font-size:14.0px"><span id="cke_bm_1868S" style="display:none"> </span><span style="font-size:14.0px"></span></span></p>
+<p><span style="font-size:14.0px"><span style="font-size:14.0px">Fraunhofer-Institut für Sichere Informationstechnologie SIT</span></span> </p>
+<p><a href="http://www.sit.fraunhofer.de" target="_blank" rel="noopener"><span style="font-size:14.0px">www.sit.fraunhofer.de</span></a> </p>
+<p style="text-align:justify"><br><span style="font-size:14.0px">Kennziffer: <span style="font-size:14.0px">85675</span>                Bewerbungsfrist: <span style="font-size:14.0px"></span></span></p>
+<p style="text-align:right"> </p>]]></description><pubDate>Thu, 15 Oct 2026 2:00:00 GMT</pubDate><link>https://jobs.fraunhofer.de/job/Darmstadt-Initiativbewerbung-f%C3%BCr-ein-Praktikum-64295/1437485533/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</link><guid>https://jobs.fraunhofer.de/job/Darmstadt-Initiativbewerbung-f%C3%BCr-ein-Praktikum-64295/1437485533/?feedId=null&amp;utm_source=J2WRSS&amp;utm_medium=rss&amp;utm_campaign=J2W_RSS</guid></item></channel></rss>
