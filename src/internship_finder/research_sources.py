@@ -518,6 +518,353 @@ def fetch_fraunhofer_rss(
 
 
 # ---------------------------------------------------------------------------
+# F131-CONCLUSÃO — 5 empresas via research_sources RSS (padrao MPG/Fraunhofer)
+# ---------------------------------------------------------------------------
+# Aldi Süd / E.ON / KUKA: feeds RMK/J2W /services/rss/job/ (mesma plataforma
+# do Fraunhofer) — itens <item> com title/link/description/pubDate/guid.
+# Company do feed: Aldi Süd = "ALDI SÜD" (ou similar); E.ON = "Westnetz"/"Bayernwerk"/"HanseWerk"
+#   -> mapeamento p/ "E.ON" canonico (company_intel #235); KUKA = "KUKA Group".
+# Siemens Energy / TenneT: feeds Avature /feed/?... — RSS <item> padrao com
+# title/link/guid/pubDate; description as vezes traz pais ("Germany").
+# Company canonico: "Siemens Energy" / "TenneT".
+# Probe ao vivo 26/10/2026: todos 200 OK com >=1 item <item>.
+
+
+# --- Endpoints (probe ao vivo 26/10: todos 200 OK com itens) ------------------
+ALDI_SUED_RSS_URL = "https://jobs.aldi-sued.de/services/rss/job/?locale=en_US&keywords=(Praktikum)"
+EON_RSS_URL = "https://careers.eon.com/services/rss/job/?locale=en_US&keywords=(Praktikum)"
+KUKA_RSS_URL = "https://jobs.kuka.com/services/rss/job/?locale=en_US&keywords=(Praktikum)"
+SIEMENS_ENERGY_RSS_URL = "https://jobs.siemens-energy.com/en_US/jobs/SearchJobsGermany/feed/?folderRecordsPerPage=20"
+TENNET_RSS_URL = "https://careers.tennet.eu/en_US/careers/SearchJobs/feed/?jobRecordsPerPage=20"
+
+# Nomes canonicos das fontes (identidade no Job.source e summary).
+SOURCE_ALDI_SUED = "aldi_sued_rss"
+SOURCE_EON = "eon_rss"
+SOURCE_KUKA = "kuka_rss"
+SOURCE_SIEMENS_ENERGY = "siemens_energy_rss"
+SOURCE_TENNET = "tennet_rss"
+
+# Empresas canonicas (fato do portal; nao deducao por slug).
+# E.ON: feed traz Westnetz/Bayernwerk/HanseWerk -> mapeamos p/ "E.ON" canonico.
+ALDI_SUED_COMPANY = "Aldi Süd"
+EON_COMPANY = "E.ON"
+KUKA_COMPANY = "KUKA"
+SIEMENS_ENERGY_COMPANY = "Siemens Energy"
+TENNET_COMPANY = "TenneT"
+
+# Nomes que o feed E.ON pode retornar para a empresa (mapeamento p/ canonico).
+# Probe 26/10: "Westnetz GmbH", "Bayernwerk", "HanseWerk" -> todos mapeiam p/ E.ON.
+_EON_FEED_COMPANIES = {
+    "westnetz",
+    "bayernwerk",
+    "hansewerk",
+    "westnetz gmbh",
+}
+
+
+def _parse_rmk_rss_item(
+    item: ET.Element,
+    canonical_company: str,
+    source_name: str,
+) -> Job | None:
+    """Item RSS RMK/J2W -> Job (None se sem title/link).
+    
+    Formato: mesmo padrao Fraunhofer/MPG — <item> com title, link, description,
+    pubDate, guid. Company vem do canonical_company (feed traz nomes internos
+    para E.ON; Aldi/KUKA trazem o nome canonico no description HTML).
+    """
+    title = _clean(item.findtext("title"))
+    link = _clean(item.findtext("link"))
+    if not title or not link:
+        return None
+    description = _html_to_text(item.findtext("description"))
+    # id estavel = URL do item (guid carrega sufixo de cache ?<ts>)
+    job = Job(
+        id=f"{canonical_company}|{source_name}:{_sha16(link)}",
+        source=source_name,
+        title=title,
+        company=canonical_company,
+        location=None,
+        country="de",
+        url=link,
+        description=description,
+        internship=is_student_role(title, description, None),
+        posted_at=_parse_dt(item.findtext("pubDate")),
+        collected_at=datetime.now(UTC),
+        external_id=link,
+        country_iso="de",
+        raw=None,
+    )
+    return job
+
+
+def _parse_avature_rss_item(
+    item: ET.Element,
+    canonical_company: str,
+    source_name: str,
+) -> Job | None:
+    """Item RSS Avature -> Job (None se sem title/link).
+    
+    Formato: RSS padrao <item> com title, link, guid (isPermaLink=true),
+    pubDate, description (as vezes so "Germany" ou vazio).
+    Company e canonico (portal da empresa).
+    """
+    title = _clean(item.findtext("title"))
+    link = _clean(item.findtext("link"))
+    if not title or not link:
+        return None
+    description = _html_to_text(item.findtext("description"))
+    # Location: as vezes no description (ex.: "Germany") — extrair se presente.
+    location = None
+    if description and description.lower() in ("germany", "deutschland"):
+        location = "Germany"
+        description = None  # nao e description real, so marcador de pais
+    # id estavel = URL do item (guid e permaLink igual ao link)
+    job = Job(
+        id=f"{canonical_company}|{source_name}:{_sha16(link)}",
+        source=source_name,
+        title=title,
+        company=canonical_company,
+        location=location,
+        country="de",
+        url=link,
+        description=description,
+        internship=is_student_role(title, description, None),
+        posted_at=_parse_dt(item.findtext("pubDate")),
+        collected_at=datetime.now(UTC),
+        external_id=link,
+        country_iso="de",
+        raw=None,
+    )
+    return job
+
+
+def parse_aldi_sued_rss(xml_text: str) -> list[Job]:
+    """XML RSS Aldi Süd -> list[Job] (itens validos). Fail-soft."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        log.warning("research_sources: aldi_sued_rss XML malformado (%s)", exc)
+        return []
+    jobs: list[Job] = []
+    for item in root.iter("item"):
+        try:
+            # Aldi feed traz "ALDI SÜD" no description HTML — usamos canonico.
+            job = _parse_rmk_rss_item(item, ALDI_SUED_COMPANY, SOURCE_ALDI_SUED)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("research_sources: aldi_sued_rss item invalido (%s)", exc)
+            continue
+        if job is not None:
+            jobs.append(job)
+    return jobs
+
+
+def parse_eon_rss(xml_text: str) -> list[Job]:
+    """XML RSS E.ON -> list[Job] (itens validos). Fail-soft.
+    
+    Feed traz company interna (Westnetz/Bayernwerk/HanseWerk) no description.
+    Mapeamos p/ "E.ON" canonico (company_intel aliases).
+    """
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        log.warning("research_sources: eon_rss XML malformado (%s)", exc)
+        return []
+    jobs: list[Job] = []
+    for item in root.iter("item"):
+        try:
+            job = _parse_rmk_rss_item(item, EON_COMPANY, SOURCE_EON)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("research_sources: eon_rss item invalido (%s)", exc)
+            continue
+        if job is not None:
+            jobs.append(job)
+    return jobs
+
+
+def parse_kuka_rss(xml_text: str) -> list[Job]:
+    """XML RSS KUKA -> list[Job] (itens validos). Fail-soft."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        log.warning("research_sources: kuka_rss XML malformado (%s)", exc)
+        return []
+    jobs: list[Job] = []
+    for item in root.iter("item"):
+        try:
+            job = _parse_rmk_rss_item(item, KUKA_COMPANY, SOURCE_KUKA)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("research_sources: kuka_rss item invalido (%s)", exc)
+            continue
+        if job is not None:
+            jobs.append(job)
+    return jobs
+
+
+def parse_siemens_energy_rss(xml_text: str) -> list[Job]:
+    """XML RSS Siemens Energy -> list[Job] (itens validos). Fail-soft."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        log.warning("research_sources: siemens_energy_rss XML malformado (%s)", exc)
+        return []
+    jobs: list[Job] = []
+    for item in root.iter("item"):
+        try:
+            job = _parse_avature_rss_item(item, SIEMENS_ENERGY_COMPANY, SOURCE_SIEMENS_ENERGY)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("research_sources: siemens_energy_rss item invalido (%s)", exc)
+            continue
+        if job is not None:
+            jobs.append(job)
+    return jobs
+
+
+def parse_tennet_rss(xml_text: str) -> list[Job]:
+    """XML RSS TenneT -> list[Job] (itens validos). Fail-soft."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        log.warning("research_sources: tennet_rss XML malformado (%s)", exc)
+        return []
+    jobs: list[Job] = []
+    for item in root.iter("item"):
+        try:
+            job = _parse_avature_rss_item(item, TENNET_COMPANY, SOURCE_TENNET)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("research_sources: tennet_rss item invalido (%s)", exc)
+            continue
+        if job is not None:
+            jobs.append(job)
+    return jobs
+
+
+def fetch_aldi_sued_rss(
+    *,
+    timeout: float = RESEARCH_HTTP_TIMEOUT,
+    opener: Callable[[urllib.request.Request], Any] | None = None,
+    url: str = ALDI_SUED_RSS_URL,
+) -> tuple[list[Job], dict[str, Any]]:
+    """RSS Aldi Süd -> (jobs, stats). Fail-soft."""
+    stats: dict[str, Any] = {
+        "source": SOURCE_ALDI_SUED, "status": "ok", "rows_seen": 0,
+        "jobs": 0, "details_ok": 0, "details_failed": 0, "error": None,
+    }
+    text = _http_get(url, timeout=timeout, opener=opener)
+    if text is None:
+        stats["status"] = "failed"
+        stats["error"] = "fetch falhou"
+        return [], stats
+    jobs = parse_aldi_sued_rss(text)
+    stats["rows_seen"] = len(jobs)
+    stats["jobs"] = len(jobs)
+    if not jobs:
+        stats["status"] = "failed"
+        stats["error"] = "nenhum item parseado"
+    return jobs, stats
+
+
+def fetch_eon_rss(
+    *,
+    timeout: float = RESEARCH_HTTP_TIMEOUT,
+    opener: Callable[[urllib.request.Request], Any] | None = None,
+    url: str = EON_RSS_URL,
+) -> tuple[list[Job], dict[str, Any]]:
+    """RSS E.ON -> (jobs, stats). Fail-soft."""
+    stats: dict[str, Any] = {
+        "source": SOURCE_EON, "status": "ok", "rows_seen": 0,
+        "jobs": 0, "details_ok": 0, "details_failed": 0, "error": None,
+    }
+    text = _http_get(url, timeout=timeout, opener=opener)
+    if text is None:
+        stats["status"] = "failed"
+        stats["error"] = "fetch falhou"
+        return [], stats
+    jobs = parse_eon_rss(text)
+    stats["rows_seen"] = len(jobs)
+    stats["jobs"] = len(jobs)
+    if not jobs:
+        stats["status"] = "failed"
+        stats["error"] = "nenhum item parseado"
+    return jobs, stats
+
+
+def fetch_kuka_rss(
+    *,
+    timeout: float = RESEARCH_HTTP_TIMEOUT,
+    opener: Callable[[urllib.request.Request], Any] | None = None,
+    url: str = KUKA_RSS_URL,
+) -> tuple[list[Job], dict[str, Any]]:
+    """RSS KUKA -> (jobs, stats). Fail-soft."""
+    stats: dict[str, Any] = {
+        "source": SOURCE_KUKA, "status": "ok", "rows_seen": 0,
+        "jobs": 0, "details_ok": 0, "details_failed": 0, "error": None,
+    }
+    text = _http_get(url, timeout=timeout, opener=opener)
+    if text is None:
+        stats["status"] = "failed"
+        stats["error"] = "fetch falhou"
+        return [], stats
+    jobs = parse_kuka_rss(text)
+    stats["rows_seen"] = len(jobs)
+    stats["jobs"] = len(jobs)
+    if not jobs:
+        stats["status"] = "failed"
+        stats["error"] = "nenhum item parseado"
+    return jobs, stats
+
+
+def fetch_siemens_energy_rss(
+    *,
+    timeout: float = RESEARCH_HTTP_TIMEOUT,
+    opener: Callable[[urllib.request.Request], Any] | None = None,
+    url: str = SIEMENS_ENERGY_RSS_URL,
+) -> tuple[list[Job], dict[str, Any]]:
+    """RSS Siemens Energy -> (jobs, stats). Fail-soft."""
+    stats: dict[str, Any] = {
+        "source": SOURCE_SIEMENS_ENERGY, "status": "ok", "rows_seen": 0,
+        "jobs": 0, "details_ok": 0, "details_failed": 0, "error": None,
+    }
+    text = _http_get(url, timeout=timeout, opener=opener)
+    if text is None:
+        stats["status"] = "failed"
+        stats["error"] = "fetch falhou"
+        return [], stats
+    jobs = parse_siemens_energy_rss(text)
+    stats["rows_seen"] = len(jobs)
+    stats["jobs"] = len(jobs)
+    if not jobs:
+        stats["status"] = "failed"
+        stats["error"] = "nenhum item parseado"
+    return jobs, stats
+
+
+def fetch_tennet_rss(
+    *,
+    timeout: float = RESEARCH_HTTP_TIMEOUT,
+    opener: Callable[[urllib.request.Request], Any] | None = None,
+    url: str = TENNET_RSS_URL,
+) -> tuple[list[Job], dict[str, Any]]:
+    """RSS TenneT -> (jobs, stats). Fail-soft."""
+    stats: dict[str, Any] = {
+        "source": SOURCE_TENNET, "status": "ok", "rows_seen": 0,
+        "jobs": 0, "details_ok": 0, "details_failed": 0, "error": None,
+    }
+    text = _http_get(url, timeout=timeout, opener=opener)
+    if text is None:
+        stats["status"] = "failed"
+        stats["error"] = "fetch falhou"
+        return [], stats
+    jobs = parse_tennet_rss(text)
+    stats["rows_seen"] = len(jobs)
+    stats["jobs"] = len(jobs)
+    if not jobs:
+        stats["status"] = "failed"
+        stats["error"] = "nenhum item parseado"
+    return jobs, stats
+
+
+# ---------------------------------------------------------------------------
 # 2. TU Berlin — listagem HTML + detail com JSON-LD JobPosting
 # ---------------------------------------------------------------------------
 
@@ -1826,6 +2173,14 @@ def fetch_praktikum_info(
 RESEARCH_SOURCE_ORDER: tuple[tuple[str, Callable[..., tuple[list[Job], dict[str, Any]]]], ...] = (
     (SOURCE_MPG, fetch_mpg_rss),
     (SOURCE_FRAUNHOFER, fetch_fraunhofer_rss),
+    # F131-CONCLUSÃO — 5 corporate RSS feeds (padrao RMK/Avature; mesmo
+    # padrao MPG/Fraunhofer: fetch RSS + parse <item>; portais institucionais
+    # de pesquisa corporativa — prioridade apos Fraunhofer, antes TU Berlin).
+    (SOURCE_ALDI_SUED, fetch_aldi_sued_rss),
+    (SOURCE_EON, fetch_eon_rss),
+    (SOURCE_KUKA, fetch_kuka_rss),
+    (SOURCE_SIEMENS_ENERGY, fetch_siemens_energy_rss),
+    (SOURCE_TENNET, fetch_tennet_rss),
     (SOURCE_TU_BERLIN, fetch_tu_berlin),
     (SOURCE_LEIBNIZ, fetch_leibniz),
     (SOURCE_ARBEITNOW, fetch_arbeitnow),

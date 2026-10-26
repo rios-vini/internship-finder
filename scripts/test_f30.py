@@ -346,7 +346,7 @@ def _mk_jobs(n, source):
 
 def test_stage() -> None:
     print("== E. Estagio: defaults/kill switch/fail-soft ==")
-    check("E1. 12 fontes no ORDER (F21+F30+F31+F128)", len(rs.RESEARCH_SOURCE_ORDER) == 12,
+    check("E1. 17 fontes no ORDER (F21+F30+F31+F128+F131)", len(rs.RESEARCH_SOURCE_ORDER) == 17,
           f"n={len(rs.RESEARCH_SOURCE_ORDER)}")
     names = {n for n, _ in rs.RESEARCH_SOURCE_ORDER}
     check("E2. fontes F30 registradas",
@@ -382,13 +382,14 @@ def test_stage() -> None:
     fetchers["amazon_jobs"] = fetcher_dead
     jobs, summary = rs.collect_research_sources(fetchers=fetchers, env={})
     s = summary["sources"]
-    check("E6. amazon morta -> failed NO summary; TODAS as 12 executam "
-          "(default ON F47/F128); run segue (partial)",
+    # F131: 17 fontes total; 1 morta (amazon) = 16 jobs
+    check("E6. amazon morta -> failed NO summary; TODAS as 17 executam "
+          "(default ON F47/F128/F131); run segue (partial)",
           s["amazon_jobs"]["status"] == "failed"
           and all(s[n]["status"] == "ok"
                   for n, _ in rs.RESEARCH_SOURCE_ORDER if n != "amazon_jobs")
           and summary["status"] == "partial"
-          and len(jobs) == 11,
+          and len(jobs) == 16,
           f"jobs={len(jobs)} status={summary['status']}")
 
     # TODAS mortas -> failed geral, run NAO crasha

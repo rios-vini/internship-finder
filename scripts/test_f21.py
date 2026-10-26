@@ -385,8 +385,8 @@ def _fetcher_dead(**kw):
 
 
 def test_stage_fail_soft() -> None:
-    print("== E. Fail-soft do estagio ==")
-    # F47: o estagio tem 11 fontes e TODAS executam por default (set
+    print("== E. Fail-soft do estagio ===")
+    # F47/F128/F131: o estagio tem 17 fontes e TODAS executam por default (set
     # F30_DEFAULT_OFF_SOURCES vazio) — o dict de fetchers fake precisa ser
     # COMPLETO (a suite e zero-HTTP: sem cobertura no dict o estagio
     # chamaria o fetcher REAL).
@@ -396,14 +396,18 @@ def test_stage_fail_soft() -> None:
                 "bme": _fetcher_ok(3),
                 "amazon_jobs": _fetcher_ok(1), "absolventa": _fetcher_ok(1),
                 "jobmensa": _fetcher_ok(1), "praktikum_info": _fetcher_ok(1),
-                "fraunhofer_rss": _fetcher_ok(1)}  # F128 (12a fonte)
+                "fraunhofer_rss": _fetcher_ok(1),
+                # F131 (5 novas fontes RSS corporativas):
+                "aldi_sued_rss": _fetcher_ok(1), "eon_rss": _fetcher_ok(1),
+                "kuka_rss": _fetcher_ok(1), "siemens_energy_rss": _fetcher_ok(1),
+                "tennet_rss": _fetcher_ok(1)}  # 17 fontes total (F128 + F131)
     jobs, summary = rs.collect_research_sources(fetchers=fetchers, env={})
     check("E1. fonte morta -> status failed NO summary; outras entregam",
           summary["sources"]["tu_berlin"]["status"] == "failed"
           and summary["sources"]["arbeitnow"]["status"] == "failed"
           and summary["sources"]["bme"]["status"] == "ok"
           and summary["sources"]["amazon_jobs"]["status"] == "ok"
-          and len(jobs) == 13 and summary["status"] == "partial",
+          and len(jobs) == 18 and summary["status"] == "partial",
           f"jobs={len(jobs)} status={summary['status']}")
     fetchers_dead = {n: _fetcher_dead for n, _ in rs.RESEARCH_SOURCE_ORDER}
     jobs2, summary2 = rs.collect_research_sources(fetchers=fetchers_dead, env={})
@@ -424,12 +428,12 @@ def test_stage_fail_soft() -> None:
         fetchers={n: fetcher_slow for n, _ in rs.RESEARCH_SOURCE_ORDER}, env={})
     skipped = sum(1 for s in summary3["sources"].values()
                   if s["status"] == "skipped_budget")
-    # clock fake: t0=0; cada fetch avanca 200s. 12 fontes executaveis
-    # (F47/F128: default ON total — nenhuma pula ANTES do budget): fonte 1
+    # clock fake: t0=0; cada fetch avanca 200s. 17 fontes executaveis
+    # (F47/F128/F131: default ON total — nenhuma pula ANTES do budget): fonte 1
     # roda (0<250), fonte 2 roda (200<250), fonte 3+ estoura (400>250)
-    # -> 10 skipped.
+    # -> 15 skipped.
     check("E4. budget estourado -> fontes seguintes skipped_budget",
-          skipped == 10 and summary3["skipped_budget"] == 10
+          skipped == 15 and summary3["skipped_budget"] == 15
           and len(jobs3) == 2, f"skipped={skipped} jobs={len(jobs3)}")
 
 
@@ -444,31 +448,31 @@ def test_kill_switch() -> None:
         fetchers=fetchers,
         env={rs.RESEARCH_SOURCES_OFF_ENV: "arbeitnow, remoteok"},
     )
-    # F47: default ON total — as 11 executam; o env CSV juntam-se por cima
+    # F47/F128/F131: default ON total — 17 executam; o env CSV juntam-se por cima
     # (kill switch manual).
     check("F1. env desliga arbeitnow+remoteok (skipped_disabled); resto roda",
           summary["sources"]["arbeitnow"]["status"] == "skipped_disabled"
           and summary["sources"]["remoteok"]["status"] == "skipped_disabled"
           and summary["sources"]["mpg_rss"]["status"] == "ok"
-          and len(jobs) == 10
+          and len(jobs) == 15
           and sorted(summary["disabled"]) ==
           ["arbeitnow", "remoteok"],
           f"jobs={len(jobs)} disabled={summary['disabled']}")
     jobs2, summary2 = rs.collect_research_sources(
         fetchers=fetchers, env={rs.RESEARCH_SOURCES_OFF_ENV: "nao_existe,mpg_rss"},
     )
-    # F47/F128: default ON total — 12 executaveis menos mpg_rss = 11 jobs.
+    # F47/F128/F131: default ON total — 17 executaveis menos mpg_rss = 16 jobs.
     check("F2. nome desconhecido ignorado; mpg desligada",
           summary2["sources"]["mpg_rss"]["status"] == "skipped_disabled"
-          and len(jobs2) == 11, f"jobs={len(jobs2)}")
+          and len(jobs2) == 16, f"jobs={len(jobs2)}")
     jobs3, summary3 = rs.collect_research_sources(fetchers=fetchers, env={})
-    # F3 (re-datado F47/F128): 12 fontes registradas; TODAS executam por
+    # F3 (re-datado F47/F128/F131): 17 fontes registradas; TODAS executam por
     # default (set F30_DEFAULT_OFF_SOURCES vazio — regras em test_f47).
-    check("F3. sem env var -> 12 fontes executam (nenhuma default-OFF)",
-          len(summary3["sources"]) == 12
-          and sum(1 for s in summary3["sources"].values() if s["status"] == "ok") == 12
+    check("F3. sem env var -> 17 fontes executam (nenhuma default-OFF)",
+          len(summary3["sources"]) == 17
+          and sum(1 for s in summary3["sources"].values() if s["status"] == "ok") == 17
           and sum(1 for s in summary3["sources"].values() if s["status"] == "skipped_disabled") == 0
-          and len(jobs3) == 12, f"jobs={len(jobs3)}")
+          and len(jobs3) == 17, f"jobs={len(jobs3)}")
 
 
 # ---------------------------------------------------------------------------
@@ -649,6 +653,12 @@ def test_zero_http() -> None:
             raise RuntimeError("opener morto — como uma fonte fora do ar")
 
         rs.fetch_mpg_rss(opener=dead_opener)
+        rs.fetch_fraunhofer_rss(opener=dead_opener)
+        rs.fetch_aldi_sued_rss(opener=dead_opener)
+        rs.fetch_eon_rss(opener=dead_opener)
+        rs.fetch_kuka_rss(opener=dead_opener)
+        rs.fetch_siemens_energy_rss(opener=dead_opener)
+        rs.fetch_tennet_rss(opener=dead_opener)
         rs.fetch_tu_berlin(opener=dead_opener)
         rs.fetch_leibniz(opener=dead_opener)
         rs.fetch_arbeitnow(opener=dead_opener)
@@ -658,6 +668,7 @@ def test_zero_http() -> None:
         rs.fetch_jobmensa(opener=dead_opener)
         rs.fetch_absolventa(opener=dead_opener)
         rs.fetch_praktikum_info(opener=dead_opener)
+        rs.fetch_bme(opener=dead_opener)
         rs.collect_research_sources(
             fetchers={n: (lambda **kw: (_fetcher_dead(**kw) and None) or ([], {"source": n, "status": "failed", "jobs": 0}))
                       for n, _ in rs.RESEARCH_SOURCE_ORDER},
