@@ -223,9 +223,8 @@ def _main_body() -> int:
           scraper_slug(ghus) == "BoschGroup")
 
     print("== B: escopo cirúrgico da chave ==")
-    check("B1 mapa tem exatamente a entrada SAP",
-          set(TENANT_URL_OVERRIDES) == {("successfactors", "jobs", "SAP"),
-                                         ("successfactors", "lidlstiftuP2", "LIDL")})
+    check("B1 mapa tem exatamente a entrada SAP (Lidl removido na F132 — sitemal + timeout dedicado)",
+          set(TENANT_URL_OVERRIDES) == {("successfactors", "jobs", "SAP")})
     padded = _company(" SAP ", "successfactors", "jobs", "https://jobs.sap.com")
     check("B2 name com whitespace ainda casa (strip)",
           scraper_slug(padded) == "https://careers.sap.com")
