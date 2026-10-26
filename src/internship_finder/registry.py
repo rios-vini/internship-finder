@@ -47,7 +47,7 @@ class RegistryEntry(BaseModel):
     enabled: bool = True  # false desabilita a empresa sem removê-la do registry
 
 
-# --- Seed: 147 empresas operacionais (12 da validação inicial + 27 da
+# --- Seed: 153 empresas operacionais (12 da validação inicial + 27 da
 # --- expansão E2 + 25 da expansão internacional P3 #23: 8 DE + 17 NL/CH/AT
 # --- + 17 da expansão de cobertura 15/09/2026 + 6 da auditoria 16/09/2026
 # --- + 9 da auditoria próxima fronteira 17/09/2026 + 5 da última onda de
@@ -66,7 +66,9 @@ class RegistryEntry(BaseModel):
 # --- Indie Campers, Vitesco, Marquardt Group, Kraft Heinz, aumovio,
 # --- Vodafone, Vanderlande, Stryker, Endress+Hauser, Pirelli, GALERIA
 # --- + 2 da onda F100 curadoria EN-source 22/10/2026: Issgovernance,
-# --- JACOBS DOUWE EGBERTS).
+# --- JACOBS DOUWE EGBERTS
+# --- + 4 da onda F123 RMK wave-3 25/10/2026: MAHLE, Aldi Süd, E.ON, KUKA
+# --- (RSS por keyword em tenants RMK/J2W, pubDate + description embutida).
 # --- Nomes canônicos = consulta real do ``--companies``
 # --- (README.md + docs/empresas_verificacao.md + docs/relatorio_expansao.md +
 # --- docs da auditoria de cobertura 15/09 + auditoria próxima onda 16/09).
@@ -457,6 +459,44 @@ SEED = [
     # Chain/Planning em Bruxelas [be], fatia de hoje = 3 eligible; coleta
     # tenant 175 -> funil 25 tipo -> 4 área -> 4 país.
     RegistryEntry(name="JACOBS DOUWE EGBERTS", ats="smartrecruiters", tenant="smartrecruiters:JACOBSDOUWEEGBERTS"),
+    # --- 4 da onda F123 RMK wave-3 (2026-10-25, caça manual: RSS por keyword
+    # --- em tenants RMK/J2W (mesma plataforma de jobs.sap.com/BMW já no
+    # --- registry): pubDate presente + description embutida; 20 itens/feed
+    # --- (truncagem RMK). As 4 empresas AUSENTES das 694 eligible. Validadas
+    # --- AO VIVO em 25/10: careers.mahle.com, jobs.aldi-sued.de,
+    # --- careers.eon.com, jobs.kuka.com — todos 200 com <item>.
+    # MAHLE: careers.mahle.com (sucessfactors:jobs — tenant RMK/J2W, feed
+    # completo em Stuttgart; ~20 Praktika/semana, 100% fora do acervo).
+    # Espelhos DE/EN da mesma vaga com job IDs IDÊNTICOS (ex.: 1440980033
+    # aparece nos 2 locales) — normalize_url/dedup tier 4 colapsa.
+    RegistryEntry(name="MAHLE", ats="successfactors", tenant="successfactors:jobs"),
+    # ALDI SUED: jobs.aldi-sued.de (successfactors:jobs — kw=(Praktikum):
+    # 20 itens, 7 frescos 22-25/10; ~90% Schülerpraktikum — detector F86
+    # segura). kw=(Einkauf) traz 20 itens (Abiturientenprogramm etc.).
+    RegistryEntry(name="Aldi Süd", ats="successfactors", tenant="successfactors:jobs"),
+    # E.ON: careers.eon.com (successfactors:jobs — ATENÇÃO multi-brand:
+    # feed traz Westnetz/Bayernwerk/HanseWerk como company; 13 itens
+    # kw=(Praktikum), ~90% Schülerpraktikum; kw=(Werkstudent) 6 itens
+    # estudante real. slugs medidos ANTES de alias F66 — company do feed
+    # usado como company; F66 Levio proíbe fundir holding/filial).
+    RegistryEntry(name="E.ON", ats="successfactors", tenant="successfactors:jobs"),
+    # KUKA: jobs.kuka.com (successfactors:jobs — Pflichtpraktikum 6-mo
+    # com start jan/fev/sofort; 10/10 de estudante (oposto de Aldi/E.ON).
+    # 2 do nicho do dono: Rührreibschweißen E-Mobility [materials] e
+    # Inhouse Consulting).
+    RegistryEntry(name="KUKA", ats="successfactors", tenant="successfactors:jobs"),
+    # --- 2 da onda F125 Avature (2026-10-26, caça manual: portais Avature
+    # --- com RSS feed funcional; validados AO VIVO em 26/10/2026) ---
+    # Siemens Energy: jobs.siemens-energy.com (Avature — RSS feed em
+    # /en_US/jobs/SearchJobsGermany/feed/?folderRecordsPerPage=20; job URL
+    # format: /jobs/FolderDetail/<slug>/<id>/; pubDate presente; DE filter
+    # via country-specific search pages SearchJobsGermany, SearchJobsUS, etc.)
+    RegistryEntry(name="Siemens Energy", ats="avature", tenant="avature:https://jobs.siemens-energy.com"),
+    # TenneT: careers.tennet.eu (Avature — RSS feed em
+    # /en_US/careers/SearchJobs/feed/?jobRecordsPerPage=20; job URL format:
+    # /careers/JobDetail/<slug>/<id>/; pubDate presente; multinacional NL/DE
+    # — filtro DE critico via country-specific feeds ou location parsing)
+    RegistryEntry(name="TenneT", ats="avature", tenant="avature:https://careers.tennet.eu"),
 ]
 
 
