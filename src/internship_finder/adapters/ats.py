@@ -73,7 +73,7 @@ def set_deadline_hydration_enabled(enabled: bool) -> None:
 
 # Cadeias de fallback por campo do Job.
 _FIELDS: dict[str, tuple[str, ...]] = {
-    "title": ("title", "name", "position", "headline", "job_title", "jobTitle"),
+    "title": ("title", "Title", "name", "position", "headline", "job_title", "jobTitle"),
     "company": (
         "company",
         "company_name",
@@ -82,9 +82,9 @@ _FIELDS: dict[str, tuple[str, ...]] = {
         "organization",
         "org",
     ),
-    "url": ("url", "apply_url", "applyUrl", "absolute_url", "job_url", "jobUrl", "link"),
-    "location": ("location", "locations", "city", "address", "workplace"),
-    "description": ("description", "summary", "content", "text", "job_description", "jobDescription"),
+    "url": ("url", "apply_url", "applyUrl", "absolute_url", "job_url", "jobUrl", "link", "ExternalURL"),
+    "location": ("location", "locations", "city", "address", "workplace", "PrimaryLocation"),
+    "description": ("description", "summary", "content", "text", "job_description", "jobDescription", "ShortDescriptionStr"),
     "external_id": (
         "external_id",
         "externalId",
@@ -96,9 +96,12 @@ _FIELDS: dict[str, tuple[str, ...]] = {
         "jobId",
         "uid",
         "id",
+        "Id",
+        "RequisitionNumber",
+        "bulletFields",
     ),
-    "employment_type": ("employment_type", "employmentType", "type", "commitment"),
-    "country_iso": ("country_iso", "countryIso", "country_code", "countryCode", "country"),
+    "employment_type": ("employment_type", "employmentType", "type", "commitment", "WorkerType", "timeType"),
+    "country_iso": ("country_iso", "countryIso", "country_code", "countryCode", "country", "PrimaryLocationCountry", "GeographyId"),
     "posted_at": (
         "posted_at",
         "postedAt",
@@ -109,6 +112,8 @@ _FIELDS: dict[str, tuple[str, ...]] = {
         "created_at",
         "createdAt",
         "updated_at",
+        "PostedDate",
+        "postedOn",
     ),
     # Prazo explicito de candidatura. So e preenchido quando o ATS o expoe;
     # nunca e inferido de posted_at ou qualquer outra data.

@@ -15,6 +15,8 @@ from queue import Empty as _Empty
 
 from internship_finder.adapters.ats import AtsJobAdapter
 from internship_finder.collectors.company import CompanyCollector
+from internship_finder.collectors.phenom_tenants import build_phenom_company, get_phenom_tenant
+from internship_finder.collectors.us_centric_tenants import build_us_centric_company, get_us_centric_tenant
 from internship_finder.errors import (
     FETCH_STAGE,
     NORMALIZE_STAGE,
@@ -32,7 +34,7 @@ log = logging.getLogger(__name__)
 
 # Scrapers cujo "slug" e na verdade a URL completa de careers (o slug da
 # base, ex.: "jobs" p/ SAP/ZF no successfactors, nao e usavel sozinho).
-URL_SLUG_ATS = {"successfactors", "workday", "taleo", "icims", "phenom", "avature"}
+URL_SLUG_ATS = {"successfactors", "workday", "taleo", "icims", "phenom", "avature", "oracle"}
 
 # Override da URL de careers por EMPRESA (Fase I — SAP source recovery).
 #
@@ -385,6 +387,30 @@ def collect_company(
     """
     collector = CompanyCollector()
     companies = collector.find_company(name)
+    
+    # Check for known Phenom tenants with local config overrides
+    phenom_config = get_phenom_tenant(name)
+    if phenom_config:
+        # Build correct Phenom company with locale/country
+        phenom_company = build_phenom_company(phenom_config, name)
+        # For Viega: replace any database entries (incorrectly listed as SuccessFactors)
+        # For Hugo Boss/Mars: add to the list (database entries work but use defaults)
+        if name.casefold() == "viega".casefold():
+            # Viega is incorrectly in DB as SuccessFactors; use only Phenom
+            companies = [phenom_company]
+        else:
+            # Hugo Boss, Mars: add Phenom config with correct locale/country
+            # The database entries use default locale/country; our config is more accurate
+            companies = [phenom_company] + [c for c in companies if c.ats != "phenom"]
+
+    # Check for US-centric tenants (may be missing from database or need explicit config)
+    us_config = get_us_centric_tenant(name)
+    if us_config:
+        us_company = build_us_centric_company(us_config, name)
+        # Replace any database entries with our verified config
+        # (database may have wrong ATS or missing entries)
+        companies = [us_company] + [c for c in companies if c.ats != us_config.ats or c.url != us_config.url]
+    
     summary: dict = {
         "ok": [],
         "empty": [],

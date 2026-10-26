@@ -128,6 +128,7 @@ CSV_HEADERS: dict[str, tuple[str, ...]] = {
     "bamboohr": ("name", "slug", "url"),
     "personio": ("name", "slug", "url"),
     "avature": ("name", "slug", "url"),
+    "oracle": ("name", "slug", "url"),  # sem CSV upstream (descoberta manual F126)
 }
 
 # Tokens do canonical_endpoint que PRECISAM existir no fonte do scraper
@@ -148,6 +149,7 @@ ENDPOINT_TOKENS: dict[str, tuple[str, ...]] = {
     "bamboohr": ("jobs/embed2.php",),
     "personio": ("search.json",),
     "avature": ("SearchJobs", "jobRecordsPerPage"),
+    "oracle": ("recruitingCEJobRequisitions",),
 }
 
 # Token do jobs_signal (onde vagas vivas aparecem) no fonte INSTALADO.
@@ -167,6 +169,7 @@ SIGNAL_TOKENS: dict[str, str] = {
     "bamboohr": "jobOpening",
     "personio": "jobId",
     "avature": "JobDetail",
+    "oracle": "requisitionList",
 }
 
 # Classes especificas por ATS (fora do baseline) — provider notes do doc.
@@ -177,6 +180,7 @@ EXTRA_INVALID: dict[str, tuple[str, ...]] = {
     "successfactors": (Invalid.UNRESOLVABLE_URL,),
     "cornerstone": (Invalid.UNRESOLVABLE_URL,),
     "avature": (Invalid.UNRESOLVABLE_URL,),
+    "oracle": (Invalid.UNRESOLVABLE_URL,),
 }
 
 BASELINE = (
@@ -221,9 +225,9 @@ def test_coverage() -> None:
     print("GRUPO A — cobertura regras x registry (derivado do SEED)")
     reg, have = registry_ats(), set(RULES)
     cov = coverage()
-    check("A1. set(RULES) == registry_ats() (15 == 15, coverage vazio — +avature F125)",
+    check("A1. set(RULES) == registry_ats() (16 == 16, coverage vazio — +avature F125 +oracle F126)",
           have == reg and not cov["missing_rules"]
-          and not cov["rules_without_registry_ats"] and len(reg) == 15,
+          and not cov["rules_without_registry_ats"] and len(reg) == 16,
           f"registry={len(reg)} rules={len(RULES)} cov={cov}")
 
     known = set(list_ats())
@@ -252,9 +256,9 @@ def test_coverage() -> None:
 
     non_res = sorted(a for a, r in RULES.items() if not r.resolvable)
     check("A4. resolvable=False == exatamente avature/successfactors/cornerstone/"
-          "phenom (dominio custom/legado: resolver None por desenho — "
-          "validacao manual via validate_slug)",
-          non_res == ["avature", "cornerstone", "phenom", "successfactors"],
+          "phenom/oracle (dominio custom/legado/sem CSV upstream: resolver "
+          "None por desenho — validacao manual via validate_slug)",
+          non_res == ["avature", "cornerstone", "oracle", "phenom", "successfactors"],
           f"non_res={non_res}")
 
     bad_uas = [a for a, r in RULES.items()

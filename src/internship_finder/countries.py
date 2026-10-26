@@ -301,7 +301,7 @@ def _country_name_from_location(location: str) -> str | None:
     """ISO do pais quando a ``location`` traz o NOME do pais como segmento.
 
     O nome do pais explicito na localizacao e dado real da vaga (nao
-    inferencia inventada) — derivar o ISO e seguro em 3 formatos:
+    inferencia inventada) — derivar o ISO e seguro em 4 formatos:
 
     1. Pais como ULTIMO segmento separado por virgula (API Phenom e
        similares): "Cidade, Estado, Pais". Suporta tambem nomes divididos
@@ -313,18 +313,24 @@ def _country_name_from_location(location: str) -> str | None:
     3. "<Pais> - <Cidade>" — pais como PRIMEIRO segmento antes de " - "
        (API Personio: "Germany - Munich", "Germany - Munich,Germany -
        Remote").
+    4. "<Pais>, <Cidade>, ..." — pais como PRIMEIRO segmento separado por
+       virgula (API Workday: "Germany, Munich, Otl-Aicher-Strasse",
+       "US, MA, Chelmsford, Alpha").
+    5. Qualquer segmento contendo nome de pais (fallback para formatos
+       variados como "Aachen-Oberforstbach, Germany | Remote Germany").
 
     A busca dos formatos 2/3 percorre as unidades (separadas por virgula ou
-    ponto-e-virgula) da DIREITA para a ESQUERDA: em localizacoes multiplas
+    ponto-e-virgula) da DIREITA para a ESQUERDA para formatos 2/3, e da
+    ESQUERDA para a DIREITA para formato 4: em localizacoes multiplas
     (ex.: "Spain - Madrid,Spain - Pamplona") vence o pais do segmento mais
-    a direita, mesma semantica do formato 1 (ultimo segmento). O nome do
+    a direita para formatos 2/3, e o mais a esquerda para formato 4. O formato 5
+    verifica TODOS os segmentos (primeiro -> ultimo). O nome do
     pais e casado por SEGMENTO COMPLETO contra ``COUNTRY_NAMES`` — nunca
     por substring, para nao transformar mencoes textuais em pais.
     """
-    # Formato 1 (comportamento historico preservado): ultimo segmento por
-    # virgula, com par de 2 segmentos para nomes compostos.
+    # Normalize parts: split by comma, strip " | Remote ..." suffix
     parts = [p.strip().rstrip(".") for p in str(location).split(",")]
-    parts = [p for p in parts if p]
+    parts = [p.split(" | ")[0].strip() for p in parts if p]
     if not parts:
         return None
     last = parts[-1].lower()
@@ -333,6 +339,28 @@ def _country_name_from_location(location: str) -> str | None:
         code = COUNTRY_NAMES.get(f"{parts[-2].lower()}, {last}")
     if code is not None:
         return code
+    # Formato 4 (Workday): pais como PRIMEIRO segmento separado por virgula.
+    # Check first segment for country name.
+    first = parts[0].lower()
+    code = COUNTRY_NAMES.get(first)
+    if code is not None:
+        return code
+    # Also check if first segment is a valid ISO code directly
+    if first in COUNTRY_CODES:
+        return first
+    if len(parts) >= 2:
+        code = COUNTRY_NAMES.get(f"{first}, {parts[1].lower()}")
+    if code is not None:
+        return code
+    # Formato 5: qualquer segmento contendo nome de pais (fallback robusto).
+    # Check all segments for exact country NAME match (not ISO code - ISO codes
+    # in the middle of location are handled by _iso_token_from_location with
+    # position constraints to avoid false positives like "BW" = Baden-Württemberg).
+    for part in parts:
+        part_lower = part.lower()
+        code = COUNTRY_NAMES.get(part_lower)
+        if code is not None:
+            return code
     # Formatos 2/3 (extensao 18/09): nome do pais como segmento em parenteses
     # no fim da unidade ou como prefixo "Pais - ".
     units = re.split(r"[,;]", str(location))

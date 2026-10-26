@@ -47,7 +47,7 @@ class RegistryEntry(BaseModel):
     enabled: bool = True  # false desabilita a empresa sem removê-la do registry
 
 
-# --- Seed: 153 empresas operacionais (12 da validação inicial + 27 da
+# --- Seed: 159 empresas operacionais (12 da validação inicial + 27 da
 # --- expansão E2 + 25 da expansão internacional P3 #23: 8 DE + 17 NL/CH/AT
 # --- + 17 da expansão de cobertura 15/09/2026 + 6 da auditoria 16/09/2026
 # --- + 9 da auditoria próxima fronteira 17/09/2026 + 5 da última onda de
@@ -497,6 +497,22 @@ SEED = [
     # /careers/JobDetail/<slug>/<id>/; pubDate presente; multinacional NL/DE
     # — filtro DE critico via country-specific feeds ou location parsing)
     RegistryEntry(name="TenneT", ats="avature", tenant="avature:https://careers.tennet.eu"),
+    # --- 6 da onda F124+F126 (2026-10-26, port do clone divergente f126-us-centric-tenants) ---
+    # F124 Phenom tenants: Hugo Boss, Mars, Viega (config local com locale/country corretos)
+    # Hugo Boss: careers.hugoboss.com (Phenom — locale en_global, country global)
+    RegistryEntry(name="Hugo Boss", ats="phenom", tenant="phenom:https://careers.hugoboss.com"),
+    # Mars: careers.mars.com (Phenom — locale en_global, country global)
+    RegistryEntry(name="Mars", ats="phenom", tenant="phenom:https://careers.mars.com"),
+    # Viega: careers.viega.com (Phenom — locale en_eu, country eu)
+    # Viega estava incorretamente na base como SuccessFactors; tenant Phenom validado
+    RegistryEntry(name="Viega", ats="phenom", tenant="phenom:https://careers.viega.com"),
+    # F126 US-centric tenants: Texas Instruments, Analog Devices, Copeland (config local)
+    # Texas Instruments: Oracle Cloud (edbz.fa.us2.oraclecloud.com) — nao esta na base
+    RegistryEntry(name="Texas Instruments", ats="oracle", tenant="oracle:https://edbz.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1"),
+    # Analog Devices: Workday (analogdevices.wd1.myworkdayjobs.com) — nao esta na base
+    RegistryEntry(name="Analog Devices", ats="workday", tenant="workday:https://analogdevices.wd1.myworkdayjobs.com/External"),
+    # Copeland: Workday (copeland.wd5.myworkdayjobs.com) — nao esta na base
+    RegistryEntry(name="Copeland", ats="workday", tenant="workday:https://copeland.wd5.myworkdayjobs.com/copeland_external_careers_page"),
 ]
 
 

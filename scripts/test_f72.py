@@ -214,8 +214,8 @@ def group_e() -> None:
     from internship_finder.registry import CompanyRegistry
 
     entries = CompanyRegistry().entries
-    check("e1. registry tem 153 entradas (F71: 147 + 4 F123 + 2 F125)",
-          len(entries) == 153, f"got {len(entries)}")
+    check("e1. registry tem 159 entradas (F71: 147 + 4 F123 + 2 F125 + 6 F124+F126)",
+          len(entries) == 159, f"got {len(entries)}")
     check("e2. runner expoe main() (entrypoint do lote)",
           callable(getattr(audit, "main", None)))
     src = (SCRIPTS / "audit_registry.py").read_text(encoding="utf-8")

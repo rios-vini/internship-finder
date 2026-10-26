@@ -14,6 +14,9 @@ class Company(BaseModel):
     url: str | None = None  # URL de careers na base
     query: str = ""  # consulta original que encontrou a empresa
     match_kind: str = "exact"  # como o match foi feito: exact | token
+    # Parâmetros específicos de ATS (ex.: locale/country para Phenom)
+    locale: str | None = None
+    country: str | None = None
 
     @property
     def source(self) -> str:
