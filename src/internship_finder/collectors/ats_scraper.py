@@ -17,8 +17,6 @@ from internship_finder.adapters.ats import AtsJobAdapter
 from internship_finder.collectors.company import CompanyCollector
 from internship_finder.collectors.phenom_tenants import build_phenom_company, get_phenom_tenant
 from internship_finder.collectors.us_centric_tenants import build_us_centric_company, get_us_centric_tenant
-from internship_finder.collectors.rmk_tenants import build_rmk_company, get_rmk_tenant
-from internship_finder.collectors.avature_tenants import build_avature_company, get_avature_tenant
 from internship_finder.errors import (
     FETCH_STAGE,
     NORMALIZE_STAGE,
@@ -427,24 +425,6 @@ def collect_company(
         # (database may have wrong ATS or missing entries)
         companies = [us_company] + [c for c in companies if c.ats != us_config.ats or c.url != us_config.url]
 
-    # Check for RMK (SuccessFactors Recruiting Marketing) tenants with local feed URLs
-    # These share the generic `successfactors:jobs` tenant but need custom RSS feed URLs
-    rmk_config = get_rmk_tenant(name)
-    if rmk_config:
-        rmk_company = build_rmk_company(rmk_config, name)
-        # Replace any database entries with our verified feed URL config
-        # The database returns the generic `successfactors:jobs` tenant; we override with the specific feed URL
-        companies = [rmk_company] + [c for c in companies if c.ats != "successfactors" or c.slug != "jobs"]
-
-    # Check for Avature tenants with custom portal URLs (missing from upstream avature.csv)
-    # These use the full portal URL as slug (avature ∈ URL_SLUG_ATS)
-    avature_config = get_avature_tenant(name)
-    if avature_config:
-        avature_company = build_avature_company(avature_config, name)
-        # Replace any database entries with our verified config
-        # (database may not have these custom-domain Avature tenants at all)
-        companies = [avature_company] + [c for c in companies if c.ats != "avature" or c.url != avature_config.portal_url]
-    
     summary: dict = {
         "ok": [],
         "empty": [],
