@@ -395,14 +395,15 @@ def test_stage_fail_soft() -> None:
                 "remoteok": _fetcher_ok(1), "freehire": _fetcher_ok(1),
                 "bme": _fetcher_ok(3),
                 "amazon_jobs": _fetcher_ok(1), "absolventa": _fetcher_ok(1),
-                "jobmensa": _fetcher_ok(1), "praktikum_info": _fetcher_ok(1)}
+                "jobmensa": _fetcher_ok(1), "praktikum_info": _fetcher_ok(1),
+                "fraunhofer_rss": _fetcher_ok(1)}  # F128 (12a fonte)
     jobs, summary = rs.collect_research_sources(fetchers=fetchers, env={})
     check("E1. fonte morta -> status failed NO summary; outras entregam",
           summary["sources"]["tu_berlin"]["status"] == "failed"
           and summary["sources"]["arbeitnow"]["status"] == "failed"
           and summary["sources"]["bme"]["status"] == "ok"
           and summary["sources"]["amazon_jobs"]["status"] == "ok"
-          and len(jobs) == 12 and summary["status"] == "partial",
+          and len(jobs) == 13 and summary["status"] == "partial",
           f"jobs={len(jobs)} status={summary['status']}")
     fetchers_dead = {n: _fetcher_dead for n, _ in rs.RESEARCH_SOURCE_ORDER}
     jobs2, summary2 = rs.collect_research_sources(fetchers=fetchers_dead, env={})
@@ -423,12 +424,12 @@ def test_stage_fail_soft() -> None:
         fetchers={n: fetcher_slow for n, _ in rs.RESEARCH_SOURCE_ORDER}, env={})
     skipped = sum(1 for s in summary3["sources"].values()
                   if s["status"] == "skipped_budget")
-    # clock fake: t0=0; cada fetch avanca 200s. 11 fontes executaveis
-    # (F47: default ON total — nenhuma pula ANTES do budget): fonte 1
+    # clock fake: t0=0; cada fetch avanca 200s. 12 fontes executaveis
+    # (F47/F128: default ON total — nenhuma pula ANTES do budget): fonte 1
     # roda (0<250), fonte 2 roda (200<250), fonte 3+ estoura (400>250)
-    # -> 9 skipped.
+    # -> 10 skipped.
     check("E4. budget estourado -> fontes seguintes skipped_budget",
-          skipped == 9 and summary3["skipped_budget"] == 9
+          skipped == 10 and summary3["skipped_budget"] == 10
           and len(jobs3) == 2, f"skipped={skipped} jobs={len(jobs3)}")
 
 
@@ -449,25 +450,25 @@ def test_kill_switch() -> None:
           summary["sources"]["arbeitnow"]["status"] == "skipped_disabled"
           and summary["sources"]["remoteok"]["status"] == "skipped_disabled"
           and summary["sources"]["mpg_rss"]["status"] == "ok"
-          and len(jobs) == 9
+          and len(jobs) == 10
           and sorted(summary["disabled"]) ==
           ["arbeitnow", "remoteok"],
           f"jobs={len(jobs)} disabled={summary['disabled']}")
     jobs2, summary2 = rs.collect_research_sources(
         fetchers=fetchers, env={rs.RESEARCH_SOURCES_OFF_ENV: "nao_existe,mpg_rss"},
     )
-    # F47: default ON total — 11 executaveis menos mpg_rss = 10 jobs.
+    # F47/F128: default ON total — 12 executaveis menos mpg_rss = 11 jobs.
     check("F2. nome desconhecido ignorado; mpg desligada",
           summary2["sources"]["mpg_rss"]["status"] == "skipped_disabled"
-          and len(jobs2) == 10, f"jobs={len(jobs2)}")
+          and len(jobs2) == 11, f"jobs={len(jobs2)}")
     jobs3, summary3 = rs.collect_research_sources(fetchers=fetchers, env={})
-    # F3 (re-datado F47): 11 fontes registradas; TODAS executam por
+    # F3 (re-datado F47/F128): 12 fontes registradas; TODAS executam por
     # default (set F30_DEFAULT_OFF_SOURCES vazio — regras em test_f47).
-    check("F3. sem env var -> 11 fontes executam (nenhuma default-OFF)",
-          len(summary3["sources"]) == 11
-          and sum(1 for s in summary3["sources"].values() if s["status"] == "ok") == 11
+    check("F3. sem env var -> 12 fontes executam (nenhuma default-OFF)",
+          len(summary3["sources"]) == 12
+          and sum(1 for s in summary3["sources"].values() if s["status"] == "ok") == 12
           and sum(1 for s in summary3["sources"].values() if s["status"] == "skipped_disabled") == 0
-          and len(jobs3) == 11, f"jobs={len(jobs3)}")
+          and len(jobs3) == 12, f"jobs={len(jobs3)}")
 
 
 # ---------------------------------------------------------------------------

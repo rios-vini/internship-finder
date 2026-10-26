@@ -22,7 +22,7 @@ rede, ``data/`` intocada), afirmando por entrada do SEED atual:
 4. **company nao-vazio** — nome canonico non-empty e UNICO (o
    ``CompanyRegistry`` indexa por nome: duplicata silenciosamente sobrescreve
    e encolhe o registro);
-5. **contagem == 147 == soma das ondas** — total do SEED == 147 ==
+5. **contagem == 153 == soma das ondas** — total do SEED == 153 ==
    soma das ondas documentadas nos marcadores ``# --- N da ...`` do proprio
    seed, com a contagem REAL de cada onda == N documentado (onda que diz 17
    e traz 16 = violador).
@@ -50,8 +50,8 @@ from internship_finder.registry import SEED, RegistryEntry  # noqa: E402
 
 FAILURES: list[str] = []
 
-# Contrato de contagem da especificacao F71 (147 empresas: 127 pre-F88 + 18 da onda F88 + 2 da onda F100).
-REGISTRY_TOTAL = 147
+# Contrato de contagem da especificacao F71 (153 empresas: 127 pre-F88 + 18 F88 + 2 F100 + 4 F123 + 2 F125).
+REGISTRY_TOTAL = 153
 
 
 def check(name: str, cond: bool, detail: str = "") -> None:
@@ -107,6 +107,7 @@ ATS_SLUG_SHAPES: dict[str, tuple[str, Callable[[str], bool]]] = {
     "ashby": ("empresa (1 token)", _token_ok),
     "personio": ("empresa (1 token)", _token_ok),
     "moka": ("empresa/ID (2 segmentos, ID numerico)", _moka_ok),
+    "avature": ("empresa (token slug) OU URL completa https de board custom — F125: URL como company_slug", _token_or_url),
 }
 
 
@@ -334,7 +335,7 @@ def test_company_names() -> None:
 
 def test_counts_and_waves() -> None:
     print("== [5] contagem == 147 == soma das ondas documentadas ==")
-    check("5a. total do SEED == 147 (contrato F71)", len(SEED) == REGISTRY_TOTAL,
+    check("5a. total do SEED == 153 (contrato F71)", len(SEED) == REGISTRY_TOTAL,
           f"len(SEED)={len(SEED)}")
     src = (Path(__file__).resolve().parent.parent / "src" / "internship_finder" / "registry.py").read_text(encoding="utf-8")
     block = seed_block(src)
@@ -347,7 +348,7 @@ def test_counts_and_waves() -> None:
     check("5c. cada onda: entradas reais == N documentado (lista completa)", not wv,
           f"{len(wv)} violadores" if wv else f"{len(waves)} ondas conformes")
     s = sum(n for n, _, _ in waves)
-    check("5d. soma das ondas documentadas == 147 == len(SEED)",
+    check("5d. soma das ondas documentadas == 153 == len(SEED)",
           s == REGISTRY_TOTAL == len(SEED),
           f"soma={s} vs total={len(SEED)}")
     n_src = len(_ENTRY_RE.findall(block))

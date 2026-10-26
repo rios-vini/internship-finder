@@ -127,6 +127,7 @@ CSV_HEADERS: dict[str, tuple[str, ...]] = {
     "moka": ("name", "slug", "url"),
     "bamboohr": ("name", "slug", "url"),
     "personio": ("name", "slug", "url"),
+    "avature": ("name", "slug", "url"),
 }
 
 # Tokens do canonical_endpoint que PRECISAM existir no fonte do scraper
@@ -146,6 +147,7 @@ ENDPOINT_TOKENS: dict[str, tuple[str, ...]] = {
     "moka": ("/api/outer/ats-apply/website/jobs/v2",),
     "bamboohr": ("jobs/embed2.php",),
     "personio": ("search.json",),
+    "avature": ("SearchJobs", "jobRecordsPerPage"),
 }
 
 # Token do jobs_signal (onde vagas vivas aparecem) no fonte INSTALADO.
@@ -164,6 +166,7 @@ SIGNAL_TOKENS: dict[str, str] = {
     "moka": "jobStats",
     "bamboohr": "jobOpening",
     "personio": "jobId",
+    "avature": "JobDetail",
 }
 
 # Classes especificas por ATS (fora do baseline) — provider notes do doc.
@@ -173,6 +176,7 @@ EXTRA_INVALID: dict[str, tuple[str, ...]] = {
     "phenom": (Invalid.UNRESOLVABLE_URL,),
     "successfactors": (Invalid.UNRESOLVABLE_URL,),
     "cornerstone": (Invalid.UNRESOLVABLE_URL,),
+    "avature": (Invalid.UNRESOLVABLE_URL,),
 }
 
 BASELINE = (
@@ -217,9 +221,9 @@ def test_coverage() -> None:
     print("GRUPO A — cobertura regras x registry (derivado do SEED)")
     reg, have = registry_ats(), set(RULES)
     cov = coverage()
-    check("A1. set(RULES) == registry_ats() (14 == 14, coverage vazio)",
+    check("A1. set(RULES) == registry_ats() (15 == 15, coverage vazio — +avature F125)",
           have == reg and not cov["missing_rules"]
-          and not cov["rules_without_registry_ats"] and len(reg) == 14,
+          and not cov["rules_without_registry_ats"] and len(reg) == 15,
           f"registry={len(reg)} rules={len(RULES)} cov={cov}")
 
     known = set(list_ats())
@@ -247,10 +251,10 @@ def test_coverage() -> None:
           f"n_res={n_res} bad={bad_res + bad_url}")
 
     non_res = sorted(a for a, r in RULES.items() if not r.resolvable)
-    check("A4. resolvable=False == exatamente successfactors/cornerstone/"
+    check("A4. resolvable=False == exatamente avature/successfactors/cornerstone/"
           "phenom (dominio custom/legado: resolver None por desenho — "
           "validacao manual via validate_slug)",
-          non_res == ["cornerstone", "phenom", "successfactors"],
+          non_res == ["avature", "cornerstone", "phenom", "successfactors"],
           f"non_res={non_res}")
 
     bad_uas = [a for a, r in RULES.items()

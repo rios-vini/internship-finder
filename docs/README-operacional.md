@@ -132,7 +132,7 @@ secundario no output.
 **Coleta** — fluxo original (grava o bruto em `data/jobs.json`) e ja aplica a
 mesma cascata, gravando o resultado em `data/eligible_jobs.json`. A lista de
 empresas nao e mais colado no comando: vem do **registry** (fonte de verdade
-das 147 empresas em codigo — ver "Registry de empresas" abaixo):
+das 153 empresas em codigo — ver "Registry de empresas" abaixo):
 
 ```bash
 .venv/bin/internship-finder --registry --timeout 60
@@ -144,7 +144,7 @@ python scripts/collect_jobs.py --companies "Bosch,SAP" --output data/jobs.json
 
 ### Registry de empresas
 
-As 147 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
+As 153 empresas operacionais da coleta (12 da validacao inicial + 27 da expansao
 E2 + 25 da expansao 08/09 — P3 #23, Otto removida em 15/09 — + 17 da expansao
 de cobertura 15/09 + 6 da auditoria 16/09 + 9 da auditoria próxima fronteira
 17/09 + 5 da última onda de cobertura 18/09: Sungrow EMEA, AutoScout24, Huawei

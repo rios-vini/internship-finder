@@ -208,10 +208,10 @@ def test_negative_controls() -> None:
     v = docstring_registry_violations("O registry vira componente do ranking", N_COMPANIES)
     check("5b. docstring SEM menção apanhado (nunca skip)", bool(v) and "nenhuma" in v[0], f"{v}")
     stale = (
-        'RG["curated registry<br/>126 companies · 15 ATS platforms"]\n'
-        "- **Curated registry** — 126 companies across 15 ATS platforms\n"
+        'RG["curated registry<br/>126 companies · 14 ATS platforms"]\n'
+        "- **Curated registry** — 126 companies across 14 ATS platforms\n"
         "registry de 126 empresas\n"
-        "| **126 / 15** | curated companies / ATS platforms |\n"
+        "| **126 / 14** | curated companies / ATS platforms |\n"
         "| **67** | CI test suites, all green on every push |\n"
         "refreshed daily ~05:00 UTC\n"
     )
@@ -220,7 +220,8 @@ def test_negative_controls() -> None:
           en == [126, 126] and all(n != N_COMPANIES for n in en), f"{en}")
     ats = [int(n) for n in _RE_ATS_PLATFORMS.findall(stale)] \
         + [int(b) for _, b in _RE_COMPANIES_TABLE.findall(stale)]
-    check("5d. detector de ATS apanha 15 (≠ SEED)", 15 in ats and all(n != N_ATS for n in ats), f"{ats}")
+    check("5d. detector de ATS apanha 14 (≠ SEED=15 pos-F125 — stale cita o PASSADO)",
+          14 in ats and all(n != N_ATS for n in ats), f"{ats}")
     ci = [int(n) for n in _RE_CI_SUITES.findall(stale)]
     check("5e. detector de CI apanha 67 (≠ suítes descobertas)",
           ci == [67] and 67 != len(CI_TESTS),

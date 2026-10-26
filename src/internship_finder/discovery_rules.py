@@ -351,6 +351,28 @@ RULES: dict[str, DiscoveryRule] = {
         resolvable=True,
         url_as_slug=False,
     ),
+    "avature": DiscoveryRule(
+        ats="avature",
+        csv_columns=("name", "slug", "url"),
+        slug_semantics=(
+            "URL COMPLETA do portal Avature (dominio CUSTOM por tenant, ex. "
+            "jobs.siemens-energy.com, careers.tennet.eu) — portais modernos "
+            "usam Algolia/InstantSearch (JS). CURA da uniao F123-F128: o scraper "
+            "INSTALADO (ats_scrapers 0.3.0 avature.py) coleta HTML server-rendered "
+            "de /SearchJobs/ (httpcloak p/ tenants 406); o RSS /feed/ foi a via "
+            "de DESCOBERTA dos tenants, nao o canal de coleta"
+        ),
+        canonical_endpoint=(
+            "GET {base}/<locale>/<path>/SearchJobs/?jobOffset=N&jobRecordsPerPage=12 "
+            "(HTML server-rendered; custom domain via URL completa como company_slug)"
+        ),
+        jobs_signal="html: <a href=JobDetail> anchors (article.job / div.job-item / fallback)",
+        success=_SUCCESS,
+        invalid=_BASELINE_INVALID + (Invalid.UNRESOLVABLE_URL,),
+        sample_url="https://jobs.siemens-energy.com",
+        resolvable=False,  # dominio custom: resolver -> None (por desenho)
+        url_as_slug=True,  # input do scraper e a URL completa do board
+    ),
 }
 
 
@@ -566,6 +588,36 @@ TENANT_JOB_URL_FORMATS: dict[str, TenantJobUrlFormat] = {
             "/job/<ID> redireciona para ADFS/SAML (login wall); vivo = "
             "/home/requisition/<ID>?c=henkel&lang=...; padrão csod geral "
             "documentado: portais csod linkam por requisition, nunca por /job/"
+        ),
+    ),
+    # F125 (26/10/2026) — Avature portals com RSS feed
+    "siemens_energy": TenantJobUrlFormat(
+        tenant="Siemens Energy",
+        ats="avature",
+        current=re.compile(
+            r"https://jobs\.siemens-energy\.com/jobs/FolderDetail/[^/?#]+/\d+/?"
+        ),
+        legacy=(),
+        evidence=(
+            "registro 26/10/2026: Siemens Energy Avature — job URL format "
+            "/jobs/FolderDetail/<slug>/<ID>/ medido via RSS feed "
+            "(en_US/jobs/SearchJobsGermany/feed/?folderRecordsPerPage=20); "
+            "pubDate presente; IDs estáveis; sem legacy conhecido"
+        ),
+    ),
+    "tennet": TenantJobUrlFormat(
+        tenant="TenneT",
+        ats="avature",
+        current=re.compile(
+            r"https://careers\.tennet\.eu/careers/JobDetail/[^/?#]+/\d+/?"
+        ),
+        legacy=(),
+        evidence=(
+            "registro 26/10/2026: TenneT Avature — job URL format "
+            "/careers/JobDetail/<slug>/<ID>/ medido via RSS feed "
+            "(en_US/careers/SearchJobs/feed/?jobRecordsPerPage=20); "
+            "pubDate presente; IDs estáveis; multinacional NL/DE — filtro DE "
+            "via country-specific feeds ou location parsing; sem legacy conhecido"
         ),
     ),
 }
