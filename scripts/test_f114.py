@@ -39,7 +39,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "src"))
 
-from internship_finder.collectors.ats_scraper import collect_company, TENANT_URL_OVERRIDES  # noqa: E402
+from internship_finder.collectors.ats_scraper import collect_company, TENANT_URL_OVERRIDES, TENANT_TIMEOUT_OVERRIDES  # noqa: E402
 from internship_finder.collectors.company import CompanyCollector  # noqa: E402
 
 FAILURES: list[str] = []
@@ -158,17 +158,19 @@ def main() -> int:
     print("\n--- B. Override TENANT_URL_OVERRIDES (padrão SAP F58 / AkzoNobel F72) ---")
 
     lidl_override_key = ("successfactors", "lidlstiftuP2", "LIDL")
+    # F132 (26/10/2026): override de URL REMOVIDO — o feed legacy migrou de
+    # conteúdo (board US do Lidl, 0 vagas DE); fluxo volta ao sitemal original.
     check(
-        "B1. Override key existe em TENANT_URL_OVERRIDES",
-        lidl_override_key in TENANT_URL_OVERRIDES,
+        "B1. Override key REMOVIDO de TENANT_URL_OVERRIDES (F132)",
+        lidl_override_key not in TENANT_URL_OVERRIDES,
         f"keys={list(TENANT_URL_OVERRIDES.keys())}",
     )
 
     override_url = TENANT_URL_OVERRIDES.get(lidl_override_key, "")
     check(
-        "B2. Override URL aponta para legacy career5.successfactors.eu",
-        override_url == "https://career5.successfactors.eu/career?company=lidlstiftuP2",
-        f"override_url={override_url}",
+        "B2. Override Lidl inexistente — fluxo padrão do inventário (jobs.lidl/sitemal.xml)",
+        override_url == "",
+        f"override_url={override_url!r}",
     )
 
     # B3: scraper_slug retorna a URL do override
@@ -187,8 +189,8 @@ def main() -> int:
 
     effective_slug = scraper_slug(companies[0])
     check(
-        "B4. scraper_slug(Lidl) retorna override URL (não jobs.lidl)",
-        effective_slug == "https://career5.successfactors.eu/career?company=lidlstiftuP2",
+        "B4. scraper_slug(Lidl) retorna o feed original jobs.lidl (fluxo padrão restaurado — F132)",
+        effective_slug == "https://jobs.lidl",
         f"effective_slug={effective_slug}",
     )
 
@@ -199,15 +201,15 @@ def main() -> int:
     # Isso é testado implicitamente pela coleta real acima, mas aqui validamos
     # que a URL do override contém o host legacy esperado
     check(
-        "C1. Override URL contém host legacy career5.successfactors.eu (trigger _is_legacy_host)",
-        "career5.successfactors.eu" in override_url,
-        f"override_url={override_url}",
+        "C1. TENANT_TIMEOUT_OVERRIDES tem entrada Lidl 100s (F132: sitemal 108MB > teto global 85s)",
+        TENANT_TIMEOUT_OVERRIDES.get(lidl_override_key) == 100.0,
+        f"timeout_overrides={dict(TENANT_TIMEOUT_OVERRIDES)}",
     )
 
     check(
-        "C2. Override URL contém company=lidlstiftuP2 (extraído por _resolve_feed_target)",
-        "company=lidlstiftuP2" in override_url,
-        f"override_url={override_url}",
+        "C2. Timeout override cirúrgico: só o Lidl tem entrada (resto segue o teto global)",
+        len(TENANT_TIMEOUT_OVERRIDES) == 1 and lidl_override_key in TENANT_TIMEOUT_OVERRIDES,
+        f"timeout_overrides={dict(TENANT_TIMEOUT_OVERRIDES)}",
     )
 
     # C3: Validação que o fix resolve o timeout (coleta real confirmada)
