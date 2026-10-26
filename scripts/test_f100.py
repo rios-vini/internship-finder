@@ -120,8 +120,9 @@ def group_a() -> None:
           any(e.name == "Celonis" and e.tenant == "greenhouse:celonis"
               and e.ats == "greenhouse" for e in SEED))
     siemens_family = _covered("Siemens")
-    check("a4. família Siemens no SEED: SÓ Healthineers (phenom, F58)",
-          siemens_family == ["Siemens Healthineers"],
+    check("a4. família Siemens no SEED: Healthineers (phenom, F58) + "
+          "Energy (avature, F125 — empresa distinta pós-split 2020)",
+          siemens_family == ["Siemens Healthineers", "Siemens Energy"],
           f"presentes: {siemens_family}")
     check("a5. 'Siemens AG' NÃO casa com nenhuma entry (curadoria gap "
           "documentada — portal custom jobs.siemens.com, ATS fora dos 14)",

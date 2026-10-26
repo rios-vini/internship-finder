@@ -75,8 +75,8 @@ def test_defaults_on() -> None:
           f"set={rs.F30_DEFAULT_OFF_SOURCES}")
     check("A2. jobmensa/praktikum_info registradas em RESEARCH_SOURCE_ORDER",
           {"jobmensa", "praktikum_info"} <= {n for n, _ in rs.RESEARCH_SOURCE_ORDER})
-    check("A3. 11 fontes registradas (F21 6 + F30 4 + bme)",
-          len(rs.RESEARCH_SOURCE_ORDER) == 11,
+    check("A3. 12 fontes registradas (F21 6 + F30 4 + bme + fraunhofer F128)",
+          len(rs.RESEARCH_SOURCE_ORDER) == 12,
           f"n={len(rs.RESEARCH_SOURCE_ORDER)}")
     check("A4. sem env: NENHUMA fonte desligada (default ON total)",
           rs.disabled_research_sources(env={}) == set())
@@ -126,8 +126,8 @@ def test_stage() -> None:
                 for n, _ in rs.RESEARCH_SOURCE_ORDER}
     jobs, summary = rs.collect_research_sources(fetchers=fetchers, env={})
     ok_n = sum(1 for s in summary["sources"].values() if s["status"] == "ok")
-    check("C1. default ON: 11 fontes ok, 0 skipped_disabled, 11 jobs",
-          ok_n == 11 and len(jobs) == 11
+    check("C1. default ON: 12 fontes ok, 0 skipped_disabled, 12 jobs",
+          ok_n == 12 and len(jobs) == 12
           and all(s["status"] == "ok" for s in summary["sources"].values()),
           f"ok={ok_n} jobs={len(jobs)} status={summary['status']}")
     check("C2. default ON: disabled=[] no summary",
@@ -138,11 +138,11 @@ def test_stage() -> None:
         fetchers=fetchers,
         env={rs.RESEARCH_SOURCES_OFF_ENV: "jobmensa,praktikum_info"})
     s2 = summary2["sources"]
-    check("C3. kill switch: as 2 religadas pulam; as 9 restantes ok",
+    check("C3. kill switch: as 2 religadas pulam; as 10 restantes ok",
           s2["jobmensa"]["status"] == "skipped_disabled"
           and s2["praktikum_info"]["status"] == "skipped_disabled"
-          and sum(1 for s in s2.values() if s["status"] == "ok") == 9
-          and len(jobs2) == 9,
+          and sum(1 for s in s2.values() if s["status"] == "ok") == 10
+          and len(jobs2) == 10,
           f"jobs={len(jobs2)} status={summary2['status']}")
 
     # C4 — registro JSONL reflete o kill switch (contrato do cron).
@@ -164,7 +164,7 @@ def test_stage() -> None:
           "exit inalterado por construcao (estagio fail-soft)",
           s3["jobmensa"]["status"] == "failed"
           and summary3["status"] == "partial"
-          and len(jobs3) == 10,
+          and len(jobs3) == 11,
           f"jobs={len(jobs3)} status={summary3['status']}")
 
 

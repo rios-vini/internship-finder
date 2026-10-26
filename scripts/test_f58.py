@@ -152,10 +152,10 @@ check("B1 registry: Siemens Healthineers ats=phenom, tenant=URL validada",
       f"ats={getattr(sh_entry, 'ats', None)} tenant={getattr(sh_entry, 'tenant', None)}")
 check("B2 registry: nome canônico de coleta e enabled intactos",
       sh_entry is not None and sh_entry.enabled and sh_entry.name == "Siemens Healthineers")
-check("B3 registry: nenhuma entrada declara avature para Siemens "
-      "(a série avature sai do registry)",
-      not any(e.ats == "avature" and "siemens" in e.name.casefold()
-              for e in SEED))
+check("B3 registry: a SIEMENS AG (nome exato) não declara avature "
+      "(a série avature:siemens saiu — F58; Siemens Energy é empresa "
+      "distinta pós-split, entrada F125 com board próprio)",
+      not any(e.ats == "avature" and e.name == "Siemens" for e in SEED))
 check("B4 mapa de migração: exatamente as chaves Siemens (F58) + AkzoNobel "
       "(F72.1, 20/10 — mesma evidência: feed morto + careersite Phenom "
       "validado ao vivo; a chave AkzoNobel usa o SLUG do manifest 'careers' "
