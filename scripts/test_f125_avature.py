@@ -117,8 +117,9 @@ def group_a() -> None:
             check(f"{name}.tenant == '{expected_tenant}'", entry.tenant == expected_tenant)
             check(f"{name}.enabled == True", entry.enabled is True)
 
-    # Registry count baseline (SEED tinha 151 antes da F125, agora 153)
-    check("Registry count == 153 (151 + 2 F125)", len(SEED) == 153)
+    # Registry count baseline — PARAMÉTRICO (união F123–F128: quebrou no CI do
+    # port #234 com SEED 159; contagem exata é anti-onda, lição F7/F5)
+    check("Registry count >= 153 (151 + 2 F125; ondas seguintes só somam)", len(SEED) >= 153)
 
 
 # ======================================================================
