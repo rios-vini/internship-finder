@@ -96,7 +96,8 @@ STUDENT_TYPE_PATTERNS = [
     r"\bwerkstudent",  # sem fechamento: pega Werkstudentin/Werkstudenten
     r"\bstudentische hilfskraft",
     r"praktikum",  # pega Praktikum/Praktikumsplatz/Praktikumsthemen
-    r"\bpraktikant",
+    r"\bpraktikant",  # pega Praktikant/Praktikantin no inicio da palavra
+    r"pflichtpraktikant",  # F133: compostos Pflichtpraktikant/Pflichtpraktikantin/Pflichtpraktikant*in
     r"\bixp\b",
     r"\bduales studium",
     # Teses academicas (regra do dono, pos-auditoria 15/09): Abschlussarbeit,
