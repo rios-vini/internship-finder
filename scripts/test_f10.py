@@ -24,7 +24,8 @@ Cobre, de forma DETERMINÍSTICA e offline (sem rede, sem data/):
    -> False (celonis é o novo caso must-have medido).
 6. **Idempotência**: re-rodar f10_curadoria.py não duplica entries nem
    re-remove aliases (remoção já aplicada permanece estável).
-7. **Preservação F5/F7/F9**: 66 -> 88 entries (só adição); counts por
+7. **Preservação F5/F7/F9/F129**: 66 -> 88 (F100) -> 121 (F129) entries
+   (só adição); counts por
    país não diminuem; nomes históricos presentes.
 
 Padrão dos demais scripts: ``[OK]``/``[FAIL]`` e termina com ``TUDO OK``
@@ -300,8 +301,8 @@ def test_preservation() -> None:
     for iso, before in (("lu", 5), ("nl", 5), ("fi", 3), ("be", 7)):
         check(f"{iso.upper()} não diminuiu (antes {before}, agora {by_country.get(iso, 0)})",
               by_country.get(iso, 0) >= before)
-    check("total entries cresceu (66 -> 88)",
-          len(data["companies"]) == 88)
+    check("total entries cresceu (88 -> 121: F129 curadoria onda-3)",
+          len(data["companies"]) == 121)
     historic = ["BMW AG", "SAP", "BoschGroup", "Volkswagen AG", "BASF SE",
                 "Amazon EU S.à r.l.", "Nokia", "AB InBev", "Solvay", "Bekaert",
                 "Lidl", "DHL Group", "REWE Group", "Airbus", "adidas AG",
