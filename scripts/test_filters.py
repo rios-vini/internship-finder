@@ -94,6 +94,28 @@ def test_type_rules() -> None:
         "9d. 'Internship Trainee' aceito (contexto estudantil)",
         is_student_role("Internship Trainee (f/m/d) - Supply Chain"),
     )
+    # F133: Pflichtpraktikant/Pflichtpraktikantin (compostos) - estagio obrigatorio
+    check(
+        "F133. 'Pflichtpraktikant Maschinenbau' aceito",
+        is_student_role("Pflichtpraktikant Maschinenbau (m/w/d)"),
+    )
+    check(
+        "F133. 'Pflichtpraktikantin Maschinenbau' aceito",
+        is_student_role("Pflichtpraktikantin Maschinenbau (m/w/d)"),
+    )
+    check(
+        "F133. 'Pflichtpraktikant*in' aceito (genero-inclusivo)",
+        is_student_role("Pflichtpraktikant*in (m/w/d)"),
+    )
+    # Regressao: Praktikant/Praktikantin no inicio ja funcionavam
+    check(
+        "F133. 'Praktikant (m/w/d) Procurement' aceito",
+        is_student_role("Praktikant (m/w/d) Procurement"),
+    )
+    check(
+        "F133. 'Praktikantin (m/w/d) Procurement' aceito",
+        is_student_role("Praktikantin (m/w/d) Procurement"),
+    )
 
 
 def test_type_exclusion_rules() -> None:
