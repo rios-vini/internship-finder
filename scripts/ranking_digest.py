@@ -1348,13 +1348,16 @@ def new_list_markdown(
     previous_name: str,
     generated_at: str,
     top: int = DIGEST_TOP,
+    dedup_store: "CrossSourceDedupStore | None" = None,
+    manual_verdicts: dict | None = None,
 ) -> str:
-    """Conteúdo markdown do artefato ``data/NEW-<date>.md`` (F107; pura).
+    """Conteúdo markdown do artefato ``data/NEW-<date>.md`` (F107 + F138; pura).
 
     1 linha por vaga GENUINAMENTE nova (URL ausente do snapshot anterior),
     em ordem oficial: ``empresa · cargo · local · score · link direto`` +
-    ⏳ + idade nos pães-velhos (F94) + comentário ``<!-- id:... -->`` para
-    cruzar com o registro de triagem (mesmo padrão do MANUAL-CHECK).
+    ⏳ + idade nos pães-velhos (F94) + 🔁 re-entrada (F138: vista em DD/MM
+    via cross_source_dedup_store) + ❌ veredito manual (F138: manual_verdicts.json)
+    + comentário ``<!-- id:... -->`` para cruzar com o registro de triagem.
     Re-sightings (mesma URL, ID reciclado) NÃO são listados — não são
     novas; entram só na contagem do cabeçalho. Link = ``_apply_url_of``
     (raw.apply_url com fallback job.url — o "link direto" da página).
@@ -1373,7 +1376,7 @@ def new_list_markdown(
     head = [
         "# Novas do refresh — lista completa",
         "",
-        f"_Gerado em {generated_at} (run diário, F107). Diff URL-honesto de "
+        f"_Gerado em {generated_at} (run diário, F107+F138). Diff URL-honesto de "
         f"eligible_jobs.json × {previous_name}/eligible_jobs.json — IDs "
         "reciclados da mesma URL não contam como novas (identidade = "
         "normalize_url do dedup F5)._",
@@ -1391,8 +1394,40 @@ def new_list_markdown(
         line = (f"{i}. {company} · {title} · {location} · "
                 f"{_score_text(job.get('score'))} · {url}")
         line += format_stale_suffix(job)
+
+        # F138 — re-entrada via cross_source_dedup_store (memória de sightings)
+        reentry_marker = ""
+        if dedup_store is not None:
+            try:
+                dedup_key = compute_cross_source_dedup_key(job)
+                history = dedup_store.get_history(dedup_key)
+                if history:
+                    first_seen, _ = history
+                    # Format first_seen as DD/MM
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(first_seen.replace("Z", "+00:00"))
+                        date_str = dt.strftime("%d/%m")
+                        reentry_marker = f" 🔁 re-entrada (vista em {date_str})"
+                    except Exception:
+                        reentry_marker = f" 🔁 re-entrada (vista em {first_seen[:10]})"
+            except Exception:
+                pass  # best-effort: falha silenciosa, sem marcador
+
+        # F138 — veredito manual do dono (manual_verdicts.json)
+        verdict_marker = ""
+        if manual_verdicts is not None:
+            try:
+                dedup_key = compute_cross_source_dedup_key(job)
+                verdict = manual_verdicts.get(dedup_key)
+                if verdict:
+                    reason = verdict.get("reason", "eliminada")
+                    verdict_marker = f" ❌ você já eliminou esta ({reason})"
+            except Exception:
+                pass  # best-effort
+
         jid = str(job.get("id") or "").replace("--", "__")
-        head.append(f"{line} <!-- id:{jid} -->")
+        head.append(f"{line}{reentry_marker}{verdict_marker} <!-- id:{jid} -->")
     return "\n".join(head) + "\n"
 
 

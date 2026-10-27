@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from datetime import UTC, date, datetime
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -370,21 +371,206 @@ _PATTERNS: dict[str, list[re.Pattern]] = {
     )
 }
 
+# ---------------------------------------------------------------------------
+# F136 — Contexto não-alvo (HR/Recruiting/Talent/Personal/Marketing)
+# ---------------------------------------------------------------------------
+# Quando o título indica contexto de RH, recrutamento, talent acquisition,
+# pessoal (DE) ou marketing, certos termos RELATED/WEAK que são falsos
+# positivos léxicos de procurement/supply-chain devem ter peso ZERO:
+# - "operations" em "HR Operations" / "People Operations" ≠ supply-chain ops
+# - "sourcing" em "Talent Sourcing" / "Recruiting Sourcing" ≠ procurement sourcing
+# - "reporting" em "HR Reporting" ≠ BI reporting
+# - "support" em "Campaign Support" / "HR Support" ≠ tech support
+# - "logist" em contexto saúde/cuidados (ex.: Zorgbedrijf = empresa de cuidados NL)
+#   ≠ supply-chain logistics
+# A detecção é por CONTEXTO (prefixo/contexto), não por palavra isolada.
+#
+# Termos que ZERAM quando contexto não-alvo detectado:
+_ZERO_IN_HR_CONTEXT = {
+    "related": {
+        "operations",
+        "operations excellence",
+        "sourcing",
+        "logist",
+    },
+    "weak": {
+        "reporting",
+        "support",
+    },
+}
+
+# Termos que ZERAM quando contexto marketing detectado
+_ZERO_IN_MARKETING_CONTEXT = {
+    "related": {
+        "operations",
+        "operations excellence",
+        "logist",
+    },
+    "weak": {
+        "reporting",
+        "support",
+        "data",
+        "sap",
+        "erp",
+    },
+}
+
+# Padrões para detectar contexto HR/Recruiting/Talent/Personal
+_NON_TARGET_HR_CONTEXT_PATTERNS = [
+    r"\bhr\b",
+    r"\bhuman resources\b",
+    r"\brecruit\w*",
+    r"\btalent\s+(sourcing|acquisition|management|partner)\b",
+    r"\bpeople\s+(operations|ops|partner|experience)\b",
+    r"\bemployee experience\b",
+    r"\bpersonal(entwicklung|wesen|abteilung|bereich)?\b",  # DE: Personal, Personalentwicklung, Personalwesen
+    r"\bpessoal\b",  # PT: pessoal (RH)
+    r"\brecursos humanos\b",  # PT: recursos humanos
+]
+
+# Padrões para detectar contexto Marketing
+_NON_TARGET_MARKETING_CONTEXT_PATTERNS = [
+    r"\bmarketing\b",
+    r"\bbrand\b",
+    r"\bcommunications\b",
+    r"\bcontent\b",
+    r"\btourism\b",
+    r"\bevent management\b",
+    r"\bproduktmarketing\b",  # DE: product marketing
+    r"\bproduct marketing\b",
+    r"\bcommunications\b",
+    r"\bkommunikation\b",  # DE: communications
+    r"\bcampaign\b",
+    r"\bsocial media\b",
+]
+
+# Padrões para detectar contexto saúde/cuidados (para zerar "logist" em Zorgbedrijf etc.)
+_NON_TARGET_HEALTHCARE_CONTEXT_PATTERNS = [
+    # Cura do orquestrador (probe real 27/10): \bzorg\b não casa COMPOSTOS —
+    # "Woonzorgcentrum/WZC" (a vaga real do Zorgbedrijf) passava mesmo com
+    # description. Substring p/ compostos + sigla + "bewoners" (residentes).
+    r"zorgbedrijf",  # NL: care company (substring — WoonZorgBedrijf etc.)
+    r"zorgcentrum",  # NL: care center (woonzorgcentrum)
+    r"verzorging",  # NL: care/nursing (verzorgingstehuis/-huis)
+    r"ouderenhuis",
+    r"\bwzc\b",  # NL: sigla woonzorgcentrum
+    r"\bbewoners?\b",  # NL: residentes (transporte de residentes)
+    r"\bzorg\b",  # NL: care
+    r"\bzorgbedrijf\b",  # NL: care company (legacy — mantém)
+    r"\bzorg\b",  # NL: care
+    r"\bgezondheid\b",  # NL: health
+    r"\bverpleging\b",  # NL: nursing
+    r"\bpflege\b",  # DE: care/nursing
+    r"\bbetreuung\b",  # DE: care/support
+    r"\bcare\b",
+    r"\bhealthcare\b",
+    r"\bpatient\b",
+    r"\bresident\b",
+    r"\belderly\b",
+    r"\bsenior\b(?=\s+(care|home|wohn))",  # senior care/home/wohn
+]
+
+_NON_TARGET_HR_CONTEXT_RES = [re.compile(p, re.IGNORECASE) for p in _NON_TARGET_HR_CONTEXT_PATTERNS]
+_NON_TARGET_MARKETING_CONTEXT_RES = [re.compile(p, re.IGNORECASE) for p in _NON_TARGET_MARKETING_CONTEXT_PATTERNS]
+_NON_TARGET_HEALTHCARE_CONTEXT_RES = [re.compile(p, re.IGNORECASE) for p in _NON_TARGET_HEALTHCARE_CONTEXT_PATTERNS]
+
+
+def _detect_non_target_context(title: str) -> dict[str, bool]:
+    """Detecta se o título está em contexto não-alvo (HR/recruiting/marketing/saúde).
+    
+    Retorna dict com flags: hr, marketing, healthcare.
+    """
+    title_low = title.lower()
+    return {
+        "hr": any(rx.search(title_low) for rx in _NON_TARGET_HR_CONTEXT_RES),
+        "marketing": any(rx.search(title_low) for rx in _NON_TARGET_MARKETING_CONTEXT_RES),
+        "healthcare": any(rx.search(title_low) for rx in _NON_TARGET_HEALTHCARE_CONTEXT_RES),
+    }
+
+
+def _should_zero_term(level: str, term: str, context: dict[str, bool]) -> bool:
+    """Verifica se um termo deve ter peso zero dado o contexto detectado."""
+    if context.get("hr"):
+        if level in _ZERO_IN_HR_CONTEXT and term in _ZERO_IN_HR_CONTEXT[level]:
+            return True
+    if context.get("marketing"):
+        if level in _ZERO_IN_MARKETING_CONTEXT and term in _ZERO_IN_MARKETING_CONTEXT[level]:
+            return True
+    if context.get("healthcare"):
+        # Healthcare context zera "logist" em RELATED
+        if level == "related" and term == "logist":
+            return True
+    return False
+
+
+def _extract_base_term(pattern: str, level: str) -> str:
+    """Extrai termo base do pattern para lookup nas tabelas de zero."""
+    # Remove \b, \w*, etc. para obter termo chave
+    # Patterns conhecidos que precisam de zero:
+    if "operations" in pattern:
+        return "operations" if "excellence" not in pattern else "operations excellence"
+    if "sourcing" in pattern:
+        return "sourcing"
+    if "logist" in pattern:
+        return "logist"
+    if "reporting" in pattern:
+        return "reporting"
+    if "support" in pattern:
+        return "support"
+    if pattern == r"\bdata\b":
+        return "data"
+    if pattern == r"\bsap\b":
+        return "sap"
+    if pattern == r"\berp\b":
+        return "erp"
+    # Default: retorna o pattern limpo
+    return pattern.strip(r"\b")
+
 
 def area_score(title: str, description: str | None = None) -> float:
-    """Pontuacao de aderencia a area-alvo (titulo pesa mais que descricao)."""
+    """Pontuacao de aderencia a area-alvo (titulo pesa mais que descricao).
+    
+    F136: quando contexto não-alvo (HR/recruiting/marketing/saúde) é detectado
+    no título, certos termos RELATED/WEAK que são falsos positivos léxicos
+    de procurement/supply-chain têm peso ZERO.
+    """
+    context = _detect_non_target_context(title)
     score = 0.0
     for level, patterns in _PATTERNS.items():
-        if any(p.search(title) for p in patterns):
-            score += AREA_TITLE_WEIGHTS[level]
-        if description and any(p.search(description) for p in patterns):
-            score += AREA_DESC_WEIGHTS[level]
+        # Título
+        for p in patterns:
+            if p.search(title):
+                # Extrair o termo base do pattern para checar se deve zerar
+                term = _extract_base_term(p.pattern, level)
+                if not _should_zero_term(level, term, context):
+                    score += AREA_TITLE_WEIGHTS[level]
+                    break  # Só conta uma vez por nível no título
+        # Descrição
+        if description:
+            for p in patterns:
+                if p.search(description):
+                    term = _extract_base_term(p.pattern, level)
+                    if not _should_zero_term(level, term, context):
+                        score += AREA_DESC_WEIGHTS[level]
+                        break
     return score
 
 
 def matches_area(title: str, description: str | None = None) -> bool:
-    """Vaga adere as areas-alvo do dono? (heuristica, sem ML)."""
-    return area_score(title, description) >= AREA_MIN_SCORE
+    """Vaga adere as areas-alvo do dono? (heuristica, sem ML).
+    
+    F136: aplica detecção de contexto não-alvo e penalidade de função não-alvo
+    para evitar que vagas de HR/recruiting/marketing passem pelo filtro de área.
+    """
+    # Primeiro calcula score com contexto-aware
+    score = area_score(title, description)
+    
+    # Aplica penalidade de função não-alvo (HR/marketing/sales_bd) no filtro
+    # ungated_hr=True: HR é checado ANTES do gate de termo primário
+    penalty = function_penalty_nontarget(title, ungated_hr=True)
+    score += penalty
+    
+    return score >= AREA_MIN_SCORE
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +702,13 @@ from internship_finder.countries import (
 # EXCLUSÃO (não flag), mesma trilha F37.3 da classe NL; contra-casos
 # Bosch SPO (matrícula genérica), Duale Hochschule (DUAL) e "based in
 # Germany" de residência não casam.
+# F137 (27/10) — Threshold de idade de postagem para elegibilidade (hard exclude).
+# Default 12 meses: AXA "Praktikum Datenanalyse" postada 24/10/2024 (~24 meses)
+# e lotes Consultport (~18 meses, 20/10 e 25/10) chegavam como NOVAS e eram
+# eliminadas manualmente. O corte 12m pega esses casos (24m, 18m, 13m+)
+# sem afetar vagas recentes (≤11m) nem vagas sem posted_at (neutro, nunca mata).
+STALE_POSTING_THRESHOLD_MONTHS = 12
+
 APPLICABILITY_EXCLUSION_REASONS = (
     "german_required",
     "native_language",
@@ -547,6 +740,11 @@ APPLICABILITY_EXCLUSION_REASONS = (
     "job_type_non_internship",
     "experience_required",
     "recent_graduate",
+    # F137 (27/10): posted_at > 12 meses → stale_posting (hard exclude).
+    # Mesmo threshold da constante acima; casos medidos: AXA 24m, Consultport 18m.
+    # posted_at ausente/inválida NÃO desclassifica (neutro — mesma semântica
+    # do dedup: ausente = "infinito" para frescor, aqui = nunca mata).
+    "stale_posting",
 )
 
 # F37.3 (decisão do dono 15/10 ~23:45 UTC, literal: "german_required:
@@ -1643,6 +1841,50 @@ def targets_recent_graduates(title: str | None, description: str | None) -> bool
     return False
 
 
+# ---------------------------------------------------------------------------
+# F137 (27/10) — Posting stale: posted_at > 12 meses (hard exclude).
+# ---------------------------------------------------------------------------
+# Threshold parametrizado: STALE_POSTING_THRESHOLD_MONTHS = 12 (default).
+# Casos medidos: AXA "Praktikum Datenanalyse" 24/10/2024 (~24 meses),
+# lotes Consultport 20/10 e 25/10 (~18 meses) — chegavam como NOVAS e
+# eram eliminadas manualmente. posted_at ausente/inválida NÃO desclassifica
+# (neutro — mesma semântica do dedup: ausente = "infinito" para frescor,
+# aqui = nunca mata).
+# O detector recebe o job dict completo para acessar posted_at.
+
+
+def is_stale_posting(job: dict) -> bool:
+    """F137 — vaga tem posted_at > 12 meses (threshold parametrizado)?
+
+    True SOMENTE quando posted_at existe, é válida e a idade em meses
+    (dias / 30.44) excede STALE_POSTING_THRESHOLD_MONTHS.
+
+    posted_at ausente/inválida -> False (neutro, nunca mata).
+    Isso segue a mesma semântica do dedup (ausente = "infinito" para frescor),
+    mas aqui "infinito" = NÃO desclassifica — a vaga pode ser re-postada
+    (caso Lidl) e a data antiga não deve ser motivo de exclusão.
+    """
+    posted = str(job.get("posted_at") or "").strip()
+    if not posted:
+        return False  # ausente = neutro
+    try:
+        ts = datetime.fromisoformat(posted)
+    except ValueError:
+        return False  # inválida = neutro
+    # Normaliza para date (ignora time-of-day e timezone):
+    # Se tem tzinfo, converte para UTC antes de extrair date;
+    # se naive, assume UTC (consistente com collected_at do pipeline).
+    if ts.tzinfo is not None:
+        ts = ts.astimezone(UTC)
+    posted_date = ts.date()
+    ref_date = date.today()
+    age_days = (ref_date - posted_date).days
+    if age_days < 0:
+        return False  # futuro (clock skew) -> não mata
+    age_months = age_days / 30.44
+    return age_months > STALE_POSTING_THRESHOLD_MONTHS
+
+
 # --- (F99-c) duration_conflict — duração > 6 meses citada na DESCRIÇÃO ---
 # Delivery Hero 744000155973854 verbatim (página viva, confirmada 22/10;
 # a descrição do DATASET não carrega a frase — gap de captura upstream,
@@ -2018,6 +2260,16 @@ def applicability_exclusion_reason(
     # junto com experience_required).
     if targets_recent_graduates(title, description):
         return "recent_graduate"
+
+    # F137 (27/10): posted_at > 12 meses → stale_posting (hard exclude).
+    # Threshold parametrizado (STALE_POSTING_THRESHOLD_MONTHS = 12 default).
+    # Casos medidos: AXA "Praktikum Datenanalyse" 24/10/2024 (~24 meses),
+    # lotes Consultport 20/10 e 25/10 (~18 meses) — chegavam como NOVAS e
+    # eram eliminadas manualmente. posted_at ausente/inválida NÃO desclassifica
+    # (neutro — mesma semântica do dedup: ausente = "infinito" para frescor,
+    # aqui = nunca mata).
+    if is_stale_posting(job):
+        return "stale_posting"
 
     return None
 

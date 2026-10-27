@@ -139,6 +139,10 @@ import minimal_page  # F6: render da pagina publica (cap 2/empresa F11)
 import publish_pages  # publicacao do ranking em GitHub Pages (Fase 1)
 import ranking_digest  # digest do ranking no Telegram (Fase 2)
 import url_liveness  # F11: vitalidade de URL do top exibido (404/410); F20: soft-dead + hidratacao
+from internship_finder.cross_source_dedup_store import (  # F135/F138: mem�ria cross-run de chaves dedup
+    CrossSourceDedupStore,
+    load_cross_source_dedup_store,
+)
 
 log = logging.getLogger("refresh_daily")
 
@@ -205,6 +209,43 @@ DEFAULT_ENRICHMENT_MAX_SECS = 1800
 # flock preso ate 14:54, 0/21 extracoes) com retorno zero. Padrao do
 # projeto: mesma mecanica da flag INTERNSHIP_FINDER_GEOCODING (geocoding.py).
 ENRICHMENT_ENV_FLAG = "INTERNSHIP_FINDER_ENRICHMENT"
+
+# ---------------------------------------------------------------------------
+# F138 — vereditos manuais do dono (data/manual_verdicts.json).
+# Mapeia dedup_key -> {"verdict": "eliminada"|"pendente", "reason": "motivo", "date": "DD/MM"}.
+# O pipeline le este arquivo e marca no NEW: "❌ você já eliminou esta (motivo)".
+# Arquivo editável pelo dono no fluxo VS Code — evita cruzamento manual com REGISTRO.
+# ---------------------------------------------------------------------------
+MANUAL_VERDICTS_FILE = "data/manual_verdicts.json"
+
+
+def load_manual_verdicts(path: Path | str) -> dict:
+    """Carrega vereditos manuais de ``data/manual_verdicts.json`` (F138; best-effort).
+
+    Schema esperado:
+        {
+          "dedup_key": {"verdict": "eliminada", "reason": "eixo/alemão", "date": "25/10"},
+          ...
+        }
+    Ausente/ilegivel/invalido -> dict vazio (nunca derruba o run).
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    # Validar entradas: manter apenas as que têm verdict e reason
+    valid: dict = {}
+    for key, value in data.items():
+        if isinstance(value, dict) and value.get("verdict") and value.get("reason"):
+            valid[key] = {
+                "verdict": str(value["verdict"]),
+                "reason": str(value["reason"]),
+                "date": str(value.get("date", "")),
+            }
+    return valid
+
 
 # ---------------------------------------------------------------------------
 # F20 — higiene do topo: liveness v2 (soft-dead) + hidratacao de descricao.
@@ -3460,14 +3501,16 @@ def main(argv: list[str] | None = None) -> int:
         log.warning("F94: anotação stale_posting falhou (run segue sem os "
                     "flags): %s: %s", type(exc).__name__, exc)
 
-    # F107 — lista COMPLETA das novas em data/NEW-<date>.md (mesmo estágio
+    # F107 + F138 — lista COMPLETA das novas em data/NEW-<date>.md (mesmo estágio
     # do MANUAL-CHECK; display-only). O diff URL-honesto
     # (``ranking_digest.new_postings_diff``) classifica os IDs novos do
     # snapshot anterior em "genuinamente novas" (URL ausente) e
     # "re-sightings" (mesma URL, ID reciclado) — o 🆕 do digest mostra o
     # TOTAL real + a fatia Top-30 + o ponteiro para o arquivo, que carrega
     # TODAS as novas (o cap 4096 do Telegram é físico; a lista vive no
-    # ARQUIVO). Roda DEPOIS da anotação F94 (o ⏳ lê o campo persistido) e
+    # ARQUIVO). F138: cross_source_dedup_store fornece memória de sightings
+    # (re-entrada 🔁) e manual_verdicts.json fornece vereditos do dono (❌).
+    # Roda DEPOIS da anotação F94 (o ⏳ lê o campo persistido) e
     # ANTES do digest (o header referencia o caminho). Best-effort TOTAL.
     new_list_display: str | None = None
     try:
@@ -3482,6 +3525,19 @@ def main(argv: list[str] | None = None) -> int:
             cur_ranking = json.loads(cur_path.read_text(encoding="utf-8"))
         postings_diff = ranking_digest.new_postings_diff(
             cur_ranking, prev_ranking)
+
+        # F138 — carrega store de dedup cross-run (memória de sightings)
+        dedup_store = None
+        try:
+            dedup_store = load_cross_source_dedup_store(
+                data_dir / "cross_source_dedup.db",
+                run_id=summary.get("run_id"))
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            log.debug("F138: cross_source_dedup_store indisponível: %s", exc)
+
+        # F138 — carrega vereditos manuais do dono
+        manual_verdicts = load_manual_verdicts(data_dir / "manual_verdicts.json")
+
         if postings_diff and postings_diff.get("genuinely_new"):
             date_str = f"{datetime.now(UTC):%Y-%m-%d}"
             new_list_path = data_dir / ranking_digest.NEW_LIST_FILE.format(
@@ -3489,19 +3545,21 @@ def main(argv: list[str] | None = None) -> int:
             text = ranking_digest.new_list_markdown(
                 postings_diff, cur_ranking,
                 previous_name=prev_path.parent.name,
-                generated_at=utcnow_iso())
+                generated_at=utcnow_iso(),
+                dedup_store=dedup_store,
+                manual_verdicts=manual_verdicts)
             new_list_path.write_text(text, encoding="utf-8")
             new_list_display = f"data/{new_list_path.name}"
             log.info(
-                "F107 novas: %d genuinamente nova(s) (%d no Top-30), "
+                "F107+F138 novas: %d genuinamente nova(s) (%d no Top-30), "
                 "%d re-sighting(s) de IDs reciclados -> %s",
                 len(postings_diff["genuinely_new"]),
                 ranking_digest.top_new_count(
                     cur_ranking, postings_diff["genuinely_new"]),
                 len(postings_diff.get("re_seen") or []),
                 new_list_display)
-    except Exception as exc:  # noqa: BLE001 — F107 nunca derruba o run
-        log.warning("F107: lista de novas nao gravada (run segue normal): "
+    except Exception as exc:  # noqa: BLE001 — F107/F138 nunca derruba o run
+        log.warning("F107+F138: lista de novas nao gravada (run segue normal): "
                     "%s: %s", type(exc).__name__, exc)
 
     # F25 — as inaplicáveis do backlog hidratado descem das superfícies

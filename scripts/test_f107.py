@@ -431,7 +431,7 @@ def test_refresh_hook() -> None:
     src = inspect.getsource(rdm.main)
     check("I1 estágio F107 presente (diff honesto + artefato + log)",
           "new_postings_diff" in src and "new_list_markdown" in src
-          and "F107 novas" in src)
+          and ("F107 novas" in src or "F107+F138 novas" in src))
     check("I2 nome do artefato vem de ranking_digest.NEW_LIST_FILE",
           "NEW_LIST_FILE.format" in src)
     check("I3 digest recebe new_list_path (ponteiro no header 🆕)",
@@ -443,7 +443,8 @@ def test_refresh_hook() -> None:
     check("I5 estágio F107 ANTES do digest (o header referencia o caminho)",
           src.find("new_list_markdown") < src.find("digest_sections"))
     check("I6 best-effort: try/except próprio, nunca derruba o run",
-          "F107: lista de novas nao gravada" in src)
+          "F107: lista de novas nao gravada" in src
+          or "F107+F138: lista de novas nao gravada" in src)
     check("I7 nome do arquivo: NEW-{date}.md (data do run)",
           rg.NEW_LIST_FILE == "NEW-{date}.md")
     # radar F13 segue no diff F11 por ID (fora do escopo F107)

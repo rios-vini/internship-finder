@@ -94,13 +94,41 @@ DEAD_STATUS = frozenset({404, 410})
 # F20 — marcadores de vaga encerrada no CORPO (case-insensitive; lista
 # configuravel). Medidos na investigacao 07/10: Deutsche Borse retorna 200
 # com "Sorry, this position has been filled" no corpo.
+# F138 — marcadores refinados para evitar FP com privacy policy (GDPR/Aufbewahrung):
+# exigem contexto de vaga (stelle/position/bewerbung/job/praktikum/ausbildung)
+# próximo ao marcador. "nicht mehr verfügbar" e "stelle ist besetzt" sozinhos
+# aparecem em políticas de retenção de dados — não marcam dead.
 SOFT_DEAD_MARKERS = (
     "this position has been filled",
     "no longer accepting applications",
     "no longer accepting",
     "position is no longer",
+    # Alemães: só marcam se houver contexto de vaga nas proximidades
+    # (ver _soft_dead_in_body com _has_job_context)
     "nicht mehr verfügbar",
     "stelle ist besetzt",
+    "diese stelle ist",
+    "stelle wurde besetzt",
+    "position filled",
+    "stelle nicht mehr",
+)
+
+# Palavras de contexto que indicam página de VAGA (não privacy policy).
+# F138: "stelle" sozinho é muito genérico (aparece em "Die Stelle ist besetzt
+# mit der Verarbeitung..." = departamento responsável). Exige termos mais
+# específicos de anúncio de vaga. Termos curtos como "hr" causam FP em
+# palavras alemães ("gemäss", "durch", etc.) — usamos apenas termos de
+# 4+ chars ou compostos inequívocos.
+_JOB_CONTEXT_WORDS = (
+    "stellenausschreibung", "stellenangebot", "jobangebot", "karriere",
+    "bewerbung", "job", "praktikum", "ausbildung", "werkstudent",
+    "vacancy", "career", "recruit", "talent", "personal",
+    "bewerber", "candidate", "apply", "bewerben", "anstellung",
+    "einstellung", "eintritt", "position", "stelle vakant",
+    "stelle offen", "stelle frei", "besetzung", "einstellungs",
+    "ausschreibung", "job posting", "job description", "requirements",
+    "qualifikation", "aufgaben", "wir bieten", "deine aufgaben",
+    "dein profil", "was du mitbringst", "deine vorteile",
 )
 
 # F87 — 200-falso textual de página de empresa (a classe E1 da F76: resposta
@@ -121,6 +149,10 @@ SOFT_DEAD_MARKERS = (
 # has been filled") já são cobertas por SOFT_DEAD_MARKERS.
 FAKE200_MARKERS = ("bereits besetzt", "position filled")
 FAKE200_MAX_BODY_CHARS = 4096
+
+# F87/F138: teto de corpo para SOFT markers (mesma semântica do FAKE200:
+# aviso de preenchida é página mínima; corpo grande = página real = viva)
+SOFT_DEAD_MAX_BODY_CHARS = FAKE200_MAX_BODY_CHARS
 
 # ---------------------------------------------------------------------------
 # F94 — Liveness v2: estado persistente + edge cases de provedor.
@@ -200,16 +232,59 @@ _JSON_LD_JOB_RE = re.compile(
 _DESCRIPTION_MIN_CHARS = 120
 
 
+def _has_job_context(body_text: str, marker_pos: int, window: int = 500) -> bool:
+    """Verifica se há palavras de contexto de vaga próximas ao marcador.
+
+    Olha em uma janela de ``window`` caracteres antes e depois do marcador.
+    Retorna True se encontrar qualquer palavra de ``_JOB_CONTEXT_WORDS``.
+    """
+    folded = body_text.casefold()
+    start = max(0, marker_pos - window)
+    end = min(len(folded), marker_pos + window)
+    context = folded[start:end]
+    return any(word in context for word in _JOB_CONTEXT_WORDS)
+
+
+# Marcadores que EXIGEM contexto de vaga (anti-FP privacy policy)
+_MARKERS_REQUIRING_CONTEXT = {
+    "nicht mehr verfügbar",
+    "stelle ist besetzt",
+    "diese stelle ist",
+    "stelle wurde besetzt",
+    "position filled",
+    "stelle nicht mehr",
+}
+
+
 def _soft_dead_in_body(body_text: str) -> str | None:
     """Marcador de vaga encerrada presente no corpo? Devolve o marcador.
 
     Case-insensitive (o corpo e comparado apos casefold). ``None`` = corpo
     vivo. Pura — testavel offline com strings fixture.
+
+    F87 (contrato preservado): SOFT markers só matam corpo CURTO — página
+    real de vaga é grande; corpo > SOFT_DEAD_MAX_BODY_CHARS => vivo
+    (cura do orquestrador: os markers novos do F138 matavam corpo grande
+    e quebravam o guard "mesmo marcador em corpo GRANDE => vivo").
+
+    F138: marcadores ambíguos ("nicht mehr verfügbar", "stelle ist besetzt",
+    etc.) só disparam se houver contexto de vaga (stelle, position,
+    bewerbung, job, praktikum, etc.) nas proximidades — evita FP em
+    privacy policy (GDPR/Aufbewahrung).
     """
+    if len(body_text) > SOFT_DEAD_MAX_BODY_CHARS:
+        return None
     folded = body_text.casefold()
     for marker in SOFT_DEAD_MARKERS:
-        if marker.casefold() in folded:
-            return marker
+        m_lower = marker.casefold()
+        pos = folded.find(m_lower)
+        if pos == -1:
+            continue
+        # Marcadores que exigem contexto de vaga
+        if m_lower in _MARKERS_REQUIRING_CONTEXT:
+            if not _has_job_context(body_text, pos):
+                continue  # FP provável (ex.: privacy policy) — ignora
+        return marker
     return None
 
 
@@ -222,13 +297,22 @@ def _fake_200_in_short_body(body_text: str, body_len: int) -> str | None:
     corpo dentro de FAKE200_MAX_BODY_CHARS (página real de vaga é grande;
     o aviso de preenchida é mínima). Pura — testavel offline com fixture.
     ``None`` = nada marcado por este check.
+
+    F138: também exige contexto de vaga para marcadores ambíguos.
     """
     if body_len > FAKE200_MAX_BODY_CHARS:
         return None
     folded = body_text.casefold()
     for marker in FAKE200_MARKERS:
-        if marker.casefold() in folded:
-            return marker
+        m_lower = marker.casefold()
+        pos = folded.find(m_lower)
+        if pos == -1:
+            continue
+        # Marcadores que exigem contexto de vaga (anti-FP)
+        if m_lower in _MARKERS_REQUIRING_CONTEXT:
+            if not _has_job_context(body_text, pos):
+                continue
+        return marker
     return None
 
 
