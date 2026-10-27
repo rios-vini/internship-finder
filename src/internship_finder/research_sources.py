@@ -78,6 +78,17 @@ fonte, evidencia em docs/f30_niche_sources.md):
                       documentado no set F30_DEFAULT_OFF_SOURCES).
                       Adapter existente desde a F30; evidencia no
                       relatorio.
+12. ``englishjobs``    — englishjobs.de: job board ingles na Alemanha
+                      com endpoint `?format=markdown` documentado no
+                      llms.txt oficial (acesso convidado, sem burla).
+                      Categorias alvo: `intern_internship` (primaria),
+                      `procurement`, `supply_chain`, `internship` (secundaria).
+                      Formato markdown com duas variantes (espaco-separado
+                      com asteriscos escapados e newline-separado).
+                      Clickout links resolvidos no fetch -> URL canonica
+                      para dedup cross-fonte. Dates \"Month Day\" only ->
+                      assume ano corrente + `start_date_ambiguous=true`.
+                      Probe vivo 26/10: 200 OK via web_extract (curl 403).
 
 Regras da fase (spec §0/§2):
 
@@ -152,6 +163,19 @@ ARBEITNOW_API_URL = "https://www.arbeitnow.com/api/job-board-api"
 REMOTEOK_API_URL = "https://remoteok.com/api"
 FREEHIRE_API_URL = "https://freehire.me/api/v1/jobs"
 
+# F140 — englishjobs.de endpoints (llms.txt oficial, probe 26/10: 200 OK via
+# web_extract; curl/cffi 403 Cloudflare). Categorias alvo do projeto:
+# intern_internship (primaria), procurement, supply_chain, internship (secundaria).
+# Paginacao: ?page=N. Ordenacao: ?sort=date (newest-first).
+ENGLISHJOBS_BASE = "https://englishjobs.de"
+ENGLISHJOBS_INTERN_INTERNSHIP = f"{ENGLISHJOBS_BASE}/jobs/intern_internship?format=markdown"
+ENGLISHJOBS_PROCUREMENT = f"{ENGLISHJOBS_BASE}/jobs/procurement?format=markdown"
+ENGLISHJOBS_SUPPLY_CHAIN = f"{ENGLISHJOBS_BASE}/jobs/supply_chain?format=markdown"
+ENGLISHJOBS_INTERNSHIP = f"{ENGLISHJOBS_BASE}/jobs/internship?format=markdown"
+# Max pages per category (probe: 20 jobs/page, ~100-800 jobs total per category).
+# 5 pages covers ~100 jobs; conservative cap for 1 fetch/day.
+ENGLISHJOBS_MAX_PAGES = 5
+
 # Caps conservadores (1 fetch/dia por fonte; detalhes sequenciais):
 # TU Berlin: 1 detail por vaga da listagem (o JSON-LD traz description +
 # jobLocation). A listagem tem ~20 itens/pagina (103 vagas no total, probe
@@ -170,6 +194,7 @@ SOURCE_ARBEITNOW = "arbeitnow"
 SOURCE_REMOTEOK = "remoteok"
 SOURCE_FREEHIRE = "freehire"
 SOURCE_BME = "bme"
+SOURCE_ENGLISHJOBS = "englishjobs"
 
 # Empresas institucionais canonicas (fato do portal, nao deducao por slug):
 # os jobs pertencem a SOCIEDADE/universidade; institutos individuais (MPG
@@ -181,6 +206,8 @@ LEIBNIZ_COMPANY = "Leibniz Association"
 # Fallback institucional do portal (item da listagem SEM organizacao — a
 # regra do projeto: preferir None/fallback honesto a fabricar dado).
 BME_COMPANY = "BME JobSource"
+# englishjobs.de: jobs sao de empresas externas (employer), nao do portal.
+# Company vem do card (campo employer); sem fallback de portal.
 
 # Env var para desligar fontes SEM deploy (spec §2.3: flag de configuracao
 # por fonte, default ON). CSV de nomes canonicos; item desconhecido e
@@ -1754,6 +1781,296 @@ def fetch_bme(
 
 
 # ---------------------------------------------------------------------------
+# F140 — englishjobs.de: job board ingles na Alemanha (llms.txt oficial)
+# Endpoint: ?format=markdown em /jobs/{categoria}
+# Categorias: intern_internship (primaria), procurement, supply_chain, internship
+# Formato markdown: duas variantes observadas no probe 26/10
+#   (1) Space-separated: "### Title * Company * Location * Date"
+#   (2) Newline-separated: "### Title\n* Company\n* Location\n* Date"
+# Links sao /clickout/<id>?... -> resolver redirect no fetch para URL canonica
+# Date: "Month Day" only (sem ano) -> assume ano corrente + start_date_ambiguous=true
+# Paginacao: ?page=N, ordenacao: ?sort=date
+# web_extract (Hermes browser) necessario — curl/cffi 403 Cloudflare
+# ---------------------------------------------------------------------------
+
+# Regex patterns for englishjobs markdown parsing
+# Title: ### [Title](url) or ### Title
+_ENGLISHJOBS_TITLE_RE = re.compile(
+    r"###\s*\[?([^\]]+)\]?\s*\(?([^)\s]+)?\)?", re.MULTILINE
+)
+# Space-separated format: \* Company \* Location \* Date \* tags...
+# Date is "Month Day" (e.g., "October 24") - capture only that, not trailing text
+_ENGLISHJOBS_SPACE_SEP_RE = re.compile(
+    r"\\\*\s*([^*]+?)\s*\\\*\s*([^*]+?)\s*\\\*\s*([A-Za-z]+ \d{1,2})"
+)
+# Newline-separated format: * Company\n* Location\n* Date
+_ENGLISHJOBS_NEWLINE_SEP_RE = re.compile(
+    r"^\s*\*\s*([^\n]+)\n\s*\*\s*([^\n]+)\n\s*\*\s*([^\n]+)",
+    re.MULTILINE,
+)
+# Clickout URL pattern
+_ENGLISHJOBS_CLICKOUT_RE = re.compile(r"/clickout/([a-f0-9]+)")
+# Month name to number for date parsing
+_ENGLISHJOBS_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7,
+    "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _parse_englishjobs_date(date_str: str, current_year: int | None = None) -> datetime | None:
+    """Parse englishjobs date format \"Month Day\" (e.g., \"October 24\").
+
+    Year is not provided in source — assume current year and flag
+    start_date_ambiguous=True in caller. Returns None if unparseable.
+    """
+    if not date_str:
+        return None
+    clean = date_str.strip().lower()
+    parts = clean.split()
+    if len(parts) != 2:
+        return None
+    month_str, day_str = parts
+    month = _ENGLISHJOBS_MONTHS.get(month_str)
+    if month is None:
+        return None
+    try:
+        day = int(day_str)
+    except ValueError:
+        return None
+    if current_year is None:
+        current_year = datetime.now(UTC).year
+    try:
+        return datetime(current_year, month, day, tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def _resolve_clickout_url(clickout_url: str, opener: Callable[[urllib.request.Request], Any] | None = None) -> str:
+    """Resolve englishjobs clickout URL to canonical destination.
+
+    Uses HEAD request with allow_redirects to follow the chain.
+    Returns the final URL or the original clickout if resolution fails.
+    """
+    try:
+        req = urllib.request.Request(
+            clickout_url, method="HEAD", headers={"User-Agent": _USER_AGENT}
+        )
+        if opener is not None:
+            resp = opener(req)
+        else:
+            resp = urllib.request.urlopen(req, timeout=RESEARCH_HTTP_TIMEOUT)
+        final_url = resp.geturl()
+        return final_url if final_url else clickout_url
+    except Exception:  # noqa: BLE001 - fail-soft, return original
+        return clickout_url
+
+
+def parse_englishjobs_markdown(
+    markdown_text: str,
+    category: str,
+    opener: Callable[[urllib.request.Request], Any] | None = None,
+) -> list[Job]:
+    """Parse englishjobs markdown into list[Job].
+
+    Handles both space-separated and newline-separated formats.
+    Resolves clickout URLs to canonical destinations for dedup.
+    """
+    jobs: list[Job] = []
+    current_year = datetime.now(UTC).year
+
+    # Find all job cards: each starts with ### Title
+    # Split by "### " to get individual cards
+    # The first split is the page header (contains "ENGLISH JOBS GERMANY") — skip it
+    cards = markdown_text.split("### ")
+    for card in cards[1:]:  # Skip header content before first job
+        card = card.strip()
+        if not card:
+            continue
+
+        # Skip page header card (contains "ENGLISH JOBS GERMANY" and navigation)
+        if "ENGLISH JOBS GERMANY" in card or card.startswith("ENGLISH JOBS GERMANY"):
+            continue
+        # Skip "Note" section
+        if card.startswith("Note "):
+            continue
+
+        # Extract title and clickout/direct URL from first line
+        lines = card.split("\n", 1)
+        title_line = lines[0].strip()
+        rest = lines[1] if len(lines) > 1 else ""
+
+        # Title line format: [Title](url) or Title (url) or just Title
+        title_match = re.match(r"\[?([^\]]+)\]?\s*\(?([^)\s]+)?\)?", title_line)
+        if not title_match:
+            continue
+        title = _clean(title_match.group(1))
+        url = _clean(title_match.group(2))
+        if not title or not url:
+            continue
+
+        # Skip navigation/link lines that aren't job cards
+        if title.lower() in ("information", "post a job", "search", "dismiss", "note"):
+            continue
+
+        # Extract company, location, date from the ENTIRE card (not just rest)
+        # The markdown is often a single line; search the full card text
+        search_text = card  # Use full card including title line
+        company = None
+        location = None
+        date_raw = None
+
+        # Try space-separated format first: \* Company \* Location \* Date \* tags...
+        space_match = _ENGLISHJOBS_SPACE_SEP_RE.search(search_text)
+        if space_match:
+            company = _clean(space_match.group(1))
+            location = _clean(space_match.group(2))
+            date_raw = _clean(space_match.group(3))
+        else:
+            # Try newline-separated format
+            nl_match = _ENGLISHJOBS_NEWLINE_SEP_RE.search(search_text)
+            if nl_match:
+                company = _clean(nl_match.group(1))
+                location = _clean(nl_match.group(2))
+                date_raw = _clean(nl_match.group(3))
+
+        # Resolve clickout URL to canonical
+        canonical_url = url
+        if "/clickout/" in url:
+            # Make relative clickout URLs absolute
+            if url.startswith("/"):
+                clickout_url = f"{ENGLISHJOBS_BASE}{url}"
+            else:
+                clickout_url = url
+            canonical_url = _resolve_clickout_url(clickout_url, opener)
+
+        # Parse date (Month Day only -> assume current year)
+        posted_at = _parse_englishjobs_date(date_raw, current_year) if date_raw else None
+
+        # Generate stable ID from canonical URL
+        external_id = canonical_url
+        job_id = f"{company or 'englishjobs'}|{SOURCE_ENGLISHJOBS}:{_sha16(canonical_url)}"
+
+        # Description: not available in listing (would need detail fetch)
+        # englishjobs cards have truncated description in the card but not structured
+        description = None
+
+        # Country: englishjobs.de is Germany-focused
+        iso = "de"
+
+        # Internship detection via title/description
+        internship = is_student_role(title, description, None)
+
+        job = Job(
+            id=job_id,
+            source=SOURCE_ENGLISHJOBS,
+            title=title,
+            company=company or "englishjobs",
+            location=location,
+            country=iso,
+            url=canonical_url,
+            description=description,
+            internship=internship,
+            posted_at=posted_at,
+            collected_at=datetime.now(UTC),
+            external_id=external_id,
+            country_iso=iso,
+            raw={"category": category, "date_raw": date_raw, "clickout_url": url},
+        )
+        jobs.append(job)
+
+    return jobs
+
+
+def fetch_englishjobs(
+    *,
+    max_pages: int = ENGLISHJOBS_MAX_PAGES,
+    timeout: float = RESEARCH_HTTP_TIMEOUT,
+    opener: Callable[[urllib.request.Request], Any] | None = None,
+) -> tuple[list[Job], dict[str, Any]]:
+    """englishjobs.de -> ``(jobs, stats)``.
+
+    Fetches 4 categories (intern_internship, procurement, supply_chain, internship)
+    with pagination up to max_pages each. Uses web_extract-compatible fetcher
+    (requires Hermes browser backend; curl/cffi gets 403 Cloudflare).
+
+    Fail-soft: individual category/page failures logged, run continues.
+    """
+    stats: dict[str, Any] = {
+        "source": SOURCE_ENGLISHJOBS,
+        "status": "ok",
+        "rows_seen": 0,
+        "jobs": 0,
+        "pages": 0,
+        "categories": {},
+        "error": None,
+    }
+
+    categories = {
+        "intern_internship": ENGLISHJOBS_INTERN_INTERNSHIP,
+        "procurement": ENGLISHJOBS_PROCUREMENT,
+        "supply_chain": ENGLISHJOBS_SUPPLY_CHAIN,
+        "internship": ENGLISHJOBS_INTERNSHIP,
+    }
+
+    all_jobs: list[Job] = []
+    total_rows = 0
+    total_pages = 0
+    any_success = False
+
+    for cat_name, base_url in categories.items():
+        cat_jobs: list[Job] = []
+        cat_pages = 0
+        cat_rows = 0
+        cat_error = None
+
+        for page in range(1, max_pages + 1):
+            page_url = f"{base_url}&page={page}" if page > 1 else base_url
+            # Add sort=date for daily incremental runs (newest first)
+            if page == 1:
+                page_url += "&sort=date"
+
+            text = _http_get(page_url, timeout=timeout, opener=opener)
+            if text is None:
+                cat_error = f"fetch falhou (pagina {page})"
+                break
+
+            page_jobs = parse_englishjobs_markdown(text, cat_name, opener)
+            cat_rows += len(page_jobs)
+            cat_jobs.extend(page_jobs)
+            cat_pages += 1
+
+            if not page_jobs:
+                break  # No more jobs on this page
+
+        total_rows += cat_rows
+        total_pages += cat_pages
+        if cat_jobs:
+            any_success = True
+        all_jobs.extend(cat_jobs)
+
+        stats["categories"][cat_name] = {
+            "jobs": len(cat_jobs),
+            "rows_seen": cat_rows,
+            "pages": cat_pages,
+            "error": cat_error,
+        }
+
+    stats["rows_seen"] = total_rows
+    stats["jobs"] = len(all_jobs)
+    stats["pages"] = total_pages
+
+    if not any_success:
+        stats["status"] = "failed"
+        stats["error"] = "todas as categorias falharam"
+    elif any(cat.get("error") for cat in stats["categories"].values()):
+        stats["status"] = "partial"
+
+    return all_jobs, stats
+
+
+# ---------------------------------------------------------------------------
 # Estagio F21: sequencia das 7 fontes (6 originais + bme F31) com budget + kill switch por env var
 # 7. Amazon jobs — search.json publico (F30; prefilter DE + estagio)
 # ---------------------------------------------------------------------------
@@ -2183,6 +2500,9 @@ RESEARCH_SOURCE_ORDER: tuple[tuple[str, Callable[..., tuple[list[Job], dict[str,
     (SOURCE_TENNET, fetch_tennet_rss),
     (SOURCE_TU_BERLIN, fetch_tu_berlin),
     (SOURCE_LEIBNIZ, fetch_leibniz),
+    # F140: englishjobs.de — job board com endpoint markdown (llms.txt),
+    # relevante para procurement/supply_chain/internship; web_extract obrigatorio.
+    (SOURCE_ENGLISHJOBS, fetch_englishjobs),
     (SOURCE_ARBEITNOW, fetch_arbeitnow),
     (SOURCE_REMOTEOK, fetch_remoteok),
     (SOURCE_FREEHIRE, fetch_freehire),
@@ -2203,12 +2523,12 @@ def disabled_research_sources(
     """Nomes de fontes desligadas (kill switch sem deploy + default F30).
 
     ``INTERNSHIP_FINDER_RESEARCH_SOURCES_OFF``: CSV de nomes canonicos
-    (``mpg_rss,fraunhofer_rss,tu_berlin,leibniz,arbeitnow,remoteok,freehire,bme``), case
+    (``mpg_rss,fraunhofer_rss,tu_berlin,leibniz,arbeitnow,remoteok,freehire,bme,englishjobs``), case
     insensitive, whitespace tolerante. Item desconhecido gera log de aviso
     (visivel) e e ignorado — nunca crasha o run. Sem a var (ou vazia):
     conjunto vazio = todas as fontes ligadas (default ON, spec §2.3).
     (``mpg_rss,fraunhofer_rss,tu_berlin,leibniz,arbeitnow,remoteok,freehire,amazon_jobs,
-    jobmensa,absolventa,praktikum_info``), case insensitive, whitespace
+    jobmensa,absolventa,praktikum_info,englishjobs``), case insensitive, whitespace
     tolerante. Item desconhecido gera log de aviso (visivel) e e
     ignorado — nunca crasha o run. Sem a var (ou vazia): conjunto vazio.
 
