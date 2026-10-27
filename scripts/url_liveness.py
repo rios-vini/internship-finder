@@ -150,6 +150,10 @@ _JOB_CONTEXT_WORDS = (
 FAKE200_MARKERS = ("bereits besetzt", "position filled")
 FAKE200_MAX_BODY_CHARS = 4096
 
+# F87/F138: teto de corpo para SOFT markers (mesma semântica do FAKE200:
+# aviso de preenchida é página mínima; corpo grande = página real = viva)
+SOFT_DEAD_MAX_BODY_CHARS = FAKE200_MAX_BODY_CHARS
+
 # ---------------------------------------------------------------------------
 # F94 — Liveness v2: estado persistente + edge cases de provedor.
 #
@@ -258,11 +262,18 @@ def _soft_dead_in_body(body_text: str) -> str | None:
     Case-insensitive (o corpo e comparado apos casefold). ``None`` = corpo
     vivo. Pura — testavel offline com strings fixture.
 
+    F87 (contrato preservado): SOFT markers só matam corpo CURTO — página
+    real de vaga é grande; corpo > SOFT_DEAD_MAX_BODY_CHARS => vivo
+    (cura do orquestrador: os markers novos do F138 matavam corpo grande
+    e quebravam o guard "mesmo marcador em corpo GRANDE => vivo").
+
     F138: marcadores ambíguos ("nicht mehr verfügbar", "stelle ist besetzt",
     etc.) só disparam se houver contexto de vaga (stelle, position,
     bewerbung, job, praktikum, etc.) nas proximidades — evita FP em
     privacy policy (GDPR/Aufbewahrung).
     """
+    if len(body_text) > SOFT_DEAD_MAX_BODY_CHARS:
+        return None
     folded = body_text.casefold()
     for marker in SOFT_DEAD_MARKERS:
         m_lower = marker.casefold()

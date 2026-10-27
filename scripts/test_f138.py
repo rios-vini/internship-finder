@@ -290,6 +290,26 @@ class TestF138LoadManualVerdicts:
             Path(path).unlink()
 
 
+def main() -> int:
+    """Runner standalone (padrao do projeto — f61/f93; o CI nao instala pytest)."""
+    classes = [TestF138NewListMarkdown, TestF138DeadMarkerFP, TestF138LoadManualVerdicts]
+    fails: list[str] = []
+    total = 0
+    for cls in classes:
+        inst = cls()
+        for name in sorted(dir(inst)):
+            if not name.startswith("test_"):
+                continue
+            total += 1
+            try:
+                getattr(inst, name)()
+                print(f"  [OK] {cls.__name__}.{name}")
+            except Exception as exc:  # noqa: BLE001 — conta e segue
+                print(f"  [FAIL] {cls.__name__}.{name}: {type(exc).__name__}: {exc}")
+                fails.append(f"{cls.__name__}.{name}")
+    print(f"\nF138: {len(fails)} falha(s) de {total}")
+    return 1 if fails else 0
+
+
 if __name__ == "__main__":
-    # exit code do pytest PROPAGA (rc!=0 com falha — falso-verde no CI sem isso)
-    raise SystemExit(pytest.main([__file__, "-v"]))
+    raise SystemExit(main())
