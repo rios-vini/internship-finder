@@ -232,12 +232,11 @@ check("D1 coleta: o fetch recebe a Company REESCRITA (source phenom)",
 check("D2 summary ok registra a source nova (metrics: série phenom nasce)",
       summary["ok"] and summary["ok"][0][0] == SH_TENANT,
       str(summary["ok"]))
-check("D3 Job.id usa a identidade nova: company|source:ats_id",
-      jobs and jobs[0].id.startswith("careers.siemens-healthineers.com|"
-                                      + SH_TENANT + ":"),
+check("D3 Job.id usa a identidade nova: company|source:ats_id (F139: canonico, nao host)",
+      jobs and jobs[0].id.startswith("Siemens Healthineers|" + SH_TENANT + ":"),
       jobs[0].id if jobs else "sem jobs")
-check("D4 summary companies = host dos jobs (P1.1, padrão phenom DHL/Roche)",
-      summary["companies"].get(SH_TENANT) == "careers.siemens-healthineers.com",
+check("D4 summary companies = company canonico dos jobs (P1.1; F139: nunca o host)",
+      summary["companies"].get(SH_TENANT) == "Siemens Healthineers",
       str(summary["companies"]))
 
 
@@ -261,7 +260,7 @@ check("E3 infer_country_iso devolve DE para as locations DE verbatim",
 adapted = _adapter.to_job(dict(werk1), new)
 check("E4 adaptado: country_iso DE, source phenom, id pela tripla P1.1",
       adapted.country_iso == "de" and adapted.source == SH_TENANT
-      and adapted.id == "careers.siemens-healthineers.com|" + SH_TENANT + ":P-100630",
+      and adapted.id == "Siemens Healthineers|" + SH_TENANT + ":P-100630",
       f"iso={adapted.country_iso} id={adapted.id}")
 
 
