@@ -510,9 +510,9 @@ def copy_dicts(jobs):
 def test_integracao() -> None:
     section("F66.I integracao: call site do cli, auto-load e ci.yml")
     cli_src = (ROOT / "src" / "internship_finder" / "cli.py").read_text(encoding="utf-8")
-    check("I1 cli.py chama deduplicate_cross_source(selected) SEM aliases "
-          "(auto-load do padrao — producao pega o mapa pela raiz do repo)",
-          re.search(r"deduplicate_cross_source\(selected\)", cli_src) is not None)
+    # F135: CLI agora passa store=CrossSourceDedupStore(...); aliases continua default None (auto-load)
+    check("I1 cli.py chama deduplicate_cross_source(selected, store=...) com aliases default (auto-load)",
+          re.search(r"deduplicate_cross_source\([\s\S]*selected[\s\S]*store=", cli_src) is not None)
     # auto-load: cwd na RAIZ do repo acha o arquivo (producao/CI rodam daqui)
     import os
     cwd_prev = os.getcwd()

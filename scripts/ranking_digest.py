@@ -59,6 +59,7 @@ from urllib.parse import urlsplit
 from internship_finder import filters
 from internship_finder import ranking as ranking_mod
 from internship_finder.dedup import normalize_url
+from internship_finder.cross_source_dedup_store import compute_cross_source_dedup_key
 from internship_finder.enrichment import present as enr_present
 from internship_finder.materials_ranking import rank_materials_jobs
 from internship_finder.repost_flag import (
@@ -375,7 +376,7 @@ def new_postings_diff(
     current: list[dict],
     previous: list[dict] | None,
 ) -> dict | None:
-    """Diff URL-honesto das novas (F107; pura).
+    """Diff URL-honesto das novas (F107 + F135; pura).
 
     O diff F11 (``new_since_previous``) é por ID — e o ID do dataset chuma
     entre runs (re-index do ATS, flip do vencedor do dedup cross-fonte): o
@@ -383,35 +384,36 @@ def new_postings_diff(
     real 23/10: 100 IDs novos, 54 com URL já vista — 46 postagens
     genuinamente novas; relatório manual contou exatamente esses 46).
 
-    Esta função classifica os IDs novos pela URL canônica
-    (``dedup.normalize_url`` — sem fragmento/tracking, a MESMA identidade
-    do dedup F5)::
+    F135: usa a MESMA chave de identidade do cross_source_dedup
+    (``compute_cross_source_dedup_key``): Anzeigencode/jobcode (RWE),
+    Oracle site_number normalizado (TI CX# <-> CX_1#), company+title+city
+    (BASF repost). Classifica os IDs novos pela chave dedup::
 
         {
           "new_ids":       set[str],   # diff F11 (todos os IDs novos)
           "gone_ids":      set[str],   # IDs que saíram (passthrough F11)
-          "genuinely_new": list[dict], # URL ausente do snapshot (ordem oficial)
-          "re_seen":       list[dict], # mesma URL, ID reciclado (ordem oficial)
+          "genuinely_new": list[dict], # chave dedup ausente do snapshot (ordem oficial)
+          "re_seen":       list[dict], # mesma chave dedup, ID reciclado (ordem oficial)
         }
 
     ``previous=None`` (sem snapshot usável) -> ``None``: o chamador omite a
-    seção, sem erro. Vaga sem URL => sem identidade comparável => vai para
-    ``genuinely_new`` (conservador: nunca esconde uma vaga por falta de URL).
-    A classificação é display-only: nada aqui filtra/exclui vaga do ranking.
+    seção, sem erro. Vaga sem chave dedup => vai para ``genuinely_new``
+    (conservador: nunca esconde uma vaga). A classificação é display-only:
+    nada aqui filtra/exclui vaga do ranking.
     """
     if previous is None:
         return None
     prev_ids = _ids(previous)
     new_ids, gone_ids = _ids(current) - prev_ids, prev_ids - _ids(current)
-    prev_urls = {normalize_url(j.get("url")) for j in previous}
-    prev_urls.discard("")
+    prev_keys = {compute_cross_source_dedup_key(j) for j in previous}
+    prev_keys.discard("")
     genuinely_new: list[dict] = []
     re_seen: list[dict] = []
     for job in current:  # ordem oficial do ranking preservada
         if not job.get("id") or job["id"] not in new_ids:
             continue
-        url = normalize_url(job.get("url"))
-        if url and url in prev_urls:
+        key = compute_cross_source_dedup_key(job)
+        if key and key in prev_keys:
             re_seen.append(job)
         else:
             genuinely_new.append(job)

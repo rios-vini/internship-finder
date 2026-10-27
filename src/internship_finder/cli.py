@@ -83,6 +83,7 @@ from internship_finder.cross_source_dedup import (
     cross_source_provenance,
     deduplicate_cross_source,
 )
+from internship_finder.cross_source_dedup_store import CrossSourceDedupStore
 from internship_finder.filters import parse_country_spec, select_eligible
 from internship_finder.health import build_health_report
 from internship_finder.hydration import hydrate_descriptions, print_hydration_report
@@ -488,18 +489,28 @@ def run_filter_pipeline(
             )
     cross_removed: list[tuple[dict[str, Any], dict[str, Any], str]] = []
     if dedup:
-        # F48 — sub-estagio cross-fonte por CAMPOS ESTRUTURADOS: a MESMA vaga
-        # publicada em FONTES diferentes (espelho EN/DE; ex.: registro do
-        # dataset x registro da ATS da empresa). Roda por ULTIMO, depois dos
-        # tiers classicos, do wildcard F23 e dos mirrors da Fase C (que
-        # exigem o MESMO tenant) — aqui o `source` PRECISA ser diferente,
+        # F48 + F135 — sub-estagio cross-fonte por CAMPOS ESTRUTURADOS + acervo acumulado:
+        # a MESMA vaga publicada em FONTES diferentes (espelho EN/DE; ex.: registro do
+        # dataset x registro da ATS da empresa) OU re-postada em dias diferentes.
+        # Roda por ULTIMO, depois dos tiers classicos, do wildcard F23 e dos mirrors
+        # da Fase C (que exigem o MESMO tenant) — aqui o `source` PRECISA ser diferente,
         # entao nenhum dos estagios anteriores poderia ter pego o par.
-        # Cidade normalizada + titulo DE/EN + identidade de empresa +
-        # guardrails (country/salary) decidem; o nao-canonico recebe
-        # `duplicate_of` (provenance) e sai do eligible/display/digest/
-        # ranking. Reversivel pelo gate do estagio pai (`--no-dedup`), mesma
-        # semantica do F23/Fase C — dedup e deterministico, sem kill switch.
-        selected, cross_stats, cross_removed = deduplicate_cross_source(selected)
+        # Cidade normalizada + titulo DE/EN + identidade de empresa + guardrails
+        # (country/salary) decidem; o nao-canonico recebe `duplicate_of` (provenance)
+        # e sai do eligible/display/digest/ranking.
+        # F135: CrossSourceDedupStore para dedup contra acervo acumulado entre runs.
+        # Anzeigencode/jobcode (RWE), Oracle site_number normalizado (TI),
+        # company+title+city (BASF repost) — mesma chave de identidade.
+        # F135: env override para testes/pseudo-repos nao sujarem o data/ de
+        # producao (o audit_fixes confere "data/ intocado" no pseudo-repo).
+        cross_store_path = os.environ.get(
+            "INTERNSHIP_FINDER_CROSS_SOURCE_DEDUP_STORE"
+        ) or "data/cross_source_dedup.db"
+        cross_store = CrossSourceDedupStore(cross_store_path, run_id or utcnow_iso())
+        selected, cross_stats, cross_removed = deduplicate_cross_source(
+            selected, store=cross_store
+        )
+        cross_store.close()
         if cross_stats:
             for k, v in cross_stats.items():
                 dedup_stats[k] = dedup_stats.get(k, 0) + v
