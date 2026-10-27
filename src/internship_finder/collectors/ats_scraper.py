@@ -29,6 +29,10 @@ from internship_finder.geocoding import flush_cache
 from internship_finder.models.company import Company
 from internship_finder.models.job import Job
 from internship_finder.upstream_patches.bamboohr import get_patched_scraper
+from internship_finder.collectors.personio_tenants import (  # noqa: E402
+    build_personio_company,
+    get_personio_tenant,
+)
 
 log = logging.getLogger(__name__)
 
@@ -424,6 +428,15 @@ def collect_company(
         # Replace any database entries with our verified config
         # (database may have wrong ATS or missing entries)
         companies = [us_company] + [c for c in companies if c.ats != us_config.ats or c.url != us_config.url]
+
+    # F139: Personio tenants com config local verificada (company canonica —
+    # o host (ex.: hairoboticseurope.jobs.personio.com) NUNCA vira company)
+    personio_config = get_personio_tenant(name)
+    if personio_config:
+        personio_company = build_personio_company(personio_config, name)
+        companies = [personio_company] + [
+            c for c in companies if c.ats != "personio" or c.slug != personio_config.slug
+        ]
 
     summary: dict = {
         "ok": [],

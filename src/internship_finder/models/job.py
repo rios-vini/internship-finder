@@ -85,6 +85,9 @@ class Job(BaseModel):
     external_id: str | None = None
     employment_type: str | None = None
     country_iso: str | None = None
+    # Flag de forense: company parece host/URL (ex.: careers.dhl.com, edbz.fa.us2.oraclecloud.com).
+    # Usado no health dashboard para detectar scrapers que nao extraem company canonica.
+    company_host_like: bool = False
     raw: dict[str, Any] | None = None
     # Proveniencia da description (Fase A): ``"hydration"`` quando obtida por
     # detail-fetch pos-dedup (``hydration.py``); ausente/None = description do
