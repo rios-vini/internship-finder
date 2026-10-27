@@ -164,6 +164,14 @@ TYPE_EXCLUSION_PATTERNS = [
     # "Duale Hochschule (BW Heidenheim...)" — estudar na DH, nao estagio.
     r"\bdual\w* hochschule",
     # "Dualer Master (M.Eng.)" — mestrado dual, nao estagio.
+    # F143 (rebuild 27/10): formação profissional de ADULTOS — nunca é
+    # estágio universitário. "Umschulung" (requalificação de carreira),
+    # "Azubi(s)/Auszubildende(r)" (aprendiz) no título => não-estudante,
+    # ANTES de qualquer aceitação (mesmo com "Praktikum" no título:
+    # "AZUBI 2027 Fachkraft ... Praktikum möglich" é vaga de aprendiz).
+    r"\bumschulung\b",
+    r"\bazubi\w*\b",
+    r"\bauszubildend\w*\b",
     r"\bdual\w* master",
     # "Studium mit vertiefter Praxis" (SmVdP): programa de graduacao (inicio
     # 2027, DHBW/TH) — mesma classe do Duales Studium. Auditoria 15/09: 4/4
@@ -257,6 +265,24 @@ def _has_any(patterns: list[str], text: str) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
 
 
+# F143: anti-sinais de formação adulta na DESCRIPTION. Vagas reais do NEW
+# 27/10: "Praktikum Einkauf u. Zentrallager ... Du drückst noch die Schulbank
+# ODER bist in einer Umschulung auf der Suche nach einem Praktikumsplatz" —
+# a vaga aceita Schulbank (aluno de ESCOLA alemã) OU Umschulung (adulto em
+# requalificação): nenhum dos dois públicos é o candidato-alvo (enrolled
+# universitário). Umschulung/Azubi na desc derruba MESMO com marcador de
+# estágio no título.
+ADULT_TRAINING_DESC_PATTERNS = [
+    # Só UMSCHULUNG: na description, azubi/auszubildende são MENÇÃO DE
+    # CONTEXTO comum em boilerplate de vaga (Aldi RSS fala "als
+    # Auszubildende..." em vagas de Schulbank) e não são o cargo — o título
+    # segue pegando os três. Umschulung é inequivamente requalificação
+    # adulta em qualquer posição do texto (cura do CI #245: 5 vagas
+    # Schüler do fixture Aldi flipavam por boilerplate).
+    r"\bumschulung\b",
+]
+
+
 def is_student_role(
     title: str,
     description: str | None = None,
@@ -288,6 +314,11 @@ def is_student_role(
         type_anywhere = True
 
     if not type_anywhere:
+        return False
+    # F143: anti-sinal de formação adulta na description derruba antes da
+    # aceitação por título (a vaga mistura público: Schulbank OU Umschulung).
+    desc_low = (description or "").lower()
+    if desc_low and _has_any(ADULT_TRAINING_DESC_PATTERNS, desc_low):
         return False
     if type_in_title:
         return True
@@ -484,6 +515,8 @@ _NON_TARGET_HEALTHCARE_CONTEXT_PATTERNS = [
     r"\bzorg\b",  # NL: care
     r"\bzorgbedrijf\b",  # NL: care company (legacy — mantém)
     r"\bzorg\b",  # NL: care
+    r"krankenhaus",  # DE: hospital (substring — Schwerpunkt Krankenhaus)
+    r"klinikum",  # DE: hospital/clinica (substring — Klinikum Itzehoe/Bayreuth)
     r"\bgezondheid\b",  # NL: health
     r"\bverpleging\b",  # NL: nursing
     r"\bpflege\b",  # DE: care/nursing
@@ -533,6 +566,12 @@ def _extract_base_term(pattern: str, level: str) -> str:
     """Extrai termo base do pattern para lookup nas tabelas de zero."""
     # Remove \b, \w*, etc. para obter termo chave
     # Patterns conhecidos que precisam de zero:
+    # F141/F143: compostos alemães de Logistik herdam a base "logist" — no
+    # contexto healthcare (Klinikum/Krankenhaus) o RELATED "logist" é zerado
+    # (estágio de logística hospitalar não é área-alvo; PRIMARY como Einkauf
+    # NÃO é zerado: "Praktikum Einkauf im Krankenhaus" continua passando).
+    if "logistik" in pattern or "logist" in pattern:
+        return "logist"
     if "operations" in pattern:
         return "operations" if "excellence" not in pattern else "operations excellence"
     if "sourcing" in pattern:

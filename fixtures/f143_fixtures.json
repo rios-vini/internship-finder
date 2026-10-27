@@ -1,0 +1,119 @@
+{
+  "f143_fixtures": {
+    "description": "F143 - Anti-sinal Umschulung/Azubi + Klinikum/Krankenhaus healthcare context. Fixtures verbatim do NEW 27/10.",
+    "false_positives": [
+      {
+        "id": "klinikum-itzehoe-umschulung",
+        "title": "Praktikant (w/m/d) im Rahmen einer Umschulung–Fachkraft für Lagerlogistik (Schwerpunkt Krankenhaus)",
+        "company": "Klinikum Itzehoe-DMS GmbH",
+        "description": "",
+        "expected": {
+          "is_student_role": false,
+          "matches_area": false,
+          "reason": "Umschulung (adult retraining) + Krankenhaus healthcare context zeros logist"
+        }
+      },
+      {
+        "id": "empac-azubi-2027",
+        "title": "AZUBI 2027 Fachkraft Lagerlogistik (m/w/d) - Praktikum möglich",
+        "company": "EMPAC",
+        "description": "",
+        "expected": {
+          "is_student_role": false,
+          "matches_area": true,
+          "reason": "AZUBI (vocational training) excluded by TYPE_EXCLUSION_PATTERNS"
+        }
+      },
+      {
+        "id": "auszubildende-kaufleute",
+        "title": "Auszubildende Kaufleute für Spedition und Logistikdienstleistungen (aGw*) 2027 - Praktikum möglich",
+        "company": "Unknown",
+        "description": "als Azubi",
+        "expected": {
+          "is_student_role": false,
+          "matches_area": true,
+          "reason": "Auszubildende (vocational trainee) excluded by ADULT_TRAINING_DESC_PATTERNS in desc"
+        }
+      },
+      {
+        "id": "praktikum-einkauf-umschulung-desc",
+        "title": "Praktikum Einkauf u. Zentrallager",
+        "company": "Unknown",
+        "description": "Voraussetzungen : Du drückst noch die Schulbank oder bist in einer Umschulung auf der Suche nach einem Praktikumsplatz.",
+        "expected": {
+          "is_student_role": false,
+          "matches_area": true,
+          "reason": "Umschulung in description excluded by ADULT_TRAINING_DESC_PATTERNS"
+        }
+      },
+      {
+        "id": "praktikum-verkauf-umschulung-desc",
+        "title": "Praktikum im Bereich Verkauf oder Logistik",
+        "company": "HORNBACH Baumarkt AG",
+        "description": "Voraussetzungen : Du drückst noch die Schulbank oder bist in einer Umschulung auf der Suche nach einem Praktikumsplatz.",
+        "expected": {
+          "is_student_role": false,
+          "matches_area": true,
+          "reason": "Umschulung in description excluded by ADULT_TRAINING_DESC_PATTERNS"
+        }
+      }
+    ],
+    "contra_cases": [
+      {
+        "id": "praktikum-lagerlogistik-regular",
+        "title": "Praktikum Lagerlogistik",
+        "company": "Regular Company",
+        "description": "",
+        "expected": {
+          "is_student_role": true,
+          "matches_area": true,
+          "reason": "Regular student internship, no adult-training signals"
+        }
+      },
+      {
+        "id": "praktikum-einkauf-hospital-primary",
+        "title": "Praktikum Einkauf im Krankenhaus",
+        "company": "Klinikum Test",
+        "description": "Einkauf und Beschaffung",
+        "expected": {
+          "is_student_role": true,
+          "matches_area": true,
+          "reason": "Healthcare context but PRIMARY term (Einkauf) not zeroed"
+        }
+      },
+      {
+        "id": "werkstudent-supply-chain-hospital",
+        "title": "Werkstudent Supply Chain im Klinikum",
+        "company": "Klinikum Test",
+        "description": "Supply Chain Management",
+        "expected": {
+          "is_student_role": true,
+          "matches_area": true,
+          "reason": "Healthcare context but PRIMARY term (Supply Chain) not zeroed"
+        }
+      },
+      {
+        "id": "praktikum-logistik-hospital-only-logist",
+        "title": "Werkstudent Lager (m/w/d) (Fachkraft - Lagerlogistik) im Klinikum Bayreuth",
+        "company": "Klinikum Bayreuth GmbH",
+        "description": "Lagerlogistik",
+        "expected": {
+          "is_student_role": true,
+          "matches_area": false,
+          "reason": "Healthcare context zeros logist (RELATED only), no PRIMARY term - per F136 design"
+        }
+      },
+      {
+        "id": "praktikum-transportlogistik",
+        "title": "Praktikum Transportlogistik",
+        "company": "Regular Company",
+        "description": "Planung und Steuerung der Transportlogistik",
+        "expected": {
+          "is_student_role": true,
+          "matches_area": true,
+          "reason": "F141 German compound, no healthcare context"
+        }
+      }
+    ]
+  }
+}
