@@ -273,9 +273,13 @@ def _has_any(patterns: list[str], text: str) -> bool:
 # universitário). Umschulung/Azubi na desc derruba MESMO com marcador de
 # estágio no título.
 ADULT_TRAINING_DESC_PATTERNS = [
+    # Só UMSCHULUNG: na description, azubi/auszubildende são MENÇÃO DE
+    # CONTEXTO comum em boilerplate de vaga (Aldi RSS fala "als
+    # Auszubildende..." em vagas de Schulbank) e não são o cargo — o título
+    # segue pegando os três. Umschulung é inequivamente requalificação
+    # adulta em qualquer posição do texto (cura do CI #245: 5 vagas
+    # Schüler do fixture Aldi flipavam por boilerplate).
     r"\bumschulung\b",
-    r"\bazubi\w*\b",
-    r"\bauszubildend\w*\b",
 ]
 
 
