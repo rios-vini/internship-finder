@@ -1,4 +1,5 @@
-"""F48 — Deduplicacao CROSS-FONTE por campos estruturados (espelhos EN/DE).
+"""F48 + F135 — Deduplicacao CROSS-FONTE por campos estruturados (espelhos EN/DE)
++ dedup contra acervo acumulado + Anzeigencode/jobcode + Oracle site_number.
 
 BURACO FECHADO (medido nos archives congelados de 13/10 e 14/10): a MESMA
 vaga publicada em DUAS FONTES diferentes (ex.: dataset ``sf_dataset:bundesagentur``
@@ -16,6 +17,14 @@ x ``successfactors:jobs``) passa reta por todos os estagios existentes:
   ``requisition_id`` — um espelho cross-fonte nunca e candidato la.
 - similaridade textual NAO resolve: o par EN/DE medido tem
   SequenceMatcher = 2,88% (idiomas diferentes).
+
+F135 (26/10): Twins DE/EN e re-postagens chegam em runs DIIFERENTES
+(cross-source_dedup era intra-run apenas). Fechado com:
+(a) dedup contra o ACERVO ACUMULADO via ``CrossSourceDedupStore`` (chaves
+    persistidas entre runs);
+(b) normalizacao de site_number Oracle na URL-chave (CX# <-> CX_1#);
+(c) Anzeigencode/jobcode do raw como chave dedup PREFERENCIAL (RWE);
+(d) NEW-*.md usa a MESMA chave de identidade (via ``new_postings_diff``).
 
 REGRA (deterministica, idempotente, so campos estruturados):
 
@@ -53,8 +62,8 @@ REGRA (deterministica, idempotente, so campos estruturados):
    valendo como criterio de VENCEDOR via ``_prefer``.
 5. CANONICAL: (a) FONTE PRIMARIA — o registro de dataset (``source`` com
    prefixo ``sf_dataset:``) vence o twin de registry/ATS (inversao
-   arquitetural da F3 declarada no proprio CLI: "dataset e fonte primaria,
-   registry e lista de interesse"; e o registro do dataset carrega os
+   arquitetural da F3 declarada no proprio CLI: \"dataset e fonte primaria,
+   registry e lista de interesse\"; e o registro do dataset carrega os
    campos indexados do feed — ``employment_type``/``posted_at``/referencia
    BA — usados por ranking/decay); (b) mesma classe de fonte -> ``_prefer``
    existente (description > employment_type > frescor > ordem de entrada),
@@ -67,17 +76,17 @@ REGRA (deterministica, idempotente, so campos estruturados):
 
 LIMITE DOCUMENTADO (conservador por construcao, mesmo trade-off da F5): o
 titulo do par precisa convergir na chave DE/EN; conteudo fora do dicionario
-minimo (ex.: "Betriebswirtschaft" vs "Business Administration") NAO funde —
+minimo (ex.: \"Betriebswirtschaft\" vs \"Business Administration\") NAO funde —
 um dup perdido e mais barato que uma fusao errada.
 
 F66 — ALIASES DE IDENTIDADE (tenant-label x empresa real; 19/10)
 -----------------------------------------------------------------
 BURACO FECHADO (medido na varredura do eligible 19/10: 25 pares suspeitos):
 fontes de dataset carregam o ``company`` como o LABEL DO TENANT do ATS — o
-feed SuccessFactors da Lidl Stiftung vem com ``company="lidlstiftup2"`` (90
-vagas), o SmartRecruiters da Robert Bosch GmbH com ``"BoschGroup"`` (17), o
-registro cornerstone com o hostname ``"ebmpapst"``. Quando a MESMA vaga
-aparece em outra fonte pelo NOME REAL ("Lidl Stiftung & Co. KG" no
+feed SuccessFactors da Lidl Stiftung vem com ``company=\"lidlstiftup2\"`` (90
+vagas), o SmartRecruiters da Robert Bosch GmbH com ``\"BoschGroup\"`` (17), o
+registro cornerstone com o hostname ``\"ebmpapst\"``. Quando a MESMA vaga
+aparece em outra fonte pelo NOME REAL (\"Lidl Stiftung & Co. KG\" no
 praktikum_info/absolventa), ``company_identity`` compara
 ``{lidlstiftup2}`` x ``{lidl, stiftung}`` e o par NAO funde — o twin fica
 no funil (o registro de desfechos do dono pegou 3 manualmente; a varredura
@@ -88,18 +97,18 @@ MECANISMO: mapa versionado ``config/dedup_company_aliases.json``
 ANTES da tokenizacao (``canonical_company``; match EXATO casefold, nunca
 substring; passo unico). O dominio e o DEDUP — e NAO o display: o alias de
 display da F54 (``config/display_aliases.json``) mapeia para nomes de MARCA
-curtos ("lidlstiftup2" -> "Lidl" -> ``{lidl}``) que NAO igualam a identidade
+curtos (\"lidlstiftup2\" -> \"Lidl\" -> ``{lidl}``) que NAO igualam a identidade
 do nome real e, por contrato, nunca contaminam o pipeline. Mapa proprio,
 fonte unica do sub-mecanismo.
 
 CURADORIA (regra Levio/TYTAN, licao F9/F10): so entra no mapa a string cujo
 label tem UM UNICO empregador real por tras — auditado pelos slugs/hosts das
-URLs da varredura. String multi-empregador ("Levio" = tenant Bertelsmann
-com RTL/Arvato/BFS) e nome juridico real de holding ("Würth Group", vagas
+URLs da varredura. String multi-empregador (\"Levio\" = tenant Bertelsmann
+com RTL/Arvato/BFS) e nome juridico real de holding (\"Würth Group\", vagas
 da subsidiaria Würth Industrie Service) NUNCA ganham alias: fundiriam
-empresas distintas. ``aliases={}`` desliga (braço baseline do A/B);
-arquivo ausente/corrompido/ambiguo -> ``{}`` (degradacao graciosa, nunca
-crasha o estagio).
+empresas distintas. ``aliases={}`` desliga (braço baseline do A/B); arquivo
+ausente/corrompido/ambiguo -> ``{}`` (degradacao graciosa, nunca crasha o
+estagio).
 
 LIMITES RESTANTES (documentados, medidos nos 3 pares do registro de
 desfechos — fixtures verbatim no test_f64/test_f66): o twin Wuerth
@@ -123,6 +132,9 @@ from typing import Any
 # vencedor documentada do modulo de dedup (fonte unica da verdade).
 from internship_finder.dedup import _de_en_title_key, _prefer, normalize_location
 from internship_finder.opportunity_intel import CITY_ALIASES as _CITY_ALIASES
+
+# F135 — persistent cross-source dedup store
+from internship_finder.cross_source_dedup_store import CrossSourceDedupStore
 
 # Rotulo do sub-estagio: chave de ``estatisticas`` (CLI/JSONL ``type: run``)
 # e do registro de provenance ``type: dedup_cross_source``.
@@ -150,13 +162,13 @@ _PLZ_PREFIX = re.compile(r"^\d{4,5}\s+")
 # DE/EN da F5), em 4 familias:
 #   (1) formas legais/juridicas DE e internacionais;
 #   (2) qualificadores corporativos/geograficos genericos;
-#   (3) artefatos de hostname (a fonte phenom grava o host como "empresa":
-#       "www.careers.philips.com");
+#   (3) artefatos de hostname (a fonte phenom grava o host como \"empresa\":
+#       \"www.careers.philips.com\");
 #   (4) qualificadores de razao social observados no dataset medido
-#       ("AG Pharmaceuticals" da Bayer, "Procurement Company S.a.r.l." da
-#       Vodafone, "SE Haupverwaltung" da AUMOVIO).
+#       (\"AG Pharmaceuticals\" da Bayer, \"Procurement Company S.a.r.l.\" da
+#       Vodafone, \"SE Haupverwaltung\" da AUMOVIO).
 # Qualquer token FORA desta lista impede o casamento: e o freio de
-# conservadorismo (ex.: "Rexroth"/"Healthineers"/"Maintenance" mantem as
+# conservadorismo (ex.: \"Rexroth\"/\"Healthineers\"/\"Maintenance\" mantem as
 # empresas separadas).
 NON_IDENTITY_TOKENS = frozenset(
     """
@@ -206,7 +218,7 @@ def company_identity(company: str | None) -> frozenset[str]:
     # colapsa os pontos INTERNOS a siglas curtas ANTES de tokenizar, para que
     # "s.a.r.l." gere o token "sarl" (a lista de formas legais usa a forma
     # sem pontos). Siglas de uma letra isolada (ex.: "K. Müller GmbH") ficam.
-    text = re.sub(r"(?<=\b[a-z])\.(?=[a-z]\b)", "", text)
+    text = re.sub(r"(?<=\b[a-z]\b)\.(?=\b[a-z]\b)", "", text)
     text = _strip_accents(text)
     tokens = {t for t in re.findall(r"[a-z0-9]+", text) if t not in NON_IDENTITY_TOKENS}
     return frozenset(tokens)
@@ -260,8 +272,8 @@ def canonical_company(
 ) -> str | None:
     """Resolve o LABEL DO TENANT no nome canonico da empresa real (F66).
 
-    Match EXATO casefold sobre a string inteira — NUNCA substring ("Lidl
-    GmbH" nao toca o alias de "lidlstiftup2"). Passo UNICO: o valor nunca e
+    Match EXATO casefold sobre a string inteira — NUNCA substring (\"Lidl
+    GmbH\" nao toca o alias de \"lidlstiftup2\"). Passo UNICO: o valor nunca e
     re-resolvido (mapa plano por contrato). Sem mapa (``None``/``{}``) a
     string volta INTACTA — a funcao nunca inventa empresa.
     """
@@ -388,8 +400,9 @@ def _source(job: dict[str, Any]) -> str:
 def deduplicate_cross_source(
     jobs: list[dict[str, Any]] | list[Any],
     aliases: dict[str, str] | None = None,
+    store: CrossSourceDedupStore | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int], list[tuple[dict[str, Any], dict[str, Any], str]]]:
-    """Remove espelhos CROSS-FONTE da mesma vaga (F48) — campos estruturados.
+    """Remove espelhos CROSS-FONTE da mesma vaga (F48 + F135) — campos estruturados.
 
     Roda DEPOIS de ``deduplicate`` (tiers 1-5) + ``deduplicate_ms_wildcard``
     (F23) + ``deduplicate_mirrors_de_en`` (Fase C), sobre o conjunto
@@ -407,6 +420,12 @@ def deduplicate_cross_source(
     comportamento pre-F66 exato). O label e resolvido SO na chave de
     identidade do par: o campo ``company`` exibido/rankeado NUNCA muda.
 
+    ``store`` (F135): ``CrossSourceDedupStore`` para dedup contra acervo
+    acumulado. Quando fornecido, vagas cuja chave dedup ja foi vista em runs
+    anteriores sao marcadas como re-entrada (``re_entry=True``) e NAO entram
+    no NEW-*.md. O store e best-effort: falha/ausencia -> degradacao graciosa
+    para comportamento intra-run apenas (pre-F135).
+
     Determinismo: iteracao na ordem de entrada; para cada vaga a PRIMEIRA
     posicao compativel ja vista na mesma (cidade, titulo) decide a fusao;
     o canonico segue ``_canonical_prefer``. Idempotente: apos o estagio nao
@@ -423,6 +442,16 @@ def deduplicate_cross_source(
     stats: Counter[str] = Counter()
 
     for job in normalized:
+        # F135: compute dedup key and check against accumulated corpus
+        dedup_key = ""
+        is_re_entry = False
+        if store is not None:
+            dedup_key = store.compute_key(job)
+            if store.has_key(dedup_key):
+                is_re_entry = True
+                # Mark as re-entry but still process for intra-run dedup
+                job["re_entry"] = True
+
         key = _group_key(job)
         if key is None:
             out.append(job)
@@ -442,6 +471,9 @@ def deduplicate_cross_source(
         if matched_pos is None:
             out.append(job)
             buckets[key].append(len(out) - 1)
+            # F135: write dedup key to store after successful intra-run placement
+            if store is not None and dedup_key and not is_re_entry:
+                store.write(dedup_key, job.get("id", ""))
             continue
 
         resident = out[matched_pos]
@@ -460,7 +492,17 @@ def deduplicate_cross_source(
         removed.append((canonical, duplicate, KEY_CROSS_SOURCE))
         stats[KEY_CROSS_SOURCE] += 1
 
-    return [job for idx, job in enumerate(out) if idx not in dead], dict(stats), removed
+        # F135: write dedup key for the canonical (winner)
+        if store is not None and dedup_key:
+            store.write(dedup_key, canonical.get("id", ""))
+
+    # Filter out dead entries
+    result = []
+    for idx, job in enumerate(out):
+        if idx not in dead:
+            result.append(job)
+
+    return result, dict(stats), removed
 
 
 def cross_source_provenance(
