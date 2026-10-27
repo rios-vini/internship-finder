@@ -554,6 +554,8 @@ APPLICABILITY_REASON_LABELS: dict[str, str] = {
     "job_type_non_internship": "🚫 Tipo de vaga não-estágio (HiWi/Werkstudent/tese/permanente)",
     "experience_required": "📈 Exige experiência profissional prévia",
     "recent_graduate": "🚫 recent-graduate (vaga para recém-formados; dono é matriculado)",
+    # F137 (27/10): posted_at > 12 meses (hard exclude).
+    "stale_posting": "⏳ Postagem antiga (>12 meses) — stale_posting",
 }
 
 # Problemas possiveis (app_intel.possible_problems): template por key.

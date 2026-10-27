@@ -602,6 +602,52 @@ def test_area_controlled_vocab() -> None:
               "Konzeption von Data Science Loesungen"))
 
 
+def test_f136_hr_recruiting_marketing_filter() -> None:
+    print("== F136: filtro de área — HR/recruiting/marketing fora do NEW ==")
+    # Casos-problema reais (relatórios 25-26/10): devem retornar False
+    check("F136. BASF HR Reporting → False",
+          not matches_area("Intern Global HR Reporting & Campaign Support"))
+    check("F136. ARLANXEO HR Operations → False",
+          not matches_area("HR Operations Intern"))
+    check("F136. Tencent Talent Sourcing → False",
+          not matches_area("Global Talent Sourcing Intern"))
+    check("F136. Zorgbedrijf Logistiek (saúde) → False",
+          not matches_area("Zorgbedrijf Logistiek"))
+    check("F136. John Deere Produktmarketing → False",
+          not matches_area("Praktikum Produktmarketing"))
+    check("F136. Ford SAP-WM/IT → False",
+          not matches_area("Ford SAP-WM/IT"))
+    
+    # Contra-casos genuínos de procurement/supply-chain: devem retornar True
+    check("F136. Praktikum im Einkauf (genuíno) → True",
+          matches_area("Praktikum im Einkauf"))
+    check("F136. Operations Supply Chain (genuíno) → True",
+          matches_area("Operations Supply Chain Intern"))
+    check("F136. Strategic Sourcing (genuíno) → True",
+          matches_area("Strategic Sourcing Intern"))
+    check("F136. Logistics Intern (genuíno) → True",
+          matches_area("Logistics Intern"))
+    check("F136. Praktikum Logistik (genuíno) → True",
+          matches_area("Praktikum Logistik"))
+    check("F136. Working Student Procurement (genuíno) → True",
+          matches_area("Working Student Procurement"))
+    check("F136. Supply Chain Planning (genuíno) → True",
+          matches_area("Supply Chain Planning Intern"))
+    check("F136. Purchasing Operations (genuíno) → True",
+          matches_area("Purchasing Operations Intern"))
+    # Híbridos de dados com termo PRIMÁRIO: protegidos pelo gate (exceto HR ungated)
+    check("F136. Sales Analytics (protegido por gate analytics) → True",
+          matches_area("Sales Analytics Intern"))
+    check("F136. Procurement Analytics (protegido por gate analytics) → True",
+          matches_area("Procurement Analytics Intern"))
+    # HR Analytics NÃO protegido (ungated_hr=True)
+    check("F136. HR Analytics (ungated_hr, penalizado) → False",
+          not matches_area("HR Analytics Intern"))
+    # Marketing com termo PRIMARY (ex.: BI) é protegido pelo gate
+    check("F136. Marketing BI (protegido por gate BI primary) → True",
+          matches_area("Marketing BI Intern"))
+
+
 def test_bachelor_degree_exclusion() -> None:
     print("== exclusao grau de graduacao Bachelor (B, pos-auditoria 15/09) ==")
     # B1-B4. Falsos positivos reais medidos no snapshot 16/09 (BASF): títulos
@@ -668,6 +714,7 @@ def main() -> int:
     test_theses_type()
     test_smvdp_exclusion()
     test_bachelor_degree_exclusion()
+    test_f136_hr_recruiting_marketing_filter()
     test_area_controlled_vocab()
     test_location_level()
     test_no_description()

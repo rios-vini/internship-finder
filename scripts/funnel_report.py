@@ -99,6 +99,8 @@ DEATH_LABELS = {
     "spontaneous_pool": "pool espontâneo",
     "job_type_non_internship": "tipo de vaga (não-estágio: HiWi/Werkstudent/tese/permanente)",
     "experience_required": "experiência prévia exigida",
+    # F137 (27/10): posted_at > 12 meses (hard exclude).
+    "stale_posting": "postagem antiga (>12 meses)",
 }
 
 # Ordem de exibição dos desfechos do log F41 (schema da fase).
