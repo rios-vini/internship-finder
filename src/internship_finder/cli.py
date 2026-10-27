@@ -501,7 +501,12 @@ def run_filter_pipeline(
         # F135: CrossSourceDedupStore para dedup contra acervo acumulado entre runs.
         # Anzeigencode/jobcode (RWE), Oracle site_number normalizado (TI),
         # company+title+city (BASF repost) — mesma chave de identidade.
-        cross_store = CrossSourceDedupStore("data/cross_source_dedup.db", run_id or utcnow_iso())
+        # F135: env override para testes/pseudo-repos nao sujarem o data/ de
+        # producao (o audit_fixes confere "data/ intocado" no pseudo-repo).
+        cross_store_path = os.environ.get(
+            "INTERNSHIP_FINDER_CROSS_SOURCE_DEDUP_STORE"
+        ) or "data/cross_source_dedup.db"
+        cross_store = CrossSourceDedupStore(cross_store_path, run_id or utcnow_iso())
         selected, cross_stats, cross_removed = deduplicate_cross_source(
             selected, store=cross_store
         )

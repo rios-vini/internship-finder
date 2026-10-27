@@ -215,12 +215,17 @@ def test_partial_failure_exit() -> None:
     # causa da contaminacao "Acme" de 19-21/09). Testes NUNCA escrevem em
     # data/ de producao.
     metrics = f"{tmp}/metrics.jsonl"
-    with patch.object(cli, "collect_company", side_effect=_collect_ok):
+    # F135: o pipeline cria o CrossSourceDedupStore — path relativo ao CWD
+    # sujaria o data/ do pseudo-repo (audit_fixes confere "data/ intocado").
+    # Override explicito em tmp, mesmo principio do --metrics acima.
+    with patch.dict("os.environ", {"INTERNSHIP_FINDER_CROSS_SOURCE_DEDUP_STORE": f"{tmp}/cross_dedup.db"}), \
+         patch.object(cli, "collect_company", side_effect=_collect_ok):
         rc = cli.main(["--companies", "Acme", "--output", f"{tmp}/j.json",
                        "--filter-output", f"{tmp}/e.json", "--metrics", metrics])
     check("9a. coleta sem falha -> exit 0", rc == 0, f"rc={rc}")
 
-    with patch.object(cli, "collect_company", side_effect=_collect_partial):
+    with patch.dict("os.environ", {"INTERNSHIP_FINDER_CROSS_SOURCE_DEDUP_STORE": f"{tmp}/cross_dedup.db"}), \
+         patch.object(cli, "collect_company", side_effect=_collect_partial):
         rc = cli.main(["--companies", "Acme", "--output", f"{tmp}/j2.json",
                        "--filter-output", f"{tmp}/e2.json", "--metrics", metrics])
     check("9b. coleta parcial com erro -> exit != 0", rc != 0, f"rc={rc}")
