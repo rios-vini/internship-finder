@@ -230,18 +230,18 @@ def group_b() -> None:
 
 
 # ======================================================================
-# [C] RESEARCH_SOURCE_ORDER — 17 fontes (F21 6 + F128 1 + F131 5 + F31 1 + F30 4)
+# [C] RESEARCH_SOURCE_ORDER — 18 fontes (F21 6 + F128 1 + F131 5 + F31 1 + F30 4 + F140 1)
 # ======================================================================
 def group_c() -> None:
-    section("[C] RESEARCH_SOURCE_ORDER: 17 fontes registradas na ordem correta")
+    section("[C] RESEARCH_SOURCE_ORDER: 18 fontes registradas na ordem correta")
 
     names = [n for n, _ in rs.RESEARCH_SOURCE_ORDER]
-    check("C1. Total 17 fontes", len(names) == 17, f"n={len(names)}: {names}")
-    check("C2. Ordem: mpg, fraunhofer, aldi_sued, eon, kuka, siemens_energy, tennet, tu_berlin, leibniz, arbeitnow, remoteok, freehire, bme, amazon_jobs, jobmensa, absolventa, praktikum_info",
+    check("C1. Total 18 fontes", len(names) == 18, f"n={len(names)}: {names}")
+    check("C2. Ordem: mpg, fraunhofer, aldi_sued, eon, kuka, siemens_energy, tennet, tu_berlin, leibniz, englishjobs, arbeitnow, remoteok, freehire, bme, amazon_jobs, jobmensa, absolventa, praktikum_info",
           names == [
               "mpg_rss", "fraunhofer_rss", "aldi_sued_rss", "eon_rss", "kuka_rss",
               "siemens_energy_rss", "tennet_rss", "tu_berlin", "leibniz",
-              "arbeitnow", "remoteok", "freehire", "bme", "amazon_jobs",
+              "englishjobs", "arbeitnow", "remoteok", "freehire", "bme", "amazon_jobs",
               "jobmensa", "absolventa", "praktikum_info"
           ])
     check("C3. 5 novas fontes F131 presentes",
@@ -311,8 +311,8 @@ def group_e() -> None:
     fetchers = {n: fetcher_ok for n, _ in rs.RESEARCH_SOURCE_ORDER}
 
     jobs, summary = rs.collect_research_sources(fetchers=fetchers, env={})
-    check("E1. default ON: 17 fontes ok, 17 jobs, status ok",
-          len(jobs) == 17 and summary["status"] == "ok"
+    check("E1. default ON: 18 fontes ok, 18 jobs, status ok",
+          len(jobs) == 18 and summary["status"] == "ok"
           and all(s["status"] == "ok" for s in summary["sources"].values()),
           f"jobs={len(jobs)} status={summary['status']}")
 
@@ -320,8 +320,8 @@ def group_e() -> None:
     fetchers_fail = dict(fetchers)
     fetchers_fail["aldi_sued_rss"] = fetcher_dead
     jobs2, summary2 = rs.collect_research_sources(fetchers=fetchers_fail, env={})
-    check("E2. uma fonte falha -> partial, 16 jobs, run NAO crasha",
-          summary2["status"] == "partial" and len(jobs2) == 16
+    check("E2. uma fonte falha -> partial, 17 jobs, run NAO crasha",
+          summary2["status"] == "partial" and len(jobs2) == 17
           and summary2["sources"]["aldi_sued_rss"]["status"] == "failed")
 
     # Kill switch env desliga 2 fontes
@@ -329,8 +329,8 @@ def group_e() -> None:
         fetchers=fetchers,
         env={rs.RESEARCH_SOURCES_OFF_ENV: "aldi_sued_rss,eon_rss"}
     )
-    check("E3. env desliga 2 fontes -> 15 jobs, skipped_disabled",
-          len(jobs3) == 15
+    check("E3. env desliga 2 fontes -> 16 jobs, skipped_disabled",
+          len(jobs3) == 16
           and summary3["sources"]["aldi_sued_rss"]["status"] == "skipped_disabled"
           and summary3["sources"]["eon_rss"]["status"] == "skipped_disabled"
           and sorted(summary3["disabled"]) == ["aldi_sued_rss", "eon_rss"])
@@ -342,10 +342,10 @@ def group_e() -> None:
 def group_f() -> None:
     section("[F] Guards de contagem: f21/f30/f47 atualizados p/ 17 fontes")
 
-    # test_f21.py: test_stage_fail_soft usa 17 fetchers; test_kill_switch espera 17 jobs default
-    # test_f30.py: test_stage E1 espera len(RESEARCH_SOURCE_ORDER) == 17
-    # test_f47.py: test_defaults_on A3 espera 17; test_stage C1/C3 esperam 17/15
-    check("F1. RESEARCH_SOURCE_ORDER tem 17 entradas (guard f21/f30/f47)", len(rs.RESEARCH_SOURCE_ORDER) == 17)
+    # test_f21.py: test_stage_fail_soft usa 18 fetchers; test_kill_switch espera 18 jobs default
+    # test_f30.py: test_stage E1 espera len(RESEARCH_SOURCE_ORDER) == 18
+    # test_f47.py: test_defaults_on A3 espera 18; test_stage C1/C3 esperam 18/16
+    check("F1. RESEARCH_SOURCE_ORDER tem 18 entradas (guard f21/f30/f47; F140 +englishjobs)", len(rs.RESEARCH_SOURCE_ORDER) == 18)
 
     # Verificar que as contagens dos testes estao coerentes
     # test_f21 test_stage_fail_soft: 2 + 1*16 = 18 jobs (mpg_rss=2, outras 16x1)

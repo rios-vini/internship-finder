@@ -400,14 +400,16 @@ def test_stage_fail_soft() -> None:
                 # F131 (5 novas fontes RSS corporativas):
                 "aldi_sued_rss": _fetcher_ok(1), "eon_rss": _fetcher_ok(1),
                 "kuka_rss": _fetcher_ok(1), "siemens_energy_rss": _fetcher_ok(1),
-                "tennet_rss": _fetcher_ok(1)}  # 17 fontes total (F128 + F131)
+                "tennet_rss": _fetcher_ok(1),
+                # F140 (englishjobs.de): cobertura zero-HTTP
+                "englishjobs": _fetcher_ok(1)}  # 18 fontes total (F128 + F131 + F140)
     jobs, summary = rs.collect_research_sources(fetchers=fetchers, env={})
     check("E1. fonte morta -> status failed NO summary; outras entregam",
           summary["sources"]["tu_berlin"]["status"] == "failed"
           and summary["sources"]["arbeitnow"]["status"] == "failed"
           and summary["sources"]["bme"]["status"] == "ok"
           and summary["sources"]["amazon_jobs"]["status"] == "ok"
-          and len(jobs) == 18 and summary["status"] == "partial",
+          and len(jobs) == 19 and summary["status"] == "partial",
           f"jobs={len(jobs)} status={summary['status']}")
     fetchers_dead = {n: _fetcher_dead for n, _ in rs.RESEARCH_SOURCE_ORDER}
     jobs2, summary2 = rs.collect_research_sources(fetchers=fetchers_dead, env={})
@@ -428,12 +430,12 @@ def test_stage_fail_soft() -> None:
         fetchers={n: fetcher_slow for n, _ in rs.RESEARCH_SOURCE_ORDER}, env={})
     skipped = sum(1 for s in summary3["sources"].values()
                   if s["status"] == "skipped_budget")
-    # clock fake: t0=0; cada fetch avanca 200s. 17 fontes executaveis
-    # (F47/F128/F131: default ON total — nenhuma pula ANTES do budget): fonte 1
-    # roda (0<250), fonte 2 roda (200<250), fonte 3+ estoura (400>250)
-    # -> 15 skipped.
+    # clock fake: t0=0; cada fetch avanca 200s. 18 fontes executaveis
+    # (F47/F128/F131/F140: default ON total — nenhuma pula ANTES do budget):
+    # fonte 1 roda (0<250), fonte 2 roda (200<250), fonte 3+ estoura (400>250)
+    # -> 16 skipped.
     check("E4. budget estourado -> fontes seguintes skipped_budget",
-          skipped == 15 and summary3["skipped_budget"] == 15
+          skipped == 16 and summary3["skipped_budget"] == 16
           and len(jobs3) == 2, f"skipped={skipped} jobs={len(jobs3)}")
 
 
@@ -454,7 +456,7 @@ def test_kill_switch() -> None:
           summary["sources"]["arbeitnow"]["status"] == "skipped_disabled"
           and summary["sources"]["remoteok"]["status"] == "skipped_disabled"
           and summary["sources"]["mpg_rss"]["status"] == "ok"
-          and len(jobs) == 15
+          and len(jobs) == 16
           and sorted(summary["disabled"]) ==
           ["arbeitnow", "remoteok"],
           f"jobs={len(jobs)} disabled={summary['disabled']}")
@@ -464,15 +466,15 @@ def test_kill_switch() -> None:
     # F47/F128/F131: default ON total — 17 executaveis menos mpg_rss = 16 jobs.
     check("F2. nome desconhecido ignorado; mpg desligada",
           summary2["sources"]["mpg_rss"]["status"] == "skipped_disabled"
-          and len(jobs2) == 16, f"jobs={len(jobs2)}")
+          and len(jobs2) == 17, f"jobs={len(jobs2)}")
     jobs3, summary3 = rs.collect_research_sources(fetchers=fetchers, env={})
-    # F3 (re-datado F47/F128/F131): 17 fontes registradas; TODAS executam por
+    # F3 (re-datado F47/F128/F131/F140): 18 fontes registradas; TODAS executam por
     # default (set F30_DEFAULT_OFF_SOURCES vazio — regras em test_f47).
-    check("F3. sem env var -> 17 fontes executam (nenhuma default-OFF)",
-          len(summary3["sources"]) == 17
-          and sum(1 for s in summary3["sources"].values() if s["status"] == "ok") == 17
+    check("F3. sem env var -> 18 fontes executam (nenhuma default-OFF)",
+          len(summary3["sources"]) == 18
+          and sum(1 for s in summary3["sources"].values() if s["status"] == "ok") == 18
           and sum(1 for s in summary3["sources"].values() if s["status"] == "skipped_disabled") == 0
-          and len(jobs3) == 17, f"jobs={len(jobs3)}")
+          and len(jobs3) == 18, f"jobs={len(jobs3)}")
 
 
 # ---------------------------------------------------------------------------
