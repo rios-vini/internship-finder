@@ -6,8 +6,6 @@ import json
 import tempfile
 from pathlib import Path
 
-import pytest
-
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/
@@ -19,7 +17,6 @@ from internship_finder.cross_source_dedup_store import (  # noqa: E402
 )
 import ranking_digest  # noqa: E402
 from url_liveness import _has_job_context, _soft_dead_in_body  # noqa: E402
-
 
 class TestF138NewListMarkdown:
     """Testes para new_list_markdown com memória de sightings e vereditos manuais."""
@@ -169,7 +166,6 @@ class TestF138NewListMarkdown:
             assert "❌ você já eliminou esta (eixo/alemão)" in text
             store2.close()
 
-
 class TestF138DeadMarkerFP:
     """Testes para evitar false-positivo em privacy policy (GDPR/Aufbewahrung)."""
 
@@ -228,7 +224,6 @@ class TestF138DeadMarkerFP:
         # Job page curto com contexto - DEVE marcar
         job_short = "Stelle Praktikant bereits besetzt. Bewerbung geschlossen."
         assert _fake_200_in_short_body(job_short, len(job_short)) == "bereits besetzt"
-
 
 class TestF138LoadManualVerdicts:
     """Testes para carregamento de manual_verdicts.json."""
@@ -289,7 +284,6 @@ class TestF138LoadManualVerdicts:
         finally:
             Path(path).unlink()
 
-
 def main() -> int:
     """Runner standalone (padrao do projeto — f61/f93; o CI nao instala pytest)."""
     classes = [TestF138NewListMarkdown, TestF138DeadMarkerFP, TestF138LoadManualVerdicts]
@@ -309,7 +303,6 @@ def main() -> int:
                 fails.append(f"{cls.__name__}.{name}")
     print(f"\nF138: {len(fails)} falha(s) de {total}")
     return 1 if fails else 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
