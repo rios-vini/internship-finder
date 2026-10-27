@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -70,6 +71,29 @@ def deadline_hydration_enabled() -> bool:
 def set_deadline_hydration_enabled(enabled: bool) -> None:
     """Alterna programaticamente a flag (testes/uso controlado)."""
     os.environ[DEADLINE_HYDRATION_ENV] = "1" if enabled else "0"
+
+# Regex para detectar company que parece host/URL (ex.: careers.dhl.com, edbz.fa.us2.oraclecloud.com).
+# Padrao: contem ponto, nao so letras/espacos/hifen, e parece dominio/subdominio.
+_HOST_LIKE_RE = re.compile(r"^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:/.*)?$", re.IGNORECASE)
+
+
+def _is_host_like_company(name: str) -> bool:
+    """True se ``name`` parece um host/URL em vez de nome de empresa canonico."""
+    if not name:
+        return False
+    s = name.strip().lower()
+    # Deve ter pelo menos um ponto (dominio.TLD) e nao ser apenas um nome simples
+    if "." not in s:
+        return False
+    # Padroes conhecidos de host/URL
+    if _HOST_LIKE_RE.match(s):
+        # Excluir nomes de empresa legitimos que contem ponto (ex.: "AT&T", "D.E. Shaw")
+        # Heuristica: se so tem letras/pontos/espacos/hifen e parece sigla, nao e host
+        if re.match(r"^[a-z&.\s-]+$", s) and all(len(p) <= 3 for p in s.split(".")):
+            return False
+        return True
+    return False
+
 
 # Cadeias de fallback por campo do Job.
 _FIELDS: dict[str, tuple[str, ...]] = {
@@ -134,7 +158,19 @@ class AtsJobAdapter:
         # (NORMALIZATION_ERROR). Nenhum ATS real do dataset produz titulo
         # vazio hoje (0 ocorrencias em data/jobs.json), entao e defensivo.
         title = self._first(data, _FIELDS["title"]) or ""
-        company_name = self._first(data, _FIELDS["company"]) or company.name or company.query
+        # company do scraper -> se parecer host/URL, ignora e usa company.name canonico
+        scraper_company = self._first_str(data, _FIELDS["company"])
+        if scraper_company and _is_host_like_company(scraper_company):
+            log.debug(
+                "Ignorando company host-like do scraper: %r (usando canonical: %r)",
+                scraper_company,
+                company.name,
+            )
+            company_name = company.name or company.query
+            company_host_like = True
+        else:
+            company_name = scraper_company or company.name or company.query
+            company_host_like = _is_host_like_company(company_name)
         # Identidade empresarial do Job: valor canonico normalizado (strip) que
         # vai TANTO para ``Job.company`` quanto para o prefixo do ``id`` (P1.1).
         # Garante que id e dedup escopem pela MESMA identidade de empresa.
@@ -205,6 +241,7 @@ class AtsJobAdapter:
             external_id=external_id,
             employment_type=employment_type,
             country_iso=country_iso,
+            company_host_like=company_host_like,
             raw=raw,
         )
 

@@ -47,6 +47,31 @@ PHENOM_TENANTS: dict[str, PhenomTenantConfig] = {
         country="eu",
         display_name="Viega",
     ),
+    # phenom:nan tenants (F81) — database has slug "nan", we provide correct config
+    "DHL": PhenomTenantConfig(
+        base_url="https://careers.dhl.com",
+        locale="en_global",
+        country="global",
+        display_name="DHL",
+    ),
+    "Boston Consulting Group": PhenomTenantConfig(
+        base_url="https://careers.bcg.com",
+        locale="en_global",
+        country="global",
+        display_name="Boston Consulting Group",
+    ),
+    "Roche": PhenomTenantConfig(
+        base_url="https://careers.roche.com",
+        locale="en_global",
+        country="global",
+        display_name="Roche",
+    ),
+    "Allianz": PhenomTenantConfig(
+        base_url="https://careers.allianz.com",
+        locale="en_global",
+        country="global",
+        display_name="Allianz",
+    ),
 }
 
 
