@@ -313,6 +313,20 @@ AREA_PRIMARY = [
     r"\bpurchase\b",
     r"\beinkauf",  # DE: purchasing
     r"\bbeschaffung",  # DE: procurement/sourcing
+    # F141 — compostos alemães de Einkauf/Beschaffung (substring sem \b inicial
+    # para casar Projekteinkauf, Energieeinkauf, Frachteinkauf, Rohstoffbeschaffung etc.)
+    r"projekteinkauf",
+    r"energieeinkauf",
+    r"frachteinkauf",
+    r"rohstoffbeschaffung",
+    r"markeneinkauf",
+    r"netzeinkauf",
+    r"tiefbaueinkauf",
+    r"materialfeldeinkauf",
+    r"ersatzteileinkauf",
+    r"importverzollung",
+    r"globaleinkauf",
+    r"strategisch\w*einkauf",
     r"\bcompras\b",  # BR
     r"\bsuprimentos\b",  # BR
     r"\bbusiness intelligence\b",
@@ -330,6 +344,18 @@ AREA_RELATED = [
     r"\boperations excellence\b",
     r"\bsupply chain planning\b",
     r"\blogist",
+    # F141 — compostos alemães de Logistik (substring sem \b inicial para casar
+    # Transportlogistik, Produktionslogistik, Intralogistik, Lagerlogistik etc.)
+    r"transportlogistik",
+    r"beschaffungslogistik",
+    r"logistikmanagement",
+    r"intralogistik",
+    r"produktionslogistik",
+    r"lagerlogistik",
+    r"vertriebslogistik",
+    r"retourenlogistik",
+    r"einkaufslogistik",
+    r"versorgungslogistik",
     r"\bsourcing\b",
     r"\bstrategic procurement\b",
     r"\bpurchasing operations\b",

@@ -235,7 +235,10 @@ def test_ab_funnel() -> None:
     sel_on, _ = select_eligible(merged, student=True, area=True,
                                 country="de", applicability=True)
     check("F3. eligible NAO diminiu com a fonte religada (colapso correto)",
-          len(sel_on) >= len(sel_off) == 1,
+          # F141: o card B ("Fachkraft fuer Lagerlogistik") passou a ser
+          # reconhecido como area de logistica (composto, substring) — os
+          # DOIS cards absolutventa sao elegiveis agora (antes: 1)
+          len(sel_on) >= len(sel_off) == 2,
           f"off={len(sel_off)} on={len(sel_on)}")
     # caso adverso: sem location o par uno passa RETO (dupla exibicao
     # residual documentada no set/comment F47) — comportamento conhecido.

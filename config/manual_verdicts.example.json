@@ -1,0 +1,26 @@
+{
+  "_comment": "F138 — Vereditos manuais do dono. Copie para data/manual_verdicts.json e edite no VS Code para marcar vagas eliminadas/pendentes. O pipeline lê este arquivo e marca no NEW: \"❌ você já eliminou esta (motivo)\".",
+  "_schema": {
+    "dedup_key": {
+      "verdict": "eliminada|pendente",
+      "reason": "motivo da eliminação (ex.: eixo/alemão, localização, senioridade)",
+      "date": "DD/MM (opcional, para referência)"
+    }
+  },
+  "_how_to_get_dedup_key": "A chave dedup aparece no arquivo NEW-<date>.md como comentário <!-- id:... -->. Use a chave completa (ex.: company_title_city:basf_se:hr_reporting:berlin ou oracle_site:cx_normalized:68902).",
+  "company_title_city:ford_motor_company:sap_warehouse_management:koeln": {
+    "verdict": "eliminada",
+    "reason": "eixo/alemão",
+    "date": "25/10"
+  },
+  "oracle_site:cx_normalized:68902": {
+    "verdict": "eliminada",
+    "reason": "eixo/alemão",
+    "date": "25/10"
+  },
+  "personio_tenant:lnds.jobs.personio.com:data_engineering_internship": {
+    "verdict": "pendente",
+    "reason": "aguardando resposta da empresa",
+    "date": "27/10"
+  }
+}
