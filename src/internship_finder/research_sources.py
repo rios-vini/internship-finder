@@ -1905,8 +1905,14 @@ def parse_englishjobs_markdown(
         title_match = re.match(r"\[?([^\]]+)\]?\s*\(?([^)\s]+)?\)?", title_line)
         if not title_match:
             continue
-        title = _clean(title_match.group(1))
+        # F140-cura: o endpoint escapa asteriscos ("\*Intern\*") — unescape
+        # mantém o título limpo p/ digest, vocab de área e chaves de dedup.
+        title = _clean(title_match.group(1)).replace("\\*", "*").strip()
         url = _clean(title_match.group(2))
+        # F140-cura: URLs diretas relativas (/job/<id>) precisam da base —
+        # url relativa quebra a chave de dedup e o link do digest.
+        if url and url.startswith("/"):
+            url = f"{ENGLISHJOBS_BASE}{url}"
         if not title or not url:
             continue
 
