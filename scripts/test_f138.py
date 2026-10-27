@@ -284,6 +284,25 @@ class TestF138LoadManualVerdicts:
         finally:
             Path(path).unlink()
 
+    def test_load_manual_verdicts_example_file(self):
+        """O arquivo de exemplo data/manual_verdicts.example.json carrega sem erro (gate F142)."""
+        from refresh_daily import load_manual_verdicts
+        # F142-cura: o example vive em config/ (data/ e gitignored — em data/ o
+        # arquivo nunca chegaria ao runner do CI e este gate explodiria lá)
+        example_path = Path(__file__).resolve().parent.parent / "config" / "manual_verdicts.example.json"
+        assert example_path.exists(), f"Arquivo de exemplo não encontrado: {example_path}"
+        verdicts = load_manual_verdicts(example_path)
+        # Deve carregar as entradas válidas do exemplo
+        assert len(verdicts) >= 2
+        # Verificar estrutura das entradas carregadas
+        for key, value in verdicts.items():
+            assert "verdict" in value
+            assert "reason" in value
+            assert "date" in value
+            assert value["verdict"] in ("eliminada", "pendente")
+            assert isinstance(value["reason"], str) and value["reason"]
+            assert isinstance(value["date"], str)
+
 def main() -> int:
     """Runner standalone (padrao do projeto — f61/f93; o CI nao instala pytest)."""
     classes = [TestF138NewListMarkdown, TestF138DeadMarkerFP, TestF138LoadManualVerdicts]

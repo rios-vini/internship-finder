@@ -600,6 +600,44 @@ def test_area_controlled_vocab() -> None:
           not matches_area(
               "Praktikant (m/w/d)",
               "Konzeption von Data Science Loesungen"))
+    # F141 — compostos alemães de Logistik/Einkauf/Beschaffung (substrings
+    # sem \b inicial para casar Transportlogistik, Projekteinkauf, etc.)
+    check("F141. 'Praktikum Transportlogistik' passa area (probe orquestrador)",
+          matches_area("Praktikum Transportlogistik",
+                       "Planung und Steuerung der Transportlogistik"))
+    check("F141. 'Praktikum in der Transportlogistik' passa area",
+          matches_area("Praktikum in der Transportlogistik"))
+    check("F141. 'Praktikum Produktionslogistik' passa area",
+          matches_area("Praktikum Produktionslogistik"))
+    check("F141. 'Werkstudent Intralogistik' passa area",
+          matches_area("Werkstudent Intralogistik"))
+    check("F141. 'Praktikum Projekteinkauf' passa area (PRIMARY)",
+          matches_area("Praktikum Projekteinkauf"))
+    check("F141. 'Werkstudent Energieeinkauf' passa area (PRIMARY)",
+          matches_area("Werkstudent Energieeinkauf"))
+    check("F141. 'Praktikum Frachteinkauf' passa area (PRIMARY)",
+          matches_area("Praktikum Frachteinkauf"))
+    check("F141. 'Praktikum Rohstoffbeschaffung' passa area (PRIMARY)",
+          matches_area("Praktikum Rohstoffbeschaffung"))
+    check("F141. 'Praktikum Beschaffungslogistik' passa area (RELATED)",
+          matches_area("Praktikum Beschaffungslogistik"))
+    check("F141. 'Praktikum Logistikmanagement' passa area (RELATED)",
+          matches_area("Praktikum Logistikmanagement"))
+    check("F141. 'Praktikum Lagerlogistik' passa area (RELATED)",
+          matches_area("Praktikum Lagerlogistik"))
+    check("F141. 'Praktikum Vertriebslogistik' passa area (RELATED)",
+          matches_area("Praktikum Vertriebslogistik"))
+    check("F141. 'Praktikum Retourenlogistik' passa area (RELATED)",
+          matches_area("Praktikum Retourenlogistik"))
+    check("F141. 'Praktikum Einkaufslogistik' passa area (RELATED)",
+          matches_area("Praktikum Einkaufslogistik"))
+    check("F141. 'Praktikum Versorgungslogistik' passa area (RELATED)",
+          matches_area("Praktikum Versorgungslogistik"))
+    # Contra-casos: HR/healthcare contexts ainda zeram logist (regressao F136)
+    check("F141. HR context zera logistics compostos — 'HR Transportlogistik' NAO passa",
+          not matches_area("HR Transportlogistik Intern"))
+    check("F141. Healthcare context zera logistics compostos — 'Pflege Intralogistik' NAO passa",
+          not matches_area("Pflege Intralogistik Intern"))
 
 
 def test_f136_hr_recruiting_marketing_filter() -> None:
