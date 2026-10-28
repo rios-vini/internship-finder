@@ -439,20 +439,21 @@ def test_D5_fetch_englishjobs_cached_fallback():
         rs.ENGLISHJOBS_CACHE_DIR = _P(_tmp.name)
 
         jobs, stats = rs.fetch_englishjobs_cached(max_pages=1, opener=failing_opener)
-    # Com cache real presente, deve retornar jobs do cache
-    check("D5: cached fetcher returns jobs from cache", stats.get("cache_used") is True)
-    # Primeira pagina so: ~85 jobs total (22+22+22+19)
-    check("D5: cache jobs > 0", stats.get("jobs", 0) > 50)
-    # Status pode ser 'failed' (remoto falhou) mas cache forneceu jobs
-    check("D5: status ok/partial/failed com cache", stats.get("status") in ("ok", "partial", "failed"))
-    # Verificar que as 4 categorias estao no stats
-    cats = stats.get("categories", {})
-    check("D5: 4 categorias no stats", len(cats) == 4)
-    for cat in ["intern_internship", "procurement", "supply_chain", "internship"]:
-        check(f"D5: categoria {cat} presente", cat in cats)
-        # Cada categoria deve ter jobs do cache
-        check(f"D5: categoria {cat} tem jobs", cats[cat].get("jobs", 0) > 0)
-        check(f"D5: categoria {cat} source=cache", cats[cat].get("source") == "cache")
+
+        # Com cache real presente, deve retornar jobs do cache
+        check("D5: cached fetcher returns jobs from cache", stats.get("cache_used") is True)
+        # Primeira pagina so: ~85 jobs total (22+22+22+19)
+        check("D5: cache jobs > 0", stats.get("jobs", 0) > 50)
+        # Status pode ser 'failed' (remoto falhou) mas cache forneceu jobs
+        check("D5: status ok/partial/failed com cache", stats.get("status") in ("ok", "partial", "failed"))
+        # Verificar que as 4 categorias estao no stats
+        cats = stats.get("categories", {})
+        check("D5: 4 categorias no stats", len(cats) == 4)
+        for cat in ["intern_internship", "procurement", "supply_chain", "internship"]:
+            check(f"D5: categoria {cat} presente", cat in cats)
+            # Cada categoria deve ter jobs do cache
+            check(f"D5: categoria {cat} tem jobs", cats[cat].get("jobs", 0) > 0)
+            check(f"D5: categoria {cat} source=cache", cats[cat].get("source") == "cache")
     finally:
         rs.ENGLISHJOBS_CACHE_DIR = _orig_dir
         _tmp.cleanup()
