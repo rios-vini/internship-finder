@@ -86,7 +86,14 @@ class TestF138NewListMarkdown:
                 dedup_store=store2,
             )
 
-            assert "🔁 re-entrada (vista em 27/10)" in text or "🔁 re-entrada (vista em 2026-10-27)" in text
+            # A data do 1º sighting deriva do seen_at REAL do store (relógio) —
+            # o teste valida o MECANISMO (marker com a data do 1º write),
+            # nao uma data fixa (cura da virada do dia: fixture 27/10 quebrou em 28/10)
+            from datetime import UTC, datetime
+            today = datetime.now(UTC).strftime("%d/%m")
+            assert f"🔁 re-entrada (vista em {today})" in text, (
+                f"marker com data de hoje ({today}) ausente — texto: {text[-400:]}"
+            )
             store2.close()
 
     def test_new_list_markdown_manual_verdict(self):

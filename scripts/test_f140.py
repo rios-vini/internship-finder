@@ -421,7 +421,24 @@ def test_D5_fetch_englishjobs_cached_fallback():
     def failing_opener(req):
         raise urllib.error.URLError("Simulated Cloudflare 403")
 
-    jobs, stats = rs.fetch_englishjobs_cached(max_pages=1, opener=failing_opener)
+    # F145-cura: data/cache e GITIGNORED (vazio no CI) e fixtures com data
+    # fixa ENVELHECEM (>7 dias -> expiry ignora). Copia as fixtures para um
+    # tmpdir com o timestamp de HOJE e aponta o CACHE_DIR para la —
+    # deterministico no CI e perene (nunca expira).
+    import tempfile as _tf
+    from datetime import UTC as _UTC, datetime as _dt
+    from pathlib import Path as _P
+    _orig_dir = rs.ENGLISHJOBS_CACHE_DIR
+    _tmp = _tf.TemporaryDirectory()
+    try:
+        _today = _dt.now(_UTC).strftime("%Y%m%d")
+        _fx = _P(__file__).resolve().parent.parent / "fixtures" / "englishjobs_cache"
+        for _f in _fx.glob("*_20261027.md"):
+            _cat = _f.name.replace("_20261027.md", "")
+            (_P(_tmp.name) / f"{_cat}_{_today}.md").write_text(_f.read_text(encoding="utf-8"), encoding="utf-8")
+        rs.ENGLISHJOBS_CACHE_DIR = _P(_tmp.name)
+
+        jobs, stats = rs.fetch_englishjobs_cached(max_pages=1, opener=failing_opener)
     # Com cache real presente, deve retornar jobs do cache
     check("D5: cached fetcher returns jobs from cache", stats.get("cache_used") is True)
     # Primeira pagina so: ~85 jobs total (22+22+22+19)
@@ -436,6 +453,9 @@ def test_D5_fetch_englishjobs_cached_fallback():
         # Cada categoria deve ter jobs do cache
         check(f"D5: categoria {cat} tem jobs", cats[cat].get("jobs", 0) > 0)
         check(f"D5: categoria {cat} source=cache", cats[cat].get("source") == "cache")
+    finally:
+        rs.ENGLISHJOBS_CACHE_DIR = _orig_dir
+        _tmp.cleanup()
 
 
 def test_D6_cache_expiry_logic():
