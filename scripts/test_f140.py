@@ -334,6 +334,132 @@ def test_C4_zero_http_in_suite():
 
 
 # ---------------------------------------------------------------------------
+# GRUPO D — Parser com cache REAL (F145: fixture do markdown hidratado 27/10)
+# ---------------------------------------------------------------------------
+# Estes testes usam o markdown REAL capturado via web_extract (browser backend)
+# em 27/10/2026: 4 categorias, ~440 jobs total com companies canonicas.
+# O cache fica em data/cache/englishjobs_md/<categoria>_20261027.md
+# ---------------------------------------------------------------------------
+
+
+def _load_real_cache(category: str) -> str:
+    """Carrega fixture real do cache hidratado."""
+    # F145-cura: data/cache e GITIGNORED — a suite le a FOTO versionada em
+    # fixtures/ (deterministica no CI; o runtime fetch_englishjobs_cached
+    # segue lendo o data/cache vivo)
+    cache_dir = Path(__file__).resolve().parent.parent / "fixtures" / "englishjobs_cache"
+    cache_file = cache_dir / f"{category}_20261027.md"
+    if not cache_file.exists():
+        raise FileNotFoundError(f"Fixture do cache real nao encontrada: {cache_file}")
+    return cache_file.read_text(encoding="utf-8")
+
+
+def test_D1_real_cache_intern_internship_parses():
+    """Cache real intern_internship -> parseia jobs validos (primeira pagina ~20)."""
+    markdown = _load_real_cache("intern_internship")
+    opener = MockOpener({})  # clickouts nao sao resolvidos no teste offline
+    jobs = rs.parse_englishjobs_markdown(markdown, "intern_internship", opener)
+    # Primeira pagina so: probe 27/10 deu ~22 jobs na pagina 1
+    check("D1: intern_internship real cache parses jobs", len(jobs) >= 15, f"got {len(jobs)} jobs")
+    if jobs:
+        # Verificar empresas conhecidas do probe (ADI, Adidas, Honeywell, P&G, etc.)
+        companies = {j.company for j in jobs}
+        check("D1: ADI (Analog Devices) presente", any("Analog Devices" in c or "ADI" in c for c in companies))
+        check("D1: Adidas presente", any("Adidas" in c for c in companies))
+        check("D1: Honeywell presente", any("Honeywell" in c for c in companies))
+        check("D1: P&G presente", any("Procter" in c or "Gamble" in c for c in companies))
+        # Verificar estrutura basica
+        for j in jobs[:5]:
+            check("D1: job tem title", bool(j.title))
+            check("D1: job tem company", bool(j.company))
+            check("D1: job tem url canonica", j.url.startswith("http"))
+            check("D1: job source englishjobs", j.source == rs.SOURCE_ENGLISHJOBS)
+            check("D1: job country_iso de", j.country_iso == "de")
+
+
+def test_D2_real_cache_procurement_parses():
+    """Cache real procurement -> parseia jobs validos (primeira pagina ~20)."""
+    markdown = _load_real_cache("procurement")
+    opener = MockOpener({})
+    jobs = rs.parse_englishjobs_markdown(markdown, "procurement", opener)
+    check("D2: procurement real cache parses jobs", len(jobs) >= 15, f"got {len(jobs)} jobs")
+    if jobs:
+        company_set = {j.company for j in jobs}
+        # Empresas conhecidas: SAP, Allianz, Rosen, TE, RWE, BioNTech, etc.
+        check("D2: SAP presente", any("SAP" in c or "Asapio" in c for c in company_set))
+        check("D2: Allianz presente", any("Allianz" in c for c in company_set))
+        check("D2: jobs tem category no raw", all(j.raw and j.raw.get("category") == "procurement" for j in jobs[:10]))
+
+
+def test_D3_real_cache_supply_chain_parses():
+    """Cache real supply_chain -> parseia jobs validos (primeira pagina ~20)."""
+    markdown = _load_real_cache("supply_chain")
+    opener = MockOpener({})
+    jobs = rs.parse_englishjobs_markdown(markdown, "supply_chain", opener)
+    check("D3: supply_chain real cache parses jobs", len(jobs) >= 15, f"got {len(jobs)} jobs")
+    if jobs:
+        # Verificar que nao so estagios (supply_chain tem roles seniores)
+        titles = [j.title.lower() for j in jobs]
+        has_senior = any("director" in t or "lead" in t or "manager" in t or "senior" in t for t in titles)
+        check("D3: supply_chain tem roles seniores (nao so estagio)", has_senior)
+        check("D3: jobs tem category no raw", all(j.raw and j.raw.get("category") == "supply_chain" for j in jobs[:10]))
+
+
+def test_D4_real_cache_internship_parses():
+    """Cache real internship -> parseia jobs validos (primeira pagina ~20)."""
+    markdown = _load_real_cache("internship")
+    opener = MockOpener({})
+    jobs = rs.parse_englishjobs_markdown(markdown, "internship", opener)
+    check("D4: internship real cache parses jobs", len(jobs) >= 15, f"got {len(jobs)} jobs")
+    if jobs:
+        check("D4: jobs tem category no raw", all(j.raw and j.raw.get("category") == "internship" for j in jobs[:10]))
+
+
+def test_D5_fetch_englishjobs_cached_fallback():
+    """fetch_englishjobs_cached usa cache quando remoto falha (mock)."""
+    # Simula falha remota total
+    def failing_opener(req):
+        raise urllib.error.URLError("Simulated Cloudflare 403")
+
+    jobs, stats = rs.fetch_englishjobs_cached(max_pages=1, opener=failing_opener)
+    # Com cache real presente, deve retornar jobs do cache
+    check("D5: cached fetcher returns jobs from cache", stats.get("cache_used") is True)
+    # Primeira pagina so: ~85 jobs total (22+22+22+19)
+    check("D5: cache jobs > 0", stats.get("jobs", 0) > 50)
+    # Status pode ser 'failed' (remoto falhou) mas cache forneceu jobs
+    check("D5: status ok/partial/failed com cache", stats.get("status") in ("ok", "partial", "failed"))
+    # Verificar que as 4 categorias estao no stats
+    cats = stats.get("categories", {})
+    check("D5: 4 categorias no stats", len(cats) == 4)
+    for cat in ["intern_internship", "procurement", "supply_chain", "internship"]:
+        check(f"D5: categoria {cat} presente", cat in cats)
+        # Cada categoria deve ter jobs do cache
+        check(f"D5: categoria {cat} tem jobs", cats[cat].get("jobs", 0) > 0)
+        check(f"D5: categoria {cat} source=cache", cats[cat].get("source") == "cache")
+
+
+def test_D6_cache_expiry_logic():
+    """_find_latest_cache respeita max age (7 dias)."""
+    from datetime import UTC, datetime, timedelta
+
+    # Teste interno: criar arquivo temporario com data antiga
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        old_date = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y%m%d")
+        old_file = tmpdir / f"intern_internship_{old_date}.md"
+        old_file.write_text("# Test")
+        # Monkey patch ENGLISHJOBS_CACHE_DIR
+        original_cache_dir = rs.ENGLISHJOBS_CACHE_DIR
+        rs.ENGLISHJOBS_CACHE_DIR = tmpdir
+        try:
+            result = rs._find_latest_cache("intern_internship")
+            check("D6: cache expirado (10 dias) retorna None", result is None)
+        finally:
+            rs.ENGLISHJOBS_CACHE_DIR = original_cache_dir
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -363,6 +489,15 @@ if __name__ == "__main__":
     test_C2_procurement_job_reaches_eligible()
     test_C3_dedup_cross_source()
     test_C4_zero_http_in_suite()
+
+    # GRUPO D
+    print("\n--- GRUPO D: Parser com cache REAL (F145) ---")
+    test_D1_real_cache_intern_internship_parses()
+    test_D2_real_cache_procurement_parses()
+    test_D3_real_cache_supply_chain_parses()
+    test_D4_real_cache_internship_parses()
+    test_D5_fetch_englishjobs_cached_fallback()
+    test_D6_cache_expiry_logic()
 
     # Summary
     print("\n=== SUMMARY ===")

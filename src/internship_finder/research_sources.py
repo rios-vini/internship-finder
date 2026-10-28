@@ -127,6 +127,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from internship_finder.countries import infer_country_iso
@@ -2077,6 +2078,139 @@ def fetch_englishjobs(
 
 
 # ---------------------------------------------------------------------------
+# F145 — englishjobs.de cached fetcher (fallback para VPS com Cloudflare 403)
+# ---------------------------------------------------------------------------
+# O cache e populado pelo orquestrador (Hermes) via scripts/hydrate_englishjobs.py
+# (web_extract com browser backend). O fetcher remoto (fetch_englishjobs) continua
+# sendo chamado primeiro no fluxo do cron; se falhar (status failed/partial sem jobs),
+# fetch_englishjobs_cached tenta ler o cache mais fresco (ate 7 dias).
+# ---------------------------------------------------------------------------
+
+ENGLISHJOBS_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "cache" / "englishjobs_md"
+ENGLISHJOBS_CACHE_MAX_AGE_DAYS = 7
+
+
+def _find_latest_cache(category: str) -> Path | None:
+    """Encontra o arquivo de cache mais recente para a categoria.
+
+    Retorna None se nao existe ou se tem mais de ENGLISHJOBS_CACHE_MAX_AGE_DAYS dias.
+    """
+    if not ENGLISHJOBS_CACHE_DIR.exists():
+        return None
+    pattern = f"{category}_*.md"
+    cache_files = list(ENGLISHJOBS_CACHE_DIR.glob(pattern))
+    if not cache_files:
+        return None
+    # Mais recente primeiro (timestamp no nome: YYYYMMDD)
+    cache_files.sort(reverse=True)
+    latest = cache_files[0]
+    # Verificar idade pelo timestamp no nome do arquivo
+    try:
+        ts_str = latest.stem.split("_")[-1]  # YYYYMMDD
+        cache_date = datetime.strptime(ts_str, "%Y%m%d").replace(tzinfo=UTC)
+        age_days = (datetime.now(UTC) - cache_date).days
+        if age_days > ENGLISHJOBS_CACHE_MAX_AGE_DAYS:
+            log.warning(
+                "research_sources: englishjobs cache %s tem %d dias (>%d), ignorando",
+                latest.name, age_days, ENGLISHJOBS_CACHE_MAX_AGE_DAYS
+            )
+            return None
+    except (ValueError, IndexError):
+        log.warning("research_sources: englishjobs cache %s tem nome invalido, ignorando", latest.name)
+        return None
+    return latest
+
+
+def fetch_englishjobs_cached(
+    *,
+    max_pages: int = ENGLISHJOBS_MAX_PAGES,
+    timeout: float = RESEARCH_HTTP_TIMEOUT,
+    opener: Callable[[urllib.request.Request], Any] | None = None,
+) -> tuple[list[Job], dict[str, Any]]:
+    """englishjobs.de com fallback para cache local (F145).
+
+    Fluxo:
+    1. Tenta fetch remoto via fetch_englishjobs (mesmo comportamento atual)
+    2. Se remoto falhar (status failed OU partial sem jobs), tenta cache local
+    3. Cache valido: fresco ate 7 dias; mais velho -> fail-soft normal (retorna [])
+
+    Nao muda o fluxo do cron: a fonte continua no research_sources com o fetch
+    remoto primeiro, cache como segunda chance.
+    """
+    # 1. Tentar remoto primeiro
+    jobs, stats = fetch_englishjobs(max_pages=max_pages, timeout=timeout, opener=opener)
+
+    remote_failed = (
+        stats.get("status") == "failed"
+        or (stats.get("status") == "partial" and stats.get("jobs", 0) == 0)
+    )
+
+    if not remote_failed:
+        stats["cache_used"] = False
+        return jobs, stats
+
+    # 2. Remoto falhou -> tentar cache
+    log.info("research_sources: englishjobs remoto falhou (%s); tentando cache local", stats.get("error"))
+    all_jobs: list[Job] = []
+    total_rows = 0
+    any_cache_success = False
+    cache_errors = []
+
+    categories = {
+        "intern_internship": ENGLISHJOBS_INTERN_INTERNSHIP,
+        "procurement": ENGLISHJOBS_PROCUREMENT,
+        "supply_chain": ENGLISHJOBS_SUPPLY_CHAIN,
+        "internship": ENGLISHJOBS_INTERNSHIP,
+    }
+
+    for cat_name, base_url in categories.items():
+        cache_file = _find_latest_cache(cat_name)
+        cat_jobs: list[Job] = []
+        cat_rows = 0
+        cat_error = None
+
+        if cache_file is None:
+            cat_error = "cache indisponivel ou expirado"
+            cache_errors.append(f"{cat_name}: {cat_error}")
+        else:
+            try:
+                markdown_text = cache_file.read_text(encoding="utf-8")
+                cat_jobs = parse_englishjobs_markdown(markdown_text, cat_name, opener)
+                cat_rows = len(cat_jobs)
+                any_cache_success = True
+                log.info("research_sources: englishjobs cache %s -> %d jobs", cache_file.name, cat_rows)
+            except Exception as exc:  # noqa: BLE001
+                cat_error = f"erro lendo cache: {exc}"
+                cache_errors.append(f"{cat_name}: {cat_error}")
+                log.warning("research_sources: englishjobs cache %s falhou: %s", cache_file.name, exc)
+
+        total_rows += cat_rows
+        all_jobs.extend(cat_jobs)
+        stats.setdefault("categories", {})[cat_name] = {
+            "jobs": len(cat_jobs),
+            "rows_seen": cat_rows,
+            "pages": 0,
+            "error": cat_error,
+            "source": "cache",
+        }
+
+    stats["rows_seen"] = total_rows
+    stats["jobs"] = len(all_jobs)
+    stats["pages"] = 0
+    stats["cache_used"] = True
+    stats["cache_errors"] = cache_errors
+
+    if not any_cache_success:
+        stats["status"] = "failed"
+        stats["error"] = "remoto falhou e cache indisponivel/expirado"
+    elif cache_errors:
+        stats["status"] = "partial"
+        stats["error"] = "; ".join(cache_errors)
+
+    return all_jobs, stats
+
+
+# ---------------------------------------------------------------------------
 # Estagio F21: sequencia das 7 fontes (6 originais + bme F31) com budget + kill switch por env var
 # 7. Amazon jobs — search.json publico (F30; prefilter DE + estagio)
 # ---------------------------------------------------------------------------
@@ -2508,7 +2642,8 @@ RESEARCH_SOURCE_ORDER: tuple[tuple[str, Callable[..., tuple[list[Job], dict[str,
     (SOURCE_LEIBNIZ, fetch_leibniz),
     # F140: englishjobs.de — job board com endpoint markdown (llms.txt),
     # relevante para procurement/supply_chain/internship; web_extract obrigatorio.
-    (SOURCE_ENGLISHJOBS, fetch_englishjobs),
+    # F145: usa fetch_englishjobs_cached (remote first, cache fallback para VPS).
+    (SOURCE_ENGLISHJOBS, fetch_englishjobs_cached),
     (SOURCE_ARBEITNOW, fetch_arbeitnow),
     (SOURCE_REMOTEOK, fetch_remoteok),
     (SOURCE_FREEHIRE, fetch_freehire),

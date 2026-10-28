@@ -91,6 +91,20 @@ has done so in production since September 2026.
   (Praktikum keyword, description included by the search API).
 - **Research sources** — Max Planck Society, TU Berlin, Leibniz
   association, plus keyless job boards.
+- **englishjobs.de (F145)** — English-language job board in Germany with
+  official `?format=markdown` endpoints (documented in llms.txt).
+  Categories: `intern_internship` (primary), `procurement`, `supply_chain`,
+  `internship`. The VPS cron gets Cloudflare 403 via urllib; the fix is
+  **orchestrated hydration**: Hermes (browser backend) fetches all 4
+  categories weekly via `web_extract` and writes
+  `data/cache/englishjobs_md/<category>_<YYYYMMDD>.md`. The pipeline's
+  `fetch_englishjobs_cached` tries remote first, then falls back to cache
+  (valid up to 7 days; older → normal fail-soft). Zero cron changes — the
+  source stays in `research_sources` with the same signature. Manual
+  re-hydration: `hermes chat -Q -q "hydrate englishjobs"` (runs
+  `scripts/hydrate_englishjobs.py`). Cache fixture from 2026-10-27:
+  ~440 jobs across 4 categories with canonical companies (ADI, Adidas,
+  Honeywell, P&G, SAP, Allianz, etc.).
 
 **Eligibility.** Student-type roles (*Praktikum*, *Werkstudent*,
 internship, working student) in Supply Chain / Procurement / BI /
